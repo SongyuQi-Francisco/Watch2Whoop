@@ -157,6 +157,9 @@ String connectError(Object e) {
   if (code.contains('invalid_code')) return tr('邀请码无效或已用过 / 过期，请重新生成', 'Invitation code is invalid, used or expired');
   if (code.contains('network')) return tr('连不上同步服务器：检查网络和地址（服务器在内网时要先连 VPN）', 'Cannot reach the sync server: check the network and address (VPN if it is private)');
   if (code.contains('server')) return tr('服务器出错：$code', 'Server error: $code');
+  if (code.contains('sign_in')) {
+    return tr('同步没连上（手机没接受新的同步登录），请再点一次「连接同步」', 'Sync did not connect (the phone did not take the new sign-in); tap Connect sync again');
+  }
   return tr('连接失败：$code', 'Connection failed: $code');
 }
 

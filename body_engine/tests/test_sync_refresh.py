@@ -86,6 +86,7 @@ def test_auth_own_data_only(client, users, started):
     assert web.post("/v1/users/me/sync/refresh").status_code == 403
     r = web.post("/v1/users/me/sync/refresh", headers=CSRF)
     assert r.status_code == 202 and r.json()["accepted"] is True and started == [ids["b"]]
+    assert r.headers["x-body-user"] == str(ids["b"])   # cookie login: the proxy logs the user (obs.py)
 
 
 def test_rate_limit_and_collapse(client, users, started, dsn):
@@ -145,6 +146,27 @@ def test_background_import_then_queued_scores(dsn, users, monkeypatch):
                      "WHERE user_id = %s", (uid,))
         assert refresh.status(conn, uid)["busy"] is False
         conn.commit()
+
+
+def test_queued_import_mode_starts_no_thread(client, users, started, dsn, monkeypatch):
+    """BODY_SYNC_IMPORT=queue: the API process only queues; sync-refresh-run imports (import_queued) and recomputes."""
+    ids, tok = users
+    monkeypatch.setattr(refresh, "IMPORT_QUEUED", True)
+    with psycopg.connect(dsn, row_factory=dict_row, autocommit=True) as conn:
+        conn.execute("DELETE FROM sync_refresh WHERE user_id = %s", (ids["b"],))
+    r = client.post("/v1/users/me/sync/refresh", headers=H(tok["b"]))
+    assert r.status_code == 202 and r.json()["accepted"] and r.json()["status"] == "scores_queued" and r.json()["busy"]
+    assert started == [] and r.headers["x-body-user"] == str(ids["b"])   # Bearer token: same header
+    assert "x-body-user" not in client.post("/v1/users/me/sync/refresh").headers   # 401: nobody
+    imported, scored = [], []
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        assert conn.execute("SELECT import_queued_at FROM sync_refresh WHERE user_id = %s",
+                            (ids["b"],)).fetchone()["import_queued_at"] is not None
+        out = refresh.run_queued(conn, user_id=ids["b"], scorer=lambda c, u, cl, frm=None: scored.append(u) or {"rows": 1},
+                                 importer=lambda c, u: imported.append(u) or {"start": None})
+        assert imported == [ids["b"]] and scored == [ids["b"]] and out[0]["rows"] == 1
+    # rate limited like the thread mode
+    assert client.post("/v1/users/me/sync/refresh", headers=H(tok["b"])).json()["throttled"] is True
 
 
 def test_import_failure_is_recorded(dsn, users, monkeypatch):

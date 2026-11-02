@@ -217,7 +217,7 @@ class _SyncCenterSectionState extends State<SyncCenterSection> {
                     Row2(r.type.label,
                         // phone / server, in the order of the group title (with the words it did not fit a phone row)
                         value: '${shortDay(r.phone)} / ${shortDay(r.type.lastAt ?? DateTime.tryParse(r.type.lastDate ?? ''))}',
-                        trailing: _VerdictTag(r.verdict),
+                        trailing: VerdictTag(r.verdict),
                         onTap: verdictNote(r.type.key, r.verdict) == null
                             ? null
                             : () => ScaffoldMessenger.maybeOf(context)
@@ -247,8 +247,8 @@ class _SyncCenterSectionState extends State<SyncCenterSection> {
   }
 }
 
-class _VerdictTag extends StatelessWidget {
-  const _VerdictTag(this.v);
+class VerdictTag extends StatelessWidget {
+  const VerdictTag(this.v, {super.key});
   final TypeVerdict v;
 
   @override

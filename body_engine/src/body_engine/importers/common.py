@@ -2,7 +2,7 @@
 import json
 import re
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from statistics import median
 from zoneinfo import ZoneInfo
@@ -80,6 +80,7 @@ class SleepSession:
     end: datetime
     minutes: Counter
     device: str | None
+    segments: list = field(default_factory=list)   # its stage segments (awake included), in start order
 
     @property
     def asleep_min(self) -> int:
@@ -111,7 +112,7 @@ def sessionize(segments: list[Segment]) -> list[SleepSession]:
             minutes[s.stage] += (s.end - s.start).total_seconds() / 60
         end = max(s.end for s in segs)
         devices = Counter(s.device for s in segs)
-        sess = SleepSession((end - WAKE_DAY_SHIFT).date(), segs[0].start, end, minutes, devices.most_common(1)[0][0])
+        sess = SleepSession((end - WAKE_DAY_SHIFT).date(), segs[0].start, end, minutes, devices.most_common(1)[0][0], segs)
         if sess.asleep_min >= MIN_ASLEEP_MIN:
             out.append(sess)
     return out
@@ -176,6 +177,13 @@ def _basal_reference(conn: psycopg.Connection, user_id: int, first: date, last: 
             (user_id, first - timedelta(days=BASAL_REF_DAYS), last)):
         if takes_part({"source": r["source"], "metric": "basal_energy_burned"}, app_mode):
             per_day[r["date"]] = max(per_day.get(r["date"], r["v"]), r["v"])
+    return basal_reference(per_day, first, last)
+
+
+def basal_reference(per_day: dict[date, float], first: date, last: date) -> dict[date, float]:
+    """Pure part of _basal_reference (2.0.0 M1: the phone's twin is packages/openbodyscore-js src/30_derive.js):
+    per_day = each day's largest basal-energy candidate (value > 0, not summed by hour) -> {day: median of the previous
+    BASAL_REF_DAYS days}, for the days in [first, last] with at least BASAL_REF_MIN_DAYS of them."""
     out = {}
     d = first
     while d <= last:
@@ -224,6 +232,17 @@ def choose(cands: list[dict], incomplete: dict[tuple[date, str], str]) -> tuple[
     return win, flags_of(win)
 
 
+def resolve(cands: list[dict], basal_ref: dict[date, float], workout_kcal: dict[date, float],
+            today: date) -> list[tuple[dict, dict]]:
+    """Pure part of resolve_daily (2.0.0 M1 twin: src/30_derive.js): every (date, metric) of the candidates, in the
+    order first met -> (the chosen candidate, flags for daily_metrics)."""
+    incomplete = incomplete_days(cands, basal_ref, workout_kcal, today)
+    groups = defaultdict(list)
+    for c in cands:
+        groups[(c["date"], c["metric"])].append(c)
+    return [choose(cs, incomplete) for cs in groups.values()]
+
+
 def resolve_daily(conn: psycopg.Connection, user_id: int, dates, today: date | None = None, mode: str | None = None) -> int:
     """Re-choose daily_metrics for these dates from daily_metric_sources (idempotent). Returns the number of (date, metric) chosen.
     mode: the user's sync mode when the caller knows it (else looked up only if a sync-engine value is met, AppMode).
@@ -245,13 +264,8 @@ def resolve_daily(conn: psycopg.Connection, user_id: int, dates, today: date | N
     workout_kcal = {r["local_date"]: r["kcal"] for r in conn.execute(
         """SELECT local_date, sum(active_kcal) AS kcal FROM workouts WHERE user_id = %s AND local_date = ANY(%s)
            AND dup_of IS NULL AND excluded IS NULL AND active_kcal IS NOT NULL GROUP BY local_date""", (user_id, dates))}
-    incomplete = incomplete_days(cands, _basal_reference(conn, user_id, dates[0], dates[-1], app_mode), workout_kcal, today)
-    groups = defaultdict(list)
-    for c in cands:
-        groups[(c["date"], c["metric"])].append(c)
     out = []
-    for cs in groups.values():
-        win, flags = choose(cs, incomplete)
+    for win, flags in resolve(cands, _basal_reference(conn, user_id, dates[0], dates[-1], app_mode), workout_kcal, today):
         out.append({k: win[k] for k in ("user_id", "date", "metric", "value", "unit", "agg", "n", "min_value",
                                          "max_value", "source")} | {"flags": json.dumps(flags, ensure_ascii=False)})
     with conn.cursor() as cur:

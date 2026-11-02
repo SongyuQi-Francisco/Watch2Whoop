@@ -1,6 +1,7 @@
 """System prompt of the chat: the root rules (root_rules.md, above everything else) + a provider-independent persona
 (system_prompt.md) + this user's own basic profile and long-term memory.
 
+- Order: fixed text first (root rules, persona, then the per-call additions at EXTRAS_MARK), this user's part after it.
 - Assembled once at the start of a conversation and stored in ai_conversations.system_prompt, never changed afterwards: history is append-only so the prompt cache hits,
   and Claude's preserved thinking also requires system to stay the same. So "what time is it now" is not put here but prepended to each user message (time_prefix).
 - Memory is taken only from this user (memory.get_memory / status.list_status filter by user_id) and never mixes in anyone else's.
@@ -19,6 +20,10 @@ from ..assistant import memory, status
 from ..assistant import memory_params as mp
 
 MAX_MEMORY_CHARS = 12000
+# Where the per-call additions (cards, scope rules, ai_parity) go: after the fixed persona, before this user's part, so the
+# fixed text is one prefix shared by every conversation (prompt caching, issue #78). Stored with the conversation and
+# replaced by chat.compose_system before every call; never sent. Conversations stored before it get the additions at the end.
+EXTRAS_MARK = "\n<!--extras-->"
 
 
 LITE_MEMORY_CHARS = 4000  # the fallback AI (fallback.py): shorter memory snapshot, fewer tokens per call
@@ -91,7 +96,7 @@ def build_system_prompt(conn: psycopg.Connection, user_id: int, lite: bool = Fal
         if p.get(k) is not None:
             basics.append(f"{label}：{p[k]}")
     memory_block = _memory_block(conn, user_id, LITE_MEMORY_CHARS if lite else MAX_MEMORY_CHARS)
-    return (f"{base_prompt(lite)}\n\n## 用户\n" + "；".join(basics)
+    return (f"{base_prompt(lite)}{EXTRAS_MARK}\n\n## 用户\n" + "；".join(basics)
             + f"\n\n## 长期记忆（对话开始时的快照）\n{memory_block}")
 
 

@@ -16,7 +16,7 @@ import psycopg
 
 from .. import auth, queries
 from ..i18n import L
-from ..insights import sleep_detail
+from ..insights import healthspan_store as HSS, sleep_detail
 from ..scores import params as SP
 from ..web import views
 from . import params as P
@@ -87,6 +87,14 @@ def _mains(conn, owner_id: int, start: date, end: date) -> dict[date, dict]:
     return {r["wake_date"]: r for r in conn.execute(MAIN_SQL, (owner_id, start, end))}
 
 
+SESSIONS_SQL = """SELECT wake_date, start_at, end_at, asleep_min, deep_min, core_min, rem_min, awake_min, unspecified_min,
+                         is_main, source, device
+                  FROM sleep_sessions WHERE user_id = %s AND wake_date BETWEEN %s AND %s ORDER BY start_at"""
+
+
+main_rows = views.main_rows   # the pure twin of _mains on SESSIONS_SQL rows
+
+
 def _latest(conn, owner_id: int, today: date) -> date | None:
     r = conn.execute("SELECT max(wake_date) AS d FROM sleep_sessions WHERE user_id = %s AND is_main AND wake_date <= %s",
                      (owner_id, today)).fetchone()
@@ -110,12 +118,13 @@ def _scores(conn, owner_id: int, start: date, end: date) -> dict[date, dict]:
 
 
 # ---------------------------------------------------------------- blocks
-def _night(conn, owner_id: int, tz: ZoneInfo, row: dict, sc: dict | None) -> dict:
+def _night(tz: ZoneInfo, row: dict, sc: dict | None, timeline: tuple[list[dict], str | None, str | None]) -> dict:
+    """timeline = web/views.night_stages(…) of this night: (stages, source, reason)."""
     start, end = row["start_at"], row["end_at"]
     in_bed = (end - start).total_seconds() / 60
     s = (sc or {}).get("sleep") or {}
     eff = s.get("efficiency")
-    stages, source, reason = views.night_stages(conn, owner_id, tz, start, end)
+    stages, source, reason = timeline
     minutes = {k: row[f"{k}_min"] for k in STAGES}
     staged = sum(minutes[k] or 0 for k in ("deep", "core", "rem")) > 0
     total = sum(v or 0 for v in minutes.values())
@@ -165,14 +174,18 @@ def _avg_block(mains: list[dict], scores: list[dict] | None, tz: ZoneInfo) -> di
     return out
 
 
-def _baseline(conn, owner_id: int, tz: ZoneInfo, day: date, mains: dict, scores: dict | None) -> dict:
+def _baseline(sessions: list[dict], tz: ZoneInfo, day: date, mains: dict, scores: dict | None) -> dict:
+    """sessions: every session of the wake dates [day − 30, day] (SESSIONS_SQL), for the 7 / 30-night regularity
+    (sleep_detail.sri_for on them: the earlier nights' intervals never reach a later 24-hour block)."""
     out = {}
     for n in (P.BASELINE_SHORT, P.BASELINE_LONG):
         days = [day - timedelta(days=k) for k in range(1, n + 1)]
         out[f"avg{n}"] = _avg_block([mains[d] for d in days if d in mains],
                                     None if scores is None else [scores[d] for d in days if d in scores], tz)
-    r7 = sleep_detail.sri_for(conn, owner_id, tz, day - timedelta(days=6), day)
-    r30 = sleep_detail.sri_for(conn, owner_id, tz, day - timedelta(days=29), day)
+    # in UTC instants: rows in the user's own zone would subtract by wall time (an hour off across a DST change)
+    watch = sleep_detail.watch_sessions(HSS.utc_sessions(sessions))
+    r7 = sleep_detail.sri_from(*watch, tz, day - timedelta(days=6), day)
+    r30 = sleep_detail.sri_from(*watch, tz, day - timedelta(days=29), day)
     out["regularity_pct_7d"] = sleep_detail.consistency_pct(r7["sri"])
     out["regularity_pct_30d"] = sleep_detail.consistency_pct(r30["sri"])
     return out
@@ -293,23 +306,38 @@ def ai_prompt(day: date, night: dict | None, score: dict | None) -> str:
 
 # ---------------------------------------------------------------- the page
 def build(conn: psycopg.Connection, viewer_id: int, owner_id: int, day: date | None = None) -> dict:
+    return compute(load(conn, viewer_id, owner_id, day))
+
+
+def load(conn: psycopg.Connection, viewer_id: int, owner_id: int, day: date | None = None) -> dict:
+    """Everything compute reads: the sessions of the wake dates [day − 30, day], the score rows of those days (None
+    without the scores share), the neighbouring nights and the night's stage timeline (web/views.night_stages)."""
     tz = queries.user_tz(conn, owner_id)
     today = queries.local_today(conn, owner_id)
     day = day or _latest(conn, owner_id, today) or today
     can_scores = auth.can_view(conn, viewer_id, owner_id, "scores")
-    mains = _mains(conn, owner_id, day - timedelta(days=P.BASELINE_LONG), day)
-    scores = _scores(conn, owner_id, day - timedelta(days=P.BASELINE_LONG), day) if can_scores else None
+    lo = day - timedelta(days=P.BASELINE_LONG)
+    sessions = conn.execute(SESSIONS_SQL, (owner_id, lo, day)).fetchall()
     prev, nxt = _neighbours(conn, owner_id, day, today)
+    row = main_rows(sessions, day, day).get(day)
+    return {"tz": tz, "today": today, "day": day, "can_scores": can_scores, "sessions": sessions,
+            "scores": _scores(conn, owner_id, lo, day) if can_scores else None, "prev": prev, "next": nxt,
+            "timeline": views.night_stages(conn, owner_id, tz, row["start_at"], row["end_at"]) if row else None}
+
+
+def compute(data: dict) -> dict:
+    """The pure part of build (the phone's twin: JS OBS.coach.sleep_night.compute, docs/ios-native-2.0.md M4)."""
+    tz, today, day, can_scores = data["tz"], data["today"], data["day"], data["can_scores"]
+    sessions, scores, prev, nxt = data["sessions"], data["scores"], data["prev"], data["next"]
+    mains = main_rows(sessions, day - timedelta(days=P.BASELINE_LONG), day)
     row, sc = mains.get(day), (scores or {}).get(day)
-    night = _night(conn, owner_id, tz, row, sc) if row else None
+    night = _night(tz, row, sc, data["timeline"] or ([], None, None)) if row else None
     if night is not None and not can_scores:   # latency / wake-ups come from the scores row: without the share they stay empty
         night.update(latency_min=None, waso_min=None, awakenings=None)
     naps = [{"start": r["start_at"].astimezone(tz).strftime("%H:%M"), "end": r["end_at"].astimezone(tz).strftime("%H:%M"),
-             "asleep_min": r["asleep_min"]} for r in conn.execute(
-        """SELECT start_at, end_at, asleep_min FROM sleep_sessions WHERE user_id = %s AND wake_date = %s AND NOT is_main
-           ORDER BY start_at""", (owner_id, day))]
+             "asleep_min": r["asleep_min"]} for r in sessions if r["wake_date"] == day and not r["is_main"]]
     score = _score(sc)
-    base = _baseline(conn, owner_id, tz, day, mains, scores)
+    base = _baseline(sessions, tz, day, mains, scores)
     if scores is not None and sc is not None:
         base["need_min"] = sc["sleep_need_min"]
     vitals = _vitals(day, scores) if scores is not None else []

@@ -20,11 +20,11 @@ from datetime import datetime
 
 import psycopg
 
-from .. import auth, i18n
+from .. import auth, i18n, wordfilter
 from ..avatars import urls as avatar_store
 from ..profile import consent
 from ..web import login_codes
-from . import params as P, remarks, trail
+from . import blocks, params as P, remarks, trail
 
 CODE_LENGTH = 10
 
@@ -58,12 +58,22 @@ def _clean_name(name: str | None) -> str:
     name = " ".join((name or "").split())
     if not 1 <= len(name) <= P.NAME_MAX:
         raise FriendsError(400, f"圈子名称 1–{P.NAME_MAX} 字")
+    if wordfilter.find(name) is not None:   # App Store 1.2: the configured word list (wordfilter.py)
+        raise FriendsError(wordfilter.STATUS, str(wordfilter.Blocked()))
     return name
 
 
 def _require_consent(conn: psycopg.Connection, uid: int) -> None:
     if not consent.agreed_at_least(conn, uid, P.CONSENT_VERSION):
         raise FriendsError(409, "先在今天页重新确认同意书（新增了「圈子共享」一节）")
+
+
+def _require_may_join(conn: psycopg.Connection, uid: int) -> None:
+    """Creating or joining a circle: the consent, not banned from circles, the community rules accepted (flag circle_rules)."""
+    _require_consent(conn, uid)
+    from . import moderation, rules
+    moderation.require_allowed(conn, uid)
+    rules.require(conn, uid)
 
 
 def _circle_for_member(conn, circle_id: int, uid: int, lock: bool = False) -> dict:
@@ -117,7 +127,8 @@ def circle_scopes(conn, owner_id: int, viewer_id: int) -> list[str]:
 
 
 def _sync_one(conn, owner_id: int, viewer_id: int) -> None:
-    scopes = circle_scopes(conn, owner_id, viewer_id)
+    # a block between the two (either way, friends/moderation.py) pauses the circle sharing; unblocking restores it
+    scopes = [] if blocks.pair_blocked(conn, owner_id, viewer_id) else circle_scopes(conn, owner_id, viewer_id)
     if scopes:
         conn.execute("""INSERT INTO shares (owner_id, viewer_id, scopes, circle_scopes) VALUES (%s, %s, '{}', %s)
                         ON CONFLICT (owner_id, viewer_id) DO UPDATE SET circle_scopes = EXCLUDED.circle_scopes""",
@@ -152,7 +163,7 @@ def sync_user(conn, uid: int, extra: tuple[int, ...] = ()) -> None:
 # ---------------------------------------------------------------- circles
 def create(conn: psycopg.Connection, uid: int, name: str, scopes=P.DEFAULT_SCOPES) -> dict:
     """New circle with the caller as owner and first member; returns {circle, invite} (the code only this once; valid params.INVITE_DEFAULT_DAYS)."""
-    _require_consent(conn, uid)
+    _require_may_join(conn, uid)
     name, scopes = _clean_name(name), clean_scopes(scopes)
     if _count_circles(conn, uid) >= P.MAX_CIRCLES_PER_USER:
         raise FriendsError(409, f"最多加入 {P.MAX_CIRCLES_PER_USER} 个圈子")
@@ -230,16 +241,20 @@ def preview(conn: psycopg.Connection, code: str) -> dict | None:
     inv = _live_code(conn, code)
     if inv is None:
         return None
-    return conn.execute(
-        """SELECT c.id, c.name, u.display_name AS owner_name,
+    row = conn.execute(
+        """SELECT c.id, c.name, c.owner_id, u.display_name AS owner_name,
                   (SELECT count(*) FROM circle_members m WHERE m.circle_id = c.id) AS members
            FROM circles c JOIN users u ON u.id = c.owner_id WHERE c.id = %s""", (inv["circle_id"],)).fetchone()
+    if row["owner_id"] in blocks.masked(conn, 0, [row["owner_id"]]):
+        row["owner_name"] = blocks.hidden_name()
+    row.pop("owner_id")
+    return row
 
 
 def join(conn: psycopg.Connection, uid: int, scopes, code: str | None = None, invite_id: int | None = None) -> dict:
     """Join with a code, or accept an invite addressed to the caller. Already a member: nothing changes.
     Returns the circle view; LookupError when the code / invite is not valid (the API counts it as a failure)."""
-    _require_consent(conn, uid)
+    _require_may_join(conn, uid)
     scopes = clean_scopes(scopes)
     if code is not None and invite_id is None:
         from . import codes
@@ -382,7 +397,7 @@ def ensure_personal(conn: psycopg.Connection, uid: int) -> int | None:
     hand gets none and keeps theirs as it is. Settled once (users.personal_circle_at): a dissolved one is not remade.
     Returns home_circle()."""
     u = conn.execute("SELECT personal_circle_at FROM users WHERE id = %s", (uid,)).fetchone()
-    if u is None:
+    if u is None or blocks.banned(conn, uid):
         return None
     if u["personal_circle_at"] is None and auth.circles_on(conn, uid) \
             and consent.agreed_at_least(conn, uid, P.CONSENT_VERSION):
@@ -460,6 +475,8 @@ def circle_view(conn, uid: int, circle_id: int) -> dict:
            WHERE m.circle_id = %s ORDER BY m.joined_at, u.id""", (circle_id,)).fetchall()
     avatars = avatar_store.urls_for(conn, uid, [m["id"] for m in members])
     nick = remarks.for_viewer(conn, uid, [m["id"] for m in members])
+    blocks.mask_rows(conn, uid, members)
+    mine = blocks.blocked_by(conn, uid)   # still listed (to leave or remove them), marked 「已屏蔽」
     # how each member came in (who invited, how): the owner only, behind the circle_join_trail flag
     joins = trail.for_owner(conn, uid, circle_id) if c["owner_id"] == uid else {}
     out = {"id": c["id"], "name": c["name"], "owner_id": c["owner_id"], "is_owner": c["owner_id"] == uid,
@@ -469,7 +486,8 @@ def circle_view(conn, uid: int, circle_id: int) -> dict:
            # other members' picks are not shown here: what they share with you is in /v1/web/me → viewable
            "members": [{"id": m["id"], "display_name": m["display_name"], "joined_at": m["joined_at"],
                         "owner": m["id"] == c["owner_id"], "me": m["id"] == uid, "avatar": avatars.get(m["id"]),
-                        "remark": nick.get(m["id"]), **({"join": joins[m["id"]]} if m["id"] in joins else {})}
+                        "remark": nick.get(m["id"]), **({"blocked": True} if m["id"] in mine else {}),
+                        **({"join": joins[m["id"]]} if m["id"] in joins else {})}
                        for m in members]}
     from . import prefs   # (prefs imports this module)
     if prefs.on(conn, uid):   # my own pin / mute / archive and the last activity, for the circles sheet (#269 P2)
@@ -493,18 +511,25 @@ def overview(conn: psycopg.Connection, uid: int) -> dict:
         """SELECT m.circle_id FROM circle_members m JOIN circles c ON c.id = m.circle_id WHERE m.user_id = %s
            ORDER BY c.created_at, c.id""", (uid,))]
     invites = conn.execute(
-        """SELECT i.id, i.expires_at, c.id AS circle_id, c.name, u.display_name AS from_name,
+        """SELECT i.id, i.expires_at, c.id AS circle_id, c.name, u.display_name AS from_name, i.created_by AS from_id,
                   (SELECT count(*) FROM circle_members x WHERE x.circle_id = c.id) AS members,
                   coalesce(c.default_scopes, %s) AS default_scopes
            FROM circle_invites i JOIN circles c ON c.id = i.circle_id LEFT JOIN users u ON u.id = i.created_by
            WHERE i.invitee_user_id = %s AND i.revoked_at IS NULL AND i.expires_at > now()
              AND NOT EXISTS (SELECT 1 FROM circle_members m WHERE m.circle_id = i.circle_id AND m.user_id = %s)
            ORDER BY i.created_at""", (list(P.DEFAULT_SCOPES), uid, uid)).fetchall()
-    from . import prefs
+    hide = blocks.masked(conn, uid, [i["from_id"] for i in invites])
+    for i in invites:
+        if i.pop("from_id") in hide:
+            i["from_name"] = blocks.hidden_name()
+    from . import prefs, rules
     return {"circles": [circle_view(conn, uid, cid) for cid in ids], "invites": invites,
             "prefs_on": prefs.on(conn, uid), "max_pinned": P.MAX_PINNED, "search_from": P.SEARCH_FROM,
             "scopes": list(P.CIRCLE_SCOPES), "default_scopes": list(P.DEFAULT_SCOPES),
             "consent_ok": consent.agreed_at_least(conn, uid, P.CONSENT_VERSION),
+            # community rules (flag circle_rules): required / accepted / version; banned = an admin barred me from circles
+            "rules": rules.state(conn, uid), "banned": blocks.banned(conn, uid),
+            "blocked_count": len(blocks.blocked_by(conn, uid)), "report_reasons": list(P.REPORT_REASONS),
             "limits": {"circles": P.MAX_CIRCLES_PER_USER, "members": P.MAX_MEMBERS, "invite_days": list(P.INVITE_DAYS_CHOICES),
                        "invite_default_days": P.INVITE_DEFAULT_DAYS},
             "now": datetime.now().astimezone()}

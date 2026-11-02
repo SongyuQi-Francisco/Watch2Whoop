@@ -131,6 +131,9 @@
     C.toast(joined.length ? tr("谢谢！已加入「{name}」", { name: joined.join(" · ") }) : tr("谢谢！同步上来的数据一小时内开始处理"));
     if (joined.length) C.reload?.();   // the people you may view changed (also reloads the AI state)
     else if (body.ai_version) window.BodyAI?.refreshAi?.();   // Jarvis no longer asks for its own consent
+    // The sync status was read while the consent form was open ("consent", no setup card): read it again now so the
+    // 「开启数据同步」 card and sheet appear without waiting for the next refresh (sync-status.js, forced)
+    window.BodySyncStatus?.refresh?.();
     maybePrompt();
   }
 

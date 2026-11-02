@@ -14,6 +14,7 @@ The caller is responsible for authorization (writes only for the caller)."""
 import math
 import re
 from datetime import date, datetime, timedelta
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 import psycopg
@@ -31,7 +32,8 @@ from .sync import offers as SO
 
 PURINE = ("low", "medium", "high")
 PRODUCT_FIELDS = ("name", "brand", "store", "category", "package_size", "package_unit", "piece_g", "price", "currency",
-                  "nutrition", "purine_level", "red_meat", "barcode", "matches", "note", "product_url", "nutrition_source")
+                  "nutrition", "purine_level", "red_meat", "barcode", "matches", "note", "product_url", "nutrition_source",
+                  "image_url", "ingredients", "allergens", "allergen_traces", "serving_size", "serving_unit", "nutrition_serving")
 PLAN_KINDS = ("recipe", "template", "food")
 
 
@@ -83,9 +85,12 @@ def guess_category(name: str) -> str:
 
 
 # ---------------------------------------------------------------- products
-def _check_nutrition(n: dict, name: str) -> dict:
+def _check_nutrition(n: dict, name: str, per: str = "每 100g") -> dict:
+    """The nutrition table: only known keys of P.NUTRITION_KEYS, each a number >= 0 within P.NUTRITION_MAX (catches g <-> mg
+    mix-ups) and consistent with the others (saturated + trans <= total fat, added sugar <= sugar <= carbs, kcal close to the
+    macros). Absent = unknown; nothing is ever filled in with 0."""
     if not isinstance(n, dict):
-        raise ValueError("nutrition 要是对象（每 100g）")
+        raise ValueError(f"nutrition 要是对象（{per}）")
     unknown = set(n) - set(P.NUTRITION_KEYS)
     if unknown:
         raise ValueError(f"nutrition 不认识：{'、'.join(sorted(unknown))}（可用 {', '.join(P.NUTRITION_KEYS)}）")
@@ -93,20 +98,51 @@ def _check_nutrition(n: dict, name: str) -> dict:
     for k, v in n.items():
         if v is None:
             continue
-        if not isinstance(v, (int, float)) or v < 0:
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0:
             raise ValueError(f"{name}：{k} 要是 ≥ 0 的数")
+        if per == "每 100g" and v > P.NUTRITION_MAX[k]:
+            raise ValueError(f"{name}：{k} 每 100g 不能超过 {P.NUTRITION_MAX[k]:g}（单位对吗？g 和 mg 别弄混）")
         out[k] = float(v)
-    for k in ("protein_g", "carbs_g", "fat_g", "sat_fat_g", "sugar_g"):
-        if out.get(k, 0) > 100:
-            raise ValueError(f"{name}：{k} 每 100g 不能超过 100")
-    if out.get("sat_fat_g", 0) > out.get("fat_g", 100) + 0.5:
+    fat = out.get("fat_g", 100)
+    if out.get("sat_fat_g", 0) > fat + 0.5:
         raise ValueError(f"{name}：饱和脂肪不能多于总脂肪")
+    if out.get("trans_fat_g", 0) > fat + 0.5:
+        raise ValueError(f"{name}：反式脂肪不能多于总脂肪")
+    if out.get("sat_fat_g", 0) + out.get("trans_fat_g", 0) > fat + 0.5:
+        raise ValueError(f"{name}：饱和脂肪加反式脂肪不能多于总脂肪")
     if out.get("sugar_g", 0) > out.get("carbs_g", 100) + 0.5:
         raise ValueError(f"{name}：糖不能多于碳水")
+    if out.get("added_sugar_g", 0) > out.get("sugar_g", 100) + 0.5:
+        raise ValueError(f"{name}：添加糖不能多于总糖")
     if all(k in out for k in ("kcal", "protein_g", "carbs_g", "fat_g")):
         est = 4 * out["protein_g"] + 4 * out["carbs_g"] + 9 * out["fat_g"]
         if abs(est - out["kcal"]) > max(20, 0.3 * out["kcal"]):  # fibre / alcohol / polyols explain small gaps
+            if per == "每份":
+                raise ValueError(f"{name}：每份热量 {out['kcal']:g} kcal 和三大营养素算出来的 {est:.0f} kcal 差太多")
             raise ValueError(f"{name}：每 100g 热量 {out['kcal']:g} kcal 和三大营养素算出来的 {est:.0f} kcal 差太多")
+    return out
+
+
+def _check_image_url(url: str) -> str:
+    """A reference to a picture (https, no credentials). Never fetched or stored by the server."""
+    url = url.strip()
+    if len(url) > P.IMAGE_URL_MAX_LEN or re.search(r"\s", url):
+        raise ValueError(f"image_url 最多 {P.IMAGE_URL_MAX_LEN} 字、不能有空格")
+    parts = urlsplit(url)
+    if parts.scheme != "https" or not parts.hostname or parts.username or parts.password:
+        raise ValueError("image_url 只接受 https:// 开头的图片地址（只存地址，不下载）")
+    return url
+
+
+def _check_tags(tags, label: str) -> list[str]:
+    if not isinstance(tags, (list, tuple)) or not all(isinstance(x, str) for x in tags):
+        raise ValueError(f"{label} 要是字符串列表")
+    seen: dict[str, str] = {}
+    for x in tags:
+        seen.setdefault(x.strip().lower(), x.strip())   # case-insensitive de-dup, first spelling wins
+    out = [v for k, v in seen.items() if k]
+    if len(out) > P.MAX_ALLERGENS or any(len(x) > P.ALLERGEN_MAX_LEN for x in out):
+        raise ValueError(f"{label} 最多 {P.MAX_ALLERGENS} 个、每个 ≤ {P.ALLERGEN_MAX_LEN} 字")
     return out
 
 
@@ -142,6 +178,32 @@ def _check_product(f: dict, current: dict | None = None) -> dict:
             raise ValueError("currency 用 3 位代码，例如 AUD / CNY")
     if "nutrition" in out:
         out["nutrition"] = Jsonb(_check_nutrition(out["nutrition"], name))
+    if "serving_size" in out and (isinstance(out["serving_size"], bool) or not isinstance(out["serving_size"], (int, float))
+                                  or out["serving_size"] <= 0):
+        raise ValueError(f"{name}：serving_size 要是 > 0 的数")
+    if "serving_unit" in out and out["serving_unit"] not in P.SERVING_UNITS:
+        raise ValueError("serving_unit 只能是 g / ml")
+    serving = out.get("serving_size", (current or {}).get("serving_size"))
+    serving_unit = out.get("serving_unit", (current or {}).get("serving_unit"))
+    if (serving is None) != (serving_unit is None):
+        raise ValueError(f"{name}：serving_size 和 serving_unit 要一起给")
+    if "nutrition_serving" in out:
+        ns = _check_nutrition(out["nutrition_serving"], name, "每份")
+        if ns and serving is None:
+            raise ValueError(f"{name}：每份营养要同时给 serving_size 和 serving_unit（一份是多少 g / ml）")
+        for k, v in ns.items():   # grams in one serving cannot outweigh the serving itself
+            if k.endswith("_g") and serving is not None and v > float(serving) + 0.5:
+                raise ValueError(f"{name}：每份的 {k} {v:g} 超过一份的重量 {float(serving):g} {serving_unit}")
+        out["nutrition_serving"] = Jsonb(ns)
+    if "image_url" in out:   # "" clears
+        out["image_url"] = _check_image_url(out["image_url"]) if (out["image_url"] or "").strip() else None
+    if "ingredients" in out:
+        out["ingredients"] = (out["ingredients"] or "").strip() or None
+        if out["ingredients"] and len(out["ingredients"]) > P.INGREDIENTS_MAX_LEN:
+            raise ValueError(f"ingredients 最多 {P.INGREDIENTS_MAX_LEN} 字")
+    for k in ("allergens", "allergen_traces"):
+        if k in out:
+            out[k] = _check_tags(out[k], k)
     if "purine_level" in out and out["purine_level"] not in PURINE:
         raise ValueError("purine_level 只能是 low / medium / high")
     if "barcode" in out:
@@ -215,6 +277,9 @@ def product_view(row: dict, connected: list[str] | tuple = ()) -> dict:
             "nutrition": row["nutrition"] or {}, "purine_level": row["purine_level"], "red_meat": row["red_meat"],
             "barcode": row["barcode"], "matches": row["matches"], "note": row["note"], "flags": flag_labels(product_flags(row)),
             "product_url": row["product_url"], "store_sku": row["store_sku"], "nutrition_source": row["nutrition_source"],
+            "image_url": row.get("image_url"), "ingredients": row.get("ingredients"), "allergens": row.get("allergens"),
+            "allergen_traces": row.get("allergen_traces"), "serving_size": _num(row.get("serving_size")),
+            "serving_unit": row.get("serving_unit"), "nutrition_serving": row.get("nutrition_serving") or {},
             "links": product_links(row, connected), "staple": bool(row.get("staple")), "staple_info": None}
 
 
@@ -272,10 +337,11 @@ def save_product(conn: psycopg.Connection, user_id: int, data: dict, product_id:
     """Create or update. product_id given -> update it; otherwise an existing product with the same barcode, or the same
     name + brand, is updated; else a new one. Fields that are None are left unchanged (defaults for a new product)."""
     f = {k: data[k] for k in PRODUCT_FIELDS if data.get(k) is not None}
-    if isinstance(f.get("nutrition"), dict):   # null values inside = unknown, not "clear"
-        f["nutrition"] = {k: v for k, v in f["nutrition"].items() if v is not None}
-        if not f["nutrition"]:
-            del f["nutrition"]
+    for k in ("nutrition", "nutrition_serving"):
+        if isinstance(f.get(k), dict):   # null values inside = unknown, not "clear"
+            f[k] = {kk: v for kk, v in f[k].items() if v is not None}
+            if not f[k]:
+                del f[k]
     cur = None
     if product_id is not None:
         cur = _product_row(conn, user_id, product_id)
@@ -303,8 +369,9 @@ def save_product(conn: psycopg.Connection, user_id: int, data: dict, product_id:
         return _saved(conn, user_id, row, True)
     if not f:
         raise ValueError("没有要改的内容")
-    if "nutrition" in f and isinstance(f["nutrition"], dict):   # merge: a label photo may add only some values
-        f["nutrition"] = {**(cur["nutrition"] or {}), **f["nutrition"]}
+    for k in ("nutrition", "nutrition_serving"):
+        if isinstance(f.get(k), dict):   # merge: a label photo may add only some values
+            f[k] = {**(cur[k] or {}), **f[k]}
     f = _check_product(f, cur)
     sets = ", ".join(f"{k} = %s" for k in f)
     row = conn.execute(f"UPDATE grocery_products SET {sets}, updated_at = now() WHERE id = %s AND user_id = %s RETURNING *",

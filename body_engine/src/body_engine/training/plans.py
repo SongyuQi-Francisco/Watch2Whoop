@@ -18,7 +18,7 @@ from .. import auth, sparky_client
 from ..i18n import L, use_lang
 from ..rules import params as RP, store as rules_store
 from ..rules.context import load_overrides
-from . import catalog, loads, params as P
+from . import catalog, combo, loads, params as P
 from .catalog_data import GROUP_ZH, MUSCLE_GROUP, MUSCLE_ZH
 
 WEEKDAY_ZH = {1: "周一", 2: "周二", 3: "周三", 4: "周四", 5: "周五", 6: "周六", 7: "周日"}
@@ -190,13 +190,36 @@ def volume_summary(days: list[dict]) -> dict[str, dict]:
     return out
 
 
+def _candidates(conn: psycopg.Connection, user_id: int | None, names: list[str]) -> list[dict]:
+    """Library exercises a name the library does not know could be replaced with (catalog.resolve_with_candidates' names, no
+    banned ones: a swap to them would be refused)."""
+    out: list[dict] = []
+    for n in names:
+        hit = catalog.resolve(conn, n, user_id=user_id)
+        if hit is None or hit["status"] == "banned" or any(c["slug"] == hit["slug"] for c in out):
+            continue
+        out.append({"slug": hit["slug"], "name_zh": hit["name_zh"], "name_en": hit["name_en"]})
+        if len(out) >= P.UNRESOLVED_CANDIDATES:
+            break
+    return out
+
+
+def unresolved_hints(conn: psycopg.Connection, user_id: int | None, name: str) -> list[dict]:
+    """`candidates` for a plan exercise that is not in the library (SparkyFitness plan entries come through here too)."""
+    return _candidates(conn, user_id, catalog.resolve_with_candidates(conn, user_id, name)[2])
+
+
 def _normalize_item(conn: psycopg.Connection, user_id: int, raw: dict | tuple,
-                    with_meta: bool = True) -> dict:
-    """Resolve one exercise prescription from template tuple or dict against exercise_catalog."""
+                    with_meta: bool = True, hints: bool = False) -> dict:
+    """Resolve one exercise prescription from template tuple or dict against exercise_catalog.
+    A name the library does not know comes back with `unresolved: True` (never dropped); hints=True adds `candidates`, the
+    library exercises it could be swapped for. `group` (a superset id shared by the parts of an "A + B" item, combo.py) is kept."""
+    group = None
     if isinstance(raw, (tuple, list)):
         slug, sets, rep_low, rep_high, rest_sec, duration_sec, note = raw
         weight_kg = None
     else:
+        group = raw.get("group")
         slug = raw.get("slug") or raw.get("exercise") or raw.get("name") or ""
         sets = int(raw.get("sets") or 3)
         rep_low = raw.get("rep_low") if raw.get("rep_low") is not None else raw.get("reps")
@@ -206,7 +229,9 @@ def _normalize_item(conn: psycopg.Connection, user_id: int, raw: dict | tuple,
         weight_kg = raw.get("weight_kg")
         note = raw.get("note") or raw.get("notes")
 
-    resolved = catalog.resolve(conn, str(slug), user_id=user_id if with_meta else None)
+    lookup_user = user_id if with_meta else None
+    row, meta, cand_names = catalog.resolve_with_candidates(conn, lookup_user, str(slug))
+    resolved = catalog.format_exercise(row, meta, detail=True) if row is not None else None   # catalog.resolve, with the candidates
     if resolved is None:
         return {
             "slug": str(slug),
@@ -236,6 +261,9 @@ def _normalize_item(conn: psycopg.Connection, user_id: int, raw: dict | tuple,
             "joint_flags": {},
             "app_exercise_id": None,
             "in_catalog": False,
+            "unresolved": True,
+            **({"group": group} if group else {}),
+            **({"candidates": _candidates(conn, lookup_user, cand_names)} if hints else {}),
         }
     return {
         "slug": resolved["slug"],
@@ -266,6 +294,7 @@ def _normalize_item(conn: psycopg.Connection, user_id: int, raw: dict | tuple,
         "joint_flags": resolved.get("joint_flags") or {},
         "app_exercise_id": resolved.get("app_exercise_id"),
         "in_catalog": True,
+        **({"group": group} if group else {}),
     }
 
 
@@ -287,7 +316,8 @@ def propose_plan(
     training_days: the user's weekdays (sessions are put on them in order); start_date: any day from today (issue #65; the
     start week only gets the sessions still missing after what was already trained this week); addons: optional mobility
     warm-ups (issue #66 FB-3, suggested from the user's own restrictions); with_loads: add each exercise's recommended
-    working weight (training/loads.py; not stored by save_plan)."""
+    working weight (training/loads.py; not stored by save_plan). A plan item named "A + B" becomes a superset of A and B
+    (training/combo.py); an item the library does not know is kept, flagged `unresolved` (also listed in `unresolved`)."""
     from . import plan_start
     catalog.ensure_seeded(conn)
     today = _user_today(conn, user_id)
@@ -317,6 +347,7 @@ def propose_plan(
     cautions: list[dict] = []
     banned_conflicts: list[dict] = []
     auto_swapped: list[dict] = []
+    unresolved: list[dict] = []
     seen_caution: set[str] = set()
 
     for dow, sname, ex_list in raw_days:
@@ -324,8 +355,11 @@ def propose_plan(
             raise ValueError(L(f"day_of_week 必须在 1（周一）到 7（周日）之间，收到 {dow}",
                                f"day_of_week must be between 1 (Mon) and 7 (Sun), got {dow}"))
         ex_items: list[dict] = []
-        for raw_ex in ex_list:
-            item = _normalize_item(conn, user_id, raw_ex, with_meta=True)
+        for raw_ex in combo.expand_day(conn, user_id, list(ex_list), _normalize_item):
+            item = _normalize_item(conn, user_id, raw_ex, with_meta=True, hints=True)
+            if item.get("unresolved"):
+                unresolved.append({"day_of_week": dow, "weekday_zh": WEEKDAY_ZH.get(int(dow)), "session_name": sname,
+                                   "name": item["name_zh"], "candidates": item.get("candidates") or []})
             if item["status"] == "banned":
                 alts = catalog.recommend_alternatives(conn, item["slug"], user_id=user_id, limit=3)
                 if auto_swap_banned and alts:
@@ -339,6 +373,7 @@ def propose_plan(
                         "duration_sec": item["duration_sec"],
                         "weight_kg": item["weight_kg"],
                         "note": item["note"],
+                        "group": item.get("group"),
                     }, with_meta=True)
                     auto_swapped.append({
                         "day_of_week": dow,
@@ -404,6 +439,7 @@ def propose_plan(
         "cautions": cautions,
         "banned_conflicts": banned_conflicts,
         "auto_swapped": auto_swapped,
+        "unresolved": unresolved,
         "can_save": len(banned_conflicts) == 0,
         "readiness": readiness_advice(conn, user_id),
     }
@@ -455,7 +491,11 @@ def ensure_sparky_exercise(conn: psycopg.Connection, user_id: int, ex_item: dict
 
 def _sync_plan_to_sparky(conn: psycopg.Connection, user_id: int, plan_row: dict,
                          client: sparky_client.SparkyClient | None = None) -> dict:
-    """Best-effort sync of a saved training_plans row to SparkyFitness presets and weekly plan template."""
+    """Best-effort sync of a saved training_plans row to SparkyFitness presets and weekly plan template.
+    Not with own_food_only (issue #252): the log lives in Body Engine and nothing reads the mirror any more."""
+    from ..ownstore import source
+    if source.only(conn, user_id):
+        return {"synced": False, "not_needed": True, "reason": "训练记录存在 Body Engine，不再同步到 SparkyFitness"}
     try:
         client = client or sparky_client.write_client_for_user(conn, user_id)
     except (sparky_client.SparkyError, ValueError) as e:
@@ -611,6 +651,8 @@ def save_plan(
         )
 
     start_d = date.fromisoformat(proposal["start_date"])
+    for d_obj in proposal["days"]:   # the replacement candidates are for the proposal's reader; the plan keeps the exercises
+        d_obj["exercises"] = [{k: v for k, v in e.items() if k != "candidates"} for e in d_obj["exercises"]]
 
     conn.execute(
         "UPDATE training_plans SET active = FALSE, updated_at = now() WHERE user_id = %s AND active = TRUE",
@@ -641,7 +683,7 @@ def save_plan(
     sparky_sync = {"synced": False, "reason": "未请求同步"}
     if sync_sparky:
         sparky_sync = _sync_plan_to_sparky(conn, user_id, row, client=client)
-        if not sparky_sync.get("synced"):   # issue #66 FB-4: the plan is saved here all the same; say what to do
+        if not sparky_sync.get("synced") and not sparky_sync.get("not_needed"):   # issue #66 FB-4: saved here all the same
             link = sparky_client.link_state(conn, user_id)
             sparky_sync = {**sparky_sync, "link": link["state"],
                            "tell_user": "计划已保存在 Body Engine（今天页和 AI 都能用）；没同步到训练记录（SparkyFitness）。"
@@ -665,15 +707,21 @@ def save_plan(
         "volume_by_group": proposal["volume_by_group"],
         "cautions": proposal["cautions"],
         "auto_swapped": proposal["auto_swapped"],
+        "unresolved": proposal["unresolved"],   # kept in the plan as written; tell the user which ones the library does not know
         "sparky_sync": sparky_sync,
     }
 
 
 def _active_plan_row(conn: psycopg.Connection, user_id: int) -> dict | None:
-    return conn.execute(
+    """The active plan's row. Its `days` are the stored ones with every "A + B" item split into a superset of its parts
+    (training/combo.py; in memory only: a plan saved before combos existed is fixed whenever something writes it back)."""
+    row = conn.execute(
         "SELECT * FROM training_plans WHERE user_id = %s AND active = TRUE ORDER BY updated_at DESC, id DESC LIMIT 1",
         (user_id,),
     ).fetchone()
+    if row is not None:
+        row["days"] = combo.expand_days(conn, user_id, row.get("days") or [], _normalize_item)
+    return row
 
 
 def _progression_suggestions(conn: psycopg.Connection, viewer_id: int, owner_id: int,
@@ -710,7 +758,14 @@ def get_week_plan(
     detail: bool = True,
 ) -> dict:
     """Return the active weekly training plan for [Monday..Sunday] around `day`, enriched with exercise metadata,
-    recommended working weights (training/loads.py), weekly muscle-group volume, progression suggestions, and readiness autoregulation."""
+    recommended working weights (training/loads.py), weekly muscle-group volume, progression suggestions, and readiness autoregulation.
+    Read-only: every planned exercise is resolved inside one catalog.lookup_scope (the catalog, exercise_meta and custom
+    exercises read once instead of once per exercise)."""
+    with catalog.lookup_scope():
+        return _get_week_plan(conn, viewer_id, owner_id, day, detail)
+
+
+def _get_week_plan(conn: psycopg.Connection, viewer_id: int, owner_id: int, day: date | None, detail: bool) -> dict:
     if not auth.can_view(conn, viewer_id, owner_id, "training"):
         raise PermissionError(L("没有授权查看该用户的训练计划（需要 training 权限）",
                                 "No permission to view this user's training plan (needs the training scope)"))
@@ -747,7 +802,7 @@ def get_week_plan(
             dow = int(d_obj["day_of_week"])
             exs, vol_items = [], []
             for raw_ex in d_obj.get("exercises") or []:
-                item = _normalize_item(conn, owner_id, raw_ex, with_meta=with_meta)
+                item = _normalize_item(conn, owner_id, raw_ex, with_meta=with_meta, hints=True)
                 vol_items.append(item)
                 matched_sugg = []
                 for key in (item.get("app_exercise_id"), item["slug"], catalog.norm(item["name_zh"])):
@@ -780,6 +835,8 @@ def get_week_plan(
                         "load": item["load_text"],
                         "status": item["status"],
                         "cues": item["cues"] if item["status"] != "active" else None,
+                        "group": item.get("group"),   # exercises of one superset share it
+                        "unresolved": item.get("unresolved"),   # the library does not know this name
                     })
                 else:
                     exs.append(item)
@@ -1014,6 +1071,7 @@ def swap_exercise(
             "duration_sec": old_ex.get("duration_sec"),
             "weight_kg": None,  # Reset weight when swapping to a different exercise
             "note": "每侧" if to_resolved.get("per_side") else None,
+            "group": old_ex.get("group"),   # a part of a superset stays in it
         }, with_meta=True)
         days[d_idx]["exercises"][e_idx] = new_item
         replaced_in.append({

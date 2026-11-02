@@ -116,5 +116,34 @@ def clean_summary(text: str) -> str:
     return (text or "").strip()[:SUMMARY_MAX_CHARS]
 
 
+OLD_RESULT_NOTE = "…（早前一轮的工具结果，发给你时截短了，原长 {n} 字；要细节就再调一次这个工具）"
+
+
+def shorten_old_results(messages: list[dict], full_turns: int, max_chars: int, keep: tuple = ()) -> list[dict]:
+    """The history as sent, with the tool results of turns before the last `full_turns` user turns cut to `max_chars`
+    (+ a note saying so). Results of the tools in `keep` and error results stay whole; nothing stored changes.
+    A result is cut once its turn falls out of the window and stays cut the same way after, so the sent prefix only
+    changes at that one turn per user message (the cache before it still hits). Only for adapters whose history may be
+    rewritten (Adapter.shorten_history): vendors that bind reasoning to the exact earlier turns must get them unchanged."""
+    starts = turn_starts(messages)
+    if len(starts) <= full_turns:
+        return messages
+    cut_before = starts[-full_turns] if full_turns > 0 else len(messages)
+    out = []
+    for i, m in enumerate(messages):
+        if i >= cut_before or m["role"] != "tool":
+            out.append(m)
+            continue
+        blocks = []
+        for b in m["content"]:
+            text = b.get("content")
+            if (b.get("type") == "tool_result" and not b.get("is_error") and b.get("name") not in keep
+                    and isinstance(text, str) and len(text) > max_chars):
+                b = {**b, "content": text[:max_chars] + OLD_RESULT_NOTE.format(n=len(text))}
+            blocks.append(b)
+        out.append({**m, "content": blocks})
+    return out
+
+
 def with_summary(system: str, summary: str | None) -> str:
     return f"{system}\n\n{SUMMARY_HEADER}\n{summary}" if summary else system

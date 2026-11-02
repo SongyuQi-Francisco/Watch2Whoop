@@ -5,7 +5,7 @@
 > says "v1 value, not yet validated". The scores are WHOOP-style wellness estimates based on published research and our own
 > design choices, not a medical device and not a diagnosis; the project is not affiliated with WHOOP.
 >
-> Versions described: `params.ALGO_VERSION = v1.1-2026-10-16` (sleep, recovery, strain), body age `hs-v1.1-2026-10-17`
+> Versions described: `params.ALGO_VERSION = v1.2-2026-10-27` (sleep, recovery, strain), body age `hs-v1.1-2026-10-17`
 > (`healthspan_params`, the library default) and `hs-v1.2-2026-10-23` (`healthspan_params_v12`), stress `v1.0-2026-10-17`,
 > HRV artifact filter `rr-v1`. Chinese version: Watch2Whoop [`docs/scoring-methodology.md`](../../docs/scoring-methodology.md).
 > Validation plan and results (Chinese): Watch2Whoop [`docs/scoring-validation.md`](../../docs/scoring-validation.md), issue #118.
@@ -200,6 +200,7 @@ about one minute of beat times (`HKHeartbeatSeriesSample`), 1–4 times a night.
 | Resting HR window | lowest 5 min, a reading counts at most 10 min | Design choice |
 | Illness warning | +5 bpm and HRV < 85% | Design choice. The direction is supported: resting heart rate rises before influenza-like illness and COVID-19 symptoms (Radin 2020, Mishra 2020), as does respiratory rate (Miller 2020); **the thresholds are not validated** |
 | Wrist temperature / SpO₂ flags | 0.6 °C; 94% / 90% × 2 | Design choice — not yet validated |
+| Wrist temperature reading of a night | within ±2 h of the night; else up to 8 h before it, not before the previous main sleep's end + 2 h | Data matching (v1.2): Apple dates the reading from the start of the sleep schedule, not from the first sleep the watch detects |
 
 **What synthetic data shows** (validation section 3; a made-up person whose hidden daily state drives HRV, resting heart rate
 and breathing, sampled the way an Apple Watch samples)

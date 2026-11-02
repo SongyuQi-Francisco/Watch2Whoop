@@ -1,4 +1,5 @@
-"""Open sign-up: accounts without an invite code while the server is below its account cap (flag `open_signup`).
+"""Open sign-up: accounts without an invite code while the server is below its account cap (flag `open_signup`), or
+always while the App Store switch is on (flag `store_signup`: no cap, every other limit the same; params.py).
 
 Limits and what counts are in params.py (OPEN_SIGNUP_*). The flag is global: on = state `all` (`body-engine flags set
 open_signup --state all`); off, cohort or percent = off.
@@ -35,6 +36,17 @@ def flag_on(conn: psycopg.Connection) -> bool:
     return bool(row and row["state"] == "all")
 
 
+def store_on(conn: psycopg.Connection) -> bool:
+    """App Store sign-up (flag store_signup, state `all` only): new accounts open with no cap."""
+    row = flags.rows(conn).get(params.STORE_SIGNUP_FLAG)
+    return bool(row and row["state"] == "all")
+
+
+def mode(conn: psycopg.Connection) -> str | None:
+    """'store' (no cap), 'open' (below the cap) or None (sign-up needs a code)."""
+    return "store" if store_on(conn) else "open" if flag_on(conn) else None
+
+
 def active_count(conn: psycopg.Connection) -> int:
     """Accounts that count against the cap (params.py: active, not in an excluded cohort)."""
     return conn.execute(
@@ -44,8 +56,8 @@ def active_count(conn: psycopg.Connection) -> int:
 
 
 def is_open(conn: psycopg.Connection) -> bool:
-    """New accounts are opened without a code right now (flag on and room under the cap)."""
-    return flag_on(conn) and active_count(conn) < params.OPEN_SIGNUP_MAX_ACTIVE
+    """New accounts are opened without a code right now (store_signup on, or open_signup on and room under the cap)."""
+    return store_on(conn) or (flag_on(conn) and active_count(conn) < params.OPEN_SIGNUP_MAX_ACTIVE)
 
 
 def ip_hash(ip: str | None) -> str | None:
@@ -73,7 +85,8 @@ def identity_used(conn: psycopg.Connection, shas: list[str], open_signup_too: bo
 
 def try_activate(conn: psycopg.Connection, user_id: int, ip: str | None = None, new: bool = False) -> str:
     """'activated', or why not (REFUSALS). Does not commit; the caller commits and starts provisioning."""
-    if not flag_on(conn):
+    how = mode(conn)
+    if how is None:
         return "off"
     conn.execute("SELECT pg_advisory_xact_lock(%s)", (LOCK_KEY,))
     user = conn.execute("SELECT status FROM users WHERE id = %s FOR UPDATE", (user_id,)).fetchone()
@@ -82,7 +95,7 @@ def try_activate(conn: psycopg.Connection, user_id: int, ip: str | None = None, 
     held = conn.execute("SELECT decision FROM open_signups WHERE user_id = %s", (user_id,)).fetchone()
     if held is not None and held["decision"] == "ip_limit":
         return "ip_limit"
-    if active_count(conn) >= params.OPEN_SIGNUP_MAX_ACTIVE:
+    if how == "open" and active_count(conn) >= params.OPEN_SIGNUP_MAX_ACTIVE:   # the store switch has no cap
         return "full"
     idents = _identities(conn, user_id)
     if identity_used(conn, [sha for _, sha, _ in idents]):
@@ -96,10 +109,10 @@ def try_activate(conn: psycopg.Connection, user_id: int, ip: str | None = None, 
         conn.execute("""INSERT INTO open_signups (user_id, decision, via, ip_sha256) VALUES (%s, 'ip_limit', 'signup', %s)
                         ON CONFLICT (user_id) DO NOTHING""", (user_id, ip_sha))
         return "ip_limit"
-    conn.execute("""INSERT INTO open_signups (user_id, decision, via, ip_sha256, activated_at)
-                    VALUES (%s, 'activated', %s, %s, now())
-                    ON CONFLICT (user_id) DO UPDATE SET decision = 'activated', activated_at = now()""",
-                 (user_id, "signup" if new else "pending", ip_sha))
+    conn.execute("""INSERT INTO open_signups (user_id, decision, via, ip_sha256, activated_at, mode)
+                    VALUES (%s, 'activated', %s, %s, now(), %s)
+                    ON CONFLICT (user_id) DO UPDATE SET decision = 'activated', activated_at = now(), mode = EXCLUDED.mode""",
+                 (user_id, "signup" if new else "pending", ip_sha, how))
     for provider, sha, hint in idents:
         conn.execute("""INSERT INTO open_signup_identities (identity_sha256, provider, hint) VALUES (%s, %s, %s)
                         ON CONFLICT (identity_sha256) DO NOTHING""", (sha, provider, hint))
@@ -129,14 +142,18 @@ def status(conn: psycopg.Connection) -> dict:
                   count(*) FILTER (WHERE status = 'active') AS active_all FROM users""").fetchone()
     opened = conn.execute(
         """SELECT count(*) FILTER (WHERE decision = 'activated') AS opened,
+                  count(*) FILTER (WHERE decision = 'activated' AND mode = 'store') AS opened_store,
                   count(*) FILTER (WHERE decision = 'activated' AND activated_at > now() - interval '1 day') AS opened_24h,
                   count(*) FILTER (WHERE decision = 'ip_limit') AS held_ip FROM open_signups""").fetchone()
     on = bool(row and row["state"] == "all")
-    return {"flag_state": row["state"] if row else "off", "on": on, "open": on and n < params.OPEN_SIGNUP_MAX_ACTIVE,
+    store = store_on(conn)
+    return {"flag_state": row["state"] if row else "off", "on": on, "store": store,
+            "open": store or (on and n < params.OPEN_SIGNUP_MAX_ACTIVE),
             "active": n, "cap": params.OPEN_SIGNUP_MAX_ACTIVE, "room": max(params.OPEN_SIGNUP_MAX_ACTIVE - n, 0),
             "active_all": counts["active_all"], "excluded_cohorts": list(params.OPEN_SIGNUP_EXCLUDE_COHORTS),
             "pending": counts["pending"], "disabled": counts["disabled"],
-            "opened": opened["opened"], "opened_24h": opened["opened_24h"], "held_ip_limit": opened["held_ip"],
+            "opened": opened["opened"], "opened_store": opened["opened_store"], "opened_24h": opened["opened_24h"],
+            "held_ip_limit": opened["held_ip"],
             "per_ip_day": params.OPEN_SIGNUP_PER_IP_DAY, "code_days": params.OPEN_SIGNUP_CODE_DAYS,
             "fallback": fallback_cost(conn, n)}
 
@@ -171,7 +188,7 @@ def list_opened(conn: psycopg.Connection, days: int | None = None, all_rows: boo
     """Accounts opened by open sign-up (newest first), with their identities masked; all_rows adds the ones held back
     by the IP limit. days: only the last N days."""
     rows = conn.execute(
-        """SELECT s.user_id, u.display_name AS name, u.status, s.decision, s.via, s.created_at, s.activated_at,
+        """SELECT s.user_id, u.display_name AS name, u.status, s.decision, s.via, s.mode, s.created_at, s.activated_at,
                   u.created_at AS signed_up_at, u.consent_version,
                   EXISTS (SELECT 1 FROM invite_redemptions r WHERE r.user_id = s.user_id) AS code_redeemed,
                   coalesce((SELECT json_agg(json_build_object('provider', i.provider, 'email', i.email, 'subject', i.subject)

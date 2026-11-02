@@ -55,7 +55,7 @@ cd Watch2Whoop
 ./quickstart.sh                                         # prints a login link for the Today page
 ```
 
-It starts Body Engine, Open Wearables and SparkyFitness on `127.0.0.1`, imports the synthetic data through the real Apple
+It starts Body Engine and Open Wearables on `127.0.0.1` (SparkyFitness only with `--sparkyfitness`), imports the synthetic data through the real Apple
 Health importer and computes every score. Ports, options and `status / logs / down / reset`: [quickstart/README.md](quickstart/README.md).
 There is no hosted demo.
 
@@ -111,14 +111,14 @@ Watch2Whoop is a **data layer for your AI**, not another chatbot. The AI is swap
 flowchart LR
   W["Apple Watch + iPhone<br/>(iOS app or Shortcut)"] --> OW["Open Wearables<br/>raw wearable data"]
   W --> BE
-  OW --> BE["Body Engine<br/>FastAPI + PostgreSQL<br/>scores · records · rules"]
-  SF["SparkyFitness<br/>food · strength logs"] <--> BE
+  OW --> BE["Body Engine<br/>FastAPI + PostgreSQL<br/>scores · food / strength / weight logs · rules"]
   BE --> T["Today page<br/>(inside the iOS app)"]
   BE <-->|"MCP · API key"| AI["Your AI<br/>Claude · ChatGPT · Gemini · DeepSeek …"]
 ```
 Built on open source: [Open Wearables](https://github.com/the-momentum/open-wearables) for wearable sync,
-[SparkyFitness](https://github.com/CodeWithCJ/SparkyFitness) (run unmodified as a separate service) for food and
-strength logs, PostgreSQL, FastAPI, Flutter, and optionally [Grafana](https://github.com/grafana/grafana).
+PostgreSQL, FastAPI, Flutter, and optionally [Grafana](https://github.com/grafana/grafana). Food, strength and weight
+logs live in Body Engine's own tables; [SparkyFitness](https://github.com/CodeWithCJ/SparkyFitness), which held them
+before, is optional and no longer needed (only to migrate an older deployment: [docs/own-food-weight-storage.md](docs/own-food-weight-storage.md)).
 Services bind to `127.0.0.1` and are reached through Tailscale by default.
 
 **Self-hosting** on a Mac mini or a Linux VPS: [docs/README.md#self-hosting](docs/README.md#self-hosting) · Admin guide (Chinese): [docs/admin-guide.md](docs/admin-guide.md)
@@ -136,6 +136,7 @@ Planned work and discussions live in [issues](../../issues); app builds and note
 - [ ] *In progress*: friends page and circles ([design](docs/friends-social-plan.md))
 - [ ] *In progress*: own Apple Health sync engine to replace Open Wearables on iOS ([#219](../../issues/219))
 - [ ] RMSSD-based recovery ([#117](../../issues/117))
+- [ ] Coles / Woolworths prices and weekly specials: the sites block scraping and we do not work around that; prices come from the user's own receipts / shelf labels / AI, the opt-in `grocery-sync` component stays off, compliant sources are being surveyed ([#292](../../issues/292), [plan and terms analysis](docs/grocery-store-data-plan.md))
 - [ ] Publish the scoring library `openbodyscore`
 - [ ] One-command Linux VPS installer
 - [ ] **Other watches**: Garmin, Oura, Polar, Android Health Connect … (help wanted)
@@ -158,6 +159,8 @@ Try changes locally with `./quickstart.sh`; tests: `cd body_engine && uv run pyt
 | [`body_engine/`](body_engine/README.md) | Server: scores, records, rules, AI tools, MCP, Today page |
 | [`apps/watch2whoop/`](apps/watch2whoop/README.md) | iOS app (Flutter) |
 | [`packages/openbodyscore/`](packages/openbodyscore/README.md) | Standalone scoring library |
+| [`packages/openbodyscore-js/`](packages/openbodyscore-js/README.md) | The same algorithms as one JS file the iOS app runs locally (JavaScriptCore) |
+| [`examples/reading-notes/`](examples/reading-notes/README.md) | The server's MCP framework ([`datalayer`](body_engine/src/body_engine/datalayer/README.md)) on non-health data: reading notes on SQLite |
 | [`shortcuts/`](shortcuts/README.md) | iOS Shortcut sync (no app needed) |
 | [`quickstart/`](quickstart/README.md) | One-command local demo |
 | `deploy/`, `assistant/` | Deployment, ops, AI coach workspace |
@@ -171,7 +174,7 @@ Try changes locally with `./quickstart.sh`; tests: `cd body_engine && uv run pyt
 | iOS Shortcut `shortcuts/` | [MIT](shortcuts/LICENSE) |
 | Scoring library `packages/openbodyscore/` | [Apache-2.0](packages/openbodyscore/LICENSE) |
 
-Third-party services (Open Wearables, SparkyFitness, Grafana) keep their own licences: [docs/LICENSES.md](docs/LICENSES.md).
+Third-party services (Open Wearables, Grafana, the optional SparkyFitness) keep their own licences: [docs/LICENSES.md](docs/LICENSES.md).
 
 Watch2Whoop is not affiliated with, endorsed by or connected to WHOOP, Inc. or Apple Inc. "WHOOP-style" only describes
 the kind of analysis; the scores are independent implementations. The numbers are for personal insight and do not

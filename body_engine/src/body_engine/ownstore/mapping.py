@@ -165,10 +165,14 @@ def workout(raw: dict, day: date | None = None) -> tuple[dict, list[dict], list[
             "duration_min": _num(e.get("duration_minutes")), "calories_burned": _num(e.get("calories_burned")),
             "avg_heart_rate": _num(e.get("avg_heart_rate"))})
         for n, s in enumerate(sorted(e.get("sets") or [], key=lambda s: s.get("set_number") or 0)):
-            sets.append({
-                "id": str(s["id"]) if s.get("id") is not None else f"{eid}:{n + 1}", "exercise_entry_id": eid,
-                "set_number": s.get("set_number") or n + 1, "set_type": s.get("set_type"), "reps": _num(s.get("reps")),
-                "weight_kg": _num(s.get("weight")), "rir": _num(s.get("rir")), "rpe": _num(s.get("rpe")),
-                "duration_s": _num(s.get("duration")), "distance_km": _num(s.get("distance")),
-                "rest_s": _num(s.get("rest_time")), "is_pr": s.get("is_pr"), "notes": s.get("notes")})
+            sets.append(set_row(s, eid, n))
     return w, exercises, sets
+
+
+def set_row(s: dict, eid: str, n: int) -> dict:
+    """One set (record keys) of exercise entry eid, n-th in order -> a logged_workout_sets row."""
+    return {"id": str(s["id"]) if s.get("id") is not None else f"{eid}:{n + 1}", "exercise_entry_id": eid,
+            "set_number": s.get("set_number") or n + 1, "set_type": s.get("set_type"), "reps": _num(s.get("reps")),
+            "weight_kg": _num(s.get("weight")), "rir": _num(s.get("rir")), "rpe": _num(s.get("rpe")),
+            "duration_s": _num(s.get("duration")), "distance_km": _num(s.get("distance")),
+            "rest_s": _num(s.get("rest_time")), "is_pr": s.get("is_pr"), "notes": s.get("notes")}

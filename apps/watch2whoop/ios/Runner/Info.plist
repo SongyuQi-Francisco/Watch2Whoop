@@ -6,6 +6,9 @@
 	<array>
 		<string>com.openwearables.healthsdk.task.refresh</string>
 		<string>com.openwearables.healthsdk.task.process</string>
+		<string>watch2whoop.sync.backfill</string>
+		<string>watch2whoop.sync.refresh</string>
+		<string>watch2whoop.sync.process</string>
 	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
@@ -63,7 +66,9 @@
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Release builds never write to Health; only debug builds write test data in the simulator.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Used only while you hold the mic button to talk to your AI, or record a video for it, on the Today page; the sound is transcribed on your server and not kept.</string>
+	<string>Used only while you hold the mic button to talk to your AI, or record a video for it, on the Today page; the sound is turned into text on this iPhone or on your server and is not kept.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Used only while you talk to Jarvis on the Today page: recognition runs on this iPhone and turns what you say into text.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Used only when you long-press an image and choose to save it to Photos. Watch2Whoop never reads your photo library.</string>
 	<key>UIApplicationSceneManifest</key>

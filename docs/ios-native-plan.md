@@ -116,6 +116,14 @@
 - **效果**（#257 实测，同第 1.1 节的方法）：热启动 38 个 304 → 0，少一层串行往返：150 ms 下 0.79 → 0.64 s，300 ms 下 1.55 → 1.25 s；冷启动第一次不变。手机上 38 个文件的解析不变。
 - **风险**：低。浏览器 / WKWebView 只会多缓存文件；回退 = revert，下次打开就回到 `no-cache`。
 
+### 3.1.1 首屏瘦身：按需加载的脚本（2026-10-26 体检 W2，今天页，部署即生效）
+
+- `index.html` 里首屏用不到的脚本写成 `<script type="w2w/lazy" src="…">`：浏览器不下载也不执行；服务端照样给 `src` 加 `?v=<指纹>`；`app.js` 的 `lazyScript(name)` 第一次需要时才加载（失败下次重试），加载后新注册的插件会补调 `init`。离线副本把它们当普通脚本内联（`offline_shell_html`），所以离线冷启动不受影响。
+- 现在按需的：`i18n-en.js`（89 KB，只有英文页面要；`lang-gate.js` 在解析时按和 `i18n.js` 一样的规则判断语言，是英文才 `document.write` 一个 defer 的 `<script>`，测试逐例对比两者）、`muscle-body-data.js`（105 KB，有肌肉负荷数据的人第一次画卡片 / 训练页时）、`intro.js`（37 KB，新账号首次引导 / 「我 → 新手引导」）、`diet-profile.js` + `water.js` + `grocery.js`（饮食 tab 第一次打开）。
+- 首屏的「装饰性」读取（`profile`、`account`、`sync/connection`、`sync/status`、`notices`、`health-history`，插件启动时各发一次）等第一页画完再发（`app.js` 的 `DEFERRED_GETS` / `firstPaint`，最迟 4 秒），首屏同一瞬间的 API 请求从 11 个降到 9 个。
+- 实测（本地，`/app/`，中文，普通账号）：脚本 + 样式 40 → 35 个，1,242,015 → 974,870 字节（gzip -6：414,047 → 314,384）；预算守在 `tests/test_today_first_screen.py`。
+- 还在 nginx 一侧要做（运维，不在代码里）：`limit_conn w2w_conn` 提到 100–150（HTTP/2 每个并发流都算一个连接），`/sdk/*/logs` 不限连接；`gzip_comp_level` 2 → 5。
+
 ### 3.2 启动接口合并：一次 `boot`（服务端 + 页面，已实现，开关 `boot_api`）
 
 - 接口 `POST /v1/web/boot {"paths": [...]}`（`web/boot.py`）：页面把**上一次启动时自己发过的 GET 路径**（只限本人的数据：`/v1/web/me`、`/v1/auth/methods`、`/v1/account`、`/v1/friends…`、`/v1/users/me/…`，最多 24 个）发过来，日期写成 `{today}` / `{d:-6}`（相对用户自己的今天）。服务器先算 `/v1/web/me`（拿用户的今天和开关），其余并行；**每一项都是在服务器里把原接口原样跑一遍**（同一个 cookie / Bearer、同一种语言、同样的 share 鉴权、同样的状态码和内容），所以不用另写鉴权，原接口照常给别处用。某一项出错 / 超时（10 s）只让那一项带着它的错误状态，页面再单独请求那一项；`/v1/web/me` 续期 cookie 的 `Set-Cookie` 也带回来。
@@ -142,15 +150,16 @@
 - 打开今天页时，如果本机有**同一个账号**的副本（`offline.js` 的 IndexedDB，只存本人数据），而且 `/v1/web/me` 的副本是**今天的、12 小时以内的**，先用副本把今天页画出来，顶部标「更新中 · 数据更新于 hh:mm」；同时 `boot`（或逐个请求）照常发出，新数据回来后原地替换（保留滚动位置；记录页和打开着的弹层不重画）。
 - 先画的这一遍不写任何东西、不通知 app（「已登录」「语言」等等新数据回来后才发），读不到副本的块等网络。副本只在内存里用一次，画完就清掉，之后的读取都是新的。
 - 退出登录清空副本（本来就有）和 `be.fast`；登录过期（401）时副本缓存也清空（本来就有）。
-- 只在启动停在今天页、没带 `#login=`、没指定日期时用。
+- 只在启动停在今天 / 趋势 / 我（#337 起；原来只有今天）、没带 `#login=`、没指定日期时用。
 
-### 3.6 app 先打开本机的页面外壳（1.0.8）
+### 3.6 app 先打开本机的页面外壳（已实现，#337 第 1 期，1.0.9 之后的 app；紧急开关 `local_first_start_off`）
 
-- 1.0.7 已经会保存 `offline-shell.html`（无用户数据），但只在主页面失败时用。1.0.8 改成：**有副本就先用副本打开**（`loadHtmlString`，baseUrl = 今天页地址，同源），再在后台用 ETag 检查服务器有没有新版本，有就下载、下次打开换上（或者页面发现 `WEB_VERSION` 变了时请 app 无感地重载一次）。
-- app 包里另带一份构建时的副本，第一次安装、还没下载过的时候用。
-- 副本里的页面目前**不发请求**（`window.W2W_SHELL`）：要改成「副本 + 在线」模式也正常发请求。**待验证**：`loadHtmlString` 打开的页面发 `fetch` 时是否带上 cookie（同源应该带，但要在真机上确认）；不行就让 app 用 Keychain 里的账号 token 换一个 bearer 给页面（页面已有 `Authorization` 支持的接口），或者退回只用第 3.1 节的长缓存。
-- 效果：启动时页面和静态文件那两层（加上新连接的等待）都不用等，150 / 300 ms 下首屏提前约 0.8–1.3 s；和 3.5 合起来，重开 app 约 0.3 s 先出上次的数据。
-- 开关：服务器开关 `app_shell_first`，页面通过 bridge 告诉 app（`shell:first on/off`），app 记住上一次的值；关掉就和 1.0.7 一样走网络。
+- 1.0.7 起 app 会保存 `offline-shell.html`（无用户数据），原来只在主页面失败时用。现在**冷启动有副本就先用副本打开**（`loadHtmlString`，baseUrl = 今天页地址，同源）：app 把标记 `window.W2W_SHELL` 改名成 `window.W2W_LOCAL` 再打开，页面就是普通页面（正常发请求），只是省掉了请求 HTML 的那一次往返；配合 3.5 先用 IndexedDB 的副本画出上次的数据（今天 / 趋势 / 我），新数据回来后原地替换。
+- 副本更新：每次 app 运行第一次收到 `offline:on` 时带 `If-None-Match` 检查一次（服务器 `offline-shell.html` 有 ETag，没变化回 304）；有新版就下载，下次冷启动生效；正开着旧副本、app 在后台放了 10 分钟以上再回来时也直接换上（页面先画缓存，没有闪烁）。
+- **cookie 已验证**：`loadHtmlString` 打开的页面发同源 `fetch` 会带上 `HttpOnly; Secure; SameSite=Strict` 的 cookie（`Sec-Fetch-Site: same-origin`，写请求的 `Origin` 是今天页的地址），`localStorage` / IndexedDB 和网络打开的页面是同一份（2026-10-29 用 macOS 的 WKWebView 跑真实页面 + 假服务器验证；真机 / 模拟器还要在发版前的 TestFlight 内测里看一遍）。兜底：副本里的页面拿到 401 时不显示登录、不清缓存，发 `reload` 让 app 从服务器打开页面；副本加载后 `window.BodyFlags` 不存在（脚本没跑起来）或 8 秒内没加载完，app 也改为从服务器打开。
+- 照旧走网络的情况：没有副本（第一次打开、退出登录后）、副本不是这个服务器的、登录码（`#login=`）、刚登录（`webLoginNeeded`）、点通知打开、错误页的「重试」、换服务器、Apple 登录后、开关关着。
+- 开关：页面每次启动把 `local-first:true|false`（`local_first_start_off` 没开 = true）和 `offline:on|off` 一起发给 app，app 记住，下次冷启动用；正开着本机副本时收到 `false` 马上改为从服务器打开。新开关的数据库行默认是 off，所以部署后**对所有人默认开着**本地优先启动，出问题时 `body-engine flags set local_first_start_off --state all` 就是紧急停用。需要 `offline_mode` 开着（否则没有副本），先画缓存还要 `cached_first_paint`。
+- 没做：app 包里另带一份构建时的副本（第一次安装时用）；安卓（同一份 Flutter 代码里 `isAndroid` 时不启用，安卓 WebView 的 cookie 还没验证）。
 
 ### 3.7 API 的 ETag / 304：先不做
 
@@ -289,6 +298,28 @@ Android 暂停后，Flutter 只剩一层外壳：页面在 WebView 里，健康�
   - **Jarvis**：1.4.0 之前一直是 WebView（预热好的那个 WKWebView 弹出来，打开 0 等待）；原生化时用 `URLSession` 的字节流读 SSE，Markdown 用 `AttributedString`，拍照 / 录音用系统框架（按住说话现在就走原生开关 `Watch2WhoopFeatures.mic`）。
   - **朋友 / 圈子**：在线功能，不进本地数据层，原生化放最后（或者一直留 WebView）。
 
+### 5.4 第 2 期先行（1.0.9，负责人 2026-10-27 决定）：Flutter 里先放两个原生视图
+
+在 1.1.0 换掉 Flutter 之前，先在现在的 app 里验证原生视图和页面共存的做法。两个服务器开关，默认关；关着时 app 和 1.0.8 一样（唯一的区别：1.0.9 的 app 会声明 `Watch2WhoopFeatures.nativeUi`，页面按需多取一个 `native-bridge.js` 并回报开关都关着）。
+
+- **怎么叠**：SwiftUI 视图放在 Flutter 窗口上面的一层透明视图里（`ios/Runner/NativeUI.swift`，在 WebView 之上、之后弹出的系统界面之下），只在原生视图所在的位置接触摸，其余穿透给页面。位置由页面报告（CSS 像素 = 点）。
+- **协议**（`web/static/native-bridge.js` ↔ `lib/src/native_ui.dart`）：页面 → app `native:`（开关）、`jvn:`（Jarvis 键的位置、能否看见、点一下是不是开菜单）、`tdn:`（今天从分数到 dock 的区域、能否看见）、`tdn-data:`（今天这次画用的数据，固定字段子集）、`jv-camera`；app → 页面 `BodyNative.action / photo`。是否「能看见」用 `elementFromPoint` 判断：弹层、对话面板、登录页、提示条盖住时原生视图自动让开。
+- **Jarvis**（`native_jarvis`，还要 `jarvis_orbit`）：键和菜单原生（iOS 26 `.glassEffect(.regular.interactive())` + `GlassEffectContainer` + `glassEffectID`，子键从 Jarvis 键的玻璃里流出；更早的 iOS `.ultraThinMaterial`）；按下压缩回弹、三环、扫描光、呼吸一次，时间线和 `jarvis_dial` 一致。点子键、自己的 AI / 离线 / 录音中的点按都交回页面原来的代码，语音面板、对话仍是页面。**按住说话**和网页键一致：按住 0.35s（环先填满）开始听，手指位置逐帧交给页面（`hold-start / hold-move / hold-end / hold-cancel`），页面用原来的 `holdMove / holdUp` 判断往左上取消、往右上锁定、原地松开识别；识别走 1.0.8 的本机语音（#238），松开后按 `jarvis_voice_direct` 直接发送或先显示文字可改。**状态同步**：页面把 `phase`（在听 / 识别中 / 确认文字 / 发送中 / 回答中）报给 app，原生键换成对应的图标（录音时反色，识别 / 发送 / 回答时图标呼吸），无障碍标签同步。
+- **今天**（`native_today`）：分数以下原生（三环 + 恢复 / 睡眠 / 活动 / 负荷目标 / 健康监测），分数以上（同步卡片、横幅）仍是页面。数字由 Dart 按页面的格式算（`todayModel`），颜色用页面的 token。app 存上一次的数据，冷启动先画出来（退出登录清空）。看别人、看过去的日子、睡眠详情、「完整今天页」时退回网页。
+- **还不是第 4 节的本地数据层**：数据仍由页面取（已有接口 + `boot` / `cached_first_paint`），1.1.0 起换成同步协议的本地库。
+
+模拟器实测（iPhone 17 Pro Max 模拟器 iOS 26.2，调试包，`W2W_NATIVE_UI=jarvis,today,meter,demo` 自动展开 / 收起、做三种按住说话手势（模拟器里用脚本化的识别器，不要麦克风）、滚动今天，`FrameMeter` 用 CADisplayLink 记每帧间隔，> 1.5 帧算掉帧；模拟器最高 60Hz）：
+
+| 场景 | 帧率 | 掉帧 |
+|---|---|---|
+| Jarvis 展开，Liquid Glass（浅色 2 轮 + 深色 1 轮，共 15 次） | 55–61 fps | 每轮第一次展开 1 帧 67–84ms（玻璃第一次渲染）；之后 12 次里 7 次 0 帧，5 次 1–2 帧（最长 26–39ms） |
+| Jarvis 收起（15 次） | 58–60 fps | 0 |
+| Jarvis 展开，`.ultraThinMaterial`（iOS 26 以下的样子，5 次） | 61 fps | 0 |
+| 今天滚动（浅色 8 次 + 深色 3 次，0.9s 动画滚到底 / 回顶） | 57–60 fps | 第一次 1 帧 68ms（第一次排版），其余 0 |
+| 按住说话（取消 / 锁定 / 松开，3 轮共 5 次手势，含 0.6s 滑动） | 58–62 fps | 每次 0–2 帧（最长 33ms，多在开始听的那一刻） |
+
+真机 120Hz 还要在 ProMotion 机型上确认（`CADisableMinimumFrameDurationOnPhone` 已开，帧计时器按屏幕最高帧率请求）：用调试包加 `meter` 看日志里的 `[frame-meter]`，或 Instruments 的 Animation Hitches。
+
 ---
 
 ## 6. 发版节奏
@@ -315,7 +346,7 @@ Android 暂停后，Flutter 只剩一层外壳：页面在 WebView 里，健康�
 | 3.1 静态长缓存 | 页面用到旧文件 | 只有指纹对上才长期缓存、HTML 每次确认，所以旧页面拿不到新文件的长缓存；revert 后下次打开即恢复 |
 | 3.2 `boot` | 某块报错 / 变慢 | 每块独立；开关 `boot_api` 关掉 = 接口 404、页面逐个请求（本机记着的开关在下一次启动更新） |
 | 3.3–3.5 页面 | 预取浪费流量、显示旧数据、乐观显示后失败 | 预取有上限、已知蜂窝 / 省流量不做；先显示旧数据有「更新中 · 时间」；失败撤回并提示；开关 `tab_prefetch` / `cached_first_paint` / `optimistic_writes` 各自关掉就是以前的行为 |
-| 3.6 本机外壳（1.0.8） | 副本和服务器 API 不配套、cookie 没带上 | 开关 `app_shell_first` 关掉 = 1.0.7 行为；页面发现 `WEB_VERSION` 不一致时请 app 重载一次；服务器 API 对旧页面保持兼容 |
+| 3.6 本机外壳 | 副本和服务器 API 不配套、cookie 没带上 | 开关 `local_first_start_off` 打开 = 以前的行为（正开着副本的马上换成网络页面）；副本 401 / 脚本没跑起来时 app 自动改走网络；副本带 ETag 每次运行检查一次，新版下次打开生效；服务器 API 对旧页面保持兼容 |
 | 第 2 期同步 | 文档版本漏改、显示旧数据 | 开关关掉 = 只用旧接口；本地数据库带 schema 版本，对不上就清空重拉；服务器的旧接口一直保留 |
 | 1.1.0 外壳替换 | 迁移 Keychain / 设置失败、引导流程出错 | 迁移失败时不删旧数据、显示「重新扫设置二维码」；测试用户可以在 TestFlight 装回 1.0.8；内部测试组先装一周 |
 | 原生 tab | 崩溃、数据不对 | 服务器开关关掉那个 tab = 回到 WebView（下次打开或回到前台生效）；本机连续两次崩溃自动回退 |

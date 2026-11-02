@@ -29,7 +29,7 @@ Definitions (repeated in HELP, which is the command's --help epilogue):
   re-write recent days every hour, so updated_at is no sign of the user.
 - new in the window: signed up (users.created_at) or activated within the last N days.
 - sign-up method: `invite` (admin invite code), `referral` (a user's referral code; inviter shown, once referral
-  codes exist on this server), `open` (opened by open sign-up, no code needed), `signup` (signed in, no code redeemed yet), `activation` (admin-created, has an
+  codes exist on this server), `open` (opened by open sign-up, no code needed), `store` (opened while the App Store switch store_signup was on), `signup` (signed in, no code redeemed yet), `activation` (admin-created, has an
   activation link), `admin` (admin-created, set up with plain login codes / tokens).
 """
 from __future__ import annotations
@@ -99,6 +99,8 @@ def collect(conn: psycopg.Connection, days: int = 7, signals: tuple[str, ...] = 
                r.redeemed_at,
                {"(SELECT o.activated_at FROM open_signups o WHERE o.user_id = u.id AND o.decision = 'activated')"
                 if opened else "NULL::timestamptz"} AS open_at,
+               {"(SELECT o.mode FROM open_signups o WHERE o.user_id = u.id AND o.decision = 'activated')"
+                if _has_column(conn, "open_signups", "mode") else "NULL"} AS open_mode,
                {"c.kind AS code_kind, r.inviter_user_id, inv.display_name AS inviter_name," if referrals else
                 "NULL AS code_kind, NULL::int AS inviter_user_id, NULL AS inviter_name,"}
                (SELECT min(used_at) FROM web_login_codes l WHERE l.user_id = u.id) AS first_login_code,
@@ -112,8 +114,9 @@ def collect(conn: psycopg.Connection, days: int = 7, signals: tuple[str, ...] = 
 
     users = []
     for r in rows:
-        if r["open_at"]:
-            method, activated, via = "open", r["open_at"], "open_signup"
+        if r["open_at"]:   # open sign-up below the cap, or the App Store switch (no cap)
+            method, activated, via = ("store", r["open_at"], "store_signup") if r["open_mode"] == "store" \
+                else ("open", r["open_at"], "open_signup")
         elif r["redeemed_at"]:
             method = "referral" if r["code_kind"] == "referral" else "invite"
             activated, via = r["redeemed_at"], method

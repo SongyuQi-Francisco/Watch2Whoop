@@ -18,6 +18,7 @@ STATIC = Path(__file__).resolve().parents[1] / "src" / "body_engine" / "web" / "
 # endpoint (user segment and ${…} parts normalised to {x}, query dropped) -> fallback read tool(s)
 READ = {
     "today": ["get_briefing"],
+    "weight/recent": ["get_weight"],
     "days": ["get_scores"],
     "trends": ["get_scores", "get_daily_metrics", "get_sleep_details", "get_stress", "get_healthspan", "get_vo2max"],
     "vo2max": ["get_vo2max"],
@@ -63,6 +64,7 @@ READ = {
     "grocery/store-products/{x}": ["get_price_history"],
     "feedback": ["list_feedback"],
     "water": ["get_briefing"],                                 # today's water vs goal (briefing section water)
+    "ui/home": ["get_scores", "get_sleep"],                    # ui_ai_first: my Today's order; its findings come from the scores and sleep (ui/findings.py)
 }
 # endpoints with no data for the AI to read
 NO_DATA = {
@@ -80,12 +82,13 @@ NO_DATA = {
     "training/session/{x}": "write: the training page's set-by-set draft (FB-5)",
     "training/session/{x}/submit": "write: submit the ticked sets to the training log (log_workout)",
     "training/import/hevy": "the Hevy import sheet: upload, last summary, unmatched names (#161); the imported sets reach the AI through get_training_day / get_training_calendar",
+    "appearance": "the look of the Today page (theme, daily quote; flag slim_mode, #126): a display setting, nothing for the AI to read",
     "weight": "write: the day's weight from 记录 → 日记 (log_weight; offline_mode)",
     "journal/{x}/{x}": "write: one journal answer (log_journal)",
     "meal-logs/{x}": "write: undo a quick meal",
     "meal-templates/{x}/log": "write: log a quick meal",
     "recipes/{x}/log": "write: log a recipe",
-    "nutrition/entries/{x}": "write: delete a food entry (undo_sparky_entry)",
+    "nutrition/entries/{x}": "write: change the portion of / delete a food entry (update_food_entry / undo_sparky_entry)",
     "reminders/{x}": "write: dismiss a reminder",
     "supplements/{x}": "write: edit a supplement",
     "memory/observations/{x}": "write: delete an observation",
@@ -105,6 +108,13 @@ NO_DATA = {
     "consent": "account", "intro": "account", "invite-code": "account",
     "health-history": "upload of a Health export", "sync/refresh": "sync control", "sync/status": "sync control",
     "data-status": "sync control: which health data types reached the server (#163)",
+    "sync/connection": "sync control: whether the phone's sync stopped (sync/broken.py)",
+    "ui": "ui_ai_first: the base path of the calls below (ui-ai-first.js uiPath)", "ui/focus": "setting: what the user cares about (set_home)",
+    "ui/modules/{x}": "setting: cards on my Today (set_home)", "ui/overview-seen": "the first screen was shown",
+        "sync/overview": "sync control: the sync status panel (sync/overview.py)", "sync/device": "sync control: the app's phone report",
+    "sync/backfill": "sync control: start the history top-up (sync/backfill.py)",
+    "sync/history/seen": "sync control: the top-up card was shown", "sync/history/mute": "setting: stop the top-up reminders",
+    "notices": "messages from the admin (notices/)", "notices/{x}/seen": "messages from the admin",
     "notifications": "notification list (#175)", "notifications/unread": "notification list", "notifications/read": "notification list",
     "notification-settings": "setting: push per category, quiet hours (#175)",
 }

@@ -208,6 +208,45 @@ GeoDNS 按「人在哪」分，但数据是按「账号在哪」放的：
 3. 如果到内地用户迁移那天，#219 已经切到「app 模式」且影子对比通过，就**跳过 OW**，直接用做法 2。迁移工具对两种做法都支持。
 4. #219 第 4 阶段（OW 下线）两个区域一起做。
 
+### 5.1 小内存区域：只跑 Body Engine（2026-10-27 实测）
+内地区的服务器是 2 vCPU / 2 GiB。这么小的机器装不下 Open Wearables（约 1.3 GB），所以只能用**做法 2**：迁移内地用户之前，#219 要已经切到 app 模式，内地用户的 app 要已经支持自建同步引擎。
+
+**跑什么**：只有 `body-db` 和 `body-engine`，每个容器都设 `mem_limit`。app 直接上传到 `/v1/ingest/healthkit`；部署机每分钟的任务在 `hk_dirty_days` 有行时跑 `hk-derive-run`；每小时的 `hourly-batch` 用 `--steps compute-scores,evaluate-rules`，不跑 `import-ow`。
+
+**内存预算**（实测，空库）：
+
+| 项 | 上限 | 实测 |
+|---|---|---|
+| 系统 + dockerd + nginx | — | 约 350 MB |
+| `body-db`（`shared_buffers=48MB`、`max_connections=30`） | 256 MB | 50–80 MB |
+| `body-engine`（API） | 384 MB | 120–170 MB |
+| 一次性任务容器（同时最多 1 个） | 448–512 MB | 100–200 MB |
+
+- 再加 2 GB swap（`vm.swappiness=10`），用来应对内存高峰。
+- 剩下的余量只够再加 SparkyFitness（约 450 MB，#252 自有存储切换后就不需要）或语音识别（空闲 40 MB、识别时最高约 530 MB）里的一个。
+
+**不装 OW 时怎么写 compose override**：仓库的 `compose.yaml` 给 `body-engine` 挂了 OW 和 SparkyFitness 的 key。用 Compose 的 `!override` / `!reset`（Compose ≥ 2.24）去掉它们，就不用放空文件：
+```yaml
+services:
+  body-engine:
+    secrets: !override [body_db_password, ai_master_key]
+    mem_limit: 384m
+secrets:
+  sparkyfitness_api_key_owner_ro: !reset null
+  open_wearables_api_key: !reset null
+```
+
+**中国内地的网络**（2026-10-27，阿里云华东 2 实测）：
+
+| 目标 | 情况 | 做法 |
+|---|---|---|
+| Docker Hub（`registry-1.docker.io`） | 不通 | `/etc/docker/daemon.json` 配 `registry-mirrors` 镜像加速 |
+| `ghcr.io`（Dockerfile 里的 uv 镜像） | 能直连 | — |
+| `files.pythonhosted.org` | 能连，但只有约 45 KB/s，构建 15 分钟都装不完依赖 | 构建前把临时副本里 `uv.lock` 的 `https://files.pythonhosted.org/packages/` 换成云厂商 PyPI 镜像的同路径地址（约 10 MB/s）。uv 照样按 lock 里的 sha256 校验每个文件，所以镜像改不了装进去的内容 |
+| apt / docker-ce | 公网镜像地址慢 | 用云厂商的 VPC 内网镜像地址 |
+| `raw.githubusercontent.com` | 不通 | 动作示范图要放到区域自己的静态目录 |
+| `github.com`、Let's Encrypt | 能连 | — |
+
 ## 6. 账号迁移工具
 
 新命令 `body-engine region-move`，由管理员在两个区域上各跑一部分。每一步都幂等、可以重跑，状态记在源区域的表 `region_moves` 里。
@@ -304,6 +343,7 @@ Issue #249 plan: **multi-region deployment** (an international region and a main
 - **Cross-region features.** Circles, shares, leaderboards, the feed, cheers and avatars stay **within a region** in v1. A cross-region "card federation" exchanges only consented summary fields as in-memory snapshots. It needs separate consent and outbound-transfer paperwork, and is deferred.
 - **AI.** Each region has its own fallback AI key and budget. The mainland region allows only domestic API providers (configurable). MCP is per region. The owner's personal coach runs only in the international region.
 - **Sync.** First deploy an Open Wearables copy in the mainland region, so it does not wait for #219. Skip it if #219's own engine is live by migration day, then retire OW in both regions together.
+  A 2 GiB server cannot hold OW, so a small region runs only Body Engine + Postgres (§5.1: memory budget, a compose override without the OW / SparkyFitness keys, mainland China network notes: Docker Hub blocked, PyPI slow, use mirrors; uv still verifies the lockfile hashes).
 - **Account move tool** `region-move`: plan → freeze → export → import → verify → switch → purge.
   - Each step is idempotent and audited; the export carries checksums, and verification compares tables and recomputed scores.
   - Rollback before purge is a reverse move. Purge needs the user's and the owner's confirmation.

@@ -68,7 +68,7 @@
     const sub = [g.source === "profile" ? tr("目标来自饮食档案") : tr("通用建议值"), ...extras].join(" · ");
     box.innerHTML = `<div class="section-head"><h2>${info.past ? tr("喝水") : tr("今天喝水")}</h2>
         <span class="small muted">${d.percent != null ? `${num(Math.min(d.percent, 999))}%` : ""}</span></div>
-      <div class="card water">
+      <div class="card water" data-card="water">
         <div class="w-top"><span class="w-v">${num(d.total_ml)}<small> / ${num(g.ml)} ml</small></span></div>
         <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="${g.ml || 0}" aria-valuenow="${d.total_ml}"
           aria-label="${C.esc(tr("今天喝水"))}"><span style="width:${pct.toFixed(0)}%"></span></div>

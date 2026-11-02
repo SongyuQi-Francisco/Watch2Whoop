@@ -2,8 +2,14 @@
 
 check_imports: the framework imports only the standard library, itself and a short list of third-party packages; never
 the application. Every import statement counts, also the ones inside functions, and so do importlib.import_module /
-__import__ / importlib.resources.files calls with a literal module name."""
+__import__ / importlib.resources.files calls with a literal module name.
+check_toolset: the application's toolset configuration matches its tools and every set sent to a model fits its budget.
+check_handlers: every handler takes the arguments its signature (legacy or not) says it does.
+check_messages: an application's own texts have the same placeholders as the framework's."""
 import ast
+import dataclasses
+import inspect
+import string
 import sys
 from pathlib import Path
 
@@ -52,3 +58,36 @@ def check_imports(root: Path, package: str, framework: str,
             if not ok:
                 bad.append(f"{rel}:{line} {mod}")
     return bad
+
+
+def check_toolset(cfg, tools, budgets) -> list[str]:
+    """An application's one-line contract test for its tools (docs/datalayer-design.md section 3.6): the ToolsetConfig
+    is consistent with the tools (toolsets.config_problems) and every set the framework sends fits its Budgets
+    (toolsets.budget_problems). Empty = fine; each entry says what and by how much."""
+    from .toolsets import budget_problems, config_problems
+    tools = list(tools)
+    return config_problems(cfg, tools) + budget_problems(cfg, tools, budgets)
+
+
+def check_handlers(tools) -> list[str]:
+    """Handlers registered with the wrong signature would only fail when a model first calls them: (ctx, args), or
+    (conn, owner_id, args) with legacy=True (execute.invoke). Empty = fine."""
+    out = []
+    for t in tools:
+        want = ("conn", "owner_id", "args") if t.legacy else ("ctx", "args")
+        try:
+            inspect.signature(t.handler).bind(*want)
+        except TypeError:
+            out.append(f"{t.name}: the handler does not take ({', '.join(want)})")
+    return out
+
+
+def check_messages(messages) -> list[str]:
+    """A placeholder missing from a translation, or a misspelt one, would only show when a model first hits that text:
+    the fields whose placeholders differ from messages.ENGLISH. Empty = fine."""
+    from .messages import ENGLISH
+
+    def holes(text: str) -> set[str]:
+        return {name for _, name, _, _ in string.Formatter().parse(text) if name}
+    return [f"{f.name}: {sorted(holes(getattr(messages, f.name)))} instead of {sorted(holes(getattr(ENGLISH, f.name)))}"
+            for f in dataclasses.fields(messages) if holes(getattr(messages, f.name)) != holes(getattr(ENGLISH, f.name))]

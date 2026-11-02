@@ -1,4 +1,4 @@
-"""AI assistant tool specs for reminders (wrapped into registered Tools by assistant/tools.py)."""
+"""AI assistant tool specs for reminders (registered by dl_app.py)."""
 from datetime import date
 
 from .. import queries
@@ -46,7 +46,7 @@ TOOL_SPECS: list[dict] = [
             "user": USER,
             "start": nullable("string", "YYYY-MM-DD，null = 只看 end 那天（够用）"),
             "end": OPT_END,
-            "include_dismissed": {"type": "boolean"},
+            "include_dismissed": nullable("boolean", "null = false"),
             "detail": {**DETAIL, "description": "true=带依据数据 evidence（大）"},
         }),
         handler=_get,

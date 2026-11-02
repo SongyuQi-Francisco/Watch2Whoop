@@ -1,4 +1,6 @@
-# Body Engine (in-house). Open Wearables, SparkyFitness and Grafana each have their own compose (under deploy/).
+# Body Engine (in-house). Open Wearables and Grafana each have their own compose (under deploy/). SparkyFitness
+# (deploy/sparkyfitness/) is optional since issue #252: with own_food_only on for everyone nothing reads or writes it,
+# and the BODY_SPARKY_URL / sparkyfitness_api_key_* lines below are only used while migrating an older deployment.
 # All ports bind to 127.0.0.1 only; remote access goes through Tailscale. Image versions are pinned.
 name: body
 
@@ -25,6 +27,7 @@ services:
       context: ./body_engine
       additional_contexts:   # the scoring algorithms (path dependency, see body_engine/Dockerfile); needs Compose >= 2.17
         openbodyscore: ./packages/openbodyscore
+        openbodyscore_js: ./packages/openbodyscore-js/dist   # the JS bundle for the app (/v1/algo, issue #340)
     image: body-engine:0.1.0
     environment:
       BODY_DB_HOST: body-db
@@ -66,10 +69,30 @@ services:
       # BODY_APNS_KEY_ID: ABC123DEFG
       # BODY_APNS_TEAM_ID: TEAM123456
       # BODY_APNS_BUNDLE_ID: com.example.watch2whoop
+      # Sign in with Apple token revocation on account deletion (account/apple_tokens.py): the Sign in with Apple .p8 key
+      # as a docker secret (secrets/apple_signin_key.p8, mode 600), its Key ID and the Team ID. Without them deletions
+      # report "apple: not_configured" in their leftovers.
+      # BODY_APPLE_SIGNIN_KEY_FILE: /run/secrets/apple_signin_key
+      # BODY_APPLE_SIGNIN_KEY_ID: ABC123DEFG
+      # BODY_APPLE_TEAM_ID: TEAM123456
+      # Public legal pages /legal/privacy and /legal/terms (legal/pages.py, docs/legal/README.md): operator details
+      # BODY_LEGAL_ENTITY: Example Operator
+      # BODY_LEGAL_CONTACT: privacy@example.com
+      # BODY_DATA_REGION: Example Region
+      # BODY_LEGAL_GOVERNING_LAW: the laws of Example Region
+      # BODY_LEGAL_MIN_AGE: "16"
       TZ: Australia/Sydney
+      # The API's own log (warnings, errors with tracebacks) as health_data/ops/engine/engine-YYYY-MM-DD.log, kept 14 days
+      # (body_engine/obs.py): `docker logs` is lost whenever the container is recreated (deploys, OOM restarts)
+      BODY_LOG_DIR: /data/log
+      # Requests that wait on Open Wearables or a refresh import only queue the work for the per-minute job
+      # (`sync-refresh-run`, deploy/ops: the hourly job on a single machine), so the API process never holds a window of
+      # raw samples; leave it out to import inside the API process (sync/refresh.py)
+      # BODY_SYNC_IMPORT: queue
     secrets: [body_db_password, sparkyfitness_api_key_owner_ro, open_wearables_api_key, ai_master_key]
     # imports: Apple Health exports uploaded from the Today page (history/, deleted once parsed; the background job reads the same directory in a one-off container)
-    volumes: ["./health_data/archive:/data/health/archive:ro", "./health_data/imports:/data/health/imports", "./media:/data/media"]
+    volumes: ["./health_data/archive:/data/health/archive:ro", "./health_data/imports:/data/health/imports", "./media:/data/media",
+              "./health_data/ops/engine:/data/log"]
     ports: ["127.0.0.1:8100:8100"]
     depends_on:
       body-db: {condition: service_healthy}

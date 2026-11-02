@@ -12,6 +12,7 @@ shared `## <marketing version>` section, and the iOS release never sees it.
 
 | Version | Tag | Commit | Store |
 |---|---|---|---|
+| 1.0.8 | `app-ios-v1.0.8` | (set when tagged) | TestFlight (iOS) |
 | Android 1.0.7 | `app-android-v1.0.7` | (set when tagged) | APK on the GitHub Release (Android, sideloaded) |
 | 1.0.7 | `app-ios-v1.0.7` | (set when tagged) | TestFlight (iOS) |
 | 1.0.6 | `app-ios-v1.0.6` | (set when tagged) | TestFlight (iOS) |
@@ -20,8 +21,82 @@ shared `## <marketing version>` section, and the iOS release never sees it.
 | 1.0.0+1 | (not tagged; source = release `v0.1.0` asset `watch2whoop-ios-app-v0.1.0.zip`) | `42a8f0f` | TestFlight (iOS), sent to the builder 2026-10-18 |
 
 ## Unreleased
-- Tests only (#64): the i18n coverage test (`test/i18n_test.dart`) now also fails on a Chinese double-quoted literal and on
-  Chinese in the English half of a `tr()`. The app's own texts were already complete; nothing changes for users.
+
+**打开就有内容（#337 第 1 期：本地优先启动）**
+- （iOS）冷启动（包括 iOS 把后台的 app 杀掉后再打开）不再先等服务器发页面：app 直接打开手机上保存的今天页副本，先用手机上存的上一次的数据画出来（顶部标「更新中」），再在后台向服务器要新数据，到了原地替换。省掉的是请求页面的那一次往返，以前那段时间只能看到加载中。
+- 副本每次打开 app 最多检查一次有没有新版（带 ETag，没变化时服务器只回 304，不再每次下载整页）；有新版就在后台下载，下次打开生效；app 在后台放了 10 分钟以上再回来时也会安静地换上。
+- 这些情况照旧先向服务器要页面：第一次打开（还没有副本）、刚登录 / 扫码设置 / 带登录码、点通知打开、换了服务器、退出登录之后（副本已删）。副本里的页面拿到 401（登录过期等）时，app 马上改为从服务器打开页面，由它显示登录。
+- 本机副本没能启动（脚本没跑起来，8 秒内没反应）时自动改为从服务器打开。
+- 服务器上有紧急开关 `local_first_start_off`：打开后，正在用本机副本的 app 立刻换成从服务器打开，之后的冷启动也和以前一样。
+
+**技术说明（给开发者）**
+- `lib/src/offline_shell.dart`：`save` 带 `If-None-Match`，`changed` 表示存下了更新的副本；`loadLocal` 把标记 `window.W2W_SHELL` 改成 `window.W2W_LOCAL`（页面把它当普通页面用）；页面消息 `local-first:true|false` 记在 `offline_shell.first`，`offline:off` 一并删掉。`home_page.dart`：`_load(local: true)` 只在冷启动和从离线副本回来时用，`_onLocal` 时不显示顶部进度条；`reload` 消息（离线副本联网 / 本机副本 401）都改为从服务器打开。
+- 安卓暂不启用（`isAndroid` 时照旧走网络：还没验证安卓 WebView 用 `loadDataWithBaseURL` 打开的页面会不会带上 cookie）。
+- 需要服务器 v2.156 起的页面（发 `local-first:` 消息、本机副本 401 时发 `reload`）；老服务器从不发 `local-first:true`，app 保持以前的行为。
+
+**自建同步引擎（#219 A2–A4）**：服务器把同步模式切到「app」以后，app 不再需要 Open Wearables 也能完整同步，包括在后台。
+- **后台同步**：手表有新数据时 app 在后台被唤醒（睡眠、训练、HRV、静息心率等立即；心率、步数、能量每小时），系统空闲时（后台 App 刷新）也会补一轮；手机锁屏读不到「健康」时，解锁后自动续传；断网时，联网后自动续传；回到前台时也同步一轮。
+- **更多数据**：训练（时长、能量、距离、心率、功率、暂停 / 圈等事件）、睡眠阶段、步数 / 能量 / 距离 / 爬楼等每 15 分钟的合计；「健康」里删掉的数据，服务器上也会删掉。
+- **省电、省流量**：没有新数据就不联网；首次同步和补历史默认只用 Wi-Fi（同步中心可以打开「用蜂窝数据补历史」）；低电量模式下后台只同步重要的几项。
+- **同步中心**：新增「自建同步」——模式、首次同步进度、上次同步 / 上次后台同步、立即同步，每一类数据「手机上 / 服务器上」最新一条对比（没采集 / 没同步），以及同步日志。「立即重新同步」会按范围重发，服务器顺带删掉手机上已经没有的数据。
+- **新用户不再需要同步邀请码**：服务器给的是只有今天页地址的设置链接，或者账号已经在「app」模式时，设置和引导直接跳过连接 Open Wearables 那一步；「连接同步」碰到服务器回答「不需要」（409 `sync_engine`）也算已连接，不再提示连接失败。
+- **健康权限只弹一个窗口**：app 读的所有类型合在一个系统弹窗里，不再先后弹两个（第二个经常弹不出来）。升级后会自动再问一次还没问过的类型。
+- **修正「健康权限被拒绝」的误报**：1.0.8 把「心跳间期、心电图、饮水、站立等补充类型还没问过权限」也当成「没允许读取健康数据」上报（`health_denied`），其实主要数据一直在同步。现在只有核心类型（心率、睡眠、步数……）没问过才算；补充类型没问过只提示一下。
+
+**技术说明：自建同步引擎（给开发者）**
+- `ios/Runner/SyncEngine.swift` 是不依赖 Flutter 和 Open Wearables 的独立模块（#340 的 SwiftUI 版会直接复用）：读取、列式 gzip 批次、锚点只在 200 后提交、重试 / 限流 / 401 退避、`runs[]`、`HKObserverQuery` + 后台推送、BGTask `watch2whoop.sync.refresh` / `watch2whoop.sync.process`（加进 Info.plist，和 Backfill 的 `watch2whoop.sync.backfill`、OW 的两个并存）。Flutter 通道在 `SyncEngineChannel.swift`；Backfill.swift 也不再依赖 Flutter，历史补传也带训练和统计桶。
+- Open Wearables 的 `stopBackgroundSync()` 会关掉它那些类型的后台推送、取消 app 的全部 BGTask，所以每次停 OW 之后引擎和 Backfill 都会重新注册（`engineRearm`）。
+- Dart 侧 `lib/src/sync_engine.dart` 只剩配置、模式、状态（A1 的 Dart 上传器删掉了）；同步中心的新面板 `lib/src/pages/engine_section.dart`。
+- 模拟器验证：调试包「同步中心 → 开发」里可以写测试数据、跑一轮后台式同步、删掉一条测试心率。
+
+## 1.0.9 — 2026-10-27
+> **作废（#340）**：这一版从没发给测试用户。iOS 从 1.0.9 起是原生 app（`apps/ios/`，更新记录在 `apps/ios/CHANGELOG.md`）；旧的
+> `app-ios-v1.0.9` tag 和 Release 在原生 1.0.9 发布当天删掉、在新提交上重新打（`docs/ios-native-app.md` 第 12 节）。Flutter 版停在
+> 1.0.8，之后只修 bug。下面保留原文作记录。
+
+和 1.0.8 同一天发布：测试用户直接装 1.0.9 即可（包含 1.0.8 的全部内容）。下面的新功能都由服务器开关控制、默认关：开关关着时 app 和 1.0.8 完全一样。
+
+**原生界面（#247 第 2 期，iOS）**
+- **Jarvis 键换成原生的 Liquid Glass**（开关 `native_jarvis`，还要 `jarvis_orbit` 开着）：Jarvis 键和展开菜单由 app 自己画——iOS 26 起是系统的液态玻璃（四个子键从 Jarvis 键的玻璃里「流」出来，收起时流回去），更早的 iOS 用半透明毛玻璃。按下压缩回弹、三层细环展开、扫描光掠过、辉光呼吸一次，黑白单色、弹簧动画、120Hz 屏上跟满帧率；「减少动态效果」打开时不播动画。点子键（对话 / 语音 / 拍照 / 快记）照常在今天页里打开；拍照用 app 的相机。**按住 Jarvis 键说话**和以前一样：往左上滑取消、往右上滑锁定（松手接着说）、原地松开识别，识别用手机本机的语音识别；松开后是直接发送还是先显示文字可以改，和网页版同一个开关。Jarvis 键会显示现在在做什么：在听、识别中、确认文字、发送中、回答中。
+- **原生「今天」**（开关 `native_today`）：今天 tab 从分数往下换成原生页面——睡眠分 / 恢复（居中）/ 昨天负荷三个环并排，下面是 HRV、静息心率、睡眠时长 / 需求 / 睡眠债、步数、活动、锻炼、负荷目标、健康监测和负荷状态、提醒数；分数上面的同步卡片等照旧。打开 app 先显示上一次的数据（存在手机上，退出登录清空），网页的数据到了再更新。点环或数字打开今天页原来的弹层；下拉刷新；底部「完整今天页」回到网页版。看别人、看过去的日子时自动用网页版。
+
+**技术说明（给开发者）**
+- `lib/src/native_ui.dart`（页面消息 `native:` / `jvn:` / `tdn:` / `tdn-data:` / `jv-camera`、今天的数字格式和页面一致、本机缓存）；`ios/Runner/NativeUI.swift`（通道 `watch2whoop/nativeui`、窗口上的穿透浮层、帧计时器、相机）、`NativeJarvis.swift`、`NativeToday.swift`；页面 `web/static/native-bridge.js`（按需加载，只在声明了 `Watch2WhoopFeatures.nativeUi` 的 app 里）。
+- 调试 / 测试包可以用 `--dart-define=W2W_NATIVE_UI=jarvis,today,meter` 不看开关直接打开（`meter` = 在日志里打印帧计时；`demo` / `demo2` = 自动展开、做按住说话手势、滚动，模拟器里用脚本化的识别器（`VoiceInput.swift`，只编进模拟器调试包）；`material` = 在 iOS 26 模拟器上看 iOS 26 以下的样子），正式包不要加。
+- 用 Xcode 26（iOS 26 SDK）编译时才有系统液态玻璃（`.glassEffect()`，`#if compiler(>=6.2)`）；更早的 Xcode 也能编译，只用 `.ultraThinMaterial`。部署目标仍是 iOS 15，iOS 26 以下的手机运行时自动用 `.ultraThinMaterial`。
+
+## 1.0.8 — 2026-10-27
+这一版主要让「手机同步」更稳、更快、出问题时说得清楚。还在用 1.0.6 的测试用户请直接升到 1.0.8（1.0.7 的修复也都在里面）。
+
+**同步**
+- **第一次同步只读最近 14 天**（以前是 90 天）：几分钟就传完，今天页很快就有数据，不会再出现「首次同步好几天、新数据一直进不来」的情况。已经在用的测试用户保持原来的范围。
+- **「补全历史」**：在今天页或「手机同步」页选「近 90 天」或「全部历史」，app 先照常传最新的数据，再在后台补更早的历史；app 切到后台、被系统挂起也会继续传，中途被打断（包括 app 被关掉）下次从断点接着传，不会重复，进度在页面上显示。手机空闲、连着 Wi-Fi 时补得最快，不用蜂窝流量。
+- 今天页上的「一键开启同步」：点一下，app 自己连接同步、弹出「健康」授权、马上开始第一次上传，卡片上显示进度（首次同步时显示百分比）。登录时点了「跳过」也没关系，之后从今天页一步开启。
+- 今天页上的「立即上传」「去设置」「去授权」直接在 app 里完成，不用再跳到「手机同步」页。
+- 新用户确认同意书后，今天页马上出现「开启数据同步」卡片和弹窗（以前要等下一次刷新才出现）。
+- 同步连接失效时 app 会自己重新连接，并且**重新连上后马上同步一轮**（以前要等下次打开 app）。
+- 如果「健康」授权窗口没有弹出来（以前偶尔会被别的窗口挡住），app 会发现并再弹一次。
+- app 会把手机这边影响同步的状态告诉服务器：后台 App 刷新是否打开、低电量模式、锁屏读不到健康数据、哪些健康类型还没授权、上次同步和上次成功上传的时间。今天页因此能说出具体原因，比如「后台刷新被关」「手机锁着」，而不只是「很久没收到」。不包含任何健康数值。
+- 「手机同步」页把「只收到 iPhone 的数据、没有手表数据」（多半是手表没配对 / 没戴，或者没授权心率和睡眠）和「同步断了」分开显示。
+- 网络很差（连着 Wi-Fi 但上不了网、VPN 丢包）时，打开 app 不会再卡好几分钟；没传完的下次打开接着传。
+- 即使后台同步还没连上，逐拍心率、心电图和「站立时间」等 app 自己读的数据，打开 app 时也会照常上传。
+
+**Jarvis（AI 助手）**
+- 按住说话改用这台 iPhone 上的语音识别：边说边出字；中文松手后再交你自己的服务器定稿，更准。识别在手机本机完成，也不保存录音。第一次使用会弹「语音识别」权限。
+- 按 Jarvis 键时有轻微震动反馈。
+
+**登录**
+- 今天页里的「通过 Apple 登录」和「我 → 登录方式 → 绑定 Apple 登录」在 app 里可以直接用了。
+
+**技术说明（给开发者）**
+- 页面同步协议见 `docs/sync-onboarding-app-requirements.md`（`sync-connect` / `sync-now` / `app-settings` / `health-settings`，`BodySyncStatus.onApp` 进度，`PUT /v1/ingest/sync-device` 手机状态）；另有 `Watch2WhoopSync.enableSync / syncNow / syncStatus`（`lib/src/sync_bridge.dart`）。
+- OW 登录失效改用 SDK 的 `authErrorStream`（日志匹配只作兜底）；RawSync 的账号 token 被 401 时改用今天页签发的只上传 token；status 请求 10 秒超时、每轮最多一次（#295 A2 / A3）。
+- 自己打包时旧的 `config/defaults.json` 要删掉 `"W2W_SYNC_DAYS_BACK"` 那一行（旧示例里是 90，会覆盖 14 天的默认值）；`config/defaults.example.json` 已去掉这一行。
+- 首次范围和补传参数在 `lib/src/sync_params.dart`（`kFirstSyncDays = 14`、`kBackfillDays = 90`）。补传：今天页「补全历史」按 `docs/sync-onboarding-app-requirements.md` 第 10 节——宣布 `Watch2WhoopFeatures.backfill = true`，页面建好服务器的重新同步任务后打开 `watch2whoop://backfill?days=90|all`，app `GET /v1/ingest/resync` 是 `phone` 时做手机部分、`PUT` 进度（马上报第一次）、完成时 `phone_done`，并用 `onApp({kind: "backfill", …})` 通知页面（`lib/src/backfill.dart`、`resync_flow.dart joinPageBackfill`）；服务器开了自建引擎（shadow / app）时由原生 `ios/Runner/Backfill.swift` 按天往回补：后台 URLSession 上传、BGProcessingTask `watch2whoop.sync.backfill`、游标 200 后才前移、同一批重发用同一个 batch_id；开关关着时走 Open Wearables SDK 自己的全量导出（重置锚点后最新的先传，SDK 自己的后台任务续传；导出期间新数据跟着导出一起上来，没有单独的增量轮次）。
+- 自建同步引擎 A1（#219，`lib/src/sync_engine.dart`、`ios/Runner/SyncEngine.swift`、`assets/healthkit_types.json`）：服务器开关 `apple_sync_engine` 默认关，关着时不读、不传。
+- 本机语音识别 `ios/Runner/VoiceInput.swift`（#53）；Apple 登录桥 `lib/src/apple_bridge.dart`；新增权限说明 `NSSpeechRecognitionUsageDescription`。
+- 依赖：`wakelock_plus` 1.8.2、`webview_flutter_wkwebview` 3.27.2；`ios/Podfile.lock` 与 `pubspec.lock` 一致（CI「iOS Podfile.lock」检查）；`.github/dependabot.yml`。
+- 推送（#175）的 app 侧在 1.0.7 已经做好；APNs key 交给服务器后才会真正推送，没有 key 不影响构建和其他功能。
 
 ## Android 1.0.7 — (set when tagged)
 First Android build (#253), for Huawei phones on HarmonyOS 4.x and older (Android compatible, no Google services),

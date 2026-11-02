@@ -3,6 +3,7 @@
 // credentials are stored in the SDK Keychain, the app does not keep them).
 //
 // Background sync: thin wrapper over the Open Wearables Flutter SDK.
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -15,6 +16,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'config.dart';
 import 'platform_features.dart';
 import 'raw_sync.dart';
+import 'sync_engine.dart';
 import 'sync_stats.dart';
 
 /// Types to request: everything the SDK supports, minus reproductive health (sensitive, unused) and nutrition (SparkyFitness is the source for nutrition).
@@ -41,7 +43,8 @@ List<HealthDataType> get requestedTypes =>
 class ConnectException implements Exception {
   ConnectException(this.code, [this.detail]);
 
-  /// invalid_code / network / server / bad_response
+  /// invalid_code / network / server / bad_response / sign_in (the code was redeemed but the SDK did not take the new
+  /// session: sync is not connected now and the user can retry, see [HealthSync.connect])
   final String code;
   final String? detail;
   @override
@@ -61,6 +64,7 @@ class HealthSync {
   late SyncLogParser _parser;
   static const _native = MethodChannel('watch2whoop/native');
   bool _started = false;
+  StreamSubscription<Map<String, dynamic>>? _authErrors;
 
   /// Called once at app start: reads back the stats and restores the SDK session (configure() resumes background sync automatically).
   /// SDK logs are buffered first by native code (SyncLogBuffer in AppDelegate), since Dart may not be running at all during background sync;
@@ -75,9 +79,18 @@ class HealthSync {
       ..addAll(prefs.getStringList(_logKey) ?? const []);
     _parser = SyncLogParser(stats.value);
     if (!hasHealthSync) return; // Android (#253): no phone health sync yet, the SDK is never touched
+    // mode `app` without an Open Wearables connection (new users, #219): the SDK is never set up
+    if (SyncEngine.instance.appMode && !config.owConnected) return;
 
     // Release builds emit no logs by default; sync status relies on log counts, so keep them always on (logs stay on the device only).
     await OpenWearablesHealthSdk.setLogLevel(OWLogLevel.always);
+    // The SDK's own signal that its session is dead (refresh rejected / 401 with an API key): the structured event, not a
+    // log text (sync_repair.dart starts the silent reconnect from stats.authProblem). Log lines stay the fallback for
+    // rounds that ran in the background while Dart was not running.
+    _authErrors ??= MethodChannelOpenWearablesHealthSdk.authErrorStream.listen(
+      (e) => markAuthProblem('HTTP ${e['statusCode'] ?? 401}'),
+      onError: (_) {},
+    );
     if (config.owConnected && config.owHost.isNotEmpty) {
       await OpenWearablesHealthSdk.configure(host: config.owHost);
     }
@@ -95,6 +108,8 @@ class HealthSync {
       return;
     }
     if (lines.isEmpty) return;
+    // mode `app` (#219): Open Wearables is stopped and the engine keeps its own state; its old lines are not parsed
+    if (SyncEngine.instance.appMode) return;
     for (final raw in lines) {
       final tab = raw.indexOf('\t');
       final at = tab > 0 ? DateTime.tryParse(raw.substring(0, tab))?.toLocal() : null;
@@ -105,6 +120,19 @@ class HealthSync {
       _parser.handle(msg, t);
     }
     if (recentLog.length > _maxLog) recentLog.removeRange(0, recentLog.length - _maxLog);
+    // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
+    stats.notifyListeners();
+    await _save();
+  }
+
+  /// The sync server does not accept this phone's session (the SDK's auth error event): sync_repair.dart reconnects.
+  Future<void> markAuthProblem(String why) async {
+    final s = stats.value
+      ..authProblem = true
+      ..lastErrorAt = DateTime.now()
+      ..lastError = why;
+    await note('Sync server rejected the session ($why)');
+    stats.value = s;
     // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
     stats.notifyListeners();
     await _save();
@@ -149,13 +177,23 @@ class HealthSync {
     final creds = parseRedeemResponse(res.statusCode, res.body);
 
     // When switching accounts, disconnect the old one first (clears the old anchor and Keychain).
-    if (OpenWearablesHealthSdk.isSignedIn) await OpenWearablesHealthSdk.signOut();
-    await OpenWearablesHealthSdk.configure(host: owHost);
-    await OpenWearablesHealthSdk.signIn(
-      userId: creds.userId,
-      accessToken: creds.accessToken.startsWith('Bearer ') ? creds.accessToken : 'Bearer ${creds.accessToken}',
-      refreshToken: creds.refreshToken,
-    );
+    // From here on the old session is gone and the one-time code is used: a failure must not end silently in
+    // "not connected" — it is a ConnectException('sign_in') the caller shows, and connecting again mints a new code.
+    try {
+      if (OpenWearablesHealthSdk.isSignedIn) {
+        await OpenWearablesHealthSdk.signOut();
+        await _rearmEngine();
+      }
+      await OpenWearablesHealthSdk.configure(host: owHost);
+      await OpenWearablesHealthSdk.signIn(
+        userId: creds.userId,
+        accessToken: creds.accessToken.startsWith('Bearer ') ? creds.accessToken : 'Bearer ${creds.accessToken}',
+        refreshToken: creds.refreshToken,
+      );
+    } catch (e) {
+      await note('Connecting sync failed after the code was redeemed: $e');
+      throw ConnectException('sign_in', '$e');
+    }
     await resetStats();
     return creds.userId;
   }
@@ -166,8 +204,24 @@ class HealthSync {
       await OpenWearablesHealthSdk.stopBackgroundSync();
     } catch (_) {}
     await OpenWearablesHealthSdk.signOut();
+    await _rearmEngine();
     await resetStats();
   }
+
+  /// Open Wearables' stopBackgroundSync disables background delivery of its types and cancels every BGTask request of
+  /// the app: the app's own engine and backfill ask for theirs again (#219 A2).
+  Future<void> _rearmEngine() async {
+    try {
+      await SyncEngine.instance.rearm();
+    } catch (_) {}
+  }
+
+  /// Sync is set up on this phone: Open Wearables connected, or the server's mode is `app` (the app's own engine; no
+  /// Open Wearables at all for new users, #219).
+  bool syncConnected(AppConfig c) => SyncEngine.instance.appMode || (c.owConnected && isSignedIn);
+
+  /// Open Wearables takes part: connected and the mode is not `app`.
+  bool owInUse(AppConfig c) => c.owConnected && isSignedIn && !SyncEngine.instance.appMode;
 
   Future<void> resetStats() async {
     await drainNativeLog(); // the old account logs do not count toward the new account
@@ -184,26 +238,34 @@ class HealthSync {
   /// The beat-to-beat HRV series and ECG that the app reads itself (raw_sync.dart) follow in a second, small sheet.
   /// Not connected to sync yet (the SDK is only configured by connecting): its sheet would throw NotConfiguredException, so
   /// only the app's own types are asked now; connecting asks for the rest.
+  /// From A2 (#219) the app's own sheet comes first and lists every type the app reads (the engine's registry, RawSync's
+  /// types and the two only the SDK asked for): the SDK's request after it then has nothing new to show, so there is one
+  /// sheet instead of two (the second one was often swallowed while the first was closing, #214, and the types of the
+  /// swallowed sheet stayed "not determined": reported as health_denied by 1.0.8). Mode `app`: no SDK at all.
   Future<bool> requestAuthorization() async {
     if (!hasHealthSync) return false;
-    if (!OpenWearablesHealthSdk.isConfigured) return RawSync.instance.requestAuth();
+    final app = await RawSync.instance.requestAuth();
+    if (!OpenWearablesHealthSdk.isConfigured || SyncEngine.instance.appMode) return app;
     final ok = await OpenWearablesHealthSdk.requestAuthorization(types: requestedTypes);
-    await RawSync.instance.requestAuth();
-    return ok;
+    return ok || app;
   }
 
   /// Starts background sync; calling it again while already on = sync one round immediately (skipped if the SDK is already syncing).
+  /// Mode `app`: Open Wearables stays off (the engine's rounds run from the home page instead).
   Future<bool> startSync(int syncDaysBack) async =>
-      hasHealthSync && await OpenWearablesHealthSdk.startBackgroundSync(syncDaysBack: syncDaysBack);
+      hasHealthSync && !SyncEngine.instance.appMode && await OpenWearablesHealthSdk.startBackgroundSync(syncDaysBack: syncDaysBack);
 
   /// Changes the read range (health_range.dart). "All history" after the 90-day export: the anchors only see newer
   /// samples, so they are reset and the whole history is exported again (the last 90 days are re-sent once and stored
   /// once by Open Wearables). Back to 90 days: only later full exports are limited; nothing already read is removed.
-  Future<void> changeRange(int syncDaysBack) async {
-    if (!hasHealthSync) return;
-    if (syncDaysBack <= 0) {
+  /// [grows] (backfill.dart rangeGrows): a larger range than before needs the history read again (14 -> 90 days as well
+  /// as -> all history); default: only going to all history.
+  Future<void> changeRange(int syncDaysBack, {bool? grows}) async {
+    if (!hasHealthSync || SyncEngine.instance.appMode) return;
+    if (grows ?? syncDaysBack <= 0) {
       await OpenWearablesHealthSdk.stopBackgroundSync();
       await OpenWearablesHealthSdk.resetAnchors();
+      await _rearmEngine();
     }
     await OpenWearablesHealthSdk.startBackgroundSync(syncDaysBack: syncDaysBack);
   }
@@ -212,15 +274,29 @@ class HealthSync {
   /// Same sequence as going to "All history": stop (cancels a running pass, which would make the export skip), clear
   /// every anchor, then start with the range stored, which runs a full export of it (newest first, resumable).
   Future<void> resyncFrom(int syncDaysBack) async {
-    if (!hasHealthSync) return;
+    if (!hasHealthSync || SyncEngine.instance.appMode) return;
     await OpenWearablesHealthSdk.stopBackgroundSync();
     await OpenWearablesHealthSdk.resetAnchors();
+    await _rearmEngine();
     await OpenWearablesHealthSdk.startBackgroundSync(syncDaysBack: syncDaysBack);
+  }
+
+  /// The server switched this user to the app's own sync engine (contract §7, mode `app`): the SDK stops syncing in
+  /// the background; its credentials and anchors stay, so going back resumes where it stopped.
+  Future<void> pauseForEngine() async {
+    if (!hasHealthSync || !OpenWearablesHealthSdk.isConfigured) return;
+    try {
+      await OpenWearablesHealthSdk.stopBackgroundSync();
+      await note('Open Wearables sync paused: the app\'s own sync engine is the source now');
+    } catch (e) {
+      await note('Pausing Open Wearables sync failed: $e');
+    }
+    await _rearmEngine();
   }
 
   /// Retry after failure: resumes an interrupted session if there is one, otherwise starts a new round.
   Future<void> retry(int syncDaysBack) async {
-    if (!hasHealthSync) return;
+    if (!hasHealthSync || SyncEngine.instance.appMode) return;
     final s = await status();
     if (s.hasResumableSession) {
       await OpenWearablesHealthSdk.resumeSync();

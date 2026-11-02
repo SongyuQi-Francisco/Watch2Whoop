@@ -30,11 +30,11 @@ CJK = re.compile(r"[一-鿿]")
 # Modules whose raised messages (ValueError, LookupError, ImportRefused, ChatError, AsrError …) routers turn into details.
 REACHABLE = ("account/api.py", "ai/api.py", "ai/chat.py", "ai/asr.py", "api.py", "assistant/memory_api.py",
              "assistant/memory.py", "assistant/meals.py", "assistant/recipes.py", "assistant/recipes_api.py",
-             "assistant/sparky_write.py", "cardio/", "explain/api.py", "friends/", "goals/", "grocery/", "history/", "insights/api.py",
+             "assistant/sparky_write.py", "cardio/", "explain/api.py", "friends/", "goals/", "grocery/", "history/", "inbox/", "insights/api.py",
              "insights/reports.py", "nutrition/extras.py", "profile/api.py", "profile/store.py", "rawdata/api.py",
              "records/api.py", "records/store.py", "records/analysis.py", "rules/api.py", "training/api.py",
              "training/history.py", "training/plans.py", "training/catalog.py", "avatars/", "images/", "water/api.py",
-             "web/", "sparky_client.py")
+             "web/", "sparky_client.py", "ownstore/write.py")
 # Modules with Chinese raise messages that stay Chinese because only the AI (tool arguments, tool results), the command line or
 # the admin ever read them. A module that is in neither list fails test_every_chinese_raise_is_classified (issue #64): decide
 # whether a page user can see its messages (then translate and add it to REACHABLE) or not (then add it here).
@@ -43,7 +43,8 @@ AI_OR_ADMIN_ONLY = (
     "ai/web/", "assistant/butler_tools.py", "assistant/diet_profile.py", "assistant/memory_review.py", "assistant/snapshots.py", "assistant/sparky_tools.py",
     "assistant/status.py", "assistant/tools.py", "assistant/writelog.py", "cli.py", "config.py", "importers/", "mcp_server.py",
     "ownstore/migrate.py",
-    "nutrition/constraints.py", "ow_client.py", "rawdata/compare.py", "rawdata/ecg.py", "records/importer.py",
+    "nutrition/constraints.py", "ow_client.py", "rawdata/compare.py", "rawdata/ecg.py", "rawdata/ow_archive.py", "rawdata/retire.py", "records/importer.py",
+    "weightlog/store.py",   # tags / note validation: the Today page only sends valid ones (chips, maxlength), the AI reads the rest
     "records/lab_catalog.py", "records/tools.py", "rules/context.py", "rules/store.py", "rules/tools.py", "scores/inputs.py",
     "sync/history.py", "training/day_overrides.py", "training/importer.py", "training/media.py", "training/overrides.py",
     "training/plan_start.py", "training/tools.py", "water/store.py")

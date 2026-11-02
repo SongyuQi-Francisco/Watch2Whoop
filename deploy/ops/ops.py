@@ -69,6 +69,7 @@ HEALTHSYNC_LABEL = "org.watch2whoop.healthsync"
 PRIMARY = os.environ.get("BODY_PRIMARY", "mac")
 ALI_HOST = os.environ.get("ALI_HOST", "Ali")              # name in ~/.ssh/config
 ALI_ROOT = os.environ.get("ALI_ROOT", "/opt/body-management")
+ALI_DOCTOR_MAX_AGE_S = 75 * 60   # Ali's own hourly doctor result is used while younger than this (doctor_checks_ali_primary)
 ALI_MIRROR = OPS_DIR / "ali-mirror"                       # mirror of Ali's secrets/ and health_data/archive/ (restic backs it up)
 ALI_DUMP_MAX_AGE = 3600                                   # the pulled dump must be freshly made (seconds)
 
@@ -423,9 +424,18 @@ def job_scores(log: Log, full: bool) -> list:
         engine_step(log, errors, "oauth-cleanup", "oauth-cleanup")
     if "ai-cards" in help_text:   # Jarvis quota cards: expiry + periodic grant rules (idempotent per period, #182)
         engine_step(log, errors, "ai-cards periodic", "ai-cards", "periodic")
+    if "whats-new" in help_text:   # the weekly 「本周更新」 message: sent only inside a user's own Sunday-evening window, idempotent per week
+        engine_step(log, errors, "whats-new send", "whats-new", "send")
     if full and "memory-review-run" in help_text:   # long-term memory review state + archive cleanup (#113); per user inside, idempotent
         engine_step(log, errors, "memory-review-run", "memory-review-run")
+    # the cut-over to the app sync engine (#219 S5): reconcile every user with the flags (switch / roll back / post check);
+    # nobody is switched while apple_sync_primary is off, so this is a no-op until then
+    if "sync-mode" in help_text:
+        engine_step(log, errors, "sync-mode apply", "sync-mode", "apply")
     batch_step(log, errors, full)
+    # the shadow comparison (#219 S4) after the night's import-ow: closed days only, users with the engine on
+    if full and "sync-shadow-compare" in help_text:
+        engine_step(log, errors, "sync-shadow-compare", "sync-shadow-compare")
     if full and "muscle-coverage-check" in help_text:   # every recent workout must credit a muscle on the muscle load map (training/muscle_coverage.py)
         engine_step(log, errors, "muscle-coverage-check", "muscle-coverage-check")
     return errors
@@ -885,8 +895,17 @@ def doctor_checks_ali_primary(r: Report) -> None:
     """When the primary server is Ali, this machine is only responsible for: pulling the backup from Ali into restic every night, the restore drill; and bringing back Ali's own doctor result.
     The local Docker services are stopped then (kept for rollback) and not checked."""
     t_now = time.time()
-    p = ssh_ali(f"python3 {ALI_ROOT}/deploy/ali/doctor.py --json", timeout=300, check=False)
-    line = next((l for l in reversed(p.stdout.splitlines()) if l.startswith("{")), "")
+    # Ali runs its own doctor every hour (systemd body-doctor, result in doctor-latest.txt): read that result instead of
+    # running a second doctor at the same minute. Two doctors at once started two extra Body Engine processes inside the
+    # API container and pushed it over its memory limit (docs/api-memory.md). Only a missing or stale result runs it here.
+    latest = f"{ALI_ROOT}/health_data/ops/doctor-latest.txt"
+    p = ssh_ali(f"echo $(( $(date +%s) - $(stat -c %Y {latest}) )); tail -n 1 {latest}", timeout=60, check=False)
+    out = p.stdout.splitlines()
+    age = int(out[0]) if out and out[0].strip().lstrip("-").isdigit() else None
+    line = out[-1] if age is not None and age < ALI_DOCTOR_MAX_AGE_S and out[-1].startswith("{") else ""
+    if not line:
+        p = ssh_ali(f"python3 {ALI_ROOT}/deploy/ali/doctor.py --json", timeout=300, check=False)
+        line = next((l for l in reversed(p.stdout.splitlines()) if l.startswith("{")), "")
     if not line:
         r.fail("Ali", f"ssh {ALI_HOST} 跑 doctor 失败：{(p.stderr or p.stdout).strip()[-150:]}")
     else:
@@ -922,6 +941,52 @@ def check_muscle_coverage(r: Report) -> None:
     else:
         names = "、".join(f"{b['type']}（{b['workouts']} 次）" for b in res["uncovered"])
         r.fail("肌肉图覆盖", f"这些运动类型没有映射到肌群：{names}；到 training/sport_muscles.py 补")
+
+
+def check_sync_shadow(r: Report) -> None:
+    """The app sync engine's shadow comparison (#219 S4; `body-engine sync-shadow-report --summary`: counts only)."""
+    p = engine("sync-shadow-report", "--summary", timeout=120)
+    try:
+        users = json.loads(p.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return   # an engine without the command, or nobody compared yet
+    if not users:
+        return
+    bad = [u for u in users if u["bad"]]
+    ready = sum(1 for u in users if u["ready"])
+    detail = f"{len(users)} 人对比中，{ready} 人可以切换"
+    if bad:
+        r.warn("影子对比", detail + "；有不一致：" + "、".join(f"user {u['user_id']}（{u['bad']} 项）" for u in bad)
+               + "（body-engine sync-shadow-report --user-id N 看明细）")
+    else:
+        r.ok("影子对比", detail)
+
+
+def legacy_sources_row(res: dict) -> tuple[str, str]:
+    """(status, detail) of the OW / Shortcut retirement (2.0.0 R1) from `body-engine retire-legacy status` (counts only).
+    Before the cutoff: ✓ with who still sends legacy data. After it: ⚠ while someone still sent data in the last days
+    (they are not on the app's own sync yet). An invalid cutoff value: ⚠ (the switch is not in effect)."""
+    c, days = res["cutoff"], res["recent_days"]
+    recent = f"近 {days} 天仍有 OW 数据 {res['ow_users_recent']} 人、快捷指令上传 {res['shortcut_users_recent']} 人"
+    if c.get("error"):
+        return "⚠", f"停用时间设置无效：{c['error']}；{recent}"
+    if not c["set"]:
+        return "✓", f"未设停用时间（OW / 快捷指令照常）；{recent}"
+    if not c["active"]:
+        return "✓", f"将于 {c['cutoff']} 停用；{recent}"
+    still = res["ow_users_recent"] + res["shortcut_users_recent"]
+    return ("⚠" if still else "✓"), f"已于 {c['cutoff']} 停用（快捷指令 410、不再导入 OW）；{recent}"
+
+
+def check_legacy_sources(r: Report) -> None:
+    """OW / Shortcut retirement switch (2.0.0 R1, `body-engine retire-legacy status`)."""
+    p = engine("retire-legacy", "status", timeout=120)
+    try:
+        res = json.loads(p.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return   # an engine without the command
+    st, detail = legacy_sources_row(res)
+    {"✓": r.ok, "⚠": r.warn}[st]("旧数据源停用", detail)
 
 
 def doctor_checks(r: Report) -> None:
@@ -1122,6 +1187,8 @@ def doctor_checks(r: Report) -> None:
             r.ok("每小时任务", f"{fmt_age(age)}成功")
 
     check_muscle_coverage(r)
+    check_sync_shadow(r)
+    check_legacy_sources(r)
     check_backups(r, state, t_now)
 
     # disk

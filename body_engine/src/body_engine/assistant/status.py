@@ -15,6 +15,10 @@
 - Viewing someone else's cards (shares scope memory, issue #111): an auto item is computed from another kind of data, so it
   also needs that data's own scope (AUTO_SCOPE; lab-linked items need labs). list_status(viewer_id=...) leaves the
   others out; the butler's own items are memory only.
+- Review (memory_review.py, issue #113, the owner's own AI only): get_memory_review flags the items the AI or the user wrote
+  (not the auto ones, not the lab-linked ones) when the records contradict them or updated_at is older than their group's
+  memory_params.STATUS_STALE_DAYS. Nothing is changed by it: writing an item again with set_status_items (updated_at restarts)
+  is how it is confirmed.
 """
 import json
 import re
@@ -279,7 +283,7 @@ def calc_labs(conn, user_id: int, today: date | None) -> list[tuple[dict, int]]:
 
 
 def calc_training(conn, user_id: int, today: date) -> list[tuple[dict, int]]:
-    client = sparky_client.client_for_user(conn, user_id)
+    client = sparky_client.reader_for_user(conn, user_id)
     sessions = sparky_client.training_log(client, today - timedelta(days=41), today)
     days = {date.fromisoformat(s["date"][:10]) for s in sessions}
     counts = [sum(1 for d in days if today - timedelta(days=7 * (k + 1)) < d <= today - timedelta(days=7 * k))
@@ -294,7 +298,7 @@ def red_meat_grams(conn, user_id: int, today: date) -> float | None:
     """Red meat grams over the last 7 days (including today), same basis as the rules engine (frequency_caps): journal red_meat_g first, otherwise estimated from food log names
     (names containing "红肉 Ng" use the labelled grams, which is how meal-template and recipe entries are written). Returns None if nothing was logged in these 7 days."""
     start = today - timedelta(days=6)
-    client = sparky_client.client_for_user(conn, user_id)
+    client = sparky_client.reader_for_user(conn, user_id)
     food = sparky_client.food_entries(client, start, today)
     journal = {r["date"]: r["value"] for r in conn.execute(
         "SELECT date, value FROM journal_entries WHERE user_id = %s AND key = 'red_meat_g' AND date BETWEEN %s AND %s",
@@ -323,7 +327,7 @@ def calc_red_meat(conn, user_id: int, today: date) -> list[tuple[dict, int]]:
     if grams is None:
         return []
     start = today - timedelta(days=6)
-    days_logged = len({f["date"] for f in sparky_client.food_entries(sparky_client.client_for_user(conn, user_id),
+    days_logged = len({f["date"] for f in sparky_client.food_entries(sparky_client.reader_for_user(conn, user_id),
                                                                      start, today)})
     tone = "good" if grams < cap * CP.WARN_FRACTION else "warn" if grams <= cap else "bad"
     return [({"key": "red_meat_week", "label": "红肉7天", "value": f"{grams:.0f}", "unit": "g", "tone": tone,

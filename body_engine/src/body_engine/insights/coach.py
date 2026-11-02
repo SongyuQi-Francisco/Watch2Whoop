@@ -9,6 +9,13 @@ import psycopg
 from ..i18n import is_en
 from ..scores import params as SP
 from ..scores import sleep as S
+from . import healthspan_store as _HSS
+
+# 2.0.0 package M4 (docs/ios-native-2.0.md section 4): the phone runs this module's pure parts (`*_compute`), the bedtime
+# goal of goals/, the sleep detail of sleep_night/, the Today composition of web/views.py and the body-age loader of
+# healthspan_store.py as JS src/34_coach.js. One key for all of them and the body-age algorithm they run, so a change of
+# either makes the phone recompute (as insights/stress.STRESS_CARDS_VERSION).
+COACH_VERSION = "coach-2+" + _HSS.CURRENT.ALGO_VERSION   # coach-2: the health monitor's missing reasons are bilingual, wrist temperature has its own (FB-18)
 
 # ---------------------------------------------------------------- today's strain target
 # WHOOP's Strain Coach gives the day's target strain by recovery score; the ranges are first-version values (strain calibrated to our K=170, median on strength-training days about 12).
@@ -47,7 +54,11 @@ def strain_coach(conn: psycopg.Connection, user_id: int, d: date) -> dict:
     rows = {r["date"]: r for r in conn.execute(
         "SELECT date, recovery, strain, tsb, flags FROM daily_scores WHERE user_id = %s AND date BETWEEN %s AND %s",
         (user_id, d - timedelta(days=1), d))}
-    today, yday = rows.get(d), rows.get(d - timedelta(days=1))
+    return strain_coach_compute(rows.get(d), rows.get(d - timedelta(days=1)), d)
+
+
+def strain_coach_compute(today: dict | None, yday: dict | None, d: date) -> dict:
+    """The pure part of strain_coach: today's and yesterday's score rows {recovery, strain, tsb, flags} (None = no row)."""
     illness = bool(today and "illness_warning" in (today["flags"] or {}))
     tgt = strain_target(today["recovery"] if today else None, yday["tsb"] if yday else None, illness)
     cur = today["strain"] if today else None
@@ -97,6 +108,15 @@ def sleep_coach(conn: psycopg.Connection, user_id: int, d: date, tz: ZoneInfo, g
     rows = conn.execute("""SELECT date, sleep_actual_min, strain, details->'sleep' AS s FROM daily_scores
                            WHERE user_id = %s AND date BETWEEN %s AND %s ORDER BY date DESC""",
                         (user_id, d - timedelta(days=SP.DEBT_NIGHTS - 1), d)).fetchall()
+    if goal == "auto":
+        goal = _goal_view(conn, user_id)
+    return sleep_coach_compute(rows, d, tz, goal)
+
+
+def sleep_coach_compute(rows: list[dict], d: date, tz: ZoneInfo, goal: dict | None) -> dict:
+    """The pure part of sleep_coach: score rows {date, sleep_actual_min, strain, s = details.sleep} of the DEBT_NIGHTS days
+    up to d, newest first; goal = the bedtime-goal view (goals/store.compute) when it has a target tonight, else None.
+    Clock arithmetic is wall-clock (datetimes of one time zone), so a DST night shifts nothing."""
     by = {r["date"]: r for r in rows}
     actual = [by[d - timedelta(days=k)]["sleep_actual_min"] if d - timedelta(days=k) in by else None
               for k in range(SP.DEBT_NIGHTS)]
@@ -105,8 +125,6 @@ def sleep_coach(conn: psycopg.Connection, user_id: int, d: date, tz: ZoneInfo, g
     latencies = [r["s"].get("latency_min") for r in rows if r["s"] and r["s"].get("latency_min") is not None]
     latency = statistics.median(latencies) if len(latencies) >= 3 else LATENCY_DEFAULT_MIN
     wakes = [datetime.fromisoformat(r["s"]["wake_time"]) for r in rows[:7] if r["s"] and r["s"].get("wake_time")]
-    if goal == "auto":
-        goal = _goal_view(conn, user_id)
     out = {"date": d, "need_min": round(need["need"]), "need_parts": {k: round(need[k]) for k in ("baseline", "from_debt",
            "from_strain")}, "sleep_debt_min": round(need["debt"]), "strain_today": strain_today,
            "latency_buffer_min": round(latency), "wake_time": None, "wake_source": None,
@@ -159,6 +177,7 @@ def sleep_coach(conn: psycopg.Connection, user_id: int, d: date, tz: ZoneInfo, g
 MONITOR_DAYS = 60
 MONITOR_MIN_NIGHTS = 14
 MONITOR_K = 2.0               # normal range = baseline mean ± 2 × standard deviation (not below the half-band widths below)
+MONITOR_HRV_MIN_HALF_LN = 0.15   # HRV's minimum half-band on the ln scale (about ±16 %); first-version value, named for the JS twin
 MONITOR = {   # key: (label, unit, getter, minimum half-band)
     "rhr": ("静息心率（睡眠期最低）", "bpm", lambda r: r["rhr_value"], 3.0),
     "hrv": ("HRV（SDNN，夜间）", "ms", lambda r: math.exp(r["hrv_night_ln"]) if r["hrv_night_ln"] is not None else None, None),
@@ -176,6 +195,27 @@ MONITOR_EN = {  # key: (English label, unit) for the Today page in English (issu
     "wrist_temp": ("Wrist temperature (night)", "°C"),
 }
 RHR_APPLE_LABEL = ("静息心率（Apple 全天，最近一晚没有睡眠期原始心率）", "Resting HR (Apple, all day; no raw sleep HR last night)")
+# Why a vital has no value: a short label (the page and the app show numbers and short words; the longer explanation for the AI is
+# in explain/glossary_trends.py). Index 0 = Chinese, 1 = English, picked by is_en(). The JS twin (src/34_coach.js) carries the
+# same texts and the golden test compares them.
+# - MONITOR_MISSING: the latest night has no reading of this vital;
+# - MONITOR_MISSING_KEY: a vital with one usual cause. Sleeping wrist temperature is written by the Apple Watch only when it is
+#   worn in bed with a sleep schedule / Sleep Focus and "Track Sleep with Apple Watch" on, and only after about 5 such nights
+#   (Apple's documented behaviour), so a night without a reading is usually the watch, not the sync (FB-18);
+# - MONITOR_MISSING_BASELINE: there is a reading, but too few earlier nights to draw a personal range ({days}, {n}, {need}).
+MONITOR_MISSING = ("最近一晚没有这项读数", "No reading last night")
+MONITOR_MISSING_KEY = {
+    "wrist_temp": ("手表这晚没记录（要戴表睡觉、开睡眠专注）", "The watch did not record it (wear it to bed with Sleep Focus on)"),
+}
+MONITOR_MISSING_BASELINE = ("前 {days} 天只有 {n} 晚（要 ≥ {need}）", "Only {n} nights in the last {days} days (need ≥ {need})")
+
+
+def monitor_missing_reason(key: str, no_reading: bool, nights: int) -> str:
+    """The short reason a vital has no status: no reading last night (no_reading), else too few earlier nights."""
+    i = int(is_en())
+    if no_reading:
+        return MONITOR_MISSING_KEY.get(key, MONITOR_MISSING)[i]
+    return MONITOR_MISSING_BASELINE[i].format(days=MONITOR_DAYS, n=nights, need=MONITOR_MIN_NIGHTS)
 
 
 def monitor_range(values: list[float], key: str) -> tuple[float, float, float] | None:
@@ -185,7 +225,7 @@ def monitor_range(values: list[float], key: str) -> tuple[float, float, float] |
     if key == "hrv":
         ln = [math.log(v) for v in values]
         m, sd = statistics.fmean(ln), statistics.stdev(ln)
-        half = max(MONITOR_K * sd, 0.15)
+        half = max(MONITOR_K * sd, MONITOR_HRV_MIN_HALF_LN)
         return math.exp(m - half), math.exp(m + half), math.exp(m)
     m, sd = statistics.fmean(values), statistics.stdev(values)
     half = max(MONITOR_K * sd, MONITOR[key][3])
@@ -199,6 +239,14 @@ def health_monitor(conn: psycopg.Connection, user_id: int, d: date) -> dict:
                                 AND m.metric = 'resting_heart_rate'
                            WHERE s.user_id = %s AND s.date BETWEEN %s AND %s ORDER BY s.date""",
                         (user_id, d - timedelta(days=MONITOR_DAYS), d)).fetchall()
+    return health_monitor_compute(rows, d)
+
+
+def health_monitor_compute(rows: list[dict], d: date) -> dict:
+    """The pure part of health_monitor: score rows of the MONITOR_DAYS days up to d, by date: {date, rhr_night,
+    hrv_night_ln, resp_rate_night, rec = details.recovery, rhr_daily = flags has rhr_from_daily, apple_rhr = Apple's
+    resting heart rate of the day}. The caller's rows are not changed."""
+    rows = [dict(r) for r in rows]
     latest_any = next((r for r in reversed(rows) if r["rhr_night"] is not None or r["hrv_night_ln"] is not None), None)
     # the lowest sleep heart rate and Apple's all-day resting heart rate differ by a few bpm and cannot be compared mixed: when the latest night is a fallback all-day value, use the all-day value against its own baseline for the whole item
     rhr_apple = bool(latest_any and latest_any["rhr_daily"])
@@ -223,7 +271,7 @@ def health_monitor(conn: psycopg.Connection, user_id: int, d: date) -> dict:
                         "baseline": None if rng is None else round(rng[2], 2), "baseline_nights": len(hist),
                         "status": status,
                         "missing_reason": None if rng is not None and cur is not None else
-                        ("最近一晚没有这项读数" if cur is None else f"前 {MONITOR_DAYS} 天只有 {len(hist)} 晚（要 ≥ {MONITOR_MIN_NIGHTS}）")})
+                        monitor_missing_reason(key, cur is None, len(hist))})
     out_of_range = [m["key"] for m in metrics if m["status"] in ("low", "high")]
     return {"date": latest["date"] if latest else None, "metrics": metrics, "out_of_range": out_of_range,
             "all_in_range": None if all(m["status"] is None for m in metrics) else not out_of_range}

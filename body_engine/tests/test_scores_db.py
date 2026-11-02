@@ -159,3 +159,37 @@ def test_shortcut_archive_fills_hrv_and_sleep_stages(conn, tmp_path):
     assert r["details"]["sleep"]["waso_min"] == 30 and r["details"]["sleep"]["awakenings"] == 1
     assert "rhr_from_daily" in r["flags"] and r["rhr_night"] == 55
     assert r["strain"] is None and "no_raw_hr" in r["flags"]
+
+
+def test_concurrent_writes_of_one_user_do_not_collide(conn):
+    """Two recomputes of the same days at once (hourly batch + sync-refresh-run) used to fail with UniqueViolation on
+    daily_scores_pkey: both DELETEs saw no rows, then both INSERTed. Now the writes of a user are serialised and upserted."""
+    import threading
+    uid = seed(conn, make_inputs(3))
+    start = date(2026, 9, 1)
+    end = start + timedelta(days=9)
+
+    def rows(tag):
+        return [{"date": start + timedelta(days=i), **{c: None for c in engine.COLUMNS}, "algo_version": tag,
+                 "flags": {}, "details": {}} for i in range(10)]
+
+    errors = []
+
+    def writer(tag):
+        try:
+            with psycopg.connect(TEST_SETTINGS.dsn, row_factory=dict_row) as c:
+                for _ in range(15):
+                    engine.write(c, uid, rows(tag), start, end)
+                    c.commit()
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+
+    threads = [threading.Thread(target=writer, args=(t,)) for t in ("a", "b", "c")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+    got = conn.execute("SELECT count(*) AS n, count(DISTINCT algo_version) AS v FROM daily_scores WHERE user_id = %s",
+                       (uid,)).fetchone()
+    assert got["n"] == 10 and got["v"] == 1   # one writer's complete set, never a mix

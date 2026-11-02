@@ -12,8 +12,10 @@ from datetime import timedelta
 
 from . import _override
 
-ALGO_VERSION = "v1.1-2026-10-16"
+ALGO_VERSION = "v1.2-2026-10-27"
 # v1.1: adds muscle_load (training volume from SparkyFitness workout records, scores/muscle.py); the sleep / recovery / strain algorithms are the same as v1.0
+# v1.2: a sleeping wrist temperature reading dated up to WRIST_TEMP_LEAD before the night's first sleep also belongs to the
+#       night (WRIST_TEMP_LEAD below); only the wrist temperature value and its flag change, the scores are the same as v1.1
 
 # ---------- sleep score: copied from Open Wearables 0.9.0's Sleep Score (backend/app/algorithms/sleep.py, config_algorithms.py) ----------
 DURATION_IMPACT, STAGES_IMPACT, CONSISTENCY_IMPACT, INTERRUPTIONS_IMPACT = 0.40, 0.20, 0.20, 0.20
@@ -68,6 +70,13 @@ ILLNESS_RHR_DELTA = 5.0                # illness warning: that night's resting h
 ILLNESS_HRV_RATIO = 0.85               # ... and HRV < 0.85 × baseline
 WRIST_TEMP_DELTA = 0.6                 # wrist temperature 0.6°C or more above (or below) the 60-day baseline median -> flag
 MIN_TEMP_BASELINE = 5
+# Which night a sleeping wrist temperature reading belongs to. Apple writes one reading per night and dates it from the start
+# of the sleep schedule / Sleep Focus, not from the first sleep the watch detects (real readings start up to about 7 h before
+# the night's first sleep stage when someone goes to bed late; about a third were dropped by the old ±2 h window). A reading within WRIST_TEMP_PAD of the night
+# counts as before; a night without one takes a reading from up to WRIST_TEMP_LEAD before its start, never one before the
+# end (+ WRIST_TEMP_PAD) of the previous main sleep. Data matching, not a health threshold.
+WRIST_TEMP_PAD = timedelta(hours=2)
+WRIST_TEMP_LEAD = timedelta(hours=8)
 SPO2_LOW_MEDIAN = 94.0                 # that night's median SpO2 < 94% -> flag
 SPO2_LOW_READING, SPO2_LOW_COUNT = 90.0, 2   # or >= 2 readings < 90%
 

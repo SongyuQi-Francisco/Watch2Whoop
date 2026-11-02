@@ -9,13 +9,13 @@ Which playbooks a restricted caller may run, and what it gets instead, stays wit
 import re
 from typing import Iterable
 
-from .messages import Messages
+from .messages import ENGLISH, Messages
 
 
 class PlaybookSource:
     """files: a directory (importlib.resources Traversable or pathlib.Path) holding NAME.md for every name."""
 
-    def __init__(self, files, names: Iterable[str], *, messages: Messages, find_line: str = "",
+    def __init__(self, files, names: Iterable[str], *, messages: Messages = ENGLISH, find_line: str = "",
                  tool_re: re.Pattern | None = None):
         self.files = files
         self.names = tuple(names)

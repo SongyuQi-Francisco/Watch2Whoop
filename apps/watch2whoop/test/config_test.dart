@@ -1,7 +1,18 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch2whoop/src/config.dart';
+import 'package:watch2whoop/src/sync_params.dart';
 
 void main() {
+  test('the example defaults do not override the 14-day first sync (1.0.8)', () {
+    final j = jsonDecode(File('config/defaults.example.json').readAsStringSync()) as Map<String, dynamic>;
+    final v = j['W2W_SYNC_DAYS_BACK'];
+    expect(v == null || int.parse('$v') == kFirstSyncDays, isTrue, reason: 'defaults.example.json would change the first sync range');
+    expect(kDefaultSyncDaysBack, kFirstSyncDays);
+  });
+
   group('checkServerUrl', () {
     test('adds https, strips trailing /', () {
       final c = checkServerUrl('  mac.example.ts.net/ ', UrlKind.today);
@@ -144,7 +155,7 @@ void main() {
     expect(r.copyWith(clearPendingLoginCode: true).pendingLoginCode, isNull);
     expect(r.copyWith(todayUrl: 'https://c.example').pendingLoginCode, 'ABCDEFGHJKMN');
     expect(AppConfig.fromJson(const {}).syncDaysBack, kDefaultSyncDaysBack);
-    expect(kDefaultSyncDaysBack, 90);
+    expect(kDefaultSyncDaysBack, 14, reason: 'the first sync reads 14 days since 1.0.8 (sync_params.dart)');
   });
 
   test('only a definite answer from the Today page settles the pending login code', () {

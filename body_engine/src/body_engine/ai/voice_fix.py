@@ -18,9 +18,11 @@ import re
 import time
 from collections.abc import Iterable
 
-import jellyfish
 import psycopg
-from pypinyin import Style, lazy_pinyin, pinyin
+
+# jellyfish and pypinyin are imported on first use: pypinyin's dictionaries are about 50 MB of Python objects, and this
+# module is imported by every API process although voice input is rare (the API stays under its memory limit, see
+# docs/api-memory.md).
 
 MAX_TERMS = 300            # per user, most recently used first
 MAX_TEXT = 2000            # characters accepted by POST /v1/assistant/voice-fix
@@ -141,7 +143,13 @@ def forget(user_id: int | None = None) -> None:
 
 # ---------------------------------------------------------------- correction
 def _sim(a: str, b: str) -> float:
+    import jellyfish
     return 1 - jellyfish.levenshtein_distance(a, b) / max(len(a), len(b), 1)
+
+
+def _metaphone(s: str) -> str:
+    import jellyfish
+    return jellyfish.metaphone(s)
 
 
 def _fix_en(text: str, en_terms: list[str]) -> tuple[str, list[dict]]:
@@ -172,7 +180,7 @@ def _fix_en(text: str, en_terms: list[str]) -> tuple[str, list[dict]]:
                     continue
                 if not (0.6 <= len(s) / len(tl) <= 1.6):
                     continue
-                sc = 0.7 * _sim(s, tl) + 0.3 * _sim(jellyfish.metaphone(s), jellyfish.metaphone(tl))
+                sc = 0.7 * _sim(s, tl) + 0.3 * _sim(_metaphone(s), _metaphone(tl))
                 if sc >= need and (best is None or sc > best[0]):
                     best = (sc, i, k)
         if best:
@@ -189,12 +197,14 @@ def _fix_en(text: str, en_terms: list[str]) -> tuple[str, list[dict]]:
 
 
 def _char_py(c: str, tones: bool) -> set[str]:
+    from pypinyin import Style, pinyin
     return set(pinyin(c, heteronym=True, style=Style.TONE3 if tones else Style.NORMAL)[0])
 
 
 def _fix_zh(text: str, zh_terms: list[str]) -> tuple[str, list[dict]]:
     if not CJK.search(text):
         return text, []
+    from pypinyin import Style, lazy_pinyin
     changes = []
     for t in sorted(zh_terms, key=len, reverse=True):
         if t in text:

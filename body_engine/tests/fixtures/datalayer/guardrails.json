@@ -45,7 +45,7 @@
  },
  "unknown_group": {
   "is_error": true,
-  "text": "ValueError: 没有这个组：no_such_group；可用的组：body / training / nutrition / recipes / grocery / records / memory / feedback / help"
+  "text": "ValueError: 没有这个组：no_such_group；可用的组：body / training / nutrition / recipes / grocery / records / memory / feedback / help / home"
  },
  "ai_parity_confirm_tool_through_run_write_tool": {
   "is_error": true,

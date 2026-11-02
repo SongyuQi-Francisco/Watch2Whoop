@@ -23,6 +23,7 @@ TREND_MIN_POINTS = 3     # days with a price before the card draws a line; fewer
 TREND_MAX_POINTS = 30
 MAX_STORES, MAX_PANTRY = 6, 3
 ENERGY_KCAL_PER_G = {"protein_g": 4.0, "carbs_g": 4.0, "fat_g": 9.0}   # Atwater factors, only for the split bar
+SERVING_KEYS = ("kcal", "protein_g", "carbs_g", "fat_g")   # what the card's per-serving line shows
 OFFER_KEYS = ("store", "label", "name", "size", "price", "was_price", "unit_price", "unit_price_unit", "special", "special_label",
               "half_price", "age_days", "stale", "source")
 
@@ -50,7 +51,12 @@ def _split(per100: dict) -> dict | None:
 
 
 def _serving(row: dict, per100: dict, unit: str) -> dict | None:
-    """One piece (piece_g) or else the whole pack, when its weight / volume is known: kcal and macros for that amount."""
+    """The label's own per-serving column when the product has one (#291: serving_size + nutrition_serving); else one piece
+    (piece_g) or the whole pack, when its weight / volume is known: kcal and macros for that amount."""
+    ns = row.get("nutrition_serving") or {}
+    if _num(row.get("serving_size")) and any(_num(ns.get(k)) is not None for k in SERVING_KEYS):
+        return {"kind": "serving", "amount": round(float(row["serving_size"]), 1), "unit": row.get("serving_unit") or unit,
+                **{k: round(float(ns[k]), 1) for k in SERVING_KEYS if _num(ns.get(k)) is not None}}
     if _num(row.get("piece_g")):
         kind, amount = "piece", float(row["piece_g"])
     elif row.get("package_unit") in ("g", "ml") and _num(row.get("package_size")):
@@ -195,6 +201,8 @@ def product(conn: psycopg.Connection, uid: int, product_id=None, q: str | None =
     actions.append({"kind": "send", "key": "record_price"})
     return {"type": PRODUCT, "id": row["id"] if row else None, "name": row["name"] if row else first["name"],
             "brand": row.get("brand") if row else None, "size": size or None, "nutrition": nut,
+            "allergens": (row.get("allergens") or []) if row else [], "traces": (row.get("allergen_traces") or []) if row else [],
+            "image_url": row.get("image_url") if row else None,
             "stores": _store_rows(conn, uid, row, offers), "history": _history(conn, uid, row, offers),
             "pantry": _pantry(conn, uid, row, q), "actions": actions}
 
@@ -210,6 +218,8 @@ def summary(card: dict) -> str | None:
         parts.append(f"每 100{n['unit']} {p['kcal']:g} kcal、蛋白 {p.get('protein_g', 0):g} g" if "kcal" in p else f"有每 100{n['unit']} 的营养")
     else:
         parts.append("商品库里没有营养（可以请用户拍营养成分表或给条码）")
+    if card.get("allergens"):
+        parts.append("含过敏原：" + "、".join(card["allergens"]))
     rows = card["stores"]
     if rows:
         low = next((r for r in rows if r.get("lowest")), rows[0])

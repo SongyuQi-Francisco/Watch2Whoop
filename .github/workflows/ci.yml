@@ -38,7 +38,9 @@ jobs:
     outputs:
       server: ${{ steps.filter.outputs.server }}
       flutter: ${{ steps.filter.outputs.flutter }}
+      ios_native: ${{ steps.filter.outputs.ios_native }}
       other_apps: ${{ steps.filter.outputs.other_apps }}
+      algo_js: ${{ steps.filter.outputs.algo_js }}
     steps:
       - id: filter
         env:
@@ -52,6 +54,8 @@ jobs:
             echo "$1 → running all jobs"
             echo "server=true" >> "$GITHUB_OUTPUT"
             echo "flutter=true" >> "$GITHUB_OUTPUT"
+            echo "ios_native=true" >> "$GITHUB_OUTPUT"
+            echo "algo_js=true" >> "$GITHUB_OUTPUT"
             echo "other_apps=$(jq -c '[.[] | select(.enabled)]' <<< "$OTHER_APPS")" >> "$GITHUB_OUTPUT"
             exit 0
           }
@@ -68,11 +72,17 @@ jobs:
              || grep -qxE 'apps/watch2whoop/(lib/src/hk_types\.dart|assets/healthkit_types\.json)' <<< "$files"; then
             server=true; else server=false; fi
           if grep -q "^$FLUTTER_APP/" <<< "$files"; then flutter=true; else flutter=false; fi
+          # The native SwiftUI app (#340): only its own directory
+          if grep -q "^apps/ios/" <<< "$files"; then ios_native=true; else ios_native=false; fi
+          # The JS port of the algorithms (#340): its own files, the Python it ports (2.0.0 packages included,
+          # docs/ios-native-2.0.md section 2.2) and the cross-language goldens of every package
+          if grep -qE '^(packages/openbodyscore(-js)?/|body_engine/src/body_engine/((scores|trends|insights|algo|rawdata|importers|training|cardio|rules|explain|goals|sleep_night|records|static_bundle)/|web/views\.py)|body_engine/tests/test_js_golden[^/]*\.py)' <<< "$files"; then
+            algo_js=true; else algo_js=false; fi
           other="$(jq -c --arg files "$files" \
             '[.[] | select(.enabled) | . as $a | select($files | split("\n") | any(startswith($a.path + "/")))]' \
             <<< "$OTHER_APPS")"
-          echo "server=$server flutter=$flutter other_apps=$other"
-          { echo "server=$server"; echo "flutter=$flutter"; echo "other_apps=$other"; } >> "$GITHUB_OUTPUT"
+          echo "server=$server flutter=$flutter ios_native=$ios_native algo_js=$algo_js other_apps=$other"
+          { echo "server=$server"; echo "flutter=$flutter"; echo "ios_native=$ios_native"; echo "algo_js=$algo_js"; echo "other_apps=$other"; } >> "$GITHUB_OUTPUT"
 
   body-engine:
     name: Body Engine tests
@@ -97,8 +107,8 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v8.3.2
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.2
         with:
           version: "0.12.19"
       - name: Database password file
@@ -108,6 +118,11 @@ jobs:
       - name: openbodyscore tests
         working-directory: packages/openbodyscore
         run: uv run --locked pytest -q
+      # The datalayer framework's non-health example (issue #116): real stdio and HTTP processes on SQLite, no database
+      # server. Outside body_engine/tests, so the example keeps standing on its own.
+      - name: reading-notes example
+        working-directory: body_engine
+        run: uv run --locked pytest -q ../examples/reading-notes
       - name: pytest
         working-directory: body_engine
         env:
@@ -122,20 +137,45 @@ jobs:
           uv run --locked pytest -q -rs | tee "$RUNNER_TEMP/pytest.txt"
           ! grep -qE "cannot connect to Postgres|unreachable" "$RUNNER_TEMP/pytest.txt"
 
+  # The scoring algorithms as one JS file for the iOS app (packages/openbodyscore-js, issue #340): dist/ must be what src/
+  # builds, and the bundle must give Python's numbers on the shared golden cases (the Python side of those goldens runs in
+  # "Body Engine tests": tests/test_js_golden*.py). Every test/*.test.js runs (one per 2.0.0 package). Not a required check
+  # of main.
+  algo-js:
+    name: Algorithm JS bundle
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.algo_js == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: dist/ is up to date
+        run: node packages/openbodyscore-js/build.js --check
+      - name: cross-language golden tests
+        env:
+          PYTHON: python
+        run: node --test packages/openbodyscore-js/test/*.test.js
+
   syntax:
     name: Syntax checks   # always runs: it covers every tracked .py / .sh / .js and takes seconds
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: py_compile (all tracked .py)
         run: git ls-files -z '*.py' | xargs -0 -r python -m py_compile
       - name: bash -n (all tracked .sh)
         run: git ls-files -z '*.sh' | xargs -0 -r -n1 bash -n
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       # The Today page has no build step, so a JS syntax error ships as is and blanks the whole page (#198 → #207)
@@ -161,8 +201,8 @@ jobs:
       run:
         working-directory: ${{ env.FLUTTER_APP }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: subosito/flutter-action@v2.9.1
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2.23.0
         with:
           channel: stable
           flutter-version: 3.47.7
@@ -170,6 +210,89 @@ jobs:
       # config/defaults.json (your own server address) is git-ignored and not needed: the defaults compile to empty values
       - run: flutter pub get
       - run: flutter test
+
+  # iOS native pods (#295 A4): `pod install` from pubspec.lock must give exactly the committed ios/Podfile.lock, so a
+  # tag builds the same pods every time (OpenWearablesHealthSDK ~> 0.15.0 cannot float). Not a required check of main.
+  # Note: plugin pods carry their podspec's version (e.g. open_wearables_health_sdk 0.0.25 says 0.0.24), not pub's.
+  ios-pods:
+    name: iOS Podfile.lock
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.flutter == 'true') }}
+    runs-on: macos-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ${{ env.FLUTTER_APP }}
+    env:
+      LANG: en_US.UTF-8
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2.23.0
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+      - run: flutter precache --ios
+      - run: flutter pub get
+      - run: cd ios && pod install
+      - name: Podfile.lock unchanged (otherwise run `pod install` and commit ios/Podfile.lock)
+        run: git diff --exit-code ios/Podfile.lock
+
+  # Native SwiftUI iOS app (#340, docs/ios-native-app.md section 10): generate the project with a pinned XcodeGen, build
+  # and run the unit tests on a simulator. Runs only when apps/ios/ changes. Not a required check of main yet.
+  ios-native:
+    name: iOS native
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios_native == 'true') }}
+    runs-on: macos-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: apps/ios
+    env:
+      XCODEGEN_VERSION: "2.46.0"
+      XCODEGEN_SHA256: 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
+    steps:
+      - uses: actions/checkout@v7
+      - name: Source checks (bilingual strings, colour tokens, Lucide icons)
+        run: |
+          python3 scripts/check_sources.py
+          python3 scripts/lucide_assets.py --check
+      - name: Copied sync files match the Flutter app (warning only while A2–A4 change them there)
+        run: scripts/sync_flutter_sources.sh --check || echo "::warning::apps/ios HealthSync copies differ from apps/watch2whoop/ios/Runner; run apps/ios/scripts/sync_flutter_sources.sh"
+      - name: Newest Xcode
+        run: |
+          xcode="$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+          echo "using $xcode"
+          echo "DEVELOPER_DIR=$xcode/Contents/Developer" >> "$GITHUB_ENV"
+      - name: XcodeGen ${{ env.XCODEGEN_VERSION }}
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/$XCODEGEN_VERSION/xcodegen.zip"
+          echo "$XCODEGEN_SHA256  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          "$RUNNER_TEMP/xcodegen/bin/xcodegen" generate
+      - name: Simulator
+        run: |
+          id="$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          rt = json.load(sys.stdin)["devices"]
+          ios = sorted((k for k in rt if "iOS" in k), key=lambda k: [int(x) for x in k.rsplit("iOS-", 1)[-1].split("-")])
+          for k in reversed(ios):
+              phones = [d for d in rt[k] if d["name"].startswith("iPhone")]
+              if phones:
+                  print(phones[0]["udid"]); break
+          ')"
+          test -n "$id"
+          echo "SIM_ID=$id" >> "$GITHUB_ENV"
+      - name: Build
+        run: >-
+          xcodebuild -project Watch2Whoop.xcodeproj -scheme Watch2Whoop -destination "platform=iOS Simulator,id=$SIM_ID"
+          -derivedDataPath "$RUNNER_TEMP/dd" CODE_SIGNING_ALLOWED=NO build
+      - name: Unit tests
+        run: >-
+          xcodebuild -project Watch2Whoop.xcodeproj -scheme Watch2Whoop -destination "platform=iOS Simulator,id=$SIM_ID"
+          -derivedDataPath "$RUNNER_TEMP/dd" CODE_SIGNING_ALLOWED=NO test
 
   # Android build check (#253): the release APK, signed with the runner's debug key (no secrets on pull requests), kept
   # as an artifact of the run for a test phone. Not a required check of main yet.
@@ -193,7 +316,7 @@ jobs:
       run:
         working-directory: ${{ matrix.app.path }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: HarmonyOS (placeholder)
         if: matrix.app.kind == 'harmony'
         run: |

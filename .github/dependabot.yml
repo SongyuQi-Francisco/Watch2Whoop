@@ -1,0 +1,32 @@
+# Dependency alerts and update pull requests (#295 A5). Versions stay pinned exactly; Dependabot only proposes the bump as
+# a pull request, which goes through CI and a maintainer like any other (CONTRIBUTING.md). Security updates are separate
+# (repository settings -> Code security) and do not wait for the weekly run.
+version: 2
+updates:
+  # The Flutter app (pubspec.yaml / pubspec.lock). Native pods (ios/Podfile.lock, e.g. OpenWearablesHealthSDK) are not
+  # covered by Dependabot: the "iOS Podfile.lock" CI job checks the lock still matches after `pod install`.
+  - package-ecosystem: pub
+    directory: /apps/watch2whoop
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(app)"
+    groups:
+      # patch releases together in one pull request
+      app-patches:
+        update-types: [patch]
+
+  # Actions used by the workflows in .github/workflows
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(ci)"
+    groups:
+      actions:
+        patterns: ["*"]

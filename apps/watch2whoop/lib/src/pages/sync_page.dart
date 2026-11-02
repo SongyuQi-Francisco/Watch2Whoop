@@ -5,6 +5,8 @@
 // re-sync and the phone / server comparison per type (sync_center_section.dart) in place of 「服务器收到的数据」; the Today
 // page then has this one row instead of 手机同步 / 数据更新 / 数据状态. Flag off: the page is exactly as before.
 // Android (#253): no phone health sync yet, so the page only says so and keeps the setup / server / sign-out rows.
+// The app's own sync engine (#219 A4, engine_section.dart): shown while the server has it on; in mode `app` it is the
+// sync, so the Open Wearables parts (its log counts, connect / reconnect / disconnect, its server) are not shown.
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -16,6 +18,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../account_api.dart';
 import '../account_flow.dart';
 import '../app_state.dart';
+import '../backfill.dart';
 import '../config.dart';
 import '../data_status.dart';
 import '../debug_seed.dart';
@@ -26,9 +29,11 @@ import '../platform_features.dart';
 import '../raw_sync.dart';
 import '../resync.dart';
 import '../setup_flow.dart';
+import '../sync_engine.dart';
 import '../sync_stats.dart';
 import '../ui.dart';
 import 'data_status_section.dart';
+import 'engine_section.dart';
 import 'permissions_page.dart';
 import 'range_picker.dart';
 import 'scan_page.dart';
@@ -244,28 +249,36 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
 
   bool get _hasAccount => AppState.instance.accountToken != null;
 
-  /// 90 days ⇄ all history. Going to all history re-reads everything (the last 90 days once more, stored once).
+  /// 14 / 90 days / all history (backfill.dart). A larger range reads the older history in the background, after the new
+  /// data; a smaller one only stops reading further back.
   Future<void> _changeRange(int days) async {
     final toAll = isAllHistory(days);
+    final grows = rangeGrows(_config.syncDaysBack, days);
     final yes = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(toAll ? tr('读取全部历史？', 'Read all history?') : tr('改回近 90 天？', 'Back to the last 90 days?')),
-        content: Text(toAll
+        title: Text(toAll
+            ? tr('读取全部历史？', 'Read all history?')
+            : grows
+                ? tr('补上近 $days 天？', 'Add the last $days days?')
+                : tr('改回近 $days 天？', 'Back to the last $days days?')),
+        content: Text(grows && !toAll
+            ? tr('新数据照常先传，更早的历史在后台补上（手机空闲、连着 Wi-Fi 时更快）；中断了会接着传。',
+                'New data still goes first; the older history is added in the background (faster while the phone is idle on Wi-Fi), and resumes if interrupted.')
+            : toAll
             ? tr('从「健康」里最早的一条开始读。数据多的话要几十分钟到几小时，保持 app 打开、手机解锁会更快；中断了下次打开接着读。读完后服务器会补算全部历史的分数。',
                 'Reads from the oldest record in Health. With a lot of data this takes tens of minutes to a few hours; it is faster with the app open and the phone unlocked, and resumes if interrupted. The server then computes the scores for the whole history.')
             : tr('已经读到的数据不会删除，只是以后不再读更早的。', 'Data already read stays; older data is just not read any more.')),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('取消', 'Cancel'))),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(toAll ? tr('开始读取', 'Start') : tr('改回', 'Change'))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(grows ? tr('开始读取', 'Start') : tr('改回', 'Change'))),
         ],
       ),
     );
     if (yes != true) return;
     await _run(() async {
-      if (_config.owConnected && _sync.isSignedIn) await _sync.changeRange(days);
-      await AppState.instance.update(_config.copyWith(syncDaysBack: days));
-    }, done: toAll ? tr('开始读取全部历史', 'Reading all history') : tr('已改回近 90 天', 'Back to the last 90 days'));
+      await BackfillService.instance.setRange(days);
+    }, done: grows ? tr('开始补传历史', 'Adding the history') : tr('已改回近 $days 天', 'Back to the last $days days'));
   }
 
   /// Self-service accounts: connect sync without any code (server-minted OW invitation); fall back to the manual code dialog.
@@ -371,9 +384,23 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
     );
   });
 
+  Future<void> _runBackfillTask() async {
+    setState(() => _message = 'backfill task: running');
+    final r = await runDebugBackfillTask();
+    if (mounted) setState(() => _message = 'backfill task: $r');
+  }
+
   Future<void> _seed() => _run(() async {
     final r = await seedHealthTestData();
     setState(() => _message = r);
+  });
+
+  Future<void> _debugEngine(String what) => _run(() async {
+    final r = await debugEngine(what);
+    setState(() {
+      _message = r;
+      _statusReload++;
+    });
   });
 
   // -------------------------------------------------------------------------- UI
@@ -438,12 +465,15 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
     if (!hasHealthSync) return _withoutHealthSync(context);
     final cs = Theme.of(context).colorScheme;
     final stats = _sync.stats.value;
-    final connected = _config.owConnected && _sync.isSignedIn;
+    final appMode = SyncEngine.instance.appMode;
+    final connected = !appMode && _config.owConnected && _sync.isSignedIn;
     final active = connected && _sync.isSyncActive;
     final failedAfterSuccess = stats.lastErrorAt != null &&
         (stats.lastUploadAt == null || stats.lastErrorAt!.isAfter(stats.lastUploadAt!));
 
-    final (String headline, Color dot) = !connected
+    final (String headline, Color dot) = appMode
+        ? (tr('自建同步已开启', 'Own sync on'), const Color(0xFF34C759))
+        : !connected
         ? (tr('未连接', 'Not connected'), cs.onSurfaceVariant)
         : stats.authProblem
         ? (tr('连接已失效', 'Connection expired'), cs.error)
@@ -479,8 +509,10 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
                     ),
                     const SizedBox(height: 14),
                     _kv(tr('本机最近一次同步', 'Last sync on this phone'), _lastSyncText(lastSyncOf(stats, RawSync.instance.status.value))),
-                    _kv(tr('上次上传', 'Last upload'), ago(stats.lastUploadAt)),
-                    _kv(tr('上次完整同步', 'Last full pass'), ago(stats.lastCompleteAt)),
+                    if (!appMode) ...[
+                      _kv(tr('上次上传', 'Last upload'), ago(stats.lastUploadAt)),
+                      _kv(tr('上次完整同步', 'Last full pass'), ago(stats.lastCompleteAt)),
+                    ],
                     if (connected && !_status.initialExportDone)
                       _kv(tr('首次同步', 'First sync'), tr('进行中 · 已发 ${_status.sentCount} 条', 'in progress · ${_status.sentCount} sent'))
                     else if (_status.isSyncing)
@@ -509,7 +541,9 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
               ),
             ),
             const SizedBox(height: 14),
-            if (connected && !stats.authProblem) ...[
+            if (appMode)
+              const SizedBox.shrink() // the engine's own 「立即同步」 is in its section below
+            else if (connected && !stats.authProblem) ...[
               BigButton(tr('立即同步', 'Sync now'), onPressed: _syncNow, busy: _busy),
               if (failedAfterSuccess || _status.hasResumableSession) ...[
                 const SizedBox(height: 6),
@@ -524,6 +558,9 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
               Hint(_message!, icon: Icons.check_circle_outline),
             ],
             const SizedBox(height: 24),
+
+            // ---- the app's own sync engine (#219 A4): shown while the server has it on
+            EngineSection(reloadToken: _statusReload),
 
             // ---- sync center: forced re-sync, phone / server per type (resync.dart)
             if (_center) SyncCenterSection(load: _loadDataStatus, reloadToken: _statusReload),
@@ -552,7 +589,8 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
               footer: tr('app 直接从「健康」读取，不用再导出文件。', 'The app reads Health directly; no export file needed.'),
             ),
 
-            // ---- per-type counts
+            // ---- per-type counts (Open Wearables' log; not in mode app)
+            if (!appMode)
             Group(
               title: tr('已上传（按类型）', 'Uploaded by type'),
               footer: stats.perType.isEmpty
@@ -596,7 +634,8 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
                   Row2(tr('扫描设置二维码', 'Scan setup code'), onTap: _busy ? null : () => _setupFrom(_scanText)),
                   Row2(tr('粘贴设置信息', 'Paste setup text'), onTap: _busy ? null : () => _setupFrom(_clipboardText)),
                   Row2(tr('今天页', 'Today page'), value: shortUrl(_config.todayUrl), onTap: () => _editUrl(UrlKind.today)),
-                  Row2(tr('同步服务器', 'Sync server'), value: shortUrl(_config.owHost), onTap: () => _editUrl(UrlKind.ow)),
+                  if (!appMode)
+                    Row2(tr('同步服务器', 'Sync server'), value: shortUrl(_config.owHost), onTap: () => _editUrl(UrlKind.ow)),
                 ],
                 Row2(tr('权限', 'Permissions'), onTap: () => Navigator.of(context)
                     .push(MaterialPageRoute(builder: (_) => const PermissionsPage()))
@@ -613,7 +652,17 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
             if (kDebugMode)
               Group(
                 title: tr('开发（只在调试版出现）', 'Development (debug builds only)'),
-                rows: [Row2(tr('往模拟器的健康 app 写测试数据', 'Write test data to simulator Health'), onTap: _busy ? null : _seed)],
+                rows: [
+                  Row2(tr('往模拟器的健康 app 写测试数据', 'Write test data to simulator Health'), onTap: _busy ? null : _seed),
+                  // The backfill's BGProcessingTask body (the simulator does not run BGTaskScheduler tasks)
+                  Row2(tr('运行一次后台补传任务', 'Run the background backfill task once'),
+                      onTap: _busy ? null : _runBackfillTask),
+                  // the engine's background round (observer wake / BGAppRefresh body) and a deletion for deleted[]
+                  Row2(tr('运行一次自建同步的后台轮', 'Run one background round of the engine'),
+                      onTap: _busy ? null : () => _debugEngine('round')),
+                  Row2(tr('删掉一条测试心率', 'Delete one test heart rate sample'),
+                      onTap: _busy ? null : () => _debugEngine('delete')),
+                ],
               ),
 
             // ---- logs
@@ -626,7 +675,7 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                     child: SelectableText(
-                      redactServer(_sync.recentLog.reversed.take(80).join('\n')),
+                      redactServer(_sync.recentLog.reversed.take(80).join('\n')), // the app's notes (+ OW's lines unless mode app)
                       style: TextStyle(fontSize: 11, fontFamily: 'Menlo', color: cs.onSurfaceVariant),
                     ),
                   ),

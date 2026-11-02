@@ -351,7 +351,7 @@ def test_names_scrubbed_on_mcp(client, world):
             assert "SparkyFitness" not in listed and "SparkyFitness" not in found[n] and "SparkyFitness" not in prompt
             assert "底层数据库" in prompt and "undo_sparky_entry" in listed      # tool names stay callable
         else:
-            assert "SparkyFitness" in prompt                                     # flag off: unchanged
+            assert parity.PROMPT not in prompt and "SparkyFitness" in found[n]   # flag off: unchanged (no naming note)
     assert "SparkyFitness" in found["R"]
 
 

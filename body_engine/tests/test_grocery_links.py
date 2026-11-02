@@ -130,3 +130,24 @@ def test_off_lookup_cache_and_limits(monkeypatch, fresh_off):
     off.lookup(3, "3333333")
     with pytest.raises(RuntimeError, match="频繁"):
         off.lookup(4, "4444444")
+
+
+def test_off_parse_archive_fields():
+    """#291: the fuller nutrition table (minerals and cholesterol are grams in OFF -> mg), ingredients, allergens and the picture link."""
+    data = {"status": 1, "product": {
+        "product_name": "Milk", "ingredients_text": "Milk", "ingredients_text_en": "Milk (100%)",
+        "allergens_tags": ["en:milk", "fr:lait", "en:tree-nuts"], "traces_tags": ["en:soybeans"],
+        "image_front_url": "https://images.openfoodfacts.org/images/products/930/front.400.jpg",
+        "nutriments": {"energy-kcal_100g": 64, "proteins_100g": 3.4, "carbohydrates_100g": 4.8, "fat_100g": 3.6,
+                       "trans-fat_100g": 0.1, "added-sugars_100g": 0, "fiber_100g": 0, "potassium_100g": 0.15,
+                       "calcium_100g": 0.12, "iron_100g": 0.0001, "cholesterol_100g": 0.012}}}
+    r = off.parse("9300633603137", data)
+    assert r["nutrition"] == {"kcal": 64, "protein_g": 3.4, "carbs_g": 4.8, "fat_g": 3.6, "trans_fat_g": 0.1, "added_sugar_g": 0,
+                              "fiber_g": 0, "potassium_mg": 150, "calcium_mg": 120, "iron_mg": 0.1, "cholesterol_mg": 12}
+    assert r["ingredients"] == "Milk (100%)" and r["allergens"] == ["milk", "tree nuts"] and r["allergen_traces"] == ["soybeans"]
+    assert r["image_url"].startswith("https://images.openfoodfacts.org/")
+    # nothing extra when OFF has none of it; a non-https picture is dropped
+    bare = off.parse("9300633603137", OFF_JSON)
+    assert not {"ingredients", "allergens", "allergen_traces", "image_url"} & set(bare)
+    data["product"]["image_front_url"] = "http://images.openfoodfacts.org/x.jpg"
+    assert "image_url" not in off.parse("9300633603137", data)

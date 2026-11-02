@@ -1,4 +1,4 @@
-"""AI assistant tools for health records. Only tool specs (dicts) are given; assistant/tools.py wraps them into registered Tools (avoiding circular imports).
+"""AI assistant tools for health records. Only tool specs (dicts) are given; dl_app.py registers them.
 Format follows Claude API strict tools: all properties are in required, and optional ones use null for "not provided / unchanged".
 Write tools (writes=True) have no user parameter and can only write for oneself."""
 from datetime import date, timedelta
@@ -30,6 +30,12 @@ def _require(row, what: str):
     if row is None:
         raise ValueError(f"没有这条{what}（或不是你的）")
     return row
+
+
+def _add_supplement(conn, uid, a):
+    if not (a.get("name") or "").strip():   # checked here, not by the database's NOT NULL (the AI gets a message it can fix)
+        raise ValueError("缺少参数 name")
+    return store.add_supplement(conn, uid, {**_changes(a), "name": a["name"].strip()})
 
 
 SUPP_STATUS = ["active", "as_needed", "paused", "stopped", "not_needed"]
@@ -98,8 +104,8 @@ TOOL_SPECS: list[dict] = [
     dict(
         name="list_supplements",
         description="补剂清单：名称、剂量、时间、成分、状态、开始 / 停止日期、为什么吃、当前建议、对应日记项。",
-        input_schema=_schema({"user": USER, "statuses": {"type": "array", "items": {"type": "string", "enum": SUPP_STATUS},
-                                                         "description": "空 = 全部"}}),
+        input_schema=_schema({"user": USER, "statuses": {"type": ["array", "null"], "items": {"type": "string", "enum": SUPP_STATUS},
+                                                         "description": "null / 空 = 全部"}}),
         handler=lambda conn, uid, a: store.list_supplements(conn, uid, a["statuses"] or None),
         group="records", scope="supplements",
     ),
@@ -117,7 +123,7 @@ TOOL_SPECS: list[dict] = [
             "advice": _nullable("string", "当前建议"),
             "journal_key": _nullable("string", "小写字母下划线"),
         }),
-        handler=lambda conn, uid, a: store.add_supplement(conn, uid, _changes(a)),
+        handler=_add_supplement,
         group="records", scope="supplements", writes=True,
     ),
     dict(
@@ -144,6 +150,7 @@ TOOL_SPECS: list[dict] = [
         input_schema=_schema({"supplement_id": {"type": "integer"}}),
         handler=lambda conn, uid, a: _require(store.delete_supplement(conn, uid, a["supplement_id"]), "补剂"),
         group="records", scope="supplements", writes=True,
+        confirm=True, confirm_label="Delete a supplement and its journal item",
     ),
     # ---------- Lab results ----------
     dict(
@@ -204,6 +211,7 @@ TOOL_SPECS: list[dict] = [
         handler=lambda conn, uid, a: lab_catalog.delete_results(conn, uid, date.fromisoformat(a["collected_on"]),
                                                                 a["test_keys"]),
         group="records", scope="labs", writes=True,
+        confirm=True, confirm_label="Delete lab results for a sample date",
     ),
     # ---------- Journal ----------
     dict(
@@ -235,6 +243,7 @@ TOOL_SPECS: list[dict] = [
         handler=lambda conn, uid, a: _deleted_journal(store.delete_journal_entry(conn, uid, date.fromisoformat(a["date"]),
                                                                                 a["key"]), a),
         group="records", scope="journal", writes=True,
+        confirm=True, confirm_label="Clear a journal answer for a day",
     ),
     dict(
         name="get_journal",
@@ -299,7 +308,7 @@ TOOL_SPECS: list[dict] = [
             "per_side": _nullable("boolean", "单侧（组数按每侧）"),
             "cues": _nullable("string", "动作要点"),
             "reason": _nullable("string"),
-            "app_exercise_id": _nullable("string", "SparkyFitness 动作 ID"),
+            "app_exercise_id": _nullable("string", "训练记录里的动作 ID"),
         }),
         handler=lambda conn, uid, a: store.upsert_exercise(conn, uid, a["exercise_ref"], _changes(a, "exercise_ref")),
         group="training", scope="exercises", writes=True,

@@ -1110,6 +1110,13 @@
    "strict": true
   },
   {
+   "name": "set_home",
+   "group": "home",
+   "scope": "memory",
+   "writes": true,
+   "strict": true
+  },
+  {
    "name": "report_feedback",
    "group": "feedback",
    "scope": "memory",
@@ -1258,6 +1265,7 @@
   "set_diet_constraint",
   "end_diet_constraint",
   "log_water",
+  "set_home",
   "report_feedback",
   "list_feedback",
   "get_training_context",

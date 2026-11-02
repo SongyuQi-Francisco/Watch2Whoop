@@ -261,8 +261,10 @@
   let lang = resolve(readPref());
 
   const EN_TEXT = {};   // Chinese source text -> English (filled by i18n-en.js via addEn)
+  const MISSING = new Set();   // English page: Chinese keys that came back without an English text (tools/i18n_crawl.mjs lists them)
   function t(key, params) {
     let s = TABLES[lang][key] ?? (lang === "en" ? EN_TEXT[key] : undefined) ?? ZH[key] ?? key;
+    if (s === key && lang === "en" && /[一-鿿]/.test(key)) MISSING.add(key);
     if (params) s = s.replace(/\{(\w+)\}/g, (m, k) => (params[k] != null ? String(params[k]) : m));
     return s;
   }
@@ -323,11 +325,26 @@
   const unsaved = () => { try { return localStorage.getItem(UNSAVED_KEY) ? (TABLES[readPref()] ? readPref() : null) : null; } catch (e) { return null; } };
   const markSaved = () => { try { localStorage.removeItem(UNSAVED_KEY); } catch (e) { /* private mode */ } };
   const addEn = (entries) => { Object.assign(EN_TEXT, entries); if (lang === "en") apply(); };
+  // The English text table (i18n-en.js) is only loaded when the page starts in English (lang-gate.js). A page that switches to English
+  // without a reload (the login card) awaits this first; it resolves false when the file cannot be fetched.
+  let enLoading = null;
+  const ensureEn = () => {
+    if (Object.keys(EN_TEXT).length) return Promise.resolve(true);
+    enLoading ??= new Promise((ok) => {
+      const decl = document.querySelector('script[type="w2w/lazy"][data-lang="en"]');
+      const s = document.createElement("script");
+      s.src = (decl && decl.getAttribute("src")) || "i18n-en.js";
+      s.onload = () => ok(true);
+      s.onerror = () => { enLoading = null; ok(false); };
+      document.head.append(s);
+    });
+    return enLoading;
+  };
   // Headers for every API call so server texts (reminders, explain sheets, labels, errors) come back in this language
   const headers = () => ({ "X-Body-Lang": lang });
   const num = (v, d = 0) => Number(v).toLocaleString(locale(), { maximumFractionDigits: d });
 
-  window.I18N = { t, apply, setPref, choose, unsaved, markSaved, addEn, headers, num, locale, dayLabel, monthDay, yearMonth, monthShort, weekdaysMon,
-    get lang() { return lang; }, tables: TABLES, enText: EN_TEXT };
+  window.I18N = { t, apply, setPref, choose, unsaved, markSaved, addEn, ensureEn, headers, num, locale, dayLabel, monthDay, yearMonth, monthShort, weekdaysMon,
+    get lang() { return lang; }, tables: TABLES, enText: EN_TEXT, missing: () => [...MISSING].filter((k) => !EN_TEXT[k]) };
   apply();   // again when i18n-en.js adds the English text table
 })();

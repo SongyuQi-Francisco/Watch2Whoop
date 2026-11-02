@@ -6,7 +6,7 @@ Every tool has a domain `group` (the `group=` on its spec in */tools.py). What t
 - in-page chat (ai/chat.py): CORE_TOOLS + the groups of the page the chat was opened on (PAGE_GROUPS) + the meta tools.
 Everything else is one find_tools call away and runs through run_read_tool / run_write_tool (assistant/toolsets.py).
 Tool definitions are sent on every call, so the budgets below are enforced by tests/test_tool_groups.py.
-Change the lists here; keep the core list ordered as in assistant/tools.TOOLS (the sent order follows TOOLS anyway).
+Change the lists here; keep the core list ordered as in dl_app.py (the sent order follows TOOLS anyway).
 """
 
 # Resident core: the opening briefing, the scene context tools and playbooks, the everyday logging tools and their undo.
@@ -35,13 +35,14 @@ GROUPS = {
     "memory": "长期记忆：档案卡、观察笔记、状态卡；AI 写入记录和回滚",
     "feedback": "给开发者报 bug / 提需求，查看已报的",
     "help": "操作说明（playbook）：规划采购、排一周训练、复盘一周、照片记餐",
+    "home": "今天页首页：放上 / 移走卡片、关注点（新版首页 ui_ai_first）",
 }
 
 # Today page id -> extra groups for the in-page chat. Ids are the tab ids in web/static/app.js (TABS) and its sub-pages
 # as "<tab>.<sub>" (record: S.recSub, food: S.foodMode / S.foodSub, trends: S.trendsMode). An unknown "<tab>.<sub>" falls
 # back to "<tab>"; an unknown tab or no page = core only (everything else via find_tools).
 PAGE_GROUPS = {
-    "today": ("body", "training"),
+    "today": ("body", "training", "home"),
     "trends": ("body",),
     "food": ("nutrition", "recipes"),
     "food.diet": ("nutrition", "recipes"),
@@ -50,29 +51,37 @@ PAGE_GROUPS = {
     "record": ("records", "training"),
     "record.journal": ("records",),
     "record.training": ("training",),
-    "me": ("memory", "records", "feedback"),
+    "me": ("memory", "records", "feedback", "home"),
 }
 PAGE_MAX_LEN = 40
 
 # Owner's decision (2026-10-18): logging tools (food, training, weight, journal, labs, templates, recipes, events, supplements,
 # memory ...) run directly; only deleting / undoing asks first, so a mistaken call cannot destroy data. Same list as the
 # "ask" rules in the butler's assistant/.claude/settings.json. Judged by the real tool name, also behind run_write_tool.
-ALWAYS_CONFIRM = {"undo_sparky_entry", "undo_meal_log", "undo_day_changes", "delete_journal_entry", "delete_lab_results", "delete_observation",
-                  "delete_supplement", "remove_product", "remove_shopping_items", "remove_staple", "delete_workout", "rollback_write",
-                  "delete_custom_exercise", "apply_memory_changes"}
+# The list is confirm=True on the tool definitions; ALWAYS_CONFIRM here is the old name of what the registry derives from them.
+def __getattr__(name: str):
+    if name == "ALWAYS_CONFIRM":
+        from ..dl_app import APP   # the registry imports this module
+        return APP.confirm
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 # Size budgets in characters of {name, description, relaxed input_schema} JSON (what tools/list sends).
 # Before #99 all 106 tools were sent every time: 58,539 chars.
 CORE_BUDGET_CHARS = 30000
 META_BUDGET_CHARS = 2500
 MCP_LIST_BUDGET_CHARS = 35000     # core + ALWAYS_CONFIRM + meta
-GROUP_BUDGET_CHARS = {"body": 12000, "training": 13000, "nutrition": 14000, "recipes": 7000, "grocery": 9200,
-                      "records": 10000, "memory": 4000, "feedback": 1500, "help": 1500}
+GROUP_BUDGET_CHARS = {"body": 12000, "training": 13000, "nutrition": 14000, "recipes": 7000, "grocery": 10700,
+                      "records": 10000, "memory": 4000, "feedback": 1500, "help": 1500, "home": 1000}
 # grocery 9000 -> 9200: with the rollout flag mcp_web, MCP's find_tools(group="grocery") also returns web_search / web_fetch
 # (ai/web/mcp.py, about 400 chars; tests/test_mcp_web.py checks the group with them)
-PAGE_BUDGET_CHARS = 37700         # core + the page's groups + meta, for any page in PAGE_GROUPS; also the cap for a conversation
+# grocery 9200 -> 10700 (#291): save_product's nutrition goes from 7 to 14 items, there is a second table for the label's per-serving
+# column, and ingredients / allergens / allergen_traces / image_url / serving_size / serving_unit; about 1,450 chars in all.
+PAGE_BUDGET_CHARS = 38300         # core + the page's groups + meta, for any page in PAGE_GROUPS; also the cap for a conversation
                                   # (36000 -> 36500 for the 5 nutrient fields of update_food_entry, #183; -> 37700 for
-                                  # get_memory_review / apply_memory_changes in the memory group, #113)
+                                  # get_memory_review / apply_memory_changes in the memory group, #113; -> 38100 for the 14-item
+                                  # nutrition table + per-serving table + ingredients / allergens / image of save_product, #291; -> 38300
+                                  # for log_weight's context / note, the manual weigh-in)
                                   # that has been on several pages (the oldest pages' groups are dropped beyond it)
 FALLBACK_PAGE_BUDGET_CHARS = 26200  # the same cap for the fallback AI (core and pages cut to its whitelist; 25000 -> 26200 for
                                     # get_memory_review / apply_memory_changes, #113)
@@ -90,6 +99,18 @@ READ_RESULT_MAX_CHARS_BY_TOOL = {
     "propose_plan": 14000,       # a whole week's draft with sets, loads and the questions to ask first (~10k)
     "search_exercises": 12000,   # up to its own result limit, each with muscles, equipment and safe alternatives (~9k)
 }
+
+# Token economy of the in-page chat (issue #78; measured by tests/test_token_economy.py, numbers in docs/ai-assistant-plan.md §9.23)
+# get_briefing keys the chat model does not get: its system prompt already has the caller's memory (and the root rules,
+# whose text is dropped from system_rules too); the memory_review reminder is kept.
+CHAT_BRIEFING_DROP = ("memory",)
+# Tool results of older turns are sent shortened: the model has already answered from them and can call the tool again.
+# The results of the last HISTORY_FULL_TURNS user turns (the current one included) go out whole, and so do the tools below
+# (what the model needs to carry on: the opening briefing, schemas from find_tools, the playbooks and the scene context).
+HISTORY_FULL_TURNS = 2
+HISTORY_RESULT_CHARS = 600
+HISTORY_FULL_TOOLS = ("get_briefing", "find_tools", "get_playbook", "get_training_context", "get_week_review_context",
+                      "get_shopping_context")
 
 # Scene context tools (assistant/scenes.py, issue #100)
 TRAINING_RECENT_DAYS = 14         # get_training_context: training and load looked back on

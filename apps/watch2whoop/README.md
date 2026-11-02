@@ -94,7 +94,7 @@ open -e config/defaults.json
 - `W2W_BUNDLE_ID`: your bundle ID, e.g. `com.<your name>.watch2whoop` (globally unique, cannot be changed after upload).
 - `W2W_TEAM_ID`: the 10-character Team ID under developer.apple.com → Account → Membership details.
 - `W2W_DISPLAY_NAME`: the name on the home screen, default Watch2Whoop.
-- `config/defaults.json`: the example already holds the project's public servers (Today page `https://body.example.com`, sync `https://sync.example.com`); just copy it. People who deploy their own server change it to their own domains. The setup QR code carries the addresses as well, so this step only decides what is pre-filled for "manual entry".
+- `config/defaults.json`: the example already holds the project's public servers (Today page `https://body.example.com`, sync `https://sync.example.com`); just copy it. **If you still have an older `config/defaults.json`, delete its `W2W_SYNC_DAYS_BACK` line** (older examples had `"90"`, which makes the first sync read 90 days again; without the line the app uses the 14-day default in `lib/src/sync_params.dart`). People who deploy their own server change it to their own domains. The setup QR code carries the addresses as well, so this step only decides what is pre-filled for "manual entry".
 
 **Do not** change Team / Bundle ID on Xcode's Signing page (that writes into the project file); edit the files above instead.
 
@@ -284,7 +284,7 @@ open -e config/defaults.json
 - `W2W_BUNDLE_ID`：你的套装 ID，例如 `com.<你的名字>.watch2whoop`（全球唯一，上传后不能改）。
 - `W2W_TEAM_ID`：developer.apple.com → Account → Membership details 里的 10 位 Team ID。
 - `W2W_DISPLAY_NAME`：主屏幕上的名字，默认 Watch2Whoop。
-- `config/defaults.json`：示例里已经是我们的公网服务器（今天页 `https://body.example.com`、同步 `https://sync.example.com`），直接复制就行。自己部署服务器的人改成自己的域名。设置二维码里也带地址，所以这一步只决定「手动填写」时预填什么。
+- `config/defaults.json`：示例里已经是我们的公网服务器（今天页 `https://body.example.com`、同步 `https://sync.example.com`），直接复制就行。**旧的 `config/defaults.json` 要删掉 `W2W_SYNC_DAYS_BACK` 那一行**（旧示例里是 `"90"`，会让首次同步又读 90 天；没有这行时 app 用 `lib/src/sync_params.dart` 里的 14 天默认值）。自己部署服务器的人改成自己的域名。设置二维码里也带地址，所以这一步只决定「手动填写」时预填什么。
 
 **不要**在 Xcode 的 Signing 页面里改 Team / Bundle ID（会写进工程文件）；改上面的文件就行。
 

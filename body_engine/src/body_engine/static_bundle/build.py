@@ -4,7 +4,9 @@ Modules (each is replaced or updated as a unit):
 - exercises: the shared exercise_catalog rows (row-level delta by `rev`; custom exercises and per-user exercise_meta are NOT in it);
 - taxonomy: muscle / equipment / body-group / movement-pattern / joint-stress labels (zh + en) and the default restriction slugs;
 - glossary: the explanation texts (explain/glossary*.py, both languages) for metrics, labs, status items and conditions;
-- split_templates: the built-in 3 / 4 / 5-day training splits (training/params.SPLIT_TEMPLATES).
+- split_templates: the built-in 3 / 4 / 5-day training splits (training/params.SPLIT_TEMPLATES);
+- sport_muscles: which muscles each workout type trains (training/sport_muscles.py; 2.0.0 M1c, the muscle-load map's sports
+  layer; the algorithm bundle's src/31_workouts.js carries the same table, golden-tested).
 `version` = the highest rev of any change (migration 730): it only goes up, so "give me what changed since N" is exact.
 Exercise rows are compact: a key that is missing means empty / null. Texts that exist in both languages are separate fields
 (`name_zh` / `name_en`, `cues_zh` / `cues_en`, `instructions_zh` / `instructions_en`); the app picks by interface language.
@@ -26,7 +28,7 @@ from ..training import catalog, catalog_data as CD, catalog_en as CE, custom, mu
 from ..training.opengym import COMMIT as OPENGYM_COMMIT, REPO as OPENGYM_REPO, mapping as OGM
 from . import FORMAT
 
-CODE_MODULES = ("taxonomy", "glossary", "split_templates")
+CODE_MODULES = ("taxonomy", "glossary", "split_templates", "sport_muscles")
 MODULES = ("exercises", *CODE_MODULES)
 
 ATTRIBUTION = [
@@ -119,6 +121,13 @@ def code_module(name: str) -> dict:
                        "en": {"metrics": GE.METRICS_EN, "labs": GE.LABS_EN, "status": GE.STATUS_EN, "conditions": GE.CONDITIONS_EN}})
     if name == "split_templates":
         return _plain(P.SPLIT_TEMPLATES)
+    if name == "sport_muscles":
+        from ..training import sport_muscles as SM
+
+        def row(v):
+            return {"primary": list(v[0]), "secondary": list(v[1]), "resistance": v[2]}
+        return _plain({"types": {k: row(v) for k, v in SM.SPORT_MUSCLES.items()}, "fallback": row(SM.FALLBACK),
+                       "fallback_types": sorted(SM.FALLBACK_TYPES), "strength_like": sorted(SM.STRENGTH_LIKE)})
     raise KeyError(name)
 
 

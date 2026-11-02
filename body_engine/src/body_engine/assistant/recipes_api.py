@@ -6,6 +6,8 @@ from typing import Literal
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
 
+from .. import sparky_client
+from ..i18n import L
 from ..records.api import _owner, _self, current_user, get_conn
 from . import recipes
 from .memory_api import _meal_call
@@ -21,6 +23,7 @@ class RecipeLogIn(BaseModel):
     servings: float = Field(1, gt=0, le=10)
     time: str | None = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$", description="HH:MM，默认现在")
     allow_duplicates: bool = False
+    client_id: str | None = Field(None, max_length=64, description="app 的重发键：同一个 client_id 只记一次（#340 N2）")
 
 
 class RecipePatch(BaseModel):
@@ -48,8 +51,15 @@ def suggest(user: str, date: dt.date | None = None, slot: Slot | None = None,
 @router.get("/meal-plan")
 def meal_plan(user: str, date: dt.date | None = None, conn=Depends(get_conn), viewer=Depends(current_user)):
     """Per-meal suggestions for the day (breakfast / lunch / dinner / snack): what each meal already logged, its kcal / protein
-    target and 2 recipes ranked like /suggest plus taste (how often logged) and what is in the pantry; short labels for the page."""
-    return _meal_call(recipes.meal_plan, conn, _owner(conn, viewer, user, "nutrition"), date)
+    target and 2 recipes ranked like /suggest plus taste (how often logged) and what is in the pantry; short labels for the page.
+    The food log lives in SparkyFitness: when it cannot be read (not connected, down) this is an ordinary answer with
+    `unavailable` and a short `label` the page shows, not a 502 (a 502 made the food tab wait and retry for ~9 s and fill the console)."""
+    def plan(*args):
+        try:
+            return recipes.meal_plan(*args)
+        except sparky_client.SparkyError:
+            return {"unavailable": "sparkyfitness", "label": L("饮食记录暂时读不到", "Food log unavailable"), "slots": []}
+    return _meal_call(plan, conn, _owner(conn, viewer, user, "nutrition"), date)   # the other failures keep their usual answers (404 / 403 / 422)
 
 
 @router.get("/{recipe_id}")
@@ -62,8 +72,11 @@ def log_recipe(user: str, recipe_id: int, body: RecipeLogIn | None = None,
                conn=Depends(get_conn), viewer=Depends(current_user)):
     """Ate this dish: write one SparkyFitness food entry. The same dish already logged for this meal on this day -> 409."""
     b = body or RecipeLogIn()
-    return _meal_call(recipes.log_recipe, conn, _self(viewer, user), recipe_id, b.date, b.meal, b.servings, b.time,
-                      b.allow_duplicates, channel="web")
+    uid = _self(viewer, user)
+    from ..nativesync import idem
+    return idem.once(conn, uid, b.client_id, f"recipe.log:{recipe_id}", lambda: _meal_call(
+        recipes.log_recipe, conn, uid, recipe_id, b.date, b.meal, b.servings, b.time, b.allow_duplicates, channel="web"),
+        status=201)
 
 
 @router.patch("/{recipe_id}")

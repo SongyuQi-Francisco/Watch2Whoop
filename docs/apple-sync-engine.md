@@ -2,7 +2,7 @@
 
 > 状态：设计稿，等维护者确认（#219）。只描述方案，不含代码改动。标「待查」的地方写这份文档时没查清，拆 PR 时先确认。
 > 文中出现的数字都是示例或估算，不是任何真人的数据。
-> 进度：S1（#226）、S2（#234：派生 + 脏天队列 + 同步模式）、S3（读取层 + 两条链路逐日对照）已实现，和设计不同的地方见第 3.2 节开头的说明。
+> 进度：S1（#226）、S2（#234：派生 + 脏天队列 + 同步模式）、S3（#242：读取层 + 两条链路逐日对照）、S4–S6（影子对比、按用户切换和回退、OW 历史本地存档，迁移 800）、同步状态接口和 S5b（新开户走引擎、切换前体检）已实现，和设计不同的地方见第 3.2 节开头的说明。app 侧的接口要求：`docs/apple-sync-engine-app-contract.md`。完全不用 OW 的评估和时间表：第 9 节；OW 下线时要删的代码：第 10 节。
 
 ## 0. 摘要
 
@@ -86,7 +86,7 @@ app 侧：`apps/watch2whoop/ios/Runner/AppDelegate.swift` 在启动完成前原�
 - **服务器** `rawdata/ingest.py` + `rawdata/api.py`：Bearer token（账号 token 或只能上传的 token，`ingest_user`）、请求 ≤ 2 MB、`batch_id` 幂等（表 `rawdata_uploads`，迁移 430）、按 HealthKit UUID 去重、`deleted[]` 删除、同意书版本检查、饮水跟着 `water` 开关。
 - **快捷指令导入器**（`importers/shortcut.py`，格式 `docs/shortcut-sync-spec.md`）：样本存 `shortcut_samples`（按类型 + 开始时间 + 来源去重），日值 / 睡眠 / 推断训练都从表里整天重算；累计型按「最大的单一来源」。
 - **Apple 全量导出**（`importers/apple_zip.py`）：流式解析 export.zip，写日值、睡眠、训练（`source=apple_export`）和评分要的原始样本 `export_samples`、逐拍心跳、心电图；累计型同样「最大的单一来源」。
-- **数据状态**（`sync/data_status.py`，#163）：按类型给出服务器最近收到的时间，`channel` 区分 `ow` / `app`。
+- **数据状态**（`sync/data_status.py`，#163）：按类型给出服务器最近收到的时间，`channel` 区分 `ow` / `app`。2026-10-31 起每类多 `reason` / `action` / `alarm`（为什么旧：`not_delivered` 手机这一路超过 6 小时没送到，动作按手机上报的状态给：打开后台 App 刷新 / 解锁 / 重新登录 / 检查网络 / 打开 app；`not_recorded` 送到了但手机上也没有新的，动作是让它出现的那件事：戴表、戴表睡觉、睡眠专注〔`sleep_focus`，只给睡眠手腕温度：要睡眠计划 / 睡眠专注和「用 Apple Watch 追踪睡眠」都开着，戴表睡觉才会记，FB-18〕、体重秤、户外运动、在「健康」里记饮水；不认识的动作码，客户端显示通用的「手机上没有新记录」；`no_permission` 手表天天记的类型从来没收到；`on_demand` 心电图；`logged_elsewhere` 饮水记在 app 里），回答多 `delivery`（ok / behind / never + 动作）和 `alarm_count`；体重也算本人在今天页 / AI 记的（`body_measurements`，来源 `records`）。阈值和出处在 `sync/params.py`。原因：负责人反馈「同步按钮显示已最新，但仍提示部分数据未同步」，见 `docs/ios-native-app.md` 同步中心一节。
 
 ---
 
@@ -101,7 +101,7 @@ app 侧：`apps/watch2whoop/ios/Runner/AppDelegate.swift` 在启动完成前原�
 | 锚点存哪 | UserDefaults suite `com.openwearables.healthsdk.state`，键 `anchor.user.<id>.<HK 类型>`、`fullDone.user.<id>`；会话进度 `Application Support/health_sync_state/state.json`（每类已发条数、完成的类型、首次导出的 `olderThan` 游标、待提交的锚点） |
 | 分批 | 每一轮从每个未完成类型各取一块（`前台 2000 / 后台 100` 条 ÷ 类型数），合成一个 JSON 上传；后台剩余时间 < 5 秒就暂停。每轮 2000 条约 1.3 MB（SDK 注释） |
 | 重试 | 0.14 起不再写本地 outbox：游标和锚点**只在服务器 2xx 后**前进，失败的这一轮下次从 HealthKit 重新读（只剩旧版 outbox 的清理代码）。401 刷新 token 后重试一次；网络恢复（`NWPathMonitor`）、解锁（`protectedDataDidBecomeAvailable`）、回到前台时续传 |
-| 首次同步 | `syncDaysBack`（我们传 90；0 = 全部历史），从「那天 0 点」起。首次用 `HKSampleQuery` **按结束时间从新到旧**一块块往回爬（`olderThan` 游标，可续传），某类爬完后再用 `HKAnchoredObjectQuery` 从空锚点一路读到底「捕获」当前锚点，之后才转增量 |
+| 首次同步 | `syncDaysBack`（我们首次传 14，1.0.8 起；补传 90 / 全部由后台补全负责；0 = 全部历史），从「那天 0 点」起。首次用 `HKSampleQuery` **按结束时间从新到旧**一块块往回爬（`olderThan` 游标，可续传），某类爬完后再用 `HKAnchoredObjectQuery` 从空锚点一路读到底「捕获」当前锚点，之后才转增量 |
 | 去重 | SDK 不去重；服务端 `data_point_series` 唯一键是（数据源、类型、`recorded_at` = 开始时间），训练按（数据源、开始、结束）唯一 |
 | 训练格式 | `_mapWorkoutEfficient`：`type`（HKWorkoutActivityType 转 snake_case）、开始 / 结束、时区偏移（来自 `HKMetadataKeyTimeZone`）、来源、`values`（时长、活动 / 基础能量、距离、步数、划水、心率最小 / 平均 / 最大、跑步 / 骑行功率等、海拔、室内标记、天气）、`laps`（圈 / 段 / 标记事件）；`route`、`samples` 固定传空。服务端把活动 + 基础能量加成 `energy_burned`，类型经 `constants/workout_types/sdk.py` 转成统一类型 |
 | 睡眠格式 | 每个 `HKCategorySample` 一条：`stage`（0 in_bed、1 sleeping、2 awake、3 light、4 deep、5 rem）、开始 / 结束、来源。服务端用 Redis 里的睡眠状态机按 2 小时间隔拼成一晚 |
@@ -237,6 +237,23 @@ app 侧：`apps/watch2whoop/ios/Runner/AppDelegate.swift` 在启动完成前原�
 > - 只有 `app` 模式读它：`scores/inputs.load`（`compute-scores`、`hrv-compare`）、`insights/stress`、`training/importer.enrich`（训练心率、TRIMP、能量拆分）、今天页睡眠阶段图（`web/views.night_stages`，`stages_source = app`）。`app` 模式下新引擎优先，OW 只补它没有的（新引擎没有的那一晚、那一类样本、那一天；OW 时代的训练两边都没有能量样本时保留已存的活动能量），直到 S6 把 OW 的历史原始样本迁进来；所以 S3 不会造成第 8 节风险 1。`ow` / `shadow` 模式完全不读新引擎的样本，结果和以前一样（`tests/test_apple_sync_read.py`）。
 > - 影子对比的读取能力（第 4 节的输入，判定和每晚任务留给 S4）：同一用户每天两条链路并排——`daily_metric_sources` 的 `ow` / `app` 日值（各自的平均 / 最小 / 最大 / 条数、app − ow、相对差、`daily_metrics` 选中了谁）、`sleep_sessions` 里存的 OW 睡眠和从阶段样本现算的 app 睡眠（按醒来日期）、两份训练。命令 `body-engine sync-shadow-day --user-id N --date D [--end D] [--json]`（中文 Markdown，含健康数值，只到终端或 `health_data/reports/`），接口 `GET /v1/users/{user}/sync/engine/days?date=&end=`（只能看自己的，最多 31 天，`apple_sync_engine` 对这个用户关着时 404）。
 > - 部署机每分钟的导入任务在 `hk_dirty_days` 有行时跑 `hk-derive-run`、每小时任务也先跑一次（部署者自己的运维脚本；开关关着时上传被拒、队列一直为空，任务空跑）。
+>
+> **S4–S6 和同步状态已实现（迁移 800，参数和出处 `rawdata/params.py`）**，和下文不同的地方以代码为准：
+> - S4 影子对比 `rawdata/shadow.py`：判定规则就是第 4 节的表；每项一行写 `sync_shadow_diffs`（verdict：ok / explained + 原因代码 / mismatch / missing_app / new），只计数的 `sync_shadow_summary`（连续一致天数、覆盖率、能不能切换和原因）给切换门槛、doctor 和部署者的运维插件读。分数一项用 `scores/inputs.load(sync_mode='app')` 不写库重算（app 的样本优先、OW 补缺，app 的睡眠替换存着的 OW 睡眠，和切换后一模一样），和存着的分数比。命令 `sync-shadow-compare`（每晚 import-ow 之后）、`sync-shadow-report`（`--summary` 只有计数），接口 `GET /v1/users/{user}/sync/engine/shadow`。
+> - S5 切换 `rawdata/cutover.py`：`apple_sync_primary` 是总开关（默认关），**真正的切换按用户做**：`sync-mode switch --user-id N` 一步完成（把人加进 `sync_app` 分组、过门槛、存切换前 14 天分数快照、`sync_mode_state.mode = app`、app 训练去掉 shadow 标记、最近 90 天按 app 模式重派生、排队算分）；第一次算完分后 `sync-mode apply` 做切换后检查（快照 vs 新分数）。`engine.mode()` 只有在 state = app、总开关开着、没有固定在 ow 时才返回 app，所以关总开关或 `sync-mode rollback` 下一次读取就回到 shadow；rollback 再把 app 训练改回 shadow、删 app 睡眠并从 OW 重新导入这几晚、重选日值、排队算分。原始数据两边都不删，可以来回切。版本门槛看 `rawdata_uploads.app_version`（引擎批次，≥ 1.0.8），`--force` 只跳过影子和分数门槛。`app` 模式下引擎上传自己排队算分，`POST /sync/refresh` 不再导 OW。开户 / 设置链接 / 删号不碰 OW 的部分没有做（第 9 节）。
+> - S6 历史 `rawdata/ow_archive.py`：**没有把 OW 样本搬进 `hk_samples(origin='ow')`**，而是复用 #287 的本地副本 `ow_sample_cache`（它存的就是评分要的 OW 原始样本，带来源、优先级、XML 标记；OW 样本没有结束时间、XML 样本没有 UUID，搬过去反而要编 UUID、存两份）。`ow-archive --user-id N` 把副本补全到「评分起点 − 365 天 − 压力基线」到现在（每 60 天一窗、从新到旧、每窗提交，可续跑），睡眠阶段（以前每次实时读 OW）存进 `ow_archive_segments`。存档过、且在 app 模式的用户：评分输入、压力、训练心率、今天页睡眠阶段图都读存档，不再问 OW；ow / shadow 模式忽略存档。
+> - 同步状态 `rawdata/sync_status.py`：被拒的上传按原因记进 `ingest_failures`（auth / format / refused / limit / server，只有代码，同一原因 10 分钟内合并计数，吊销的 token 也能认出是谁的）；`GET /v1/users/{user}/sync/engine/status` 和 `GET /v1/ingest/sync-status` 给今天页面板和 app 用（字段见 app 接口文档第 6 节）。引擎批次的回答里 `status` 不再数全部样本（`counts: false`）。
+>
+> **S5b 已实现（没有迁移）**：
+> - 新开关 `apple_sync_new_accounts`（全局：和 `open_signup` 一样只认 `--state all`，而且 `apple_sync_engine` 也得是 `all` 才生效，`rawdata/cutover.new_accounts()`）。开着时开户（`account/provision.py` 的 `ow` 步骤）不建 OW 用户，改调 `cutover.start_on_engine()`：账号一开就是 `app` 模式（不过门槛：没有可对比的、也没有会丢的 OW 历史），步骤照样记 done。关掉只影响之后的新开户。
+> - **没有 OW 账号的人（`users.ow_user_id` 为空）一旦是 `app` 就一直是 `app`**：`engine.mode()` / `cutover.desired()` 对他们不看总开关 `apple_sync_primary`，`sync-mode apply` 不会把他们回退，`sync-mode rollback` 不加 `--force` 拒绝（`no_ow`）——shadow 对他们只会把数据藏起来，没有 OW 可回。
+> - 不发 OW 邀请码：`app` 模式的人兑换激活码得到的设置链接不带 `ow` 也不带 `code`（`note = sync_engine`）；`POST /v1/account/ow-invitation` 回 409 `sync_engine`。
+> - 强制重新同步（`sync/resync.run_step`）在 `app` 模式不导 OW、不问 OW：`queued` 时如果这次请求之后 app 开的范围重新同步还没 `range_done`，或者引擎的脏天还没派生完（先在这里派生一次），就保持排队等下一分钟；最多等 `RESYNC_ENGINE_WAIT`（`sync/params.py`，phone_done 之后 30 分钟），然后从范围起点算分。`importing` 途中被切到 `app` 的直接去算分。
+> - 数据状态（`sync/data_status.py`）的 `channel` 跟着模式：`app` 模式下原来标 `ow` 的类型都标 `app`，手腕温度去掉 `sdk_unsupported`；回答多一个 `mode`。
+> - 「手机同步已断开」（`sync/broken.py`）在 `app` 模式看引擎批次（`rawdata_uploads` 里带 `phase` 的）而不是 OW：没有 `server_stale`（服务器不拉数据），回答多 `channel`；今天页的「重新连接」在 `channel = app` 时直接打开 app 的同步页，不再要 OW 邀请码。`sync-broken` 也列出 `app` 模式的人。
+> - 切换前体检 `body-engine sync-mode readiness [--user-id N] [--json] [--out 文件]`（`rawdata/readiness.py`，只读、不重算分数）：顶部是三个开关的状态，下面每人一行——模式（当前 → 想要的）、app 版本、连续一致天数 / 门槛、覆盖率、分数一致性（影子对比存下的分数项，和 `score_check` 同样的阈值）、结论（已切换 / 可以切换 / 还不能切 / 引擎没开）和「还差什么」（同意书、固定在 OW、app 版本、最近没有引擎上传、还没有影子对比、连续一致、覆盖率、分数）。没有 OW 账号的人只看 app 版本。含名字和分数差，只到终端或 `health_data/reports/`。精确门槛（会重算分数）仍是 `sync-mode switch --dry-run --user-id N`。
+>
+> **上线顺序**：① 本 PR 部署（新开关默认关，零影响）；② 每晚 `sync-shadow-compare` 跑满 7 天后看 `sync-mode readiness`，过了门槛的人逐个 `sync-mode switch`（或 `flags set apple_sync_primary --state cohort --cohort sync_app` + 每小时 `sync-mode apply`）；③ **app 端先发一版在没有 OW 账号时也算「已连接」的版本**（现在 1.0.8 / 1.0.9 的引导、同步页、`connectSyncViaAccount` 还要求连 OW，碰到 409 `sync_engine` 会提示连接失败），等 TestFlight 上能装到的都是这一版；④ `flags set apple_sync_new_accounts --state all`（`apple_sync_engine` 已经是 `all`），新开户从此不建 OW 用户；⑤ 全员切完、`ow-archive --check` 全部完整后进入 S7（停写 → 只读 → 下线）和 S8（第 10 节）。
 
 #### 3.2.1 接口
 
@@ -377,6 +394,8 @@ GRANT SELECT ON hk_samples, hk_stats TO grafana_ro;   -- 如果 Grafana 要读
 - 每一步都是开关 + 幂等命令，不删原始数据。
 
 ### 5.3 OW 停写、只读保留多久
+
+> 2.0.0 起（`docs/ios-native-2.0.md` §4 R1）：停写前先 `body-engine retire-legacy verify --all [--archive]` 确认每个人的 OW / 快捷指令 / 导出数据都在 Body Engine 自己的表里；停写开关是环境变量 `BODY_LEGACY_SOURCES_CUTOFF`（快捷指令 410、`import-ow` 跳过），步骤见那里的 runbook。
 
 1. **回退期 30 天**（D5）：OW 容器、对外同步入口、`import-ow` 都照常运行（没有新数据），随时能回退。
 2. **只读期 60 天**：
@@ -530,3 +549,92 @@ GRANT SELECT ON hk_samples, hk_stats TO grafana_ro;   -- 如果 Grafana 要读
    - 半小时时区靠 15 分钟桶。
 8. **版本门槛**：TestFlight 用户不一定马上更新；按 `app_version` 拒绝切换，旧版本用户继续走 OW 直到更新。
 9. **同意书**：新增类型是否在同意书范围内，见 D6（已定：同步中心的类型已涵盖；血压、血糖等开给内测组前再确认）。
+
+---
+
+## 9. 完全不用 OW：评估、时间表、风险（2026-10-26）
+
+**结论：可以完全不用 OW，包括新用户的首次 90 天导入，不需要再 fork OW 的代码。** 服务器侧 S1–S6 已经齐了：接收、派生、读取层、影子对比、按用户切换 / 回退、OW 历史本地存档。剩下的关键路径在 app（A1–A3）和三处还会主动找 OW 的服务器代码（下面「还差什么」）。OW 里我们需要的规则（训练类型表、睡眠切段规则）已经移植并注明出处（`THIRD_PARTY_NOTICES.md`）；OW iOS SDK 里值得借鉴的后台调度写法（第 2 节「值得照搬」）iOS 开发可以参考，照抄代码时同样是 MIT，要在 `THIRD_PARTY_NOTICES.md` 加一行出处。
+
+**新用户首次 90 天**：app 的引擎 `phase=backfill` 从空锚点按类型分页读 90 天（第 3.1.4 节），服务器按 UUID 去重、`backfill` 阶段限流放宽（每分钟 120 批、每天 512 MB），本地实测一批 5000 条样本 + 2880 个统计桶（gzip）入库 0.34 秒。没有 OW 账号的用户切换门槛只看 app 版本（没有可对比的、也没有会丢的 OW 历史）。90 天以前的历史照旧用「导入健康历史」上传 export.zip（`history/`，本来就不经过 OW）。
+
+**还差什么（按顺序）**
+
+| # | 内容 | 位置 | 估计 |
+|---|---|---|---|
+| A1–A3 | app：引擎内核、后台、训练 / 睡眠 / 统计桶（接口要求见 `docs/apple-sync-engine-app-contract.md`） | `apps/` | iOS 开发，随 1.0.8 / 1.0.9 |
+| S5b（**已实现**，见第 3.2 节开头） | 开户不再建 OW 用户、设置链接不带 OW 邀请码（`account/provision._ow_step`、`web/activation.mint_ow_invitation`、`account/api` 的 `ow-invitation`），按「新开户默认走引擎」的全局开关；`sync/resync.run_step` 在 app 模式不导 OW、改成等 app 的按范围重新同步；`sync/data_status` 的 `channel` 跟着模式变；`sync/broken.py` 在 app 模式看引擎上传而不是 OW | 服务器 | 2–3 人日 |
+| S7 | 运维：OW 停写 → 只读 → 下线（第 5.3 节），`import-ow` 和 OW 备份从定时任务去掉，Grafana 的 OW 数据源 | `deploy/`、ops 仓库 | 2 人日 |
+| S8 | 删 OW 代码（第 5.4 节清单） | 服务器 | 1–2 人日 |
+
+**时间表（建议，按每周日发版）**
+
+| 日期 | 事项 |
+|---|---|
+| 10-27 → 10-31 | 本 PR 合并部署（开关全关，零影响）；内测组开 `apple_sync_engine`（只收、只对比） |
+| 11-01（周日） | iOS 1.0.8：A1（前台引擎）。内测组开始影子期；每晚 `sync-shadow-compare` |
+| 11-08 | iOS 1.0.9：A2 / A3（后台、训练、睡眠、统计桶）——影子对比要有睡眠和训练才有意义，**真正的 7 天连续一致从这里开始算** |
+| 11-15 前后 | 内测组逐个 `sync-mode switch`（门槛不过的人留在 shadow，报告里看原因）；同时做 S5b |
+| 11-22 前后 | `apple_sync_primary` 开给所有人，`sync-mode apply` 每小时把过了门槛的人切过去；新开户默认走引擎 |
+| 切完后 | 每人跑 `ow-archive`（OW 还在时做，可续跑）；回退期（D5 建议 30 天，有了本地存档可以缩到 14 天）→ OW 只读 → 下线，释放约 1.3 GB 内存 |
+
+最快的路径：1.0.9 在 11-08 带上 A2 / A3，11-15 内测切换，11-22 全员，12 月中 OW 下线。
+
+**风险**
+
+1. **iOS 后台可靠性**（第 8 节风险 2）：只能靠 app 端多种触发 + 服务器看 `sync_runs` 和同步状态面板量化；切换门槛里不含后台可靠性，建议内测组切换后看一周 `sync_runs` 再开给所有人。
+2. **影子期耗电和抢后台额度**：OW SDK 和引擎同时跑；影子期只给内测组、只 1–2 周。
+3. **多来源睡眠**：OW 的状态机按用户合并来源，我们按来源分开（S2 说明）；手表 + 手机 / 第三方 app 交叉的晚上会被判为「可解释（source_priority）」，差异大于 20 分钟会是「不一致」，要人看报告。
+4. **数据库增长**：每人每天约 1–2 千条原始样本 + 约 1 千个统计桶；10 人一年千万行级；doctor 要加 `hk_samples` 表大小（S7）。
+5. **切换后分数漂移**：切换前快照 + 第一次重算后自动对比（`post_check`），超过阈值看报告、必要时 `sync-mode rollback`（一步回退，原始数据两边都在）。
+6. **OW 下线后才发现的缺口**：下线前在测试库全量重算一次对比 `daily_scores`（第 8 节风险 1 的对策），`ow-archive --check` 必须全部 complete。
+
+---
+
+## 10. OW 下线时要删的代码（S8 准备，2026-10-29）
+
+> 只是清单，**现在不删**。S8 在只读期结束、OW 下线之后单独一个 PR（第 5.3 节）。行号会变，以符号为准。
+> 前提（缺一不可）：每个有 `ow_user_id` 的人都已在 `app` 模式（`sync-mode readiness` 里没有「还不能切」），`ow-archive --check` 全部 complete，测试库里全量重算一次 `daily_scores` 不变（第 8 节风险 1）。
+
+**先要知道的四点**
+1. `importers/ow.py` **不能整个删**：`Sample`、`SPECS`、`spec_for`、`parse_sample`、`sleep_segments`、`dedupe_cumulative`、`drop_xml_duplicates`、`DEVICE_PRIORITY`、`XML_SOURCE` 是引擎自己的规则（`rawdata/derive.py`、`samples.py`、`shadow.py`、`ow_archive.py`、`training/importer.py` 都在用）。先把它们挪进一个纯规则模块（MIT 出处照留），再删联网部分（`link_user`、`_first_sample_time`、`run`、`daily_rows`）。
+2. OW 历史存在 `ow_sample_cache` / `ow_sample_cache_range` / `ow_archive` / `ow_archive_segments`（迁移 770 / 800），不是 `hk_samples(origin='ow')`（第 3.2 节 S6 的说明）。这四张表、`importers/ow_cache._read` / `_ranges` / `CACHE_TYPES` / `_src_flags`、`rawdata/ow_archive.get` / `reads_archive` / `check` / `samples` / `sleep_segments` / `workout_windows` / `window_samples` 都要留；只删要连 OW 的 `ow_archive.archive()` 和 `ow_cache.fetch` / `samples` / `store` / `store_safe`。`reads_archive` 的「必须是 app 模式」可以放宽成「有存档就读」。
+3. 算分只有「app 模式 + 有存档」时读存档；否则拿 `client` 读 OW，`client=None` 时这个人的 OW 原始样本整段不读，分数会漂。所以第 1 点的前提必须先满足。
+4. 几处直接 `OWClient()`、没有保护：`cli.py` 的 `compute-scores`、`import-apple-zip`、`hrv-compare`（不加 `--no-ow` 时）、`ow-archive`；`account/provision.run` 的 `ow` 步骤（开关 `apple_sync_new_accounts` 开着时已经不走）。拿掉 OW 的 API key 之前先改掉，否则这些命令直接报错。
+
+**服务端 `body_engine/src/body_engine/`**
+
+| 处理 | 文件 | 内容 |
+|---|---|---|
+| 删 | `ow_client.py` | `OWClient`、`OWError` |
+| 删 | `sync/ow_watch.py` | OW 上传轮询器；`api.py` lifespan 里的 `ow_watch.watcher()` 一起删 |
+| 拆 | `importers/ow.py`、`importers/ow_cache.py`、`rawdata/ow_archive.py` | 见上面第 1、2 点 |
+| 改 | `config.py` | `ow_url`（`BODY_OW_URL`）、`ow_api_key`（`BODY_OW_API_KEY_FILE`） |
+| 改 | `batch.py` | `make_ow_client`、`make_ow_client_safe`、`_step_import_ow`、`STEPS` / `DEFAULT_STEPS` 里的 `import-ow`、`_step_compute_scores` 的 `ow_cache` |
+| 改 | `account/provision.py` | `_ow_step`、`STEPS` 的 `ow`、`OWError` / `OWClient`、`run_pending` 的 `ow_client`；`_engine_step` 变成唯一路径后也可以删 |
+| 改 | `account/delete.py` | `delete_account` 里删除 OW 用户那段和 `ow_client` 参数 |
+| 改 | `account/api.py` | `POST /v1/account/ow-invitation`（`ow_invitation`） |
+| 改 | `account/stats.py` | 「最近从 OW 拉取」那项（`sync_state` 的 `ow` 行），改读 `rawdata_uploads` |
+| 改 | `web/activation.py`、`web/api.py` | `ow_signing`、`mint_ow_invitation`、`sign_jwt`、`activate()` 的 `mint_ow` / `ow_code`、`setup_link` 的 `ow` / `code`、`BODY_OW_PUBLIC_URL`、`BODY_OW_INVITE_SIGNING_FILE`；`web/api.py` 的 `mint_ow=not body.web` |
+| 改 | `web/views.py` | `ow_segments`；`night_stages` 的 `ow` 一路只留存档 |
+| 改 | `scores/inputs.py`、`scores/engine.py` | `load_ow` 和 `load()` 里读 OW 的分支、`ow_cache` 参数；`run()` 的 `client` / `ow_cache`。留 `load_ow_archive`、`OW_BASE`、`ow_types` |
+| 改 | `insights/stress.py`、`insights/jobs.py` | `_ow_samples`、`_workouts`（OW 的 events 接口）、`compute` 里读 OW 的分支；`run()` 的 `ow_cache` |
+| 改 | `training/importer.py` | `import_ow`、`window_samples`、`enrich` 读 OW 的分支、`enrich_pending` 的 `client`；`source == "ow"` 的保留逻辑和 `archived` 分支留着 |
+| 改 | `sync/refresh.py` | `_run_import` 的 OW 导入、`import_queued`、`run_queued` 的 `import_queued_at` 分支、`_score` 的 `OWClient`；`status()` 的 `linked` |
+| 改 | `sync/resync.py` | `run_step` 的 OW 导入（`_first_day`、`ow.run`、`importer`、`OWClient`、`importing` 状态）；只剩本 PR 的 app 模式路径 |
+| 改 | `sync/history.py`、`history/run.py` | 按窗口从 OW 导入全部历史；`history/run.py` 的「关联了 OW 就全量拉一次」和 `ow_cache=`。`sync/history.py` 是否整个删待定（app 模式改由引擎全量读取） |
+| 改 | `sync/broken.py`、`sync/overview.py`、`sync/received.py`、`sync/data_status.py`、`rawdata/sync_status.py` | 只留 `app` 一路：OW 凭据判断、`ow_watch` / `sync_state(ow)` 子查询、`channels.ow`、`ow_last_sample_at`、`ow_last_sync_at`、`channel = 'ow'` |
+| 改 | `validation/__main__.py` | `OWClient` 和 `--no-ow` |
+| 待定 | `rawdata/cutover.py`、`shadow.py`、`side_by_side.py`、`compare.py`、`engine.py` 的 `ow` / `shadow` 模式 | OW 下线后没法回退、也没有新的对比数据；三模式要不要并成只有 `app`，看开关体系是否保留（第二步再删） |
+| 留 | `importers/common.py` 的 `SOURCE_PRIORITY["ow"]`、`sync/gaps.py` / `training/params.py` 的 `SOURCE_RANK["ow"]` | 过去的天照旧从 `source='ow'` 的行选值 |
+| 留 | 所有迁移文件、`users.ow_user_id` 列 | 历史记录，不再写。`ow_watch` 表、`sync_refresh.import_queued_at` 列以后可以用新迁移去掉 |
+
+**CLI（`cli.py`）**：删 `ow-link`、`import-ow`、`import-workouts`、`ow-watch`、`sync-broken`（或改成只看引擎）、`history-backfill-run`（待定）、`_ow_or_none`；`CONSENT_GATED` 去掉 `import-ow` / `import-workouts`；`hourly-batch --steps` 默认值；`ow-archive` 只留 `--check`；`sync-shadow-*`、`sync-mode` 第二步再定。
+
+**今天页（`web/static/`）**：`sync-repair.js` 的 OW 重连整段（连同 `index.html` 的 `<script>`、`sw.js` 的 `SHELL_FILES`、`i18n-en.js` 里对应的英文）；`sync-status.js` 的 `connectLink` / `connect()` / 连接码卡片；`data-status.js` 读 `ow_last_sample_at` 的那行改读 app 上传时间。`app.js` 里 `stages_source === "ow"` 的显示留着（那些夜确实来自 OW 存档）。
+
+**测试（`body_engine/tests/`）**：整个删 `test_ow_importer.py`（`sleep_segments` / 去重的用例先挪到新规则模块的测试）、`test_ow_cache.py`、`test_ow_watch.py`、`test_ow_refresh_replay.py`；大改 `test_activation.py`、`test_sync_broken.py`、`test_sync_refresh.py`、`test_batch.py`、`test_training.py`、`test_account.py`、`test_open_signup.py`、`test_apple_sync_cutover.py` / `_derive.py` / `_read.py`；`FakeOW` 当夹具的（`test_scores_db.py`、`test_insights_db.py`、`test_web.py`、`test_sleep_night.py`、`test_friends.py`、`test_sync_overview.py`、`test_today_first_screen.py`、`test_data_status.py`、`test_sync_center.py`、`test_history_backfill.py`、`test_health_history.py`）换成引擎上传的合成数据；`tools/bench_hourly_batch.py` 重写或删。
+
+**iOS app（`apps/watch2whoop/`，A5）**：第 5.4 节的 app 清单之外，还有 `lib/src/health_sync.dart`（整个）、`sync_stats.dart` 的 SDK 日志解析、`sync_repair.dart`、`config.dart` 的 `owHost` / `owUserId` / `owConnected` / `UrlKind.ow`、`setup_flow.dart`、`account_flow.dart` 的 `connectSyncViaAccount`、`account_api.dart` 的 `owInvitation`、`sync_bridge.dart`、`resync_flow.dart` / `resync.dart` / `backfill.dart` / `health_range.dart` 的 OW 部分、`main.dart` 的 `HealthSync.start`、`pages/` 下的引导 / 同步 / 设置链接 / 权限页；`pubspec.yaml` 的 `open_wearables_health_sdk`、`Podfile(.lock)`、`AppDelegate.swift` 的 SDK 初始化和 `SyncLogBuffer`、`Info.plist` 的 `com.openwearables.healthsdk.task.*`；对应的 Dart 测试。
+
+**部署和其他**：`deploy/open-wearables/` 整个目录（含 `invite.py`：开户包以后只发今天页登录码）；`deploy/ops/ops.py` 的 `DATABASES`（最后一次 dump 之后）、`EXPECTED_SERVICES`、`PORTS`、`TAILSCALE_SERVE`、`GRAFANA_DATASOURCES`、`job_scores` / `batch_step` 的 `import-ow`、doctor 的 OW 项；`deploy/grafana/` 的 OW 数据源、`ow_grafana_ro.sql`、`build_dashboards.py` 的 OW 面板；根目录和 `quickstart/` 的 compose 里 OW 的服务、密钥和环境变量、`quickstart/run.py` 的 `setup_ow()`；`.gitmodules` 和 `vendor/open-wearables`；`tools/export_public.py` 的 `.gitmodules` 规则；CI `ios-pods` 的注释。`THIRD_PARTY_NOTICES.md` / `docs/LICENSES.md` 的 OW 署名**留着**（移植过来的规则还在），去掉子模块后写明上游 commit。文档：`CLAUDE.md`、两份 README、`docs/system-design.md`、`hourly-batch.md`、`raw-data-plan.md`、`admin-guide.md`、`apps.md`、本文件第 5 节。

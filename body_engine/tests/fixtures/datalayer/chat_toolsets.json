@@ -106,6 +106,7 @@
    "get_shopping_context",
    "record_store_prices",
    "get_friends_overview",
+   "set_home",
    "report_feedback",
    "get_training_context",
    "get_week_review_context",
@@ -638,6 +639,7 @@
    "delete_observation",
    "get_shopping_context",
    "record_store_prices",
+   "set_home",
    "report_feedback",
    "list_feedback",
    "get_training_context",
@@ -718,6 +720,7 @@
     "delete_observation",
     "get_shopping_context",
     "record_store_prices",
+    "set_home",
     "report_feedback",
     "list_feedback",
     "get_training_context",
@@ -2085,7 +2088,7 @@
   },
   "get_training_log": {
    "name": "get_training_log",
-   "description": "力量训练记录（SparkyFitness）：每次训练的 id、日期、名称、来源（body_assistant = 管家写的），每个动作的组：「次数×重量 RIR」（哑铃是单只）和 set_ids（改 / 删一组用）。动作的禁用状态不在这里。",
+   "description": "力量训练记录：每次训练的 id、日期、名称、来源（body_assistant = 管家写的），每个动作的组：「次数×重量 RIR」（哑铃是单只）和 set_ids（改 / 删一组用）。动作的禁用状态不在这里。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -2151,7 +2154,7 @@
   },
   "get_weight": {
    "name": "get_weight",
-   "description": "称重和围度（SparkyFitness check-in：体重 kg、腰围、体脂…）和每周（周一起）平均体重。调热量看周均。",
+   "description": "称重和围度（每天一条：体重 kg、腰围、体脂…，ctx = 测量情况、note = 备注）和每周（周一起）平均体重。调热量看周均。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -2188,7 +2191,10 @@
       "description": "me 或授权给你的家人 ID"
      },
      "statuses": {
-      "type": "array",
+      "type": [
+       "array",
+       "null"
+      ],
       "items": {
        "type": "string",
        "enum": [
@@ -2199,7 +2205,7 @@
         "not_needed"
        ]
       },
-      "description": "空 = 全部"
+      "description": "null / 空 = 全部"
      }
     },
     "required": [
@@ -2933,7 +2939,7 @@
        "string",
        "null"
       ],
-      "description": "SparkyFitness 动作 ID"
+      "description": "训练记录里的动作 ID"
      }
     },
     "required": [
@@ -2974,7 +2980,11 @@
       "description": "YYYY-MM-DD，null=今天"
      },
      "include_dismissed": {
-      "type": "boolean"
+      "type": [
+       "boolean",
+       "null"
+      ],
+      "description": "null = false"
      },
      "detail": {
       "type": "boolean",
@@ -3473,7 +3483,7 @@
   },
   "propose_plan": {
    "name": "propose_plan",
-   "description": "周计划草案（不写库）。先问用户 ask_user_first 里的事（开始日、本周剩余怎么排、哪几天能练、不能练的日子、热身附加项），出草案给用户看（含推荐重量）。first_week=本周已练后只补缺的安排。",
+   "description": "周计划草案（不写库）。先问用户 ask_user_first 里的事（开始日、本周剩余怎么排、哪几天能练、不能练的日子、热身附加项），出草案给用户看（含推荐重量）。first_week=本周已练后只补缺的安排。unresolved=库里认不出的动作，和用户确认换成哪个。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -3528,7 +3538,7 @@
           "properties": {
            "exercise": {
             "type": "string",
-            "description": "slug 或动作名"
+            "description": "slug 或动作名；「A + B」=超级组"
            },
            "sets": {
             "type": "integer"
@@ -3640,7 +3650,7 @@
   },
   "save_plan": {
    "name": "save_plan",
-   "description": "用户确认 propose_plan 草案后才调：保存并激活周计划（参数同草案），本周按 first_week 补缺；SparkyFitness 同步失败计划照样保存，按 tell_user 告诉用户。",
+   "description": "用户确认 propose_plan 草案后才调：保存并激活周计划（参数同草案），本周按 first_week 补缺；SparkyFitness 同步失败计划照样保存，按 tell_user 告诉用户；unresolved 同上。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -3701,7 +3711,7 @@
           "properties": {
            "exercise": {
             "type": "string",
-            "description": "slug 或动作名"
+            "description": "slug 或动作名；「A + B」=超级组"
            },
            "sets": {
             "type": "integer"
@@ -4381,7 +4391,7 @@
   },
   "search_exercises": {
    "name": "search_exercises",
-   "description": "在动作库（+ SparkyFitness）按名称/别名/肌群/器械/模式搜动作：返回 slug、exercise_id、肌群、器械、状态（active/caution/banned）与要点。",
+   "description": "在动作库（含自己的动作）按名称/别名/肌群/器械/模式搜动作：返回 slug、exercise_id、肌群、器械、状态（active/caution/banned）与要点。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -4429,7 +4439,7 @@
   },
   "log_food": {
    "name": "log_food",
-   "description": "饮食记进 SparkyFitness（每条一种食物 / 一道菜）。热量和三大营养素要自洽（4/4/9，酒精 7），对不上会被拒；同天同餐同名当重复跳过（allow_duplicates=true 才写）。返回条目 id（撤销用 undo_sparky_entry）。",
+   "description": "记饮食（每条一种食物 / 一道菜）。热量和三大营养素要自洽（4/4/9，酒精 7），对不上会被拒；同天同餐同名当重复跳过（allow_duplicates=true 才写）。返回条目 id（撤销用 undo_sparky_entry）。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -4570,7 +4580,7 @@
   },
   "log_workout": {
    "name": "log_workout",
-   "description": "一次训练记进 SparkyFitness（每个动作每组次数、重量、RIR）。有 banned 动作整次拒绝（告诉用户原因和替代）；对不上的动作报错并给候选；同天同动作当重复跳过（allow_duplicate=true 才写）。",
+   "description": "记一次训练（每个动作每组次数、重量、RIR）。有 banned 动作整次拒绝（告诉用户原因和替代）；对不上的动作报错并给候选；同天同动作当重复跳过（allow_duplicate=true 才写）。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -4701,7 +4711,7 @@
   },
   "log_weight": {
    "name": "log_weight",
-   "description": "称重 / 体成分记进 SparkyFitness check-in（每天一条）。同天已有不同数值不覆盖（overwrite=true 才改）。InBody 的其他项（内脏脂肪、骨骼肌…）用 log_metric_snapshot。",
+   "description": "记称重 / 体成分（每天一条）。同天已有不同数值不覆盖（overwrite=true 才改）。InBody 的其他项（内脏脂肪、骨骼肌…）用 log_metric_snapshot。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -4755,6 +4765,23 @@
      },
      "overwrite": {
       "type": "boolean"
+     },
+     "context": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "description": "测量情况：fasting after_toilet after_meal after_workout before_bed clothed unclothed",
+      "items": {
+       "type": "string"
+      }
+     },
+     "note": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "备注"
      }
     },
     "required": [
@@ -4766,7 +4793,9 @@
      "body_water_pct",
      "bone_mass_kg",
      "bmr_kcal",
-     "overwrite"
+     "overwrite",
+     "context",
+     "note"
     ],
     "additionalProperties": false
    },
@@ -5750,7 +5779,7 @@
   },
   "log_meal_template": {
    "name": "log_meal_template",
-   "description": "按模板记一餐进 SparkyFitness。overrides 改这次的克数（营养按比例，0 = 没吃）。当天这一餐记过会拒绝（allow_duplicates=true 才再记）。warnings（例如超过用户设的红肉上限）要转告用户。返回 log_id（撤销用 undo_meal_log）。",
+   "description": "按模板记一餐。overrides 改这次的克数（营养按比例，0 = 没吃）。当天这一餐记过会拒绝（allow_duplicates=true 才再记）。warnings（例如超过用户设的红肉上限）要转告用户。返回 log_id（撤销用 undo_meal_log）。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -5992,7 +6021,7 @@
   },
   "create_recipe": {
    "name": "create_recipe",
-   "description": "新建菜谱（对话里的做法、菜的照片、网页菜谱），同时在 SparkyFitness 建镜像。食材按整锅（servings 份）写，每样带克数和营养；嘌呤按常见含量估（每 100g：鸡约 130、鱼 110–120、牛猪 110–120、豆腐 60、蛋奶 0、米 25、燕麦 90、蘑菇 50、青菜 30）；做法几条短句。",
+   "description": "新建菜谱（对话里的做法、菜的照片、网页菜谱）。食材按整锅（servings 份）写，每样带克数和营养；嘌呤按常见含量估（每 100g：鸡约 130、鱼 110–120、牛猪 110–120、豆腐 60、蛋奶 0、米 25、燕麦 90、蘑菇 50、青菜 30）；做法几条短句。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -6193,7 +6222,7 @@
   },
   "update_recipe": {
    "name": "update_recipe",
-   "description": "修改菜谱：收藏、会不会做、适合哪餐、标签、时间、份数、食材 / 做法（整份替换）、备注；null = 不改；active=false = 删掉。改了食材 / 名字会同步 SparkyFitness。",
+   "description": "修改菜谱：收藏、会不会做、适合哪餐、标签、时间、份数、食材 / 做法（整份替换）、备注；null = 不改；active=false = 删掉。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -6426,7 +6455,7 @@
   },
   "log_recipe": {
    "name": "log_recipe",
-   "description": "记吃了食谱里的一道菜（一条 SparkyFitness 饮食记录）。servings 吃了几份；不含主食的菜，米饭另用 log_food。同天同餐同菜会拒绝（allow_duplicates 才再记）。返回 log_id（撤销用 undo_meal_log）。",
+   "description": "记吃了食谱里的一道菜（一条饮食记录）。servings 吃了几份；不含主食的菜，米饭另用 log_food。同天同餐同菜会拒绝（allow_duplicates 才再记）。返回 log_id（撤销用 undo_meal_log）。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -6547,7 +6576,7 @@
   },
   "save_product": {
    "name": "save_product",
-   "description": "存商品（价签 / 小票 / 营养表照片、商品链接）。product_id=null 时同条码 / 商品页 / 同名同品牌的更新，否则新建；null=不改。nutrition 每 100g（不知道就 {}）；matches=能顶的食材名；price 每包。",
+   "description": "存商品（价签 / 小票 / 营养表照片、商品链接）。product_id=null 时同条码 / 商品页 / 同名同品牌的更新，否则新建；null=不改。nutrition 每 100g、nutrition_serving 每份（不知道的项不写）；matches=能顶的食材名；price 每包。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -6666,13 +6695,55 @@
          "null"
         ]
        },
+       "trans_fat_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
        "sugar_g": {
         "type": [
          "number",
          "null"
         ]
        },
+       "added_sugar_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "fiber_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
        "sodium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "potassium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "calcium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "iron_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "cholesterol_mg": {
         "type": [
          "number",
          "null"
@@ -6685,10 +6756,175 @@
        "carbs_g",
        "fat_g",
        "sat_fat_g",
+       "trans_fat_g",
        "sugar_g",
-       "sodium_mg"
+       "added_sugar_g",
+       "fiber_g",
+       "sodium_mg",
+       "potassium_mg",
+       "calcium_mg",
+       "iron_mg",
+       "cholesterol_mg"
       ],
       "additionalProperties": false
+     },
+     "serving_size": {
+      "type": [
+       "number",
+       "null"
+      ],
+      "description": "一份多少，和 serving_unit 一起"
+     },
+     "serving_unit": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "enum": [
+       "g",
+       "ml",
+       null
+      ]
+     },
+     "nutrition_serving": {
+      "type": "object",
+      "properties": {
+       "kcal": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "protein_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "carbs_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "fat_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "sat_fat_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "trans_fat_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "sugar_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "added_sugar_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "fiber_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "sodium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "potassium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "calcium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "iron_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "cholesterol_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       }
+      },
+      "required": [
+       "kcal",
+       "protein_g",
+       "carbs_g",
+       "fat_g",
+       "sat_fat_g",
+       "trans_fat_g",
+       "sugar_g",
+       "added_sugar_g",
+       "fiber_g",
+       "sodium_mg",
+       "potassium_mg",
+       "calcium_mg",
+       "iron_mg",
+       "cholesterol_mg"
+      ],
+      "additionalProperties": false
+     },
+     "ingredients": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "配料表原文"
+     },
+     "allergens": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "items": {
+       "type": "string"
+      },
+      "description": "含有的过敏原；[]=标签写了没有"
+     },
+     "allergen_traces": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "items": {
+       "type": "string"
+      },
+      "description": "可能含有"
+     },
+     "image_url": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "https 图片地址（只存地址）"
      },
      "purine_level": {
       "type": [
@@ -6756,6 +6992,13 @@
      "price",
      "currency",
      "nutrition",
+     "serving_size",
+     "serving_unit",
+     "nutrition_serving",
+     "ingredients",
+     "allergens",
+     "allergen_traces",
+     "image_url",
      "purine_level",
      "red_meat",
      "barcode",
@@ -6770,7 +7013,7 @@
   },
   "lookup_barcode": {
    "name": "lookup_barcode",
-   "description": "按条码查 Open Food Facts（名字、规格、每 100g 营养）。",
+   "description": "按条码查 Open Food Facts（名字、规格、每 100g 营养、配料、过敏原、图片地址）。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -7897,6 +8140,66 @@
    },
    "strict": true
   },
+  "set_home": {
+   "name": "set_home",
+   "description": "今天页「我的首页」：module 放上(pinned) / 移走(hidden) / 交回规则(auto)；focus 设关注点。null = 不改。",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "module": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "enum": [
+       "health_monitor",
+       "strain_coach",
+       "sleep",
+       "sleep_goal",
+       "training",
+       "muscle_load",
+       "journal",
+       null
+      ]
+     },
+     "state": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "enum": [
+       "pinned",
+       "hidden",
+       "auto",
+       null
+      ]
+     },
+     "focus": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "items": {
+       "type": "string",
+       "enum": [
+        "fat",
+        "muscle",
+        "sleep",
+        "recover",
+        "markers"
+       ]
+      }
+     }
+    },
+    "required": [
+     "module",
+     "state",
+     "focus"
+    ],
+    "additionalProperties": false
+   },
+   "strict": true
+  },
   "report_feedback": {
    "name": "report_feedback",
    "description": "把系统 bug / 用户的新需求报告给开发者（根规则）。只写产品行为，不写健康数值、名字、联系方式。照返回的 tell_user 告诉用户。",
@@ -8057,7 +8360,7 @@
        "string",
        "null"
       ],
-      "description": "body / training / nutrition / recipes / grocery / records / memory / feedback / help"
+      "description": "body / training / nutrition / recipes / grocery / records / memory / feedback / help / home"
      },
      "query": {
       "type": [
@@ -8262,7 +8565,11 @@
       "description": "YYYY-MM-DD，null=今天"
      },
      "include_dismissed": {
-      "type": "boolean"
+      "type": [
+       "boolean",
+       "null"
+      ],
+      "description": "null = false"
      },
      "detail": {
       "type": "boolean",
@@ -8449,7 +8756,7 @@
   },
   "search_exercises": {
    "name": "search_exercises",
-   "description": "在动作库（+ SparkyFitness）按名称/别名/肌群/器械/模式搜动作：返回 slug、exercise_id、肌群、器械、状态（active/caution/banned）与要点。",
+   "description": "在动作库（含自己的动作）按名称/别名/肌群/器械/模式搜动作：返回 slug、exercise_id、肌群、器械、状态（active/caution/banned）与要点。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -8535,7 +8842,7 @@
   },
   "propose_plan": {
    "name": "propose_plan",
-   "description": "周计划草案（不写库）。先问用户 ask_user_first 里的事（开始日、本周剩余怎么排、哪几天能练、不能练的日子、热身附加项），出草案给用户看（含推荐重量）。first_week=本周已练后只补缺的安排。",
+   "description": "周计划草案（不写库）。先问用户 ask_user_first 里的事（开始日、本周剩余怎么排、哪几天能练、不能练的日子、热身附加项），出草案给用户看（含推荐重量）。first_week=本周已练后只补缺的安排。unresolved=库里认不出的动作，和用户确认换成哪个。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -8586,7 +8893,7 @@
           "properties": {
            "exercise": {
             "type": "string",
-            "description": "slug 或动作名"
+            "description": "slug 或动作名；「A + B」=超级组"
            },
            "sets": {
             "type": "integer"
@@ -8697,7 +9004,7 @@
   },
   "save_plan": {
    "name": "save_plan",
-   "description": "用户确认 propose_plan 草案后才调：保存并激活周计划（参数同草案），本周按 first_week 补缺；SparkyFitness 同步失败计划照样保存，按 tell_user 告诉用户。",
+   "description": "用户确认 propose_plan 草案后才调：保存并激活周计划（参数同草案），本周按 first_week 补缺；SparkyFitness 同步失败计划照样保存，按 tell_user 告诉用户；unresolved 同上。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -8758,7 +9065,7 @@
           "properties": {
            "exercise": {
             "type": "string",
-            "description": "slug 或动作名"
+            "description": "slug 或动作名；「A + B」=超级组"
            },
            "sets": {
             "type": "integer"
@@ -9016,7 +9323,7 @@
   },
   "get_training_log": {
    "name": "get_training_log",
-   "description": "力量训练记录（SparkyFitness）：每次训练的 id、日期、名称、来源（body_assistant = 管家写的），每个动作的组：「次数×重量 RIR」（哑铃是单只）和 set_ids（改 / 删一组用）。动作的禁用状态不在这里。",
+   "description": "力量训练记录：每次训练的 id、日期、名称、来源（body_assistant = 管家写的），每个动作的组：「次数×重量 RIR」（哑铃是单只）和 set_ids（改 / 删一组用）。动作的禁用状态不在这里。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -9072,7 +9379,7 @@
   },
   "get_weight": {
    "name": "get_weight",
-   "description": "称重和围度（SparkyFitness check-in：体重 kg、腰围、体脂…）和每周（周一起）平均体重。调热量看周均。",
+   "description": "称重和围度（每天一条：体重 kg、腰围、体脂…，ctx = 测量情况、note = 备注）和每周（周一起）平均体重。调热量看周均。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -9121,7 +9428,10 @@
     "type": "object",
     "properties": {
      "statuses": {
-      "type": "array",
+      "type": [
+       "array",
+       "null"
+      ],
       "items": {
        "type": "string",
        "enum": [
@@ -9132,7 +9442,7 @@
         "not_needed"
        ]
       },
-      "description": "空 = 全部"
+      "description": "null / 空 = 全部"
      }
     },
     "required": [
@@ -9241,7 +9551,7 @@
   },
   "log_food": {
    "name": "log_food",
-   "description": "饮食记进 SparkyFitness（每条一种食物 / 一道菜）。热量和三大营养素要自洽（4/4/9，酒精 7），对不上会被拒；同天同餐同名当重复跳过（allow_duplicates=true 才写）。返回条目 id（撤销用 undo_sparky_entry）。",
+   "description": "记饮食（每条一种食物 / 一道菜）。热量和三大营养素要自洽（4/4/9，酒精 7），对不上会被拒；同天同餐同名当重复跳过（allow_duplicates=true 才写）。返回条目 id（撤销用 undo_sparky_entry）。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -9382,7 +9692,7 @@
   },
   "log_workout": {
    "name": "log_workout",
-   "description": "一次训练记进 SparkyFitness（每个动作每组次数、重量、RIR）。有 banned 动作整次拒绝（告诉用户原因和替代）；对不上的动作报错并给候选；同天同动作当重复跳过（allow_duplicate=true 才写）。",
+   "description": "记一次训练（每个动作每组次数、重量、RIR）。有 banned 动作整次拒绝（告诉用户原因和替代）；对不上的动作报错并给候选；同天同动作当重复跳过（allow_duplicate=true 才写）。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -9513,7 +9823,7 @@
   },
   "log_weight": {
    "name": "log_weight",
-   "description": "称重 / 体成分记进 SparkyFitness check-in（每天一条）。同天已有不同数值不覆盖（overwrite=true 才改）。InBody 的其他项（内脏脂肪、骨骼肌…）用 log_metric_snapshot。",
+   "description": "记称重 / 体成分（每天一条）。同天已有不同数值不覆盖（overwrite=true 才改）。InBody 的其他项（内脏脂肪、骨骼肌…）用 log_metric_snapshot。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -9567,6 +9877,23 @@
      },
      "overwrite": {
       "type": "boolean"
+     },
+     "context": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "description": "测量情况：fasting after_toilet after_meal after_workout before_bed clothed unclothed",
+      "items": {
+       "type": "string"
+      }
+     },
+     "note": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "备注"
      }
     },
     "required": [
@@ -9578,7 +9905,9 @@
      "body_water_pct",
      "bone_mass_kg",
      "bmr_kcal",
-     "overwrite"
+     "overwrite",
+     "context",
+     "note"
     ],
     "additionalProperties": false
    },
@@ -11320,7 +11649,7 @@
   },
   "save_product": {
    "name": "save_product",
-   "description": "存商品（价签 / 小票 / 营养表照片、商品链接）。product_id=null 时同条码 / 商品页 / 同名同品牌的更新，否则新建；null=不改。nutrition 每 100g（不知道就 {}）；matches=能顶的食材名；price 每包。",
+   "description": "存商品（价签 / 小票 / 营养表照片、商品链接）。product_id=null 时同条码 / 商品页 / 同名同品牌的更新，否则新建；null=不改。nutrition 每 100g、nutrition_serving 每份（不知道的项不写）；matches=能顶的食材名；price 每包。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -11439,13 +11768,55 @@
          "null"
         ]
        },
+       "trans_fat_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
        "sugar_g": {
         "type": [
          "number",
          "null"
         ]
        },
+       "added_sugar_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "fiber_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
        "sodium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "potassium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "calcium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "iron_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "cholesterol_mg": {
         "type": [
          "number",
          "null"
@@ -11458,10 +11829,175 @@
        "carbs_g",
        "fat_g",
        "sat_fat_g",
+       "trans_fat_g",
        "sugar_g",
-       "sodium_mg"
+       "added_sugar_g",
+       "fiber_g",
+       "sodium_mg",
+       "potassium_mg",
+       "calcium_mg",
+       "iron_mg",
+       "cholesterol_mg"
       ],
       "additionalProperties": false
+     },
+     "serving_size": {
+      "type": [
+       "number",
+       "null"
+      ],
+      "description": "一份多少，和 serving_unit 一起"
+     },
+     "serving_unit": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "enum": [
+       "g",
+       "ml",
+       null
+      ]
+     },
+     "nutrition_serving": {
+      "type": "object",
+      "properties": {
+       "kcal": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "protein_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "carbs_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "fat_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "sat_fat_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "trans_fat_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "sugar_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "added_sugar_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "fiber_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "sodium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "potassium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "calcium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "iron_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "cholesterol_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       }
+      },
+      "required": [
+       "kcal",
+       "protein_g",
+       "carbs_g",
+       "fat_g",
+       "sat_fat_g",
+       "trans_fat_g",
+       "sugar_g",
+       "added_sugar_g",
+       "fiber_g",
+       "sodium_mg",
+       "potassium_mg",
+       "calcium_mg",
+       "iron_mg",
+       "cholesterol_mg"
+      ],
+      "additionalProperties": false
+     },
+     "ingredients": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "配料表原文"
+     },
+     "allergens": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "items": {
+       "type": "string"
+      },
+      "description": "含有的过敏原；[]=标签写了没有"
+     },
+     "allergen_traces": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "items": {
+       "type": "string"
+      },
+      "description": "可能含有"
+     },
+     "image_url": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "https 图片地址（只存地址）"
      },
      "purine_level": {
       "type": [
@@ -11529,6 +12065,13 @@
      "price",
      "currency",
      "nutrition",
+     "serving_size",
+     "serving_unit",
+     "nutrition_serving",
+     "ingredients",
+     "allergens",
+     "allergen_traces",
+     "image_url",
      "purine_level",
      "red_meat",
      "barcode",
@@ -12806,7 +13349,7 @@
        "string",
        "null"
       ],
-      "description": "SparkyFitness 动作 ID"
+      "description": "训练记录里的动作 ID"
      }
     },
     "required": [
@@ -13745,7 +14288,7 @@
   },
   "log_meal_template": {
    "name": "log_meal_template",
-   "description": "按模板记一餐进 SparkyFitness。overrides 改这次的克数（营养按比例，0 = 没吃）。当天这一餐记过会拒绝（allow_duplicates=true 才再记）。warnings（例如超过用户设的红肉上限）要转告用户。返回 log_id（撤销用 undo_meal_log）。",
+   "description": "按模板记一餐。overrides 改这次的克数（营养按比例，0 = 没吃）。当天这一餐记过会拒绝（allow_duplicates=true 才再记）。warnings（例如超过用户设的红肉上限）要转告用户。返回 log_id（撤销用 undo_meal_log）。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -13876,7 +14419,7 @@
   },
   "create_recipe": {
    "name": "create_recipe",
-   "description": "新建菜谱（对话里的做法、菜的照片、网页菜谱），同时在 SparkyFitness 建镜像。食材按整锅（servings 份）写，每样带克数和营养；嘌呤按常见含量估（每 100g：鸡约 130、鱼 110–120、牛猪 110–120、豆腐 60、蛋奶 0、米 25、燕麦 90、蘑菇 50、青菜 30）；做法几条短句。",
+   "description": "新建菜谱（对话里的做法、菜的照片、网页菜谱）。食材按整锅（servings 份）写，每样带克数和营养；嘌呤按常见含量估（每 100g：鸡约 130、鱼 110–120、牛猪 110–120、豆腐 60、蛋奶 0、米 25、燕麦 90、蘑菇 50、青菜 30）；做法几条短句。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -14077,7 +14620,7 @@
   },
   "update_recipe": {
    "name": "update_recipe",
-   "description": "修改菜谱：收藏、会不会做、适合哪餐、标签、时间、份数、食材 / 做法（整份替换）、备注；null = 不改；active=false = 删掉。改了食材 / 名字会同步 SparkyFitness。",
+   "description": "修改菜谱：收藏、会不会做、适合哪餐、标签、时间、份数、食材 / 做法（整份替换）、备注；null = 不改；active=false = 删掉。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -14310,7 +14853,7 @@
   },
   "log_recipe": {
    "name": "log_recipe",
-   "description": "记吃了食谱里的一道菜（一条 SparkyFitness 饮食记录）。servings 吃了几份；不含主食的菜，米饭另用 log_food。同天同餐同菜会拒绝（allow_duplicates 才再记）。返回 log_id（撤销用 undo_meal_log）。",
+   "description": "记吃了食谱里的一道菜（一条饮食记录）。servings 吃了几份；不含主食的菜，米饭另用 log_food。同天同餐同菜会拒绝（allow_duplicates 才再记）。返回 log_id（撤销用 undo_meal_log）。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -14383,7 +14926,7 @@
   },
   "lookup_barcode": {
    "name": "lookup_barcode",
-   "description": "按条码查 Open Food Facts（名字、规格、每 100g 营养）。",
+   "description": "按条码查 Open Food Facts（名字、规格、每 100g 营养、配料、过敏原、图片地址）。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -14724,6 +15267,66 @@
     "additionalProperties": false
    },
    "strict": true
+  },
+  "set_home": {
+   "name": "set_home",
+   "description": "今天页「我的首页」：module 放上(pinned) / 移走(hidden) / 交回规则(auto)；focus 设关注点。null = 不改。",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "module": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "enum": [
+       "health_monitor",
+       "strain_coach",
+       "sleep",
+       "sleep_goal",
+       "training",
+       "muscle_load",
+       "journal",
+       null
+      ]
+     },
+     "state": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "enum": [
+       "pinned",
+       "hidden",
+       "auto",
+       null
+      ]
+     },
+     "focus": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "items": {
+       "type": "string",
+       "enum": [
+        "fat",
+        "muscle",
+        "sleep",
+        "recover",
+        "markers"
+       ]
+      }
+     }
+    },
+    "required": [
+     "module",
+     "state",
+     "focus"
+    ],
+    "additionalProperties": false
+   },
+   "strict": true
   }
  },
  "cards_v2_definition": {
@@ -14854,136 +15457,6 @@
   "strict": true
  },
  "ai_parity_scrubbed_definitions": {
-  "get_training_log": {
-   "name": "get_training_log",
-   "description": "力量训练记录（底层数据库）：每次训练的 id、日期、名称、来源（body_assistant = 管家写的），每个动作的组：「次数×重量 RIR」（哑铃是单只）和 set_ids（改 / 删一组用）。动作的禁用状态不在这里。",
-   "input_schema": {
-    "type": "object",
-    "properties": {
-     "user": {
-      "type": "string",
-      "description": "me 或授权给你的家人 ID"
-     },
-     "start": {
-      "type": "string",
-      "description": "YYYY-MM-DD 含"
-     },
-     "end": {
-      "type": "string",
-      "description": "YYYY-MM-DD 含"
-     },
-     "detail": {
-      "type": "boolean",
-      "description": "true=每组一个对象、带动作 ID"
-     }
-    },
-    "required": [
-     "user",
-     "start",
-     "end",
-     "detail"
-    ],
-    "additionalProperties": false
-   },
-   "strict": true
-  },
-  "get_weight": {
-   "name": "get_weight",
-   "description": "称重和围度（底层数据库 check-in：体重 kg、腰围、体脂…）和每周（周一起）平均体重。调热量看周均。",
-   "input_schema": {
-    "type": "object",
-    "properties": {
-     "user": {
-      "type": "string",
-      "description": "me 或授权给你的家人 ID"
-     },
-     "start": {
-      "type": "string",
-      "description": "YYYY-MM-DD 含"
-     },
-     "end": {
-      "type": "string",
-      "description": "YYYY-MM-DD 含"
-     }
-    },
-    "required": [
-     "user",
-     "start",
-     "end"
-    ],
-    "additionalProperties": false
-   },
-   "strict": true
-  },
-  "set_exercise_rule": {
-   "name": "set_exercise_rule",
-   "description": "新建或修改一个动作的补充信息（状态、要点、原因）。null = 不改。",
-   "input_schema": {
-    "type": "object",
-    "properties": {
-     "exercise_ref": {
-      "type": "string",
-      "description": "英文 slug，例 upright_row"
-     },
-     "name_zh": {
-      "type": [
-       "string",
-       "null"
-      ]
-     },
-     "status": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "enum": [
-       "active",
-       "caution",
-       "banned",
-       null
-      ]
-     },
-     "per_side": {
-      "type": [
-       "boolean",
-       "null"
-      ],
-      "description": "单侧（组数按每侧）"
-     },
-     "cues": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "description": "动作要点"
-     },
-     "reason": {
-      "type": [
-       "string",
-       "null"
-      ]
-     },
-     "app_exercise_id": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "description": "底层数据库 动作 ID"
-     }
-    },
-    "required": [
-     "exercise_ref",
-     "name_zh",
-     "status",
-     "per_side",
-     "cues",
-     "reason",
-     "app_exercise_id"
-    ],
-    "additionalProperties": false
-   },
-   "strict": true
-  },
   "get_training_calendar": {
    "name": "get_training_calendar",
    "description": "训练日历（手表 + 底层数据库 合并）：每天强度、时长、strain、恢复分、活动能量、步数与汇总（默认最近 28 天）。",
@@ -15033,7 +15506,7 @@
   },
   "save_plan": {
    "name": "save_plan",
-   "description": "用户确认 propose_plan 草案后才调：保存并激活周计划（参数同草案），本周按 first_week 补缺；底层数据库 同步失败计划照样保存，按 tell_user 告诉用户。",
+   "description": "用户确认 propose_plan 草案后才调：保存并激活周计划（参数同草案），本周按 first_week 补缺；底层数据库 同步失败计划照样保存，按 tell_user 告诉用户；unresolved 同上。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -15094,7 +15567,7 @@
           "properties": {
            "exercise": {
             "type": "string",
-            "description": "slug 或动作名"
+            "description": "slug 或动作名；「A + B」=超级组"
            },
            "sets": {
             "type": "integer"
@@ -15235,947 +15708,6 @@
      "day_of_week",
      "session_name",
      "sync_sparky"
-    ],
-    "additionalProperties": false
-   },
-   "strict": true
-  },
-  "search_exercises": {
-   "name": "search_exercises",
-   "description": "在动作库（+ 底层数据库）按名称/别名/肌群/器械/模式搜动作：返回 slug、exercise_id、肌群、器械、状态（active/caution/banned）与要点。",
-   "input_schema": {
-    "type": "object",
-    "properties": {
-     "user": {
-      "type": "string",
-      "description": "me 或授权给你的家人 ID"
-     },
-     "query": {
-      "type": [
-       "string",
-       "null"
-      ]
-     },
-     "muscle": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "description": "chest/back/shoulders/legs/arms/core 或中文"
-     },
-     "equipment": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "description": "dumbbell/barbell/cable/machine/body only 或中文"
-     },
-     "pattern": {
-      "type": [
-       "string",
-       "null"
-      ]
-     }
-    },
-    "required": [
-     "user",
-     "query",
-     "muscle",
-     "equipment",
-     "pattern"
-    ],
-    "additionalProperties": false
-   },
-   "strict": true
-  },
-  "log_food": {
-   "name": "log_food",
-   "description": "饮食记进 底层数据库（每条一种食物 / 一道菜）。热量和三大营养素要自洽（4/4/9，酒精 7），对不上会被拒；同天同餐同名当重复跳过（allow_duplicates=true 才写）。返回条目 id（撤销用 undo_sparky_entry）。",
-   "input_schema": {
-    "type": "object",
-    "properties": {
-     "items": {
-      "type": "array",
-      "items": {
-       "type": "object",
-       "properties": {
-        "date": {
-         "type": "string",
-         "description": "行为发生那天 YYYY-MM-DD（凌晨睡前的事算前一天）"
-        },
-        "meal": {
-         "type": "string",
-         "enum": [
-          "breakfast",
-          "lunch",
-          "dinner",
-          "snacks"
-         ]
-        },
-        "time": {
-         "type": [
-          "string",
-          "null"
-         ],
-         "description": "HH:MM"
-        },
-        "food": {
-         "type": "string",
-         "description": "具体到能估营养，例：照烧鸡腿（鸡腿 150g）"
-        },
-        "amount": {
-         "type": "string",
-         "description": "份量，例 200 g、1 碗（约 250g 熟饭）"
-        },
-        "calories": {
-         "type": "number",
-         "description": "这一份的总 kcal"
-        },
-        "protein_g": {
-         "type": "number"
-        },
-        "carbs_g": {
-         "type": "number"
-        },
-        "fat_g": {
-         "type": "number"
-        },
-        "saturated_fat_g": {
-         "type": [
-          "number",
-          "null"
-         ]
-        },
-        "alcohol_g": {
-         "type": [
-          "number",
-          "null"
-         ],
-         "description": "酒类填"
-        },
-        "sugar_g": {
-         "type": [
-          "number",
-          "null"
-         ],
-         "description": "总糖；不知道 null，不是 0"
-        },
-        "added_sugar_g": {
-         "type": [
-          "number",
-          "null"
-         ],
-         "description": "添加糖（加的糖、蜂蜜、糖浆、甜饮料）"
-        },
-        "fiber_g": {
-         "type": [
-          "number",
-          "null"
-         ]
-        },
-        "sodium_mg": {
-         "type": [
-          "number",
-          "null"
-         ]
-        },
-        "sugary_drink": {
-         "type": [
-          "boolean",
-          "null"
-         ],
-         "description": "含糖饮料 true"
-        },
-        "notes": {
-         "type": [
-          "string",
-          "null"
-         ],
-         "description": "估算依据、拿不准的地方"
-        }
-       },
-       "required": [
-        "date",
-        "meal",
-        "time",
-        "food",
-        "amount",
-        "calories",
-        "protein_g",
-        "carbs_g",
-        "fat_g",
-        "saturated_fat_g",
-        "alcohol_g",
-        "sugar_g",
-        "added_sugar_g",
-        "fiber_g",
-        "sodium_mg",
-        "sugary_drink",
-        "notes"
-       ],
-       "additionalProperties": false
-      }
-     },
-     "allow_duplicates": {
-      "type": "boolean",
-      "description": "用户确认是另一份才 true"
-     }
-    },
-    "required": [
-     "items",
-     "allow_duplicates"
-    ],
-    "additionalProperties": false
-   },
-   "strict": true
-  },
-  "log_workout": {
-   "name": "log_workout",
-   "description": "一次训练记进 底层数据库（每个动作每组次数、重量、RIR）。有 banned 动作整次拒绝（告诉用户原因和替代）；对不上的动作报错并给候选；同天同动作当重复跳过（allow_duplicate=true 才写）。",
-   "input_schema": {
-    "type": "object",
-    "properties": {
-     "date": {
-      "type": "string",
-      "description": "行为发生那天 YYYY-MM-DD（凌晨睡前的事算前一天）"
-     },
-     "name": {
-      "type": "string",
-      "description": "例 上肢 A"
-     },
-     "notes": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "description": "感受、低血糖、心率等"
-     },
-     "exercises": {
-      "type": "array",
-      "items": {
-       "type": "object",
-       "properties": {
-        "exercise": {
-         "type": "string",
-         "description": "动作名，会对上动作库"
-        },
-        "exercise_id": {
-         "type": [
-          "string",
-          "null"
-         ],
-         "description": "search_exercises 查到的 ID，比名字准"
-        },
-        "sets": {
-         "type": "array",
-         "items": {
-          "type": "object",
-          "properties": {
-           "reps": {
-            "type": [
-             "integer",
-             "null"
-            ]
-           },
-           "weight_kg": {
-            "type": [
-             "number",
-             "null"
-            ],
-            "description": "哑铃单只、绳索每侧、杠铃总重"
-           },
-           "rir": {
-            "type": [
-             "number",
-             "null"
-            ],
-            "description": "离力竭还剩几次"
-           },
-           "duration_s": {
-            "type": [
-             "integer",
-             "null"
-            ],
-            "description": "平板 / 有氧"
-           },
-           "set_type": {
-            "type": [
-             "string",
-             "null"
-            ],
-            "description": "Working Set（默认）/ Warm-up"
-           },
-           "notes": {
-            "type": [
-             "string",
-             "null"
-            ]
-           }
-          },
-          "required": [
-           "reps",
-           "weight_kg",
-           "rir",
-           "duration_s",
-           "set_type",
-           "notes"
-          ],
-          "additionalProperties": false
-         }
-        },
-        "notes": {
-         "type": [
-          "string",
-          "null"
-         ]
-        }
-       },
-       "required": [
-        "exercise",
-        "exercise_id",
-        "sets",
-        "notes"
-       ],
-       "additionalProperties": false
-      },
-      "description": "按做的顺序"
-     },
-     "allow_duplicate": {
-      "type": "boolean"
-     },
-     "create_missing_exercises": {
-      "type": "boolean",
-      "description": "用户确认是新动作才 true"
-     }
-    },
-    "required": [
-     "date",
-     "name",
-     "notes",
-     "exercises",
-     "allow_duplicate",
-     "create_missing_exercises"
-    ],
-    "additionalProperties": false
-   },
-   "strict": true
-  },
-  "log_weight": {
-   "name": "log_weight",
-   "description": "称重 / 体成分记进 底层数据库 check-in（每天一条）。同天已有不同数值不覆盖（overwrite=true 才改）。InBody 的其他项（内脏脂肪、骨骼肌…）用 log_metric_snapshot。",
-   "input_schema": {
-    "type": "object",
-    "properties": {
-     "date": {
-      "type": "string",
-      "description": "行为发生那天 YYYY-MM-DD（凌晨睡前的事算前一天）"
-     },
-     "weight_kg": {
-      "type": [
-       "number",
-       "null"
-      ],
-      "description": "早上空腹"
-     },
-     "body_fat_pct": {
-      "type": [
-       "number",
-       "null"
-      ]
-     },
-     "waist_cm": {
-      "type": [
-       "number",
-       "null"
-      ],
-      "description": "肚脐一圈"
-     },
-     "muscle_mass_kg": {
-      "type": [
-       "number",
-       "null"
-      ]
-     },
-     "body_water_pct": {
-      "type": [
-       "number",
-       "null"
-      ]
-     },
-     "bone_mass_kg": {
-      "type": [
-       "number",
-       "null"
-      ]
-     },
-     "bmr_kcal": {
-      "type": [
-       "number",
-       "null"
-      ]
-     },
-     "overwrite": {
-      "type": "boolean"
-     }
-    },
-    "required": [
-     "date",
-     "weight_kg",
-     "body_fat_pct",
-     "waist_cm",
-     "muscle_mass_kg",
-     "body_water_pct",
-     "bone_mass_kg",
-     "bmr_kcal",
-     "overwrite"
-    ],
-    "additionalProperties": false
-   },
-   "strict": true
-  },
-  "log_meal_template": {
-   "name": "log_meal_template",
-   "description": "按模板记一餐进 底层数据库。overrides 改这次的克数（营养按比例，0 = 没吃）。当天这一餐记过会拒绝（allow_duplicates=true 才再记）。warnings（例如超过用户设的红肉上限）要转告用户。返回 log_id（撤销用 undo_meal_log）。",
-   "input_schema": {
-    "type": "object",
-    "properties": {
-     "template_id": {
-      "type": "integer"
-     },
-     "date": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "description": "YYYY-MM-DD，null = 今天（凌晨睡前吃的要明确给前一天）"
-     },
-     "time": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "description": "HH:MM，null = 现在"
-     },
-     "overrides": {
-      "type": "array",
-      "items": {
-       "type": "object",
-       "properties": {
-        "food": {
-         "type": "string"
-        },
-        "grams": {
-         "type": "number"
-        }
-       },
-       "required": [
-        "food",
-        "grams"
-       ],
-       "additionalProperties": false
-      },
-      "description": "不改就空数组"
-     },
-     "allow_duplicates": {
-      "type": "boolean"
-     }
-    },
-    "required": [
-     "template_id",
-     "date",
-     "time",
-     "overrides",
-     "allow_duplicates"
-    ],
-    "additionalProperties": false
-   },
-   "strict": true
-  },
-  "create_recipe": {
-   "name": "create_recipe",
-   "description": "新建菜谱（对话里的做法、菜的照片、网页菜谱），同时在 底层数据库 建镜像。食材按整锅（servings 份）写，每样带克数和营养；嘌呤按常见含量估（每 100g：鸡约 130、鱼 110–120、牛猪 110–120、豆腐 60、蛋奶 0、米 25、燕麦 90、蘑菇 50、青菜 30）；做法几条短句。",
-   "input_schema": {
-    "type": "object",
-    "properties": {
-     "name": {
-      "type": "string",
-      "description": "≤ 40 字"
-     },
-     "cuisine": {
-      "type": [
-       "string",
-       "null"
-      ]
-     },
-     "slots": {
-      "type": "array",
-      "items": {
-       "type": "string",
-       "enum": [
-        "breakfast",
-        "lunch",
-        "dinner",
-        "snack"
-       ]
-      }
-     },
-     "tags": {
-      "type": "array",
-      "items": {
-       "type": "string"
-      }
-     },
-     "prep_min": {
-      "type": [
-       "integer",
-       "null"
-      ]
-     },
-     "cook_min": {
-      "type": [
-       "integer",
-       "null"
-      ]
-     },
-     "servings": {
-      "type": "number"
-     },
-     "serving_label": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "description": "1 份指什么"
-     },
-     "includes_staple": {
-      "type": "boolean",
-      "description": "每份已含饭 / 面 / 燕麦"
-     },
-     "ingredients": {
-      "type": "array",
-      "items": {
-       "type": "object",
-       "properties": {
-        "food": {
-         "type": "string"
-        },
-        "grams": {
-         "type": "number",
-         "description": "整锅用量"
-        },
-        "kcal": {
-         "type": "number"
-        },
-        "protein_g": {
-         "type": "number"
-        },
-        "carbs_g": {
-         "type": "number"
-        },
-        "fat_g": {
-         "type": "number"
-        },
-        "sat_fat_g": {
-         "type": "number"
-        },
-        "purine_mg": {
-         "type": "number",
-         "description": "估"
-        },
-        "red_meat_g": {
-         "type": "number",
-         "description": "红肉 / 加工肉生重，没有 0"
-        },
-        "purchase_unit": {
-         "type": [
-          "string",
-          "null"
-         ],
-         "description": "例 整盒（约 1kg）"
-        },
-        "store": {
-         "type": [
-          "string",
-          "null"
-         ],
-         "enum": [
-          "costco",
-          "woolworths",
-          "other",
-          null
-         ]
-        },
-        "sugar_g": {
-         "type": [
-          "number",
-          "null"
-         ]
-        },
-        "added_sugar_g": {
-         "type": [
-          "number",
-          "null"
-         ]
-        },
-        "fiber_g": {
-         "type": [
-          "number",
-          "null"
-         ]
-        },
-        "sodium_mg": {
-         "type": [
-          "number",
-          "null"
-         ]
-        },
-        "note": {
-         "type": [
-          "string",
-          "null"
-         ]
-        }
-       },
-       "required": [
-        "food",
-        "grams",
-        "kcal",
-        "protein_g",
-        "carbs_g",
-        "fat_g",
-        "sat_fat_g",
-        "purine_mg",
-        "red_meat_g",
-        "purchase_unit",
-        "store",
-        "sugar_g",
-        "added_sugar_g",
-        "fiber_g",
-        "sodium_mg",
-        "note"
-       ],
-       "additionalProperties": false
-      }
-     },
-     "steps": {
-      "type": "array",
-      "items": {
-       "type": "string"
-      }
-     },
-     "note": {
-      "type": [
-       "string",
-       "null"
-      ]
-     },
-     "can_make": {
-      "type": "boolean"
-     }
-    },
-    "required": [
-     "name",
-     "cuisine",
-     "slots",
-     "tags",
-     "prep_min",
-     "cook_min",
-     "servings",
-     "serving_label",
-     "includes_staple",
-     "ingredients",
-     "steps",
-     "note",
-     "can_make"
-    ],
-    "additionalProperties": false
-   },
-   "strict": true
-  },
-  "update_recipe": {
-   "name": "update_recipe",
-   "description": "修改菜谱：收藏、会不会做、适合哪餐、标签、时间、份数、食材 / 做法（整份替换）、备注；null = 不改；active=false = 删掉。改了食材 / 名字会同步 底层数据库。",
-   "input_schema": {
-    "type": "object",
-    "properties": {
-     "recipe_id": {
-      "type": "integer"
-     },
-     "name": {
-      "type": [
-       "string",
-       "null"
-      ]
-     },
-     "slots": {
-      "type": [
-       "array",
-       "null"
-      ],
-      "items": {
-       "type": "string",
-       "enum": [
-        "breakfast",
-        "lunch",
-        "dinner",
-        "snack"
-       ]
-      }
-     },
-     "tags": {
-      "type": [
-       "array",
-       "null"
-      ],
-      "items": {
-       "type": "string"
-      }
-     },
-     "prep_min": {
-      "type": [
-       "integer",
-       "null"
-      ]
-     },
-     "cook_min": {
-      "type": [
-       "integer",
-       "null"
-      ]
-     },
-     "servings": {
-      "type": [
-       "number",
-       "null"
-      ]
-     },
-     "serving_label": {
-      "type": [
-       "string",
-       "null"
-      ]
-     },
-     "includes_staple": {
-      "type": [
-       "boolean",
-       "null"
-      ]
-     },
-     "ingredients": {
-      "type": [
-       "array",
-       "null"
-      ],
-      "items": {
-       "type": "object",
-       "properties": {
-        "food": {
-         "type": "string"
-        },
-        "grams": {
-         "type": "number",
-         "description": "整锅用量"
-        },
-        "kcal": {
-         "type": "number"
-        },
-        "protein_g": {
-         "type": "number"
-        },
-        "carbs_g": {
-         "type": "number"
-        },
-        "fat_g": {
-         "type": "number"
-        },
-        "sat_fat_g": {
-         "type": "number"
-        },
-        "purine_mg": {
-         "type": "number",
-         "description": "估"
-        },
-        "red_meat_g": {
-         "type": "number",
-         "description": "红肉 / 加工肉生重，没有 0"
-        },
-        "purchase_unit": {
-         "type": [
-          "string",
-          "null"
-         ],
-         "description": "例 整盒（约 1kg）"
-        },
-        "store": {
-         "type": [
-          "string",
-          "null"
-         ],
-         "enum": [
-          "costco",
-          "woolworths",
-          "other",
-          null
-         ]
-        },
-        "sugar_g": {
-         "type": [
-          "number",
-          "null"
-         ]
-        },
-        "added_sugar_g": {
-         "type": [
-          "number",
-          "null"
-         ]
-        },
-        "fiber_g": {
-         "type": [
-          "number",
-          "null"
-         ]
-        },
-        "sodium_mg": {
-         "type": [
-          "number",
-          "null"
-         ]
-        },
-        "note": {
-         "type": [
-          "string",
-          "null"
-         ]
-        }
-       },
-       "required": [
-        "food",
-        "grams",
-        "kcal",
-        "protein_g",
-        "carbs_g",
-        "fat_g",
-        "sat_fat_g",
-        "purine_mg",
-        "red_meat_g",
-        "purchase_unit",
-        "store",
-        "sugar_g",
-        "added_sugar_g",
-        "fiber_g",
-        "sodium_mg",
-        "note"
-       ],
-       "additionalProperties": false
-      }
-     },
-     "steps": {
-      "type": [
-       "array",
-       "null"
-      ],
-      "items": {
-       "type": "string"
-      }
-     },
-     "note": {
-      "type": [
-       "string",
-       "null"
-      ]
-     },
-     "favorite": {
-      "type": [
-       "boolean",
-       "null"
-      ]
-     },
-     "can_make": {
-      "type": [
-       "boolean",
-       "null"
-      ]
-     },
-     "active": {
-      "type": [
-       "boolean",
-       "null"
-      ]
-     }
-    },
-    "required": [
-     "recipe_id",
-     "name",
-     "slots",
-     "tags",
-     "prep_min",
-     "cook_min",
-     "servings",
-     "serving_label",
-     "includes_staple",
-     "ingredients",
-     "steps",
-     "note",
-     "favorite",
-     "can_make",
-     "active"
-    ],
-    "additionalProperties": false
-   },
-   "strict": true
-  },
-  "log_recipe": {
-   "name": "log_recipe",
-   "description": "记吃了食谱里的一道菜（一条 底层数据库 饮食记录）。servings 吃了几份；不含主食的菜，米饭另用 log_food。同天同餐同菜会拒绝（allow_duplicates 才再记）。返回 log_id（撤销用 undo_meal_log）。",
-   "input_schema": {
-    "type": "object",
-    "properties": {
-     "recipe_id": {
-      "type": "integer"
-     },
-     "date": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "description": "YYYY-MM-DD，null = 今天（凌晨睡前吃的要明确给前一天）"
-     },
-     "meal": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "enum": [
-       "breakfast",
-       "lunch",
-       "dinner",
-       "snack",
-       null
-      ],
-      "description": "null = 按现在时间"
-     },
-     "servings": {
-      "type": "number"
-     },
-     "time": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "description": "HH:MM，null = 现在"
-     },
-     "allow_duplicates": {
-      "type": "boolean"
-     }
-    },
-    "required": [
-     "recipe_id",
-     "date",
-     "meal",
-     "servings",
-     "time",
-     "allow_duplicates"
     ],
     "additionalProperties": false
    },
@@ -16183,126 +15715,6 @@
   }
  },
  "ai_parity_scrubbed_fallback_definitions": {
-  "get_training_log": {
-   "name": "get_training_log",
-   "description": "力量训练记录（底层数据库）：每次训练的 id、日期、名称、来源（body_assistant = 管家写的），每个动作的组：「次数×重量 RIR」（哑铃是单只）和 set_ids（改 / 删一组用）。动作的禁用状态不在这里。",
-   "input_schema": {
-    "type": "object",
-    "properties": {
-     "start": {
-      "type": "string",
-      "description": "YYYY-MM-DD 含"
-     },
-     "end": {
-      "type": "string",
-      "description": "YYYY-MM-DD 含"
-     },
-     "detail": {
-      "type": "boolean",
-      "description": "true=每组一个对象、带动作 ID"
-     }
-    },
-    "required": [
-     "start",
-     "end",
-     "detail"
-    ],
-    "additionalProperties": false
-   },
-   "strict": true
-  },
-  "get_weight": {
-   "name": "get_weight",
-   "description": "称重和围度（底层数据库 check-in：体重 kg、腰围、体脂…）和每周（周一起）平均体重。调热量看周均。",
-   "input_schema": {
-    "type": "object",
-    "properties": {
-     "start": {
-      "type": "string",
-      "description": "YYYY-MM-DD 含"
-     },
-     "end": {
-      "type": "string",
-      "description": "YYYY-MM-DD 含"
-     }
-    },
-    "required": [
-     "start",
-     "end"
-    ],
-    "additionalProperties": false
-   },
-   "strict": true
-  },
-  "set_exercise_rule": {
-   "name": "set_exercise_rule",
-   "description": "新建或修改一个动作的补充信息（状态、要点、原因）。null = 不改。",
-   "input_schema": {
-    "type": "object",
-    "properties": {
-     "exercise_ref": {
-      "type": "string",
-      "description": "英文 slug，例 upright_row"
-     },
-     "name_zh": {
-      "type": [
-       "string",
-       "null"
-      ]
-     },
-     "status": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "enum": [
-       "active",
-       "caution",
-       "banned",
-       null
-      ]
-     },
-     "per_side": {
-      "type": [
-       "boolean",
-       "null"
-      ],
-      "description": "单侧（组数按每侧）"
-     },
-     "cues": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "description": "动作要点"
-     },
-     "reason": {
-      "type": [
-       "string",
-       "null"
-      ]
-     },
-     "app_exercise_id": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "description": "底层数据库 动作 ID"
-     }
-    },
-    "required": [
-     "exercise_ref",
-     "name_zh",
-     "status",
-     "per_side",
-     "cues",
-     "reason",
-     "app_exercise_id"
-    ],
-    "additionalProperties": false
-   },
-   "strict": true
-  },
   "get_training_calendar": {
    "name": "get_training_calendar",
    "description": "训练日历（手表 + 底层数据库 合并）：每天强度、时长、strain、恢复分、活动能量、步数与汇总（默认最近 28 天）。",
@@ -16347,7 +15759,7 @@
   },
   "save_plan": {
    "name": "save_plan",
-   "description": "用户确认 propose_plan 草案后才调：保存并激活周计划（参数同草案），本周按 first_week 补缺；底层数据库 同步失败计划照样保存，按 tell_user 告诉用户。",
+   "description": "用户确认 propose_plan 草案后才调：保存并激活周计划（参数同草案），本周按 first_week 补缺；底层数据库 同步失败计划照样保存，按 tell_user 告诉用户；unresolved 同上。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -16408,7 +15820,7 @@
           "properties": {
            "exercise": {
             "type": "string",
-            "description": "slug 或动作名"
+            "description": "slug 或动作名；「A + B」=超级组"
            },
            "sets": {
             "type": "integer"
@@ -16549,942 +15961,6 @@
      "day_of_week",
      "session_name",
      "sync_sparky"
-    ],
-    "additionalProperties": false
-   },
-   "strict": true
-  },
-  "search_exercises": {
-   "name": "search_exercises",
-   "description": "在动作库（+ 底层数据库）按名称/别名/肌群/器械/模式搜动作：返回 slug、exercise_id、肌群、器械、状态（active/caution/banned）与要点。",
-   "input_schema": {
-    "type": "object",
-    "properties": {
-     "query": {
-      "type": [
-       "string",
-       "null"
-      ]
-     },
-     "muscle": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "description": "chest/back/shoulders/legs/arms/core 或中文"
-     },
-     "equipment": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "description": "dumbbell/barbell/cable/machine/body only 或中文"
-     },
-     "pattern": {
-      "type": [
-       "string",
-       "null"
-      ]
-     }
-    },
-    "required": [
-     "query",
-     "muscle",
-     "equipment",
-     "pattern"
-    ],
-    "additionalProperties": false
-   },
-   "strict": true
-  },
-  "log_food": {
-   "name": "log_food",
-   "description": "饮食记进 底层数据库（每条一种食物 / 一道菜）。热量和三大营养素要自洽（4/4/9，酒精 7），对不上会被拒；同天同餐同名当重复跳过（allow_duplicates=true 才写）。返回条目 id（撤销用 undo_sparky_entry）。",
-   "input_schema": {
-    "type": "object",
-    "properties": {
-     "items": {
-      "type": "array",
-      "items": {
-       "type": "object",
-       "properties": {
-        "date": {
-         "type": "string",
-         "description": "行为发生那天 YYYY-MM-DD（凌晨睡前的事算前一天）"
-        },
-        "meal": {
-         "type": "string",
-         "enum": [
-          "breakfast",
-          "lunch",
-          "dinner",
-          "snacks"
-         ]
-        },
-        "time": {
-         "type": [
-          "string",
-          "null"
-         ],
-         "description": "HH:MM"
-        },
-        "food": {
-         "type": "string",
-         "description": "具体到能估营养，例：照烧鸡腿（鸡腿 150g）"
-        },
-        "amount": {
-         "type": "string",
-         "description": "份量，例 200 g、1 碗（约 250g 熟饭）"
-        },
-        "calories": {
-         "type": "number",
-         "description": "这一份的总 kcal"
-        },
-        "protein_g": {
-         "type": "number"
-        },
-        "carbs_g": {
-         "type": "number"
-        },
-        "fat_g": {
-         "type": "number"
-        },
-        "saturated_fat_g": {
-         "type": [
-          "number",
-          "null"
-         ]
-        },
-        "alcohol_g": {
-         "type": [
-          "number",
-          "null"
-         ],
-         "description": "酒类填"
-        },
-        "sugar_g": {
-         "type": [
-          "number",
-          "null"
-         ],
-         "description": "总糖；不知道 null，不是 0"
-        },
-        "added_sugar_g": {
-         "type": [
-          "number",
-          "null"
-         ],
-         "description": "添加糖（加的糖、蜂蜜、糖浆、甜饮料）"
-        },
-        "fiber_g": {
-         "type": [
-          "number",
-          "null"
-         ]
-        },
-        "sodium_mg": {
-         "type": [
-          "number",
-          "null"
-         ]
-        },
-        "sugary_drink": {
-         "type": [
-          "boolean",
-          "null"
-         ],
-         "description": "含糖饮料 true"
-        },
-        "notes": {
-         "type": [
-          "string",
-          "null"
-         ],
-         "description": "估算依据、拿不准的地方"
-        }
-       },
-       "required": [
-        "date",
-        "meal",
-        "time",
-        "food",
-        "amount",
-        "calories",
-        "protein_g",
-        "carbs_g",
-        "fat_g",
-        "saturated_fat_g",
-        "alcohol_g",
-        "sugar_g",
-        "added_sugar_g",
-        "fiber_g",
-        "sodium_mg",
-        "sugary_drink",
-        "notes"
-       ],
-       "additionalProperties": false
-      }
-     },
-     "allow_duplicates": {
-      "type": "boolean",
-      "description": "用户确认是另一份才 true"
-     }
-    },
-    "required": [
-     "items",
-     "allow_duplicates"
-    ],
-    "additionalProperties": false
-   },
-   "strict": true
-  },
-  "log_workout": {
-   "name": "log_workout",
-   "description": "一次训练记进 底层数据库（每个动作每组次数、重量、RIR）。有 banned 动作整次拒绝（告诉用户原因和替代）；对不上的动作报错并给候选；同天同动作当重复跳过（allow_duplicate=true 才写）。",
-   "input_schema": {
-    "type": "object",
-    "properties": {
-     "date": {
-      "type": "string",
-      "description": "行为发生那天 YYYY-MM-DD（凌晨睡前的事算前一天）"
-     },
-     "name": {
-      "type": "string",
-      "description": "例 上肢 A"
-     },
-     "notes": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "description": "感受、低血糖、心率等"
-     },
-     "exercises": {
-      "type": "array",
-      "items": {
-       "type": "object",
-       "properties": {
-        "exercise": {
-         "type": "string",
-         "description": "动作名，会对上动作库"
-        },
-        "exercise_id": {
-         "type": [
-          "string",
-          "null"
-         ],
-         "description": "search_exercises 查到的 ID，比名字准"
-        },
-        "sets": {
-         "type": "array",
-         "items": {
-          "type": "object",
-          "properties": {
-           "reps": {
-            "type": [
-             "integer",
-             "null"
-            ]
-           },
-           "weight_kg": {
-            "type": [
-             "number",
-             "null"
-            ],
-            "description": "哑铃单只、绳索每侧、杠铃总重"
-           },
-           "rir": {
-            "type": [
-             "number",
-             "null"
-            ],
-            "description": "离力竭还剩几次"
-           },
-           "duration_s": {
-            "type": [
-             "integer",
-             "null"
-            ],
-            "description": "平板 / 有氧"
-           },
-           "set_type": {
-            "type": [
-             "string",
-             "null"
-            ],
-            "description": "Working Set（默认）/ Warm-up"
-           },
-           "notes": {
-            "type": [
-             "string",
-             "null"
-            ]
-           }
-          },
-          "required": [
-           "reps",
-           "weight_kg",
-           "rir",
-           "duration_s",
-           "set_type",
-           "notes"
-          ],
-          "additionalProperties": false
-         }
-        },
-        "notes": {
-         "type": [
-          "string",
-          "null"
-         ]
-        }
-       },
-       "required": [
-        "exercise",
-        "exercise_id",
-        "sets",
-        "notes"
-       ],
-       "additionalProperties": false
-      },
-      "description": "按做的顺序"
-     },
-     "allow_duplicate": {
-      "type": "boolean"
-     },
-     "create_missing_exercises": {
-      "type": "boolean",
-      "description": "用户确认是新动作才 true"
-     }
-    },
-    "required": [
-     "date",
-     "name",
-     "notes",
-     "exercises",
-     "allow_duplicate",
-     "create_missing_exercises"
-    ],
-    "additionalProperties": false
-   },
-   "strict": true
-  },
-  "log_weight": {
-   "name": "log_weight",
-   "description": "称重 / 体成分记进 底层数据库 check-in（每天一条）。同天已有不同数值不覆盖（overwrite=true 才改）。InBody 的其他项（内脏脂肪、骨骼肌…）用 log_metric_snapshot。",
-   "input_schema": {
-    "type": "object",
-    "properties": {
-     "date": {
-      "type": "string",
-      "description": "行为发生那天 YYYY-MM-DD（凌晨睡前的事算前一天）"
-     },
-     "weight_kg": {
-      "type": [
-       "number",
-       "null"
-      ],
-      "description": "早上空腹"
-     },
-     "body_fat_pct": {
-      "type": [
-       "number",
-       "null"
-      ]
-     },
-     "waist_cm": {
-      "type": [
-       "number",
-       "null"
-      ],
-      "description": "肚脐一圈"
-     },
-     "muscle_mass_kg": {
-      "type": [
-       "number",
-       "null"
-      ]
-     },
-     "body_water_pct": {
-      "type": [
-       "number",
-       "null"
-      ]
-     },
-     "bone_mass_kg": {
-      "type": [
-       "number",
-       "null"
-      ]
-     },
-     "bmr_kcal": {
-      "type": [
-       "number",
-       "null"
-      ]
-     },
-     "overwrite": {
-      "type": "boolean"
-     }
-    },
-    "required": [
-     "date",
-     "weight_kg",
-     "body_fat_pct",
-     "waist_cm",
-     "muscle_mass_kg",
-     "body_water_pct",
-     "bone_mass_kg",
-     "bmr_kcal",
-     "overwrite"
-    ],
-    "additionalProperties": false
-   },
-   "strict": true
-  },
-  "log_meal_template": {
-   "name": "log_meal_template",
-   "description": "按模板记一餐进 底层数据库。overrides 改这次的克数（营养按比例，0 = 没吃）。当天这一餐记过会拒绝（allow_duplicates=true 才再记）。warnings（例如超过用户设的红肉上限）要转告用户。返回 log_id（撤销用 undo_meal_log）。",
-   "input_schema": {
-    "type": "object",
-    "properties": {
-     "template_id": {
-      "type": "integer"
-     },
-     "date": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "description": "YYYY-MM-DD，null = 今天（凌晨睡前吃的要明确给前一天）"
-     },
-     "time": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "description": "HH:MM，null = 现在"
-     },
-     "overrides": {
-      "type": "array",
-      "items": {
-       "type": "object",
-       "properties": {
-        "food": {
-         "type": "string"
-        },
-        "grams": {
-         "type": "number"
-        }
-       },
-       "required": [
-        "food",
-        "grams"
-       ],
-       "additionalProperties": false
-      },
-      "description": "不改就空数组"
-     },
-     "allow_duplicates": {
-      "type": "boolean"
-     }
-    },
-    "required": [
-     "template_id",
-     "date",
-     "time",
-     "overrides",
-     "allow_duplicates"
-    ],
-    "additionalProperties": false
-   },
-   "strict": true
-  },
-  "create_recipe": {
-   "name": "create_recipe",
-   "description": "新建菜谱（对话里的做法、菜的照片、网页菜谱），同时在 底层数据库 建镜像。食材按整锅（servings 份）写，每样带克数和营养；嘌呤按常见含量估（每 100g：鸡约 130、鱼 110–120、牛猪 110–120、豆腐 60、蛋奶 0、米 25、燕麦 90、蘑菇 50、青菜 30）；做法几条短句。",
-   "input_schema": {
-    "type": "object",
-    "properties": {
-     "name": {
-      "type": "string",
-      "description": "≤ 40 字"
-     },
-     "cuisine": {
-      "type": [
-       "string",
-       "null"
-      ]
-     },
-     "slots": {
-      "type": "array",
-      "items": {
-       "type": "string",
-       "enum": [
-        "breakfast",
-        "lunch",
-        "dinner",
-        "snack"
-       ]
-      }
-     },
-     "tags": {
-      "type": "array",
-      "items": {
-       "type": "string"
-      }
-     },
-     "prep_min": {
-      "type": [
-       "integer",
-       "null"
-      ]
-     },
-     "cook_min": {
-      "type": [
-       "integer",
-       "null"
-      ]
-     },
-     "servings": {
-      "type": "number"
-     },
-     "serving_label": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "description": "1 份指什么"
-     },
-     "includes_staple": {
-      "type": "boolean",
-      "description": "每份已含饭 / 面 / 燕麦"
-     },
-     "ingredients": {
-      "type": "array",
-      "items": {
-       "type": "object",
-       "properties": {
-        "food": {
-         "type": "string"
-        },
-        "grams": {
-         "type": "number",
-         "description": "整锅用量"
-        },
-        "kcal": {
-         "type": "number"
-        },
-        "protein_g": {
-         "type": "number"
-        },
-        "carbs_g": {
-         "type": "number"
-        },
-        "fat_g": {
-         "type": "number"
-        },
-        "sat_fat_g": {
-         "type": "number"
-        },
-        "purine_mg": {
-         "type": "number",
-         "description": "估"
-        },
-        "red_meat_g": {
-         "type": "number",
-         "description": "红肉 / 加工肉生重，没有 0"
-        },
-        "purchase_unit": {
-         "type": [
-          "string",
-          "null"
-         ],
-         "description": "例 整盒（约 1kg）"
-        },
-        "store": {
-         "type": [
-          "string",
-          "null"
-         ],
-         "enum": [
-          "costco",
-          "woolworths",
-          "other",
-          null
-         ]
-        },
-        "sugar_g": {
-         "type": [
-          "number",
-          "null"
-         ]
-        },
-        "added_sugar_g": {
-         "type": [
-          "number",
-          "null"
-         ]
-        },
-        "fiber_g": {
-         "type": [
-          "number",
-          "null"
-         ]
-        },
-        "sodium_mg": {
-         "type": [
-          "number",
-          "null"
-         ]
-        },
-        "note": {
-         "type": [
-          "string",
-          "null"
-         ]
-        }
-       },
-       "required": [
-        "food",
-        "grams",
-        "kcal",
-        "protein_g",
-        "carbs_g",
-        "fat_g",
-        "sat_fat_g",
-        "purine_mg",
-        "red_meat_g",
-        "purchase_unit",
-        "store",
-        "sugar_g",
-        "added_sugar_g",
-        "fiber_g",
-        "sodium_mg",
-        "note"
-       ],
-       "additionalProperties": false
-      }
-     },
-     "steps": {
-      "type": "array",
-      "items": {
-       "type": "string"
-      }
-     },
-     "note": {
-      "type": [
-       "string",
-       "null"
-      ]
-     },
-     "can_make": {
-      "type": "boolean"
-     }
-    },
-    "required": [
-     "name",
-     "cuisine",
-     "slots",
-     "tags",
-     "prep_min",
-     "cook_min",
-     "servings",
-     "serving_label",
-     "includes_staple",
-     "ingredients",
-     "steps",
-     "note",
-     "can_make"
-    ],
-    "additionalProperties": false
-   },
-   "strict": true
-  },
-  "update_recipe": {
-   "name": "update_recipe",
-   "description": "修改菜谱：收藏、会不会做、适合哪餐、标签、时间、份数、食材 / 做法（整份替换）、备注；null = 不改；active=false = 删掉。改了食材 / 名字会同步 底层数据库。",
-   "input_schema": {
-    "type": "object",
-    "properties": {
-     "recipe_id": {
-      "type": "integer"
-     },
-     "name": {
-      "type": [
-       "string",
-       "null"
-      ]
-     },
-     "slots": {
-      "type": [
-       "array",
-       "null"
-      ],
-      "items": {
-       "type": "string",
-       "enum": [
-        "breakfast",
-        "lunch",
-        "dinner",
-        "snack"
-       ]
-      }
-     },
-     "tags": {
-      "type": [
-       "array",
-       "null"
-      ],
-      "items": {
-       "type": "string"
-      }
-     },
-     "prep_min": {
-      "type": [
-       "integer",
-       "null"
-      ]
-     },
-     "cook_min": {
-      "type": [
-       "integer",
-       "null"
-      ]
-     },
-     "servings": {
-      "type": [
-       "number",
-       "null"
-      ]
-     },
-     "serving_label": {
-      "type": [
-       "string",
-       "null"
-      ]
-     },
-     "includes_staple": {
-      "type": [
-       "boolean",
-       "null"
-      ]
-     },
-     "ingredients": {
-      "type": [
-       "array",
-       "null"
-      ],
-      "items": {
-       "type": "object",
-       "properties": {
-        "food": {
-         "type": "string"
-        },
-        "grams": {
-         "type": "number",
-         "description": "整锅用量"
-        },
-        "kcal": {
-         "type": "number"
-        },
-        "protein_g": {
-         "type": "number"
-        },
-        "carbs_g": {
-         "type": "number"
-        },
-        "fat_g": {
-         "type": "number"
-        },
-        "sat_fat_g": {
-         "type": "number"
-        },
-        "purine_mg": {
-         "type": "number",
-         "description": "估"
-        },
-        "red_meat_g": {
-         "type": "number",
-         "description": "红肉 / 加工肉生重，没有 0"
-        },
-        "purchase_unit": {
-         "type": [
-          "string",
-          "null"
-         ],
-         "description": "例 整盒（约 1kg）"
-        },
-        "store": {
-         "type": [
-          "string",
-          "null"
-         ],
-         "enum": [
-          "costco",
-          "woolworths",
-          "other",
-          null
-         ]
-        },
-        "sugar_g": {
-         "type": [
-          "number",
-          "null"
-         ]
-        },
-        "added_sugar_g": {
-         "type": [
-          "number",
-          "null"
-         ]
-        },
-        "fiber_g": {
-         "type": [
-          "number",
-          "null"
-         ]
-        },
-        "sodium_mg": {
-         "type": [
-          "number",
-          "null"
-         ]
-        },
-        "note": {
-         "type": [
-          "string",
-          "null"
-         ]
-        }
-       },
-       "required": [
-        "food",
-        "grams",
-        "kcal",
-        "protein_g",
-        "carbs_g",
-        "fat_g",
-        "sat_fat_g",
-        "purine_mg",
-        "red_meat_g",
-        "purchase_unit",
-        "store",
-        "sugar_g",
-        "added_sugar_g",
-        "fiber_g",
-        "sodium_mg",
-        "note"
-       ],
-       "additionalProperties": false
-      }
-     },
-     "steps": {
-      "type": [
-       "array",
-       "null"
-      ],
-      "items": {
-       "type": "string"
-      }
-     },
-     "note": {
-      "type": [
-       "string",
-       "null"
-      ]
-     },
-     "favorite": {
-      "type": [
-       "boolean",
-       "null"
-      ]
-     },
-     "can_make": {
-      "type": [
-       "boolean",
-       "null"
-      ]
-     },
-     "active": {
-      "type": [
-       "boolean",
-       "null"
-      ]
-     }
-    },
-    "required": [
-     "recipe_id",
-     "name",
-     "slots",
-     "tags",
-     "prep_min",
-     "cook_min",
-     "servings",
-     "serving_label",
-     "includes_staple",
-     "ingredients",
-     "steps",
-     "note",
-     "favorite",
-     "can_make",
-     "active"
-    ],
-    "additionalProperties": false
-   },
-   "strict": true
-  },
-  "log_recipe": {
-   "name": "log_recipe",
-   "description": "记吃了食谱里的一道菜（一条 底层数据库 饮食记录）。servings 吃了几份；不含主食的菜，米饭另用 log_food。同天同餐同菜会拒绝（allow_duplicates 才再记）。返回 log_id（撤销用 undo_meal_log）。",
-   "input_schema": {
-    "type": "object",
-    "properties": {
-     "recipe_id": {
-      "type": "integer"
-     },
-     "date": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "description": "YYYY-MM-DD，null = 今天（凌晨睡前吃的要明确给前一天）"
-     },
-     "meal": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "enum": [
-       "breakfast",
-       "lunch",
-       "dinner",
-       "snack",
-       null
-      ],
-      "description": "null = 按现在时间"
-     },
-     "servings": {
-      "type": "number"
-     },
-     "time": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "description": "HH:MM，null = 现在"
-     },
-     "allow_duplicates": {
-      "type": "boolean"
-     }
-    },
-    "required": [
-     "recipe_id",
-     "date",
-     "meal",
-     "servings",
-     "time",
-     "allow_duplicates"
     ],
     "additionalProperties": false
    },

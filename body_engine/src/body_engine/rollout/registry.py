@@ -8,6 +8,9 @@ is on for everyone and the old path is gone.
 FLAGS: dict[str, str] = {
     # "new_food_page": "饮食页新版（2026-11）",
     "friends": "朋友页：圈子和共享、朋友 tab、排行榜（docs/friends-social-plan.md）；同意书至少 2026-10-22.2",
+    "inbox": "「我 → 消息」消息中心的服务器部分（#359 P1，迁移 1110）：GET /v1/users/me/inbox 只读合并系统消息、每周更新、发给本人的圈子邀请和圈子互动，"
+             "已读 / 全部已读 / 隐藏单条，只留 90 天；邀请卡片（圈名、头像、圈主、人数、会共享什么）一步加入或忽略；被屏蔽的人发的邀请和互动不出现；"
+             "关着时接口 404，原来的弹层、通知列表和朋友页邀请完全不变",
     "meal_merge": "饮食当天明细多选：存成快捷模板 / 合并成一条（#93、#97）",
     "water": "饮水记录：今天页喝水卡片、log_water、下午提醒、Apple 健康饮水（#125）",
     "me_settings": "「我」页精简 + 「设置」子页面（#140）；关着时保持旧版",
@@ -73,9 +76,41 @@ FLAGS: dict[str, str] = {
                          "训练、睡眠阶段、15 分钟统计桶、按范围重新同步和同步记录（rawdata/engine.py），GET /v1/ingest/healthkit "
                          "的 engine 块告诉 app 收哪些字段和类型、同步模式 shadow（只存着做对比，不影响分数）；关着时 = ow 模式，"
                          "这些字段一律 409 不收，旧版 app 不受影响",
-    "own_food_store": "饮食 / 食物库 / 体重 / 训练记录双写（#252 第 2 期，docs/own-food-weight-storage.md）：每次写 SparkyFitness 后，"
+    "apple_sync_primary": "自建同步引擎切换（#219 S5，docs/apple-sync-engine.md 第 5 节）：开着的人可以被 body-engine sync-mode switch / apply "
+                          "切到 app 模式（自建引擎的数据参与选值和算分、OW 只补历史；app 收到 mode=app 后停掉 OW SDK）；切换要过门槛"
+                          "（app ≥ 1.0.8、影子对比连续 7 天一致、覆盖率 ≥ 95%、分数一致性）。这是总开关：关掉后所有人下一次读取就回到 "
+                          "shadow，sync-mode apply 再把派生数据还原；单人回退用 sync-mode rollback。默认关",
+    "apple_sync_new_accounts": "新开户默认走自建同步引擎（#219 S5b，全局开关，只认 --state all，而且 apple_sync_engine 也要是 all 才生效）："
+                               "开户不再建 Open Wearables 用户，账号一开就是 app 模式（rawdata/cutover.start_on_engine）；激活链接 / 设置链接"
+                               "不带 OW 邀请码，POST /v1/account/ow-invitation 对 app 模式的人回 409 sync_engine。已经开好的账号不受影响。"
+                               "打开前先确认 TestFlight 上能装到的 app 都能在没有 OW 的情况下同步（sync-mode readiness 顶部会提示）。"
+                               "关掉后新开户照旧建 OW 用户；已经按引擎开好的账号留在 app 模式（没有 OW 可回退）。默认关",
+    "native_sync": "原生 app 同步接口（#340 N2，docs/ios-native-app.md 第 5、7.2 节）：POST /v1/sync/pull（增量 / 全量恢复）、"
+                   "POST /v1/sync/push（批量写记录）、PUT /v1/users/me/scores/app（app 算好的分数，服务器抽查；这个用户由 app 算分后"
+                   "每小时任务只补算改过的天）；/v1/web/me 的 flags 里有它 = 服务器有这些接口。关着时接口 404，app 用旧接口，"
+                   "已经上传的 app 分数留在库里，服务器照常每小时算分",
+    # 2.0.0 本机计算（docs/ios-native-2.0.md 第 5 节）：每个包一个开关，开着 = app 在本机「影子」计算这个包（照旧显示服务器的数，
+    # 上传自己算的行，服务器抽查）；GET /v1/sync/compute 告诉 app 每个包是 off / shadow / primary。服务器还没有这个包的算法
+    # （algo/versions.py 的常量、nativesync/derived_kinds/ 的模块、算法包里的 key）时开着也是 off。关着时和以前一样
+    "native_derive": "2.0.0 本机计算 M1：每日数值（步数、能量、锻炼分钟、生命体征）和睡眠在手机上从 HealthKit 推导，上传 daily / sleep 抽查；关着时用服务器的",
+    "native_workouts": "2.0.0 本机计算 M1c：训练、TRIMP、心率区间、心率恢复、训练日历在手机上算，上传 workouts 抽查；关着时用服务器的",
+    "native_stress": "2.0.0 本机计算 M2：压力、韧性、身体电量、心率恢复卡在手机上算，上传 stress 抽查；关着时用服务器的",
+    "native_series": "2.0.0 本机计算 M3：趋势页全部曲线、月历颜色、近 14 晚、睡眠规律性、VO₂max 等级在手机上算（不上传）；关着时读服务器的 /trends",
+    "native_coach": "2.0.0 本机计算 M4：负荷目标、睡眠教练、健康监测范围、睡眠详情、今天页组合、身体年龄在手机上算，上传 healthspan 抽查；关着时用服务器的",
+    "native_reports": "2.0.0 本机计算 M5：周报 / 月报和「行为影响」在手机上算（不上传）；关着时读服务器的",
+    "native_rules": "2.0.0 本机计算 M6：提醒、训练建议、饮食目标、讲解弹层的个人建议在手机上算，上传 reminders 抽查；关着时用服务器的",
+    "native_compute_primary": "2.0.0 本机计算转正：上面各包里最近一次抽查通过、已上传 ≥ 3 天的，app 显示自己算的数、服务器把上传存成这个人的数据；"
+                              "关着时所有包最多是影子（全局回退开关）",
+    "force_upgrade": "2.0.0 强制升级（R2，全局）：提前 7 天提示，之后原生 app 旧版本和网页今天页被拦（MCP / API token 不拦）；关着时不提示、不拦",
+    "own_food_store":"饮食 / 食物库 / 体重 / 训练记录双写（#252 第 2 期，docs/own-food-weight-storage.md）：每次写 SparkyFitness 后，"
                       "把涉及的日期读回来同步进 Body Engine 自己的表（food_entries、foods、body_measurements、logged_workouts…），"
-                      "同步失败只记日志、不影响这次写；还没有任何地方读这些表。关着时和以前完全一样（不多发请求、不碰新表）",
+                      "同步失败只记日志、不影响这次写。关着时和以前完全一样（不多发请求、不碰新表）",
+    "own_food_read": "饮食 / 食物库 / 体重 / 围度 / 动作库 / 训练记录改读 Body Engine 自己的表（#252 第 3 期）：今天页、趋势、评分、"
+                     "规则、AI 工具、briefing、训练日历等全部读新表，返回的形状不变；只对最近一次 sparky-migrate 核对通过的用户生效，"
+                     "写仍然先写 SparkyFitness 再同步（开着时双写自动生效）。关着时和以前一样读 SparkyFitness",
+    "own_food_only": "饮食 / 体重 / 训练记录只写 Body Engine 自己的表（#252 第 4 期）：AI 写工具、今天页写接口、撤销、合并 / 拆开、"
+                     "训练页提交、离线体重都不再调 SparkyFitness，读也读新表；对最近一次迁移核对通过的用户和没有 SparkyFitness 账号的用户生效。"
+                     "全体打开后新开户不再建 SparkyFitness 账号、不再镜像计划 / 食谱。关着时双写（见 own_food_store）",
     "jarvis_scope_guard": "Jarvis 话题守门（#170，只管托底 AI，用户自己的 AI 不受影响）：明显跑题且费钱的请求（写代码、作业、长文写作 / 长篇翻译、"
                           "和健康无关的通用话题）由服务端规则直接用固定的礼貌说明回复，不调模型、不扣额度、不调工具，托底 AI 的系统提示里也加上话题范围；"
                           "健康、训练、饮食、睡眠、化验、app 用法、反馈和简短寒暄照常；关着时和以前完全一样",
@@ -83,18 +118,47 @@ FLAGS: dict[str, str] = {
                     "按住直接说话（往左上滑取消、往右上滑锁定），回答在半屏里（文字 + 卡片，「继续对话」进完整对话页），识别后按个人词表纠错"
                     "（POST /v1/assistant/voice-fix、transcribe?fix=1）；app 有本机识别（Watch2WhoopFeatures.voice，1.0.8+）时边说边出字。"
                     "选了自己 AI 的人只换按钮外观，点一下和以前一样；关着时是原来的「Jarvis」胶囊键",
+    "jarvis_dial": "Jarvis 键新效果（#309 的视觉，用 HTML 图层重做；需要 jarvis_orbit 也开着）：按下外环一缩一弹、中心反色闪、三层同心细环向外扩散并反向转、"
+                   "扫描光掠过，四个子键依次点亮放大、外框弹出闭合、辉光呼吸一次后静止（展开约 320ms、收起约 160ms；只动 transform / opacity，没有 SVG，"
+                   "没有刻度 / 连接线 / 循环动画，同时动的 ≤ 8 个，图层在 mount 时建好，按下时预热）；黑白单色；减少动态效果时直接显示。"
+                   "先只给负责人自己开；关着时是现在的圆环展开样式，完全不变",
     "jarvis_voice_direct": "Jarvis 按住说话松开直接发送（需要 jarvis_orbit 也开着）：开之前先改托底 AI 同意书第 4 条和数据同意书「语音输入」"
                            "（现在写的是「确认文字后才发送」）；关着时松开后先显示识别出的文字，可以改，点「发送」才发",
     "boot_api": "启动提速（#247 第 3.2 节）：今天页启动时一次 POST /v1/web/boot 拿到上次启动用到的全部只读接口（/v1/web/me、今天页各块、"
                 "health-history 等，服务器内部逐个执行原接口、各自鉴权、各自出错），页面不再串行等 3 层；关着时接口 404、页面逐个请求",
-    "cached_first_paint": "先显示上次的数据（#247 第 3.5 节，需要 offline_mode 也开着）：打开今天页时先用本机副本（12 小时内、今天的）画出来，"
+    "cached_first_paint": "先显示上次的数据（#247 第 3.5 节，需要 offline_mode 也开着）：启动停在今天 / 趋势 / 我时先用本机副本（12 小时内、今天的）画出来，"
                           "顶部标「更新中」，新数据回来后替换；退出登录 / 登录过期时副本清空；关着时和以前一样等数据回来再画",
+    "local_first_start_off": "紧急开关：停用 app 的「本地优先启动」（#337，1.0.9 之后的 app）。关着（默认）= 功能对所有人开：app 冷启动直接打开本机保存的页面副本"
+                             "（offline-shell.html，需要 offline_mode 开着才有副本），先用本机缓存画出上次的数据（cached_first_paint），再照常向服务器要新数据；"
+                             "打开 = app 下次冷启动起照旧先向服务器要页面（正开着本机副本的会马上换成网络页面）",
     "tab_prefetch": "切 tab 提速（#247 第 3.3 节）：趋势 / 饮食 / 我 的两层请求并成一层；今天页画完后浏览器空闲时预取其他 tab 的数据"
                     "（最多 30 个请求，蜂窝网络 / 省流量模式 / 慢网不预取）；关着时和以前一样切过去才请求",
     "open_signup": "开放注册（全局开关，只认 --state all）：活跃账号数低于 account/params.py 的 OPEN_SIGNUP_MAX_ACTIVE（默认 200）时，"
                    "新注册的账号直接开通（和兑换激活码后一样开户），已经在等激活码的账号下次访问时自动开通；到上限后新账号自动回到"
                    "要激活码；同一 IP 每天最多 OPEN_SIGNUP_PER_IP_DAY 个；激活码 / 推荐码 / 圈子码照样有效；同意书照旧。"
                    "管理命令 body-engine open-signup status / list。关着时和以前一样，注册后要激活码",
+    "store_signup": "App Store 公开注册（全局开关，只认 --state all，account/open_signup.py）：新注册的账号直接开通，没有 OPEN_SIGNUP_MAX_ACTIVE 上限，"
+                    "App Review 和公众不用激活码就能用全部功能；同一 IP 每天最多 OPEN_SIGNUP_PER_IP_DAY 个、同一 Apple ID / 邮箱只免码开一次、"
+                    "同意书照旧、托底 AI 每人每月额度不变；激活码 / 推荐码 / 圈子码照样有效。默认关，上架时由负责人打开",
+    "native_jarvis": "app 原生 Jarvis 键（#247 第 2 期，iOS app 1.0.9+，需要 jarvis_orbit 也开着）：Jarvis 键和展开菜单由 app 用 SwiftUI 画"
+                     "（iOS 26 起是系统的 Liquid Glass `.glassEffect()`，更早的 iOS 用 `.ultraThinMaterial` 毛玻璃），网页里的 Jarvis 键隐藏；"
+                     "点子键（对话 / 语音 / 拍照 / 快记）交回今天页处理，拍照用 app 的相机；按住说话（左上取消、右上锁定、松开识别，按 jarvis_voice_direct 发送或先确认）"
+                     "和网页键一致，键上显示在听 / 识别中 / 发送中 / 回答中；"
+                     "旧版 app、浏览器、安卓不受影响；关着时和以前一样",
+    "native_today": "app 原生今天（#247 第 2 期，iOS app 1.0.9+）：今天 tab 从分数往下由 app 用 SwiftUI 画（并排三环：睡眠分 / 恢复（居中）/ 昨天负荷，"
+                    "加核心指标：HRV、静息心率、睡眠时长 / 需求 / 睡眠债、步数、活动、锻炼、负荷目标、健康监测、负荷状态、提醒数；分数上面的同步卡片等仍是网页），数据来自今天页已经取到的数据，"
+                    "app 本机缓存上一次的数据（打开 app 先显示，退出登录清空）；点三环 / 指标打开今天页原来的弹层，底部「完整今天页」回到网页版；"
+                    "看别人、看过去的日子、弹层打开时自动退回网页；旧版 app、浏览器、安卓不受影响；关着时和以前一样是 WebView",
     "optimistic_writes":"写操作先显示（#247 第 3.4 节）：快捷记餐、喝水、体重点下去立刻显示已记，后台提交，失败撤回并提示；"
                          "记餐 / 撤销的返回带上今天的饮食块，不再整份重拉 /today；关着时和以前一样等服务器回来",
+    "slim_mode": "薄肌模式（#126，迁移 900）：「我 → 外观」里可以切换的主题（在现在的风格上换配色和强调色，深色 / 浅色都有，不改布局，偏好存服务端），"
+                 "选了以后今天页顶部每天显示一句本人公开发过的原话（邵艾伦 / 孙宇晨 / 峰哥亡命天涯，数据 slim-quotes.js，每条带原帖链接；点一下换下一句、可以关掉）；"
+                 "关着时没有「外观」入口、接口 404、页面不加载主题和语录（先只给负责人自己开）",
+    "ui_ai_first": "AI 优先的新信息架构（#279，docs/ui-ai-first-redesign.md v0.4，视觉不变）：底栏不变（负责人 2026-10-27 决定），"
+                   "今天页并排三环、搜索框即问 Jarvis、具体示例问题、重点、常驻圈子卡、我的首页（最多 6 块）、我 → 全部功能，"
+                   "长按任何卡片问 Jarvis，第 1 天身体概况 + 关注点、首页按关注 / 发现 / 用过排序，不弹新手引导；页面代码在 ui-ai-first.js，只有开着的人才下载；"
+                   "关着时页面和以前完全一样",
+    "circle_rules": "圈子社区规则（App Store 1.2，friends/rules.py，迁移 1100）：建圈子、加入圈子、写评论之前要先同意一次 docs/legal/community-rules.md"
+                    "（版本 friends/params.py RULES_VERSION，换版本要重新同意）；没同意时这些接口回 428，原生 app 先弹规则页；"
+                    "旧的网页 / Flutter app 没有规则页，所以 2.0.0 强制升级之后再开；关着时和以前一样不用同意",
 }

@@ -1,4 +1,4 @@
-"""Assistant tool specs for the bedtime goal (wrapped into Tool and registered by assistant/tools.py)."""
+"""Assistant tool specs for the bedtime goal (registered by dl_app.py)."""
 from datetime import date
 
 from ..toolspec import OPT_DAY, USER, nullable, schema

@@ -23,11 +23,70 @@ from .training import importer as workouts_importer
 from .ai import crypto as ai_crypto, fallback_cli as ai_fallback_cli, quota_cards_cli as ai_cards_cli, tokens as ai_tokens
 from .feedback import cli as feedback_cli
 from .rollout import cli as rollout_cli
+from .client import cli as upgrade_cli
 from .account import open_signup_cli
+from .friends import moderation_cli as circles_reports_cli
 
 
 CONSENT_GATED = {"import-ow", "import-shortcut", "import-workouts", "compute-scores", "import-apple-zip", "import-raw", "hrv-compare", "hrv-kind",
-                 "evaluate-rules", "refresh-status", "sync-shadow-day"}
+                 "evaluate-rules", "refresh-status", "sync-shadow-day", "ow-archive"}
+
+
+def _ow_or_none():
+    """An OW client, or None where OW is not configured (the app mode's readers do not need it)."""
+    from .ow_client import OWError
+    try:
+        return OWClient()
+    except OWError:
+        return None
+
+
+def _legacy_stopped() -> bool:
+    from .rawdata import retire
+    return retire.ow_import_stopped()
+
+
+def _app_compute(conn, args) -> int:
+    """`body-engine app-compute` (2.0.0 S9, nativesync/primary.py). Prints JSON; exit code 1 when the gate refused."""
+    from .nativesync import derived, params as NP, primary
+    days = args.days or NP.PRIMARY_CHECK_DAYS
+    out = lambda x: print(json.dumps(x, ensure_ascii=False, indent=1, default=str))   # noqa: E731
+    if args.action == "status":
+        out(primary.status(conn, args.user_id, days))
+        return 0
+    if args.action in ("server", "app"):
+        if args.user_id is None or not args.kind:
+            raise SystemExit("server / app: --kind K --user-id N")
+        if args.kind not in {k for p in NP.COMPUTE_PACKAGES.values() for k in p["kinds"]}:
+            raise SystemExit(f"unknown kind {args.kind!r}")
+        derived.set_server_forced(conn, args.user_id, args.kind, args.action == "server")
+        from .rollout import audit
+        audit.log(conn, audit.actor(args.by), f"compute.kind.{args.action}", f"{args.kind}:user:{args.user_id}", None,
+                  {"kind": args.kind, "user_id": args.user_id, "server_forced": args.action == "server"})
+        conn.commit()
+        out(primary.status(conn, args.user_id, days)["user"])
+        return 0
+    if not args.package:
+        raise SystemExit(f"{args.action}: --package P (or all)")
+    pkgs = list(NP.COMPUTE_PACKAGES) if args.package == "all" else [args.package]
+    target = {"user_id": args.user_id, "cohort": args.cohort, "everyone": args.all}
+    code, results = 0, []
+    for p in pkgs:
+        try:
+            if args.action == "primary":
+                results.append({"ok": True, **primary.set_primary(conn, p, **target, force=args.force, actor=args.by,
+                                                                  days=days)})
+            else:
+                results.append({"ok": True, **primary.set_shadow(conn, p, **target, actor=args.by)})
+        except primary.GateFailed as e:
+            conn.rollback()
+            code = 1
+            results.append({"ok": False, "package": p, "refused": "抽查通过率不够（或抽查次数太少）；确认后可加 --force（会记审计）",
+                            "gate": e.args[0]})
+        except ValueError as e:
+            raise SystemExit(str(e)) from None
+    out(results)
+    return code
 
 
 def _export_date(processed_dir: Path) -> date:
@@ -151,6 +210,24 @@ def main() -> None:
     ntt.add_argument("--user-id", type=int, required=True)
     ntp = nts.add_parser("prune", help="delete notifications older than --days (default 90)")
     ntp.add_argument("--days", type=int, default=90)
+    ns = sub.add_parser("notice-send", help="a one-time message from the admin to one user: a sheet on their Today page "
+                                            "(also in the app), with an optional button link (notices/)")
+    ns.add_argument("--user-id", type=int, required=True)
+    ns.add_argument("--title", required=True)
+    ns.add_argument("--body", default="")
+    ns.add_argument("--link", default=None, help="the button's link: https://…, /app/… or watch2whoop://… (e.g. watch2whoop://sync)")
+    ns.add_argument("--link-label", default=None, help="the button's text (default 打开 / Open)")
+    ns.add_argument("--expires-days", type=int, default=None, help="not shown after this many days (default: until seen)")
+    ns.add_argument("--title-en", default=None, help="the title in English, for users whose page language is English")
+    ns.add_argument("--body-en", default=None, help="the text in English (same)")
+    ns.add_argument("--link-label-en", default=None, help="the button's text in English (same)")
+    nl = sub.add_parser("notice-list", help="the latest admin messages (of one user) and whether they were seen")
+    nl.add_argument("--user-id", type=int, default=None)
+    nl.add_argument("--limit", type=int, default=50)
+    nr = sub.add_parser("notice-revoke", help="withdraw an admin message that was not seen yet")
+    nr.add_argument("--id", type=int, required=True)
+    sub.add_parser("sync-broken", help="read only: users whose phone sync to Open Wearables looks broken while they still "
+                                       "use the app (sync/broken.py; the Today page asks them to reconnect)")
     lb = sub.add_parser("lookup-barcode", help="look up one barcode on Open Food Facts (needs BODY_OFF_CONTACT; nothing is written)")
     lb.add_argument("barcode")
     gs = sub.add_parser("grocery-sync", help="opt-in weekly refresh of the supermarkets' public food catalogue "
@@ -273,16 +350,20 @@ def main() -> None:
     w.add_argument("--full", action="store_true", help="recompute everything from the earliest data in OW")
     w.add_argument("--xml-energy-unit", choices=["kJ", "kcal"], default="kJ",
                    help="energy unit in the export.xml imported into OW (see the unit of ActiveEnergyBurned in export.xml)")
+    w.add_argument("--force", action="store_true", help="import even after the legacy cutoff (BODY_LEGACY_SOURCES_CUTOFF)")
 
     wk = sub.add_parser("import-workouts", help="pull only the workout records from Open Wearables -> workouts (import-ow also does this every time; this is for separate backfill / recompute)")
     wk.add_argument("--user-id", type=int, required=True)
     wk.add_argument("--start", type=date.fromisoformat, help="start from this day (user local date), default all history")
     wk.add_argument("--end", type=date.fromisoformat, help="up to and including this day, default today")
+    wk.add_argument("--force", action="store_true", help="import even after the legacy cutoff (BODY_LEGACY_SOURCES_CUTOFF)")
 
     hb = sub.add_parser("history-backfill-run", help="full-history backfill for users whose app read the whole Apple Health history: import from OW window by window, then recompute all scores (resumable, time-budgeted; nothing queued = nothing done)")
     hb.add_argument("--user-id", type=int, default=None)
     sr = sub.add_parser("sync-refresh-run", help="recompute scores for users whose on-demand refresh (app opened / pull to refresh) is queued; nothing queued = nothing done")
     sr.add_argument("--user-id", type=int, default=None)
+    sub.add_parser("ow-watch", help="one round of the API's poller (sync/ow_watch.py): which users uploaded to Open Wearables "
+                                    "lately; queue an import + score recompute (sync-refresh-run) for the ones that went quiet")
     hd = sub.add_parser("hk-derive-run", help="app sync engine (flag apple_sync_engine): derive daily values, sleep and workouts "
                                               "from the uploaded HealthKit samples of the queued days (hk_dirty_days), oldest "
                                               "first; idempotent, time-budgeted, nothing queued = nothing done")
@@ -296,6 +377,48 @@ def main() -> None:
     sd.add_argument("--end", type=date.fromisoformat, default=None, help="last day, default --date (at most 31 days)")
     sd.add_argument("--json", action="store_true")
     sd.add_argument("--out", type=Path, help="write the report here instead of stdout")
+    sc = sub.add_parser("sync-shadow-compare", help="app sync engine (#219 S4): judge Open Wearables vs the app's own sync engine "
+                                                    "item by item for the last closed days (sync_shadow_diffs) and refresh each "
+                                                    "user's summary / cut-over readiness; nightly after import-ow, idempotent")
+    sc.add_argument("--user-id", type=int, default=None)
+    sc.add_argument("--start", type=date.fromisoformat, default=None)
+    sc.add_argument("--end", type=date.fromisoformat, default=None, help="default: the newest closed day")
+    sc.add_argument("--no-scores", action="store_true", help="skip the score recompute (faster; inputs only)")
+    sp = sub.add_parser("sync-shadow-report", help="app sync engine: the shadow comparison as Chinese Markdown (personal data: "
+                                                   "the terminal / health_data/reports/ only, never git)")
+    sp.add_argument("--user-id", type=int, default=None)
+    sp.add_argument("--since", type=date.fromisoformat, default=None)
+    sp.add_argument("--out", type=Path, help="write the report here instead of stdout")
+    sp.add_argument("--summary", action="store_true", help="one JSON line per user, counts only (doctor)")
+    sm = sub.add_parser("sync-mode", help="app sync engine (#219 S5): per-user cut-over to the app's own sync engine and back. "
+                                          "status / switch / rollback / unpin / apply (hourly, reconciles everyone) / verify / "
+                                          "readiness (who can be switched and what is missing; Chinese Markdown with names: "
+                                          "the terminal or health_data/reports/ only, never git)")
+    sm.add_argument("action", choices=("status", "switch", "rollback", "unpin", "apply", "verify", "readiness"))
+    sm.add_argument("--user-id", type=int, default=None)
+    sm.add_argument("--force", action="store_true", help="switch: skip the shadow and score gates (not the app version); "
+                                                         "rollback: also an account without an OW link")
+    sm.add_argument("--json", action="store_true", help="readiness: the full report as JSON")
+    sm.add_argument("--out", type=Path, help="readiness: write the report here instead of stdout")
+    sm.add_argument("--dry-run", action="store_true", help="switch: only check the gates")
+    sm.add_argument("--no-scores", action="store_true", help="switch / apply: skip the score consistency gate")
+    oa = sub.add_parser("ow-archive", help="app sync engine (#219 S6): keep this user's Open Wearables history locally (raw "
+                                           "samples in the local copy, sleep stages) so the app mode never asks OW again; "
+                                           "idempotent, resumable; --check only reports whether the archive is complete")
+    oa.add_argument("--user-id", type=int, required=True)
+    oa.add_argument("--check", action="store_true")
+    rl = sub.add_parser("retire-legacy", help="2.0.0 R1: retiring Open Wearables and the iOS Shortcut. verify (read-only): per user, "
+                                              "what the server keeps of OW / Shortcut / apple_export (counts and dates only) and what "
+                                              "still lives only in OW; --archive copies the missing rows (idempotent, never deletes). "
+                                              "status: the cutoff switch (BODY_LEGACY_SOURCES_CUTOFF) and who still sent legacy data "
+                                              "lately (counts only, the doctor)")
+    rl.add_argument("action", choices=("verify", "status"))
+    rl.add_argument("--user-id", type=int, default=None)
+    rl.add_argument("--all", action="store_true", help="verify: every user with legacy data or an OW link")
+    rl.add_argument("--archive", action="store_true", help="verify: first copy what is missing into Body Engine's tables")
+    rl.add_argument("--offline", action="store_true", help="verify: do not ask OW (local checks only)")
+    rl.add_argument("--scores", action="store_true", help="verify: also recompute all scores without OW and compare (slow)")
+    rl.add_argument("--json", action="store_true")
     c = sub.add_parser("compute-scores", help="compute sleep / recovery / strain scores into daily_scores (always recomputed in full from the scoring start; only --start to --end is written)")
     c.add_argument("--user-id", type=int, required=True)
     c.add_argument("--start", type=date.fromisoformat, help="first day written, default the scoring start (the day the watch was first worn)")
@@ -412,6 +535,10 @@ def main() -> None:
     bs = sub.add_parser("briefing-stats", help="get_briefing: calls, cache hit rate and size in characters over the last days (admin, counts only)")
     bs.add_argument("--days", type=int, default=7)
     bs.add_argument("--json", action="store_true")
+    dg = sub.add_parser("data-gaps", help="health data types that used to arrive live and regularly and stopped for at least 3 days, core types "
+                        "as warnings, the others and history-import-only types as information (sync/gaps.py; read-only, dates only)")
+    dg.add_argument("--user-id", type=int, action="append", help="only these users (repeatable)")
+    dg.add_argument("--json", action="store_true")
     mcc = sub.add_parser("muscle-coverage-check", help="every recent workout of every user must credit at least one muscle on the muscle load map; "
                          "lists the workout types that are not mapped (exit 1 if any; nightly job and doctor, read-only)")
     mcc.add_argument("--days", type=int, default=28)
@@ -423,11 +550,20 @@ def main() -> None:
     orv = sub.add_parser("oauth-revoke", help="end one OAuth connection (its access and refresh tokens stop at once)")
     orv.add_argument("--user-id", type=int, required=True)
     orv.add_argument("--connection-id", type=int, required=True)
+    wn = sub.add_parser("whats-new", help="the weekly 「本周更新」 message (whatsnew/): who is due, what it says, send it")
+    wns = wn.add_subparsers(dest="wn_cmd", required=True)
+    wnd = wns.add_parser("send", help="send it to everyone whose local Sunday 19:00 window is open and who has not had this week's "
+                                      "(idempotent, called hourly by deploy/ops/ops.py; nothing new = nothing sent)")
+    wnd.add_argument("--user-id", type=int, default=None, help="only this user")
+    wnd.add_argument("--dry-run", action="store_true", help="say who would get what, write and send nothing")
+    wnd.add_argument("--now", default=None, help="pretend it is this ISO time (UTC unless it has an offset), e.g. 2026-11-01T09:30")
     ai_fallback_cli.add_parser(sub)
     ai_cards_cli.add_parser(sub)
     feedback_cli.add_parser(sub)
     rollout_cli.add_parser(sub)
+    upgrade_cli.add_parser(sub)   # R2 forced upgrade (client/)
     open_signup_cli.add_parser(sub)
+    circles_reports_cli.add_parser(sub)
 
     hz = sub.add_parser("import-apple-zip", help="import an export.zip / export.xml exported by the Health app directly (streaming, no extraction to disk)")
     hz.add_argument("--user-id", type=int, required=True)
@@ -454,8 +590,42 @@ def main() -> None:
     hk.add_argument("--by", default=None, help="who made the change (stored with it)")
     hr = sub.add_parser("history-import-run", help="process history imports queued by Today page uploads (Ali: systemd timer every minute; Mac: hourly)")
     hr.add_argument("--max-jobs", type=int, default=5)
+    ak = sub.add_parser("algo-keygen", help="create an Ed25519 key for signing the algorithm bundle (maintainer's machine only; never in git or on a server); "
+                                            "prints the public key for packages/openbodyscore-js/signing-keys.json and AlgoSigningKeys.swift (#340 N2)")
+    ak.add_argument("--out", type=Path, required=True, help="where to write the private key, e.g. secrets/algo_signing_key (never overwritten)")
+    asg = sub.add_parser("algo-sign", help="sign packages/openbodyscore-js/dist/openbodyscore.js and write signature + key_id into its manifest.json "
+                                           "(run after build.js, on the maintainer's machine; no database) (#340 N2)")
+    asg.add_argument("--key", type=Path, required=True, help="the private key file (algo-keygen)")
+    asg.add_argument("--dist", type=Path, help="another dist/ directory (default: the repository's)")
+    apc = sub.add_parser("app-compute", help="2.0.0 S9 (nativesync/primary.py): which packages the iOS app computes instead of the "
+                                             "server. primary = move a package from shadow to primary for a user / cohort / everyone "
+                                             "(only when the spot checks of app_compute_checks pass, else --force; audited); shadow = "
+                                             "remove that grant again; status = grants, pass rates, fallbacks (counts only); server / app "
+                                             "= the server keeps one upload kind of a user whatever the app uploads / the app may again")
+    apc.add_argument("action", choices=["status", "primary", "shadow", "server", "app"])
+    apc.add_argument("--package", help="primary / shadow: a package (derive, workouts, stress, series, coach, reports, rules) or all")
+    apc.add_argument("--kind", help="server / app: an upload kind (daily, sleep, workouts, stress, healthspan, reminders)")
+    apc.add_argument("--user-id", type=int)
+    apc.add_argument("--cohort")
+    apc.add_argument("--all", action="store_true", help="primary / shadow: everyone")
+    apc.add_argument("--force", action="store_true", help="primary: even when the pass-rate gate fails (audited as forced)")
+    apc.add_argument("--days", type=int, default=None, help="the pass-rate window in days (default nativesync/params.PRIMARY_CHECK_DAYS)")
+    apc.add_argument("--by", help="who is changing it (audit; default BODY_ADMIN or the OS user)")
+    aps = sub.add_parser("app-scores", help="scores computed by the iOS app (#340 N2): status, or give the scoring back to the server / to the app")
+    aps.add_argument("action", choices=["status", "server", "app"],
+                     help="status = state, recent spot checks and what the hourly job does; server = the server scores this user "
+                          "whatever the app uploads (the hourly job recomputes as before); app = the app may score again")
+    aps.add_argument("--user-id", type=int, required=True)
 
     args = p.parse_args()
+    if args.cmd in ("algo-keygen", "algo-sign"):  # the maintainer's machine: no database
+        from .algo import signing
+        if args.cmd == "algo-keygen":
+            print(json.dumps(signing.keygen(args.out), ensure_ascii=False, indent=1))
+        else:
+            m = signing.sign_dist(args.key, args.dist)
+            print(f"signed {m['file']} {m['version']} (sha256 {m['sha256'][:12]}…) with key {m['key_id']}")
+        return
     if args.cmd == "sparky-migrate":  # manages its own connection (rolls back a dry run / a failed check, exit code)
         from .ownstore import migrate as own_migrate
         raise SystemExit(own_migrate.cli(args))
@@ -561,6 +731,26 @@ def main() -> None:
             out = {"status": notify_admin.status, "test": lambda c: notify_admin.test(c, args.user_id),
                    "prune": lambda c: notify_admin.prune(c, args.days)}[args.notify_cmd](conn)
             print(json.dumps(out, default=str, ensure_ascii=False, indent=2))
+        elif args.cmd == "notice-send":
+            from .notices import store as notices
+            try:
+                row = notices.send(conn, args.user_id, args.title, args.body, args.link, args.link_label, None, args.expires_days,
+                                   args.title_en, args.body_en, args.link_label_en)
+            except ValueError as e:
+                p.error(str(e))
+            conn.commit()
+            print(json.dumps(row, default=str, ensure_ascii=False))
+        elif args.cmd == "notice-list":
+            from .notices import store as notices
+            print(json.dumps(notices.list_all(conn, args.user_id, args.limit), default=str, ensure_ascii=False, indent=1))
+        elif args.cmd == "notice-revoke":
+            from .notices import store as notices
+            ok = notices.revoke(conn, args.id)
+            conn.commit()
+            print(json.dumps({"revoked": ok}))
+        elif args.cmd == "sync-broken":
+            from .sync import broken
+            print(json.dumps(broken.broken_users(conn), default=str, ensure_ascii=False, indent=1))
         elif args.cmd == "user-stats":
             try:
                 res = user_stats.collect(conn, args.days, tuple(x.strip() for x in args.signals.split(",") if x.strip()))
@@ -648,6 +838,10 @@ def main() -> None:
                       f"平均 {st['avg_chars'] or 0} 字符，最大 {st['max_chars'] or 0} 字符")
                 for d in st["per_day"]:
                     print(f"  {d['day']}  {d['calls']:>4} 次  命中 {d['hit_rate']:.0%}  平均 {d['avg_chars']} / 最大 {d['max_chars']} 字符  {d['users']} 人")
+        elif args.cmd == "data-gaps":
+            from .sync import gaps
+            res = gaps.scan(conn, args.user_id)
+            print(json.dumps(res, ensure_ascii=False) if args.json else gaps.render(res))
         elif args.cmd == "muscle-coverage-check":
             from .training import muscle_coverage
             res = muscle_coverage.scan(conn, args.days)
@@ -668,11 +862,30 @@ def main() -> None:
             ai_fallback_cli.run(conn, args)
         elif args.cmd == "ai-cards":
             ai_cards_cli.run(conn, args)
+        elif args.cmd == "whats-new":
+            from datetime import datetime, timezone
+            from .whatsnew import service as whatsnew
+            at = datetime.fromisoformat(args.now) if args.now else None
+            if at is not None and at.tzinfo is None:
+                at = at.replace(tzinfo=timezone.utc)
+            res = whatsnew.run(conn, args.user_id, at, args.dry_run)
+            counts: dict = {}
+            for r in res:
+                counts[r["status"]] = counts.get(r["status"], 0) + 1
+            print(json.dumps({"dry_run": args.dry_run, "counts": counts, "users": [r for r in res if r["status"] not in ("empty", "already")]},
+                             ensure_ascii=False))
         elif args.cmd == "open-signup":
             open_signup_cli.run(conn, args)
+        elif args.cmd in circles_reports_cli.COMMANDS:
+            circles_reports_cli.run(conn, args)
         elif args.cmd in rollout_cli.COMMANDS:
             try:
                 rollout_cli.run(conn, args)
+            except (KeyError, ValueError) as e:
+                p.error(str(e))
+        elif args.cmd in upgrade_cli.COMMANDS:
+            try:
+                upgrade_cli.run(conn, args)
             except (KeyError, ValueError) as e:
                 p.error(str(e))
         elif args.cmd == "feedback":
@@ -688,7 +901,7 @@ def main() -> None:
             if not args.no_scores:
                 ow_client = OWClient()
                 res["workouts_enriched"] = workouts_importer.enrich_pending(conn, ow_client, args.user_id)
-                res["scores"] = scores_engine.run(conn, ow_client, args.user_id)
+                res["scores"] = scores_engine.run(conn, ow_client, args.user_id, ow_cache="refresh")
             print(json.dumps(res, default=str, ensure_ascii=False))
         elif args.cmd == "import-raw":
             from .rawdata import export as rx_export
@@ -728,6 +941,9 @@ def main() -> None:
             print("ow user id:", ow.link_user(conn, OWClient(), args.user_id, args.ow_user_id))
         elif args.cmd == "sparky-link":
             print("sparkyfitness user id:", sparky_client.link_user(conn, args.user_id, args.key_name))
+        elif args.cmd in ("import-ow", "import-workouts") and not args.force and _legacy_stopped():
+            from .rawdata import retire
+            print(json.dumps({"skipped": retire.SKIP_NOTE}, ensure_ascii=False))
         elif args.cmd == "import-ow":
             print(json.dumps(ow.run(conn, OWClient(), args.user_id, args.start, args.end, args.full,
                                     args.xml_energy_unit), default=str))
@@ -740,6 +956,9 @@ def main() -> None:
         elif args.cmd == "sync-refresh-run":
             from .sync import refresh as sync_refresh
             print(json.dumps(sync_refresh.run_queued(conn, args.user_id), default=str, ensure_ascii=False))
+        elif args.cmd == "ow-watch":
+            from .sync import ow_watch
+            print(json.dumps(ow_watch.run_once(conn), default=str, ensure_ascii=False))
         elif args.cmd == "hk-derive-run":
             from .rawdata import derive as hk_derive
             print(json.dumps(hk_derive.run(conn, args.user_id, args.max_days), default=str, ensure_ascii=False))
@@ -753,11 +972,80 @@ def main() -> None:
                 print("written:", args.out)
             else:
                 print(text)
+        elif args.cmd == "sync-shadow-compare":
+            from .rawdata import shadow
+            print(json.dumps(shadow.run(conn, args.user_id, _ow_or_none(), not args.no_scores, args.start, args.end),
+                             default=str, ensure_ascii=False))
+        elif args.cmd == "sync-shadow-report":
+            from .rawdata import shadow
+            if args.summary:
+                print(json.dumps(shadow.doctor_lines(conn), default=str))
+                return
+            text = shadow.markdown(conn, [args.user_id] if args.user_id else shadow.users(conn), args.since)
+            if args.out:
+                args.out.parent.mkdir(parents=True, exist_ok=True)
+                args.out.write_text(text, encoding="utf-8")
+                print("written:", args.out)
+            else:
+                print(text)
+        elif args.cmd == "sync-mode":
+            from .rawdata import cutover
+            if args.action == "readiness":
+                from .rawdata import readiness
+                rep = readiness.report(conn, [args.user_id] if args.user_id else None)
+                text = json.dumps(rep, default=str, ensure_ascii=False, indent=1) if args.json else readiness.markdown(rep)
+                if args.out:
+                    args.out.parent.mkdir(parents=True, exist_ok=True)
+                    args.out.write_text(text, encoding="utf-8")
+                    print("written:", args.out)
+                else:
+                    print(text)
+                return
+            if args.action not in ("apply",) and args.user_id is None:
+                raise SystemExit("--user-id is required")
+            client = _ow_or_none()
+            res = {"status": lambda: cutover.status(conn, args.user_id),
+                   "switch": lambda: cutover.switch(conn, args.user_id, client, args.force, args.dry_run,
+                                                    not args.no_scores, actor="cli"),
+                   "rollback": lambda: cutover.rollback(conn, args.user_id, client, actor="cli", force=args.force),
+                   "unpin": lambda: cutover.unpin(conn, args.user_id),
+                   "apply": lambda: cutover.apply(conn, args.user_id, client, not args.no_scores),
+                   "verify": lambda: cutover.post_check(conn, args.user_id)}[args.action]()
+            print(json.dumps(res, default=str, ensure_ascii=False, indent=1))
+        elif args.cmd == "retire-legacy":
+            from .rawdata import retire
+            if args.action == "status":
+                print(json.dumps(retire.status(conn), default=str, ensure_ascii=False))
+                return
+            if (args.user_id is None) == (not args.all):
+                raise SystemExit("verify: --user-id N 或 --all（二选一）")
+            ids = retire.users(conn) if args.all else [args.user_id]
+            client = None if args.offline else _ow_or_none()
+            results, archived = [], []
+            for uid in ids:
+                if args.archive:
+                    archived.append(retire.archive(conn, uid, client))
+                results.append(retire.verify(conn, uid, client, scores=args.scores))
+                conn.rollback()   # verify only reads
+            if args.json:
+                print(json.dumps({"archived": archived, "users": results}, default=str, ensure_ascii=False, indent=1))
+            else:
+                if archived:
+                    print("\n".join(json.dumps(a, default=str, ensure_ascii=False) for a in archived) + "\n")
+                print(retire.markdown(results))
+            if any(r["status"] == "✗" for r in results):
+                raise SystemExit(1)
+        elif args.cmd == "ow-archive":
+            from .rawdata import ow_archive
+            res = ow_archive.check(conn, args.user_id) if args.check else ow_archive.archive(conn, OWClient(), args.user_id)
+            print(json.dumps(res, default=str, ensure_ascii=False, indent=1))
         elif args.cmd == "compute-scores":
             ow_client = OWClient()
+            # OW raw samples through the local copy (importers/ow_cache.py); a full recompute re-reads and replaces it
+            mode = "use" if args.start else "refresh"
             res = scores_engine.run(conn, ow_client, args.user_id, args.start, args.end,
-                                    args.archive_dir or shortcut.user_archive_dir(args.user_id))
-            res["insights"] = insights_jobs.run(conn, ow_client, args.user_id)   # body age (weekly), stress
+                                    args.archive_dir or shortcut.user_archive_dir(args.user_id), ow_cache=mode)
+            res["insights"] = insights_jobs.run(conn, ow_client, args.user_id, ow_cache=mode)   # body age (weekly), stress
             print(json.dumps(res, default=str, ensure_ascii=False))
         elif args.cmd == "import-records":
             print(records_importer.format_report(records_importer.run(conn, args.user_id)))
@@ -774,6 +1062,13 @@ def main() -> None:
             from .training import catalog as tr_catalog, media as tr_media
             src = tr_media.fetch_json() if args.free_db and not args.free_exercise_db else args.free_exercise_db
             print(json.dumps(tr_catalog.seed_catalog(conn, src), ensure_ascii=False))
+        elif args.cmd == "app-compute":
+            raise SystemExit(_app_compute(conn, args))
+        elif args.cmd == "app-scores":
+            from .nativesync import appscores
+            if args.action != "status":
+                appscores.set_server_forced(conn, args.user_id, args.action == "server")
+            print(json.dumps(appscores.status(conn, args.user_id), ensure_ascii=False, indent=1, default=str))
         elif args.cmd == "static-bundle-pack":
             from .static_bundle import pack as sb_pack
             man = sb_pack.pack(conn, args.out, args.since)

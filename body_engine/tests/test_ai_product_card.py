@@ -5,7 +5,8 @@ a block without data is left out (never invented), nothing comes from the public
 flag off nothing changes (tool definition, prompt, build). Needs Postgres (BODY_TEST_DB_NAME_PRODUCT_CARD, default
 body_test_product_card). No network."""
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 import psycopg
 import pytest
@@ -22,7 +23,16 @@ from body_engine.rollout import flags
 from body_engine.rollout.registry import FLAGS
 
 TEST_DB = os.environ.get("BODY_TEST_DB_NAME_PRODUCT_CARD", "body_test_product_card")
-NOW = datetime.now(timezone.utc)
+# The test users keep the default time zone (users.timezone), and the product code counts "days ago" in the user's local days. So every
+# timestamp below is anchored to the user's local calendar (noon of the day, or its first instant for "today"), never to "now minus
+# N x 24 h": that drifts a day whenever the user's date and the UTC date differ (UTC 13:00-24:00 for Sydney) and can land in the future.
+USER_TZ = ZoneInfo("Australia/Sydney")
+TODAY = datetime.now(USER_TZ).date()
+
+
+def at(days_ago: int = 0) -> str:
+    """ISO time on the user's local day `days_ago` days back: noon, or 00:00 for today (so it is never in the future)."""
+    return datetime.combine(TODAY - timedelta(days=days_ago), time(12) if days_ago else time(0), USER_TZ).isoformat()
 YOGURT = {"name": "Greek Yoghurt Natural", "brand": "Chobani", "store": "Coles", "category": "dairy_eggs",
           "package_size": 1000, "package_unit": "g", "price": 7.5, "currency": "AUD",
           "nutrition": {"kcal": 97, "protein_g": 9, "carbs_g": 4.0, "fat_g": 5, "sat_fat_g": 3.4, "sugar_g": 4, "sodium_mg": 40},
@@ -33,7 +43,7 @@ EGGS = {"name": "Free Range Eggs 12 Pack", "category": "dairy_eggs", "package_si
 
 def _seen(store_key, days_ago, price, **kw):
     return {"store": store_key, "name": "Chobani Greek Yoghurt Natural", "size": "1kg", "price": price,
-            "observed_at": (NOW - timedelta(days=days_ago, hours=1)).isoformat(), "source": "screenshot",
+            "observed_at": at(days_ago), "source": "screenshot",
             "for_item": "greek yoghurt", **kw}
 
 
@@ -80,7 +90,7 @@ def world(dsn):
         prices.record(c, a, [_seen("woolworths", 1, 6.2, name="Woolworths Greek Style Yoghurt Natural", size="1kg",
                                    url="https://www.woolworths.com.au/shop/productdetails/12345/greek-yoghurt")])
         prices.record(c, a, [_seen("coles", 0, 6.8, name="Chobani Greek Yoghurt Natural", bought=True, paid_total=6.8,
-                                   observed_at=(NOW - timedelta(minutes=5)).isoformat())])
+                                   observed_at=at(0))])
         prices.record(c, ids["B"], [_seen("coles", 2, 99.0)])
         c.commit()
     return ids, yoghurt["id"]
@@ -233,9 +243,9 @@ def test_two_days_show_numbers_not_a_line(conn, world):
     a = ids["A"]
     p = store.save_product(conn, a, {"name": "Oat Milk Barista", "package_size": 1000, "package_unit": "ml", "matches": ["oat milk"]})
     prices.record(conn, a, [{"store": "coles", "name": "Oat Milk Barista", "size": "1L", "price": 2.5, "for_item": "oat milk",
-                             "observed_at": (NOW - timedelta(days=9)).isoformat()}])
+                             "observed_at": at(9)}])
     prices.record(conn, a, [{"store": "coles", "name": "Oat Milk Barista", "size": "1L", "price": 2.9, "for_item": "oat milk",
-                             "observed_at": (NOW - timedelta(days=2)).isoformat()}])
+                             "observed_at": at(2)}])
     conn.commit()
     h = cards.build(conn, a, {"type": "product", "id": p["id"]}, v2=True)["history"]
     assert h["count"] == 2 and h["points"] == [] and h["min"] == 2.5 and h["latest"] == 2.9
@@ -248,9 +258,9 @@ def test_stale_price_is_never_the_lowest(conn, world):
     a = ids["A"]
     p = store.save_product(conn, a, {"name": "Rolled Oats", "package_size": 1000, "package_unit": "g", "matches": ["oats"]})
     prices.record(conn, a, [{"store": "coles", "name": "Rolled Oats", "size": "1kg", "price": 2.0, "for_item": "oats",
-                             "observed_at": (NOW - timedelta(days=30)).isoformat()},
+                             "observed_at": at(30)},
                             {"store": "woolworths", "name": "Rolled Oats", "size": "1kg", "price": 3.0, "for_item": "oats",
-                             "observed_at": (NOW - timedelta(days=1)).isoformat()}])
+                             "observed_at": at(1)}])
     conn.commit()
     rows = cards.build(conn, a, {"type": "product", "id": p["id"]}, v2=True)["stores"]
     assert {r["store"]: r["stale"] for r in rows} == {"coles": True, "woolworths": False}
@@ -263,7 +273,7 @@ def test_library_price_and_purchases_without_a_recorded_price(conn, world):
     a = ids["A"]
     p = store.save_product(conn, a, {"name": "Tinned Tuna", "store": "Aldi", "price": 1.5, "package_size": 95, "package_unit": "g"})
     for d, price in ((30, 1.4), (14, 1.5), (2, 1.9)):
-        prices.add_purchase(conn, a, name="Tinned Tuna", store="Aldi", store_product_id=None, bought_on=(NOW - timedelta(days=d)).date(),
+        prices.add_purchase(conn, a, name="Tinned Tuna", store="Aldi", store_product_id=None, bought_on=TODAY - timedelta(days=d),
                             packages=1, paid_total=price, on_special=False, was_price=None, source="manual", product_id=p["id"])
     conn.commit()
     card = cards.build(conn, a, {"type": "product", "id": p["id"]}, v2=True)
@@ -287,7 +297,7 @@ def test_only_the_users_own_prices_never_the_catalogue(conn, world):
         cards.build(conn, a, {"type": "product", "metric": "Catalogue Only Biscuits"}, v2=True)
     # even when the user has the catalogue row linked (their own sighting of it), only their observation counts
     prices.record(conn, a, [{"store": "coles", "name": "Catalogue Only Biscuits", "size": "200g", "price": 3.3,
-                             "url": "https://www.coles.com.au/product/x-9999991", "observed_at": (NOW - timedelta(hours=2)).isoformat()}])
+                             "url": "https://www.coles.com.au/product/x-9999991", "observed_at": at(0)}])
     conn.commit()
     card = cards.build(conn, a, {"type": "product", "metric": "Catalogue Only Biscuits"}, v2=True)
     assert card["id"] is None and card["name"] == "Catalogue Only Biscuits" and card["nutrition"] is None
@@ -330,3 +340,25 @@ def test_card_is_plain_json(conn, world):
     _flag(conn)
     card = cards.build(conn, ids["A"], {"type": "product", "id": pid}, v2=True)
     assert json.loads(json.dumps(card)) == card
+
+
+def test_card_shows_archive_fields(conn, world):
+    """#291: the fuller nutrition table, the label's own per-serving column and the allergens (short labels) are on the card;
+    the ingredient text and the picture are not (the library keeps them)."""
+    ids, _ = world
+    _flag(conn)
+    p = store.save_product(conn, ids["A"], {
+        "name": "Full Cream Milk", "package_size": 2000, "package_unit": "ml", "piece_g": None,
+        "nutrition": {"kcal": 64, "protein_g": 3.4, "carbs_g": 4.8, "fat_g": 3.6, "calcium_mg": 120, "fiber_g": 0, "potassium_mg": 150},
+        "serving_size": 250, "serving_unit": "ml", "nutrition_serving": {"kcal": 160, "protein_g": 8.5, "calcium_mg": 300},
+        "ingredients": "Milk (100%)", "allergens": ["Milk"], "allergen_traces": ["Soy"], "image_url": "https://img.example.org/m.jpg"})
+    card = cards.build(conn, ids["A"], {"type": "product", "id": p["id"]}, v2=True)
+    n = card["nutrition"]
+    assert n["per100"]["calcium_mg"] == 120 and n["per100"]["fiber_g"] == 0 and n["per100"]["potassium_mg"] == 150
+    assert n["serving"] == {"kind": "serving", "amount": 250.0, "unit": "ml", "kcal": 160.0, "protein_g": 8.5}
+    assert card["allergens"] == ["Milk"] and card["traces"] == ["Soy"] and card["image_url"] == "https://img.example.org/m.jpg"
+    assert "ingredients" not in card and "含过敏原：Milk" in cards_product.summary(card)
+    # a product without any of it: same card as before, empty lists
+    plain = cards.build(conn, ids["A"], {"type": "product", "id": world[1]}, v2=True)
+    assert plain["allergens"] == [] and plain["traces"] == [] and plain["image_url"] is None
+    assert plain["nutrition"]["serving"]["kind"] == "pack"

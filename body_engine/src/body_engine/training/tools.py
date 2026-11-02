@@ -1,4 +1,4 @@
-"""AI assistant tool specs for training history and Training V2 (wrapped into Tool and registered by assistant/tools.py):
+"""AI assistant tool specs for training history and Training V2 (registered by dl_app.py):
 read the calendar / a day, correct or hide a watch workout (overrides.py), exercise catalog, weekly splits, plan management, exercise swap, day changes (day_overrides.py),
 the muscle load map and the user's own custom exercises (custom.py, rollout flag muscle_load)."""
 from datetime import date, datetime, timedelta
@@ -18,7 +18,7 @@ _schema = schema
 _n = nullable
 
 PLAN_EX = _schema({
-    "exercise": {"type": "string", "description": "slug 或动作名"},
+    "exercise": {"type": "string", "description": "slug 或动作名；「A + B」=超级组"},
     "sets": {"type": "integer"},
     "rep_low": _n("integer"),
     "rep_high": _n("integer"),
@@ -241,6 +241,7 @@ TOOL_SPECS: list[dict] = [
         input_schema=_schema({"exercise": {"type": "string"}}),
         handler=_delete_custom_exercise,
         group="training", scope="training", writes=True,
+        confirm=True, confirm_label="Delete one of your own exercises",
     ),
     dict(
         name="get_exercise",
@@ -251,7 +252,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="propose_plan",
-        description="周计划草案（不写库）。先问用户 ask_user_first 里的事（开始日、本周剩余怎么排、哪几天能练、不能练的日子、热身附加项），出草案给用户看（含推荐重量）。first_week=本周已练后只补缺的安排。",
+        description="周计划草案（不写库）。先问用户 ask_user_first 里的事（开始日、本周剩余怎么排、哪几天能练、不能练的日子、热身附加项），出草案给用户看（含推荐重量）。first_week=本周已练后只补缺的安排。unresolved=库里认不出的动作，和用户确认换成哪个。",
         input_schema=_schema({
             "user": USER,
             "split_type": {"type": "string", "enum": SPLIT_ENUM},
@@ -266,7 +267,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="save_plan",
-        description="用户确认 propose_plan 草案后才调：保存并激活周计划（参数同草案），本周按 first_week 补缺；SparkyFitness 同步失败计划照样保存，按 tell_user 告诉用户。",
+        description="用户确认 propose_plan 草案后才调：保存并激活周计划（参数同草案），本周按 first_week 补缺；SparkyFitness 同步失败计划照样保存，按 tell_user 告诉用户；unresolved 同上。",
         input_schema=_schema({
             "split_type": {"type": "string", "enum": SPLIT_ENUM},
             "name": _n("string"),
@@ -323,6 +324,7 @@ TOOL_SPECS: list[dict] = [
         input_schema=_schema({"workout_id": {"type": "integer"}}),
         handler=lambda conn, uid, a: overrides.hide_workout(conn, uid, a["workout_id"]),
         group="training", scope="training", writes=True,
+        confirm=True, confirm_label="Hide a duplicate / wrong workout",
     ),
 ]
 
@@ -382,5 +384,6 @@ TOOL_SPECS += [
         handler=_undo_day_changes,
         group="training", scope="training",
         writes=True,
+        confirm=True, confirm_label="Undo day changes to the training plan",
     ),
 ]

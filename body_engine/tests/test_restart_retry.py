@@ -79,6 +79,20 @@ def test_writes_and_service_worker_503_are_sent_once():
     assert got == {"write": 502, "writeCalls": 1, "sw": 503, "swCalls": 1, "bad": 400, "badCalls": 1}
 
 
+def test_a_json_answer_is_not_a_restart():
+    """W4: Body Engine itself answers 502 (JSON detail) when SparkyFitness is down; only the proxy's error page (HTML / empty) means
+    the server is restarting. Waiting and asking again for the same JSON answer made the food tab wait ~9 s and toast 「正在更新」."""
+    got = run_retry("""
+      script = [res(502, { "Content-Type": "application/json" }), res(200)];
+      const a = await fetchRetrying("/x", {}, true);
+      const r = { json: a.status, jsonCalls: calls, toasts: toasts.length };
+      calls = 0; script = [res(502, { "Content-Type": "text/html" }), res(200)];      // the proxy's page: still a restart
+      const b = await fetchRetrying("/x", {}, true);
+      r.html = b.status; r.htmlCalls = calls;
+      return r;""")
+    assert got == {"json": 502, "jsonCalls": 1, "toasts": 0, "html": 200, "htmlCalls": 2}
+
+
 def test_page_wiring():
     assert "fetchRetrying(path, { method, headers" in APP and 'method === "GET")' in APP     # only reads retry
     assert "e.updating = true" in APP and "data-retry" in APP.split("const errorHtml")[1][:400]

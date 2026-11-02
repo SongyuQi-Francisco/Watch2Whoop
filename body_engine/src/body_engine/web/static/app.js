@@ -1,7 +1,6 @@
 /* Today page v2 (PWA): restrained, few words, let the numbers speak. No build step: plain JS, charts are hand-drawn SVG.
    Pages: Today / Trends (metrics, sleep) / Log / Me; explanations and details live in bottom sheets that open on tap.
-   A persistent "Ask the butler" (「问管家」) at the bottom: when the default AI is an API type (each person's own key) it opens the in-page chat (ai.js); for subscription types / when unset it opens the body butler
-   Claude Code session (Remote Control) link (assistant_url from /v1/web/me, only given to the deployer) -- subscriptions can only be used in the official client.
+   A persistent "Ask the butler" (「问管家」) at the bottom opens the in-page chat (ai.js) or, without an API-type AI, the butler's Remote Control link (assistant_url from /v1/web/me).
    Endpoints: /v1/web/* (login), /v1/users/{u}/today | sleep/nights | trends | journal/frequent (aggregates),
    /v1/users/{u}/memory (body profile card, observation notes, provided by the body butler session), plus the existing journal / events / supplements / reminders.
    Auth relies on an httpOnly cookie; write requests carry X-Body-Web: 1.
@@ -36,6 +35,32 @@
   // diet-profile.js adds foodTop(info) / bindFoodTop(view): one line above both 饮食 modes; water.js adds foodDiet(info) / bindFoodDiet(view):
   // the water card right after 「今天吃了」.
   const PLUGINS = () => window.BodyPlugins || [];
+  // On-demand scripts: index.html declares them as type w2w/lazy (the browser neither fetches nor runs them; the server adds ?v=<fingerprint>).
+  // lazyScript(name) loads one on first need and resolves true (false: not fetched, the next call retries). The offline copy has them inline.
+  // A file that registers a plugin in window.BodyPlugins gets its init() right after it runs (initLate).
+  const LAZY = new Map();
+  const lateInit = { ctx: null, me: null, done: new WeakSet() };
+  function initLate() {
+    if (!lateInit.ctx) return;
+    for (const p of PLUGINS()) if (!lateInit.done.has(p)) { lateInit.done.add(p); try { p.init?.(lateInit.ctx, lateInit.me); } catch (e) { /* a plugin never breaks the page */ } }
+  }
+  function lazyScript(name) {
+    if (!LAZY.has(name)) {
+      const decl = [...document.querySelectorAll('script[type="w2w/lazy"]')].find((e) => (e.getAttribute("src") || "").split("?")[0] === name);
+      LAZY.set(name, !decl ? Promise.resolve(true) : new Promise((done) => {
+        const el = Object.assign(document.createElement("script"), { src: decl.getAttribute("src") });
+        el.onload = () => { initLate(); done(true); };
+        el.onerror = () => { LAZY.delete(name); el.remove(); done(false); };
+        document.head.append(el);
+      }));
+    }
+    return LAZY.get(name);
+  }
+  window.BodyLazy = { script: lazyScript };
+  // intro.js (37 KB) loads when the intro first opens (a new account, or 「我 → 新手引导」); this stand-in is replaced by the real
+  // window.BodyIntro when the file has run (and is never installed where the file is already there: the offline copy)
+  const introStub = { open: async () => { if ((await lazyScript("intro.js")) && window.BodyIntro !== introStub) window.BodyIntro.open(); } };
+  if (!window.BodyIntro) window.BodyIntro = introStub;
   // Optional plugins of this server (BODY_PLUGIN_DIR, body_engine/plugins.py): /app/plugins/manifest.json lists the scripts and
   // styles for the signed-in user; they load before the plugins are initialised and register in window.BodyPlugins like the
   // files above. A server without plugins lists nothing and nothing is loaded.
@@ -56,19 +81,23 @@
   // Page events for plugins: BodyHooks.on(name, fn). The page emits "page" ({page}) when the visible page changes and "action"
   // ({feature, page}) when a control is used. feature = the control's data-feature, its id, or the name of its data-* attribute
   // (with the value only for data-tab / data-mode); never text the user typed or values of records. Nothing listens by default.
+  // "sheet" ({open: true, kind, key} / {open: false}) when a detail sheet opens or closes: kind "card" = opened from an element
+  // with data-card="<key>", "explain" = the explanation of a metric (key), "lab" = a lab test's history (test_key); other sheets
+  // have no key. data-card marks a data card on the page with a fixed code key (never record values); a plugin can watch which
+  // cards are on screen. Keys are lower-case [a-z0-9_.:-] only. "today": the data each draw of 今天 used.
   const HOOKS = new Map();
   window.BodyHooks = {
     on(name, fn) { if (!HOOKS.has(name)) HOOKS.set(name, []); HOOKS.get(name).push(fn); },
     emit(name, detail) { for (const fn of HOOKS.get(name) || []) { try { fn(detail); } catch (e) { /* a plugin never breaks the page */ } } },
   };
-  let lastPage = "";
+  let lastPage = "", lastToday = null;
   const pageKey = () => { const sub = { record: S.recSub, food: S.foodMode, trends: S.trendsMode, me: S.meSub, today: S.sleepNight ? "sleep" : null }[S.tab]; return sub ? `${S.tab}:${sub}` : S.tab; };
   function featureOf(el) {
     const named = el.closest("[data-feature]")?.dataset.feature;
     if (named) return named;
     if (/^[a-z][a-z0-9_-]{0,39}$/.test(el.id || "")) return el.id.replace(/[-_]?\d+$/, "");   // tip-3 -> tip
     for (const a of el.getAttributeNames()) {
-      const k = a.startsWith("data-") ? a.slice(5) : "";
+      const k = a.startsWith("data-") && a !== "data-card" ? a.slice(5) : "";
       if ((k === "tab" || k === "mode") && /^[a-z_-]{1,30}$/.test(el.getAttribute(a))) return `${k}:${el.getAttribute(a)}`;
       if (/^[a-z][a-z-]{0,30}$/.test(k)) return k;
     }
@@ -80,6 +109,20 @@
     const feature = el && featureOf(el);
     if (feature) window.BodyHooks.emit("action", { feature, page: lastPage });
   }, true);
+  // <in-app-links> Inside the iOS app's WebView a target=_blank <a> does nothing, while window.open reaches the app's navigation
+  // delegate, which hands the address to the system. So every such link on the page (Jarvis answers in md.js, the feedback link, the
+  // Jarvis "open" button …) is opened from code there. A handler that already took the click (preventDefault) is left alone.
+  document.addEventListener("click", (e) => {
+    if (!IN_APP || e.defaultPrevented || e.button) return;
+    const a = e.target.closest?.("a[target=_blank][href]");
+    if (!a) return;
+    let url;
+    try { url = new URL(a.getAttribute("href"), location.href); } catch (err) { return; }
+    if (url.protocol !== "https:" && url.protocol !== "http:") return;
+    e.preventDefault();
+    window.open(url.href, "_blank", "noopener");
+  });
+  // </in-app-links>
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const WEEK = (() => { const w = I18N.weekdaysMon(); return [w[6], ...w.slice(0, 6)]; })();   // Sunday first (getDay())
   const WEEK_MON = I18N.weekdaysMon();   // Monday first (the training week strip)
@@ -134,6 +177,9 @@
   const addDays = (s, n) => { const d = parseDay(s); d.setDate(d.getDate() + n); return isoDay(d); };
   const fmtDay = (s, withYear) => I18N.dayLabel(parseDay(s), withYear);
   const shortDay = (s) => { const d = parseDay(s); return I18N.lang === "zh" ? `${d.getMonth() + 1}/${d.getDate()}` : d.toLocaleDateString(I18N.locale(), { day: "numeric", month: "numeric" }); };
+  // The same day with its year ("2025/10/27"; English: the device's own order, "27/10/25"), for ranges long enough that "10/27 … 10/26" reads backwards
+  const yearDay = (s) => { const d = parseDay(s); return I18N.lang === "zh" ? `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}` : d.toLocaleDateString(I18N.locale(), { day: "numeric", month: "numeric", year: "2-digit" }); };
+  const spansYear = (a, b) => String(a).slice(0, 4) !== String(b).slice(0, 4) || Math.round((parseDay(String(b).slice(0, 10)) - parseDay(String(a).slice(0, 10))) / 864e5) >= 179;   // 6 months = 180 days = 179 days apart
   const hm = (m) => (m == null ? null : `${Math.floor(m / 60)}:${String(Math.round(m % 60)).padStart(2, "0")}`);
   const fmtMin = (m) => {
     if (m == null) return "—";
@@ -154,6 +200,7 @@
   // The UI only shows numbers and short words; the backend's original reasons / explanations are left for the butler (read via API / MCP), here they are mapped to one- or two-character labels
   // The regexes match the server's Chinese reasons (and English ones, should a reason come back in English)
   const SHORT = [
+    [/手表这晚没记录|watch did not record/i, "手表没记录"],   // i18n-ok: the wrist-temperature reason names "sleep" and must not become "无睡眠"
     [/授权|permission|forbidden|not allowed/i, "无权限"], [/还没有计算|还没计算|没算出来|not (yet )?(computed|calculated)/i, "未计算"],   // i18n-ok
     [/基线|baseline/i, "基线不足"], [/HRV/i, "无 HRV"], [/原始心率|心率|heart rate/i, "无心率"], [/睡眠|sleep/i, "无睡眠"],   // i18n-ok
     [/力量训练|strength/i, "无力量"], [/负荷|沿用|strain|load/i, "无负荷"],   // i18n-ok
@@ -194,7 +241,10 @@
   // Reads (GET) wait and try again by themselves, at most twice; every other request is sent once (a write must not run
   // twice). A 503 with X-Offline is the service worker saying it has no copy, not a restart.
   const UPDATING_WAITS = [3000, 6000];
-  const isRestart = (r) => [502, 503, 504].includes(r.status) && r.headers.get("X-Offline") !== "1";
+  // A JSON answer comes from Body Engine itself (e.g. a 502 because the food-log service is down), not from the proxy of a restarting
+  // server (an HTML error page): waiting and asking again would only make the page wait ~9 s for the same answer.
+  const isJson = (r) => /json/i.test(r.headers.get("Content-Type") || "");
+  const isRestart = (r) => [502, 503, 504].includes(r.status) && r.headers.get("X-Offline") !== "1" && !isJson(r);
   async function fetchRetrying(path, init, retry) {
     for (let n = 0; ; n++) {
       let r = null, err = null;
@@ -205,6 +255,14 @@
       await new Promise((ok) => setTimeout(ok, UPDATING_WAITS[n]));
     }
   }
+
+  // Reads that only decorate the page (what the plugin files ask at start-up: profile, account, sync state, notices, history import)
+  // wait until the first page is drawn, so the first second carries the page's own data and not 17 requests at once (the proxy counts
+  // every HTTP/2 stream as a connection). firstPaint resolves when start() has drawn the first page, or after 4 s whatever happens.
+  const DEFERRED_GETS = /^\/v1\/(account|users\/me\/(profile|sync\/connection|sync\/status|notices|health-history))(\?|$)/;
+  let paintDone;
+  const firstPaint = new Promise((ok) => { paintDone = ok; });
+  setTimeout(() => paintDone(), 4000);
 
   // queue: {kind, label, group?, coalesce?} = a write offline.js may keep and send later (water, weight, training sets).
   // It resolves {queued: item} when it was kept instead of sent: offline, or older writes are still waiting (they go first).
@@ -227,10 +285,10 @@
     if (body !== undefined) headers["Content-Type"] = "application/json";
     let r;
     try {
-      // The app's saved copy of the page (offline cold start, web/api.py offline_shell): nothing is sent from it; the app
-      // loads the real page once the network is back
+      // The app's offline copy (web/api.py offline_shell) sends nothing; the app opens the real page once online
       if (window.W2W_SHELL) throw new Error("offline shell");
       const pre = method === "GET" ? await (S.stale ? prePeek(path) : preTake(path)) : null;
+      if (!pre && method === "GET" && DEFERRED_GETS.test(path)) await firstPaint;
       r = pre && !isRestart(pre) ? pre
         : await fetchRetrying(path, { method, headers, credentials: "same-origin", body: body === undefined ? undefined : JSON.stringify(body) }, method === "GET");
     } catch (e) {
@@ -256,12 +314,14 @@
     let data = null;
     if (r.status !== 204) { try { data = await r.json(); } catch (e) { /* no body */ } }
     if (off && method === "GET" && r.ok && r.headers.get("X-Offline") !== "1") off.put(path, I18N.lang, data).catch(() => {});
+    if (r.status === 401 && window.W2W_LOCAL) { tellApp("reload"); throw new ApiError(401, ""); }   // #337
     if (r.status === 401 && off) off.clearCache().catch(() => {});   // signed out: no copies left readable; the queue waits for the same account
     if (r.status === 401) { PRE.clear(); try { localStorage.removeItem(FAST); } catch (e) { /* private mode */ } }
     if (r.status === 401 && !quiet401) {
       showLogin(/过期|expired/i.test(String(data?.detail || "")) ? tr("login.expired") : "");   // i18n-ok: server detail
       throw new ApiError(401, tr("err.notLoggedIn"));
     }
+    if (r.status === 426) lazyScript("upgrade.js").then(() => window.BodyUpgrade?.block(data?.detail));   // R2
     if (!r.ok && isRestart(r)) {   // still down after the retries (reads), or a write that was not repeated
       const e = new ApiError(r.status, tr("服务器正在更新，请过一会儿再试"), data);
       e.updating = true;
@@ -470,11 +530,17 @@
   const SH = new Map();
   let shSeq = 0;
   const sheetAttr = (fn) => { const id = `s${++shSeq}`; SH.set(id, fn); return `data-sheet="${id}"`; };
+  let sheetFrom = null;   // data-card key of the element whose click opens the next sheet (see the "sheet" hook)
+  const hookKey = (v) => String(v ?? "").toLowerCase().replace(/[^a-z0-9_.:-]+/g, "_").replace(/^[^a-z]+/, "").slice(0, 60);
   document.addEventListener("click", (e) => {
     const t = e.target.closest("[data-sheet]");
     if (!t) return;
     const fn = SH.get(t.dataset.sheet);
-    if (fn) { e.preventDefault(); fn(); }
+    if (fn) {
+      e.preventDefault();
+      sheetFrom = t.closest("[data-card]")?.dataset.card || null;
+      try { fn(); } finally { sheetFrom = null; }
+    }
   });
   document.addEventListener("click", (e) => {   // offlineHtml() drawn in the page itself: try the page again
     const b = e.target.closest("[data-retry]");
@@ -488,9 +554,11 @@
   $("#sheet-back").onclick = () => { const fn = sheetBack; if (fn) fn(); };
 
   let sheetTimer = 0;  // closeSheet's hide timer: cancelled when another sheet opens right away (close one, open the next)
-  function openSheet(title, html, after) {
+  function openSheet(title, html, after, hook) {
     const sh = $("#sheet");
     clearTimeout(sheetTimer);
+    const meta = hook ? { kind: hook.kind, key: hookKey(hook.key) } : sheetFrom ? { kind: "card", key: hookKey(sheetFrom) } : {};
+    window.BodyHooks.emit("sheet", { open: true, ...meta });
     setBack(null);
     $("#sheet-title").textContent = title;
     $("#sheet-body").innerHTML = html;
@@ -499,6 +567,7 @@
     after?.($("#sheet-body"));
   }
   function closeSheet() {
+    window.BodyHooks.emit("sheet", { open: false });
     closeAltPreview();
     const sh = $("#sheet");
     sh.classList.remove("open");
@@ -567,7 +636,7 @@
     try { localStorage.removeItem(FAST); } catch (e) { /* private mode */ }   // start-up paths and flags of this account
     S.offlineOn = false; S.offlineAt = null; showBanner();
     S.data = {}; S.me = null; pluginFiles = null;
-    window.BodyAI?.reset();
+    window.BodyAI?.reset(); window.BodySlim?.reset();
     $("#view").innerHTML = ""; $("#view").dataset.shown = "";
     closeSheet();
     showLogin("");
@@ -577,6 +646,7 @@
   // The Friends page is behind the feature flag `friends` (docs/rollout.md). Off: the old tabs (饮食 is its own tab, no
   // 朋友 tab, 记录 has 日记 | 训练). On: 朋友 replaces 饮食 in the tab bar and 饮食 becomes the third segment of 记录.
   const friendsOn = () => (S.flags || []).includes("friends");
+  const A1 = () => (S.flags || []).includes("ui_ai_first") && !!window.BodyAIFirst;
   // Flag `records_v2`: the 日记 segment of 记录 is gone (记录 = 训练 | 饮食). The journal lives on the Today page (a 日记 card opening
   // the day's editor sheet) and Trends (the 行为影响 card); journal.js. Off: 日记 | 训练 | 饮食 as before.
   const recordsV2 = () => (S.flags || []).includes("records_v2") && !!window.BodyJournal;
@@ -779,7 +849,7 @@
     if (!same) view.innerHTML = `<div class="empty faint">…</div>`;
     try {
       SH.clear();
-      const html = await RENDER[S.tab]();
+      const html = (A1() && await window.BodyAIFirst.render(S.tab)) || await RENDER[S.tab]();
       if (seq !== renderSeq) return;
       const y = window.scrollY;
       view.innerHTML = html;
@@ -787,6 +857,7 @@
       if (view.dataset.slide) setTimeout(() => { view.dataset.slide = ""; }, 400);
       if (same) window.scrollTo(0, y);
       AFTER[S.tab]?.(view);
+      if (A1()) window.BodyAIFirst.after(S.tab, view);
     } catch (err) {
       if (seq !== renderSeq || err.status === 401) return;
       view.dataset.shown = "";
@@ -797,13 +868,8 @@
 
   async function refresh() { S.data = {}; window.BodySleepDetail?.reset(); await boot(true); }
 
-  // Block pinch-zoom on iOS (Safari ignores user-scalable=no in some modes): gesture events + two-finger moves
-  for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
-  // The non-passive touchmove listener exists only while two or more fingers are down, so one-finger pans never wait on the page.
-  // (Sideways strips such as .quick: the real blocker in issue #11 was the :active opacity on their div.card, see app.css.)
-  const noPinch = (e) => { if (e.touches.length > 1) e.preventDefault(); };
-  document.addEventListener("touchstart", (e) => { if (e.touches.length > 1) document.addEventListener("touchmove", noPinch, { passive: false }); }, { passive: true });
-  for (const ev of ["touchend", "touchcancel"]) document.addEventListener(ev, (e) => { if (e.touches.length < 2) document.removeEventListener("touchmove", noPinch); }, { passive: true });
+  // Pinch-zoom is allowed (WCAG 1.4.4; the viewport has no maximum-scale / user-scalable=no any more). iOS zooms into a field
+  // on focus only when its font is smaller than 16px: app.css gives every input / select / textarea at least 16px, keep it so.
 
   // Pull to refresh (a home-screen app has no built-in one from the browser)
   (() => {
@@ -872,12 +938,15 @@
       catch (e) { if (box.isConnected) box.innerHTML = tags([badge("plain", e.status === 403 ? tr("无权限") : short(e.message))]); return; }
     }
     if (!box.isConnected) return;   // the sheet was closed or replaced while loading
-    box.innerHTML = explainHtml(x, head);
+    const weigh = isSelf() && /^weight/.test(key);   // the weight card logs a weigh-in too (weight.js)
+    box.innerHTML = (weigh ? `<div class="btns"><button class="btn btn-primary" data-xp-weigh>${tr("记体重")}</button></div>` : "") + explainHtml(x, head);
     const ask = $("[data-xp-ask]", box);
     if (ask) ask.onclick = () => askAI(x.ai_prompt);
+    const wb = $("[data-xp-weigh]", box);
+    if (wb) wb.onclick = async () => { if (await lazyScript("weight.js")) window.BodyWeight?.open(); };
   }
   const xpBox = `<div class="xp"><div class="xp-load"><span></span><span></span><span></span></div></div>`;
-  function explainSheet(kind, key, title) { openSheet(title, xpBox, (root) => explainInto(root, kind, key, true)); }
+  function explainSheet(kind, key, title) { openSheet(title, xpBox, (root) => explainInto(root, kind, key, true), { kind: "explain", key }); }
   // A kv row that opens the explanation of one metric
   const xkv = (k, v, reason, key) => `<button class="kv kv-btn" data-feature="explain" ${sheetAttr(() => explainSheet("metric", key, k))}><span class="k">${esc(k)}<i class="xp-i">${ICON.info}</i></span>${v != null ? `<span class="v">${v}</span>` : `<span class="v r">${esc(reason ? short(reason) : "—")}</span>`}</button>`;
 
@@ -911,14 +980,20 @@
 
   function recoverySheet(sc) {
     const t = sc.today || {}, r = sc.today_reasons, last = sc.last_recovery;
+    const em = t.recovery == null ? sc.recovery_empty : null;
+    const emBtn = em?.action && em.cta && isSelf() ? `<div class="btns"><button class="btn btn-primary" id="rec-next">${esc(em.cta)}</button></div>` : "";
     openSheet(tr("恢复"), t.recovery == null ? `${recoveryScale(last?.recovery)}
-      ${kv(tr("恢复分"), null, r.recovery)}
+      ${em ? kv(tr("恢复分"), esc(em.label)) : kv(tr("恢复分"), null, r.recovery)}
       ${last ? kv(tr("上次"), `${last.recovery} ${badge(ZONE[last.zone], ZONE_LABEL[last.zone])} · ${shortDay(last.date)}`) : ""}
-      ${xkv("HRV", null, r.hrv_night_ms, "hrv")}${xkv(tr("静息心率"), null, r.rhr_night, "resting_hr")}${xpBox}` : `${recoveryScale(t.recovery)}
+      ${xkv("HRV", null, r.hrv_night_ms, "hrv")}${xkv(tr("静息心率"), null, r.rhr_night, "resting_hr")}${emBtn}${xpBox}` : `${recoveryScale(t.recovery)}
       ${kv(tr("恢复分"), `${t.recovery} ${badge(ZONE[sc.recovery_zone], ZONE_LABEL[sc.recovery_zone])}`)}
       ${xkv("HRV", t.hrv_night_ms != null ? `${fmtNum(t.hrv_night_ms)} <small class="muted">ms</small>` : null, r.hrv_night_ms, "hrv")}
       ${xkv(tr("静息心率"), t.rhr_night != null ? `${fmtNum(t.rhr_night)} <small class="muted">bpm</small>` : null, r.rhr_night, "resting_hr")}
-      ${flagTags(t.flags, LOAD_FLAGS)}${xpBox}`, (root) => explainInto(root, "metric", "recovery", false));
+      ${flagTags(t.flags, LOAD_FLAGS)}${xpBox}`, (root) => {
+      const next = $("#rec-next", root);
+      if (next) next.onclick = () => { closeSheet(); recoveryNext(em.action); };
+      explainInto(root, "metric", "recovery", false);
+    });
   }
 
   function sleepSheet(sc) {
@@ -957,20 +1032,39 @@
       ${sc.load_missing_days ? tags([badge("mid", tr("缺 {n} 天", { n: sc.load_missing_days }))]) : ""}`);
   }
 
+  // The next step under an empty recovery ring (empty.action from web/recovery_empty.py): the consent form, the app's sync page
+  // (a browser: the data status list), or the sleep data status with the steps to switch on sleep tracking on the watch.
+  // Only for yourself: the person you look at is the one who can fix it.
+  function recoveryNext(action) {
+    if (action === "consent") { window.BodyProfile?.consent?.(false); return; }
+    const ds = PLUGINS().find((p) => p.openDataStatus);
+    if (action === "sleep_help") ds?.openDataStatusType?.("sleep", { watchSleep: true });
+    else ds?.openDataStatus?.();   // "sync" outside the app
+  }
+  function recoveryNextHtml(empty) {
+    if (!empty.action || !empty.cta || !isSelf()) return "";
+    if (empty.action === "sync" && IN_APP)
+      return `<div class="chip-row"><a class="chip" data-feature="recovery_next" href="${syncCenterOn() ? "watch2whoop://sync-center" : "watch2whoop://sync"}">${esc(empty.cta)}</a></div>`;
+    return `<div class="chip-row"><button class="chip" data-feature="recovery_next" ${sheetAttr(() => recoveryNext(empty.action))}>${esc(empty.cta)}</button></div>`;
+  }
+
   function scoresHtml(sc) {
     if (sc.error) return `<div class="hero">${ring(null)}<div class="hero-word muted">${esc(short(sc.error))}</div></div>`;
     const t = sc.today || {}, y = sc.yesterday || {};
-    const word = sc.recovery_word ? `<div class="hero-word">${esc(sc.recovery_word)}</div>` : "";
+    const empty = t.recovery == null ? sc.recovery_empty : null;   // why the ring is empty (web/recovery_empty.py)
+    const word = sc.recovery_word ? `<div class="hero-word">${esc(sc.recovery_word)}</div>`
+      : empty ? `<div class="hero-word muted" data-empty="${esc(empty.code)}">${esc(empty.label)}</div>` : "";
     const sub = t.recovery == null && sc.last_recovery ? `<div class="hero-sub">${tr("上次")} ${sc.last_recovery.recovery} · ${shortDay(sc.last_recovery.date)}</div>` : "";
-    const tile = (label, value, fn) => `<button class="tile" ${sheetAttr(fn)}><span class="tile-label">${label}</span>
+    const tile = (label, value, fn, card) => `<button class="tile" data-card="${card}" ${sheetAttr(fn)}><span class="tile-label">${label}</span>
       <span class="tile-value">${value != null ? value : dash()}</span></button>`;
-    return `<button class="hero" ${sheetAttr(() => recoverySheet(sc))}>${ring(t.recovery, sc.recovery_zone)}${word}${sub}</button>
+    return `<button class="hero" data-card="recovery" ${sheetAttr(() => recoverySheet(sc))}>${ring(t.recovery, sc.recovery_zone)}${word}${sub}</button>
+      ${empty ? recoveryNextHtml(empty) : ""}
       <div class="tiles">
-        ${tile(tr("睡眠"), hm(t.sleep_actual_min), () => (sleepDetailOn() ? openSleepDetail(S.todaySleepDate) : sleepSheet(sc)))}
-        ${tile(tr("睡眠分"), t.sleep_score, () => sleepSheet(sc))}
-        ${tile(isPast() ? tr("前一天负荷") : tr("昨天负荷"), y.strain != null ? fmtNum(y.strain, 1) : null, () => strainSheet(sc))}
+        ${tile(tr("睡眠"), hm(t.sleep_actual_min), () => (sleepDetailOn() ? openSleepDetail(S.todaySleepDate) : sleepSheet(sc)), "sleep")}
+        ${tile(tr("睡眠分"), t.sleep_score, () => sleepSheet(sc), "sleep_score")}
+        ${tile(isPast() ? tr("前一天负荷") : tr("昨天负荷"), y.strain != null ? fmtNum(y.strain, 1) : null, () => strainSheet(sc), "strain")}
       </div>
-      ${sc.load_status ? `<div class="chip-row"><button class="chip" ${sheetAttr(() => loadSheet(sc))}>${tr("负荷")} <b>${esc(sc.load_status.label)}</b></button></div>` : ""}`;
+      ${sc.load_status ? `<div class="chip-row"><button class="chip" data-card="training_load" ${sheetAttr(() => loadSheet(sc))}>${tr("负荷")} <b>${esc(sc.load_status.label)}</b></button></div>` : ""}`;
   }
 
   // ---- Training + nutrition cards
@@ -1073,7 +1167,7 @@
       const g = n.goal || {}, i = n.intake;
       const pct = (a, b) => (b ? Math.min(100, (a / b) * 100) : 0);
       const m = (label, a, b) => `<div><div class="macro-l"><span>${label}</span><span>${fmtNum(a)}/${fmtNum(b)}</span></div><div class="bar"><span style="width:${pct(a, b).toFixed(0)}%"></span></div></div>`;
-      food = `<div class="card"><button class="food-main" ${sheetAttr(() => nutritionSheet(d))}>
+      food = `<div class="card" data-card="nutrition"><button class="food-main" ${sheetAttr(() => nutritionSheet(d))}>
           <div class="kcal" style="margin-top:0"><span class="row-sub">${tr("饮食")}${n.logged ? "" : ` ${badge("plain", tr("未记录"))}`}</span><span class="v">${fmtNum(i.calories)}<span class="small muted"> / ${fmtNum(g.calories)} kcal</span></span></div>
           <div class="bar ${g.calories && i.calories > g.calories * 1.05 ? "over" : ""}"><span style="width:${pct(i.calories, g.calories).toFixed(0)}%"></span></div>
           <div class="macros">${m(tr("蛋白"), i.protein_g, g.protein_g)}${m(tr("碳水"), i.carbs_g, g.carbs_g)}${m(tr("脂肪"), i.fat_g, g.fat_g)}</div></button>
@@ -1081,7 +1175,7 @@
     }
     const calLink = t.code === "forbidden" ? "" : `<button class="link link-ic" id="to-cal">${ICON.cal}${tr("训练历史")}</button>`;
     return `<div class="section"><div class="section-head"><h2>${tr("训练与饮食")}</h2>${calLink}</div>
-      <button class="card" ${sheetAttr(() => trainingSheet(d))}>
+      <button class="card" data-card="training" ${sheetAttr(() => trainingSheet(d))}>
         <div class="row"><span class="row-title">${esc(title)}</span><span class="chev">${ICON.chev}</span></div>
         ${sub ? `<div class="rcard-tags" style="margin-top:8px">${sub}</div>` : ""}</button>${food}</div>`;
   }
@@ -1131,7 +1225,7 @@
     const m = sl.main;
     const stat = (st, v) => `<div><div class="stage-l"><i class="k-${st}"></i>${HYP_NAME[st]}</div><div class="stage-v">${hm(v) ?? "—"}</div></div>`;
     const chart = sl.stages.length ? hypnoSvg(m, sl.stages) : "";
-    return `<div class="section">${head}<button class="card" ${sheetAttr(() => (sleepDetailOn() ? openSleepDetail(sl.date) : sleepDetailSheet(sl)))}>
+    return `<div class="section">${head}<button class="card" data-card="sleep" ${sheetAttr(() => (sleepDetailOn() ? openSleepDetail(sl.date) : sleepDetailSheet(sl)))}>
       <div class="sleep-head"><div><div class="sub-l">${tr("入睡 → 醒来")}</div><div class="sleep-times">${m.start}<span class="arrow">→</span>${m.end}</div></div>
         <div class="sleep-total"><div class="sub-l">${tr("睡着")}</div><div class="v">${hm(m.asleep_min)}</div></div></div>
       ${chart}
@@ -1247,7 +1341,7 @@
     const on = g?.progress?.on_target_nights_7d, n7 = g?.progress?.nights_7d;
     const sub = planned && on != null ? tr("达标 {a}/{b}", { a: on, b: n7 || 7 }) : recent.length ? tr("{n}/7 晚", { n: recent.length }) : "";
     return `<div class="section"><div class="section-head"><h2>${planned ? tr("入睡目标") : tr("入睡")}</h2>${sub ? `<span class="small muted">${esc(sub)}</span>` : ""}</div>
-      <button class="card" ${self ? sheetAttr(() => goalSheet(goal, recent, coach)) : ""}>
+      <button class="card" data-card="sleep_goal" ${self ? sheetAttr(() => goalSheet(goal, recent, coach)) : ""}>
         <div class="row">${big}${self ? `<span class="chev">${ICON.chev}</span>` : ""}</div>${coachLine}
         ${bedChart(recent, g, viewDay())}</button></div>`;
   }
@@ -1418,7 +1512,7 @@
     if (list?.error) return list.code === "forbidden" ? "" : `<div class="section"><div class="section-head"><h2>${tr("提醒")}</h2></div><div class="card row"><span class="dash">—</span><span class="small faint">${esc(short(list.error))}</span></div></div>`;
     if (!list.length) return "";
     const top = [...list.filter((r) => r.status === "new"), ...list.filter((r) => r.status !== "new")].slice(0, 3);
-    return `<div class="section"><div class="section-head"><h2>${tr("提醒")}</h2>
+    return `<div class="section" data-card="reminders"><div class="section-head"><h2>${tr("提醒")}</h2>
         ${list.length > 3 ? `<button class="link" ${sheetAttr(() => allRemindersSheet(list))}>${tr("common.all", { n: list.length })}</button>` : ""}</div>
       ${top.map(reminderRow).join("")}</div>`;
   }
@@ -1470,11 +1564,13 @@
       mload ? optional("mload", `/v1/users/${ownerPath()}/training/muscle-load`) : null,   // muscle_load: the small card (no training share = no card)
     ]);
     S.todaySleepDate = d.sleep?.date || null;   // the night the 睡眠 tile opens on the sleep detail page
+    window.BodyHooks.emit("today", lastToday = { day, past, self: isSelf(), scores: d.scores, daily: tday?.daily || null, reminders: d.reminders, coach, monitor });
+    if (mdata) await window.BodyMuscleLoad.ready();   // the body drawings (muscle-body-data.js) load on first use, only for someone who has the card
     const pair = [strainCoachHtml(coach), stressHtml(stress)].filter(Boolean);
     const extras = monitorHtml(monitor) + (pair.length ? `<div class="${pair.length === 2 ? "half" : ""}" style="${pair.length === 1 ? "margin-top:8px" : ""}">${pair.join("")}</div>` : "");
     // Stacked on phones; two / three columns on wide screens (.dash in app.css)
     // Activity right after the scores, so on phones it is near the first screen
-    return `<div class="dash"><div class="col col-a">${scoresHtml(d.scores)}${activityHtml(tday?.daily)}${extras}${remindersHtml(d.reminders)}</div>
+    return `${window.BodySlim?.top() || ""}<div class="dash"><div class="col col-a">${scoresHtml(d.scores)}${activityHtml(tday?.daily)}${extras}${remindersHtml(d.reminders)}</div>
       <div class="col col-b">${sleepCardHtml(d.sleep)}${goalCardHtml(goal, d.sleep, sleepCoach)}</div>
       <div class="col col-c">${dayCardHtml(d, meals)}${mdata ? window.BodyMuscleLoad.card(mdata, muscleCtx()) : ""}${v2 ? window.BodyJournal.cardHtml(journalCtx(), day, jitems && jday ? { items: jitems, entries: jday } : null) : ""}</div></div>`;
   };
@@ -1494,7 +1590,7 @@
   function activityHtml(dl) {
     if (!dl || [dl.steps, dl.active_kcal, dl.exercise_min].every((v) => v == null)) return "";
     const t = (label, v, u) => `<div class="tile"><span class="tile-label">${label}</span><span class="tile-value">${v != null ? `${fmtNum(v)}${u ? `<small>${u}</small>` : ""}` : dash()}</span></div>`;
-    return `<div class="section"><div class="section-head"><h2>${tr("活动")}</h2></div><div class="tiles" style="margin-top:0">
+    return `<div class="section" data-card="activity"><div class="section-head"><h2>${tr("活动")}</h2></div><div class="tiles" style="margin-top:0">
       ${t(tr("步数"), dl.steps)}${t(tr("活动"), dl.active_kcal, "kcal")}${t(tr("锻炼"), dl.exercise_min, tr("分"))}</div></div>`;
   }
 
@@ -1504,6 +1600,7 @@
     const arc = $(".ring .arc", view);
     if (arc) requestAnimationFrame(() => requestAnimationFrame(() => arc.setAttribute("stroke-dashoffset", arc.dataset.target)));
     bindMeals(view);
+    window.BodySlim?.bind(view);
     if (muscleOn()) window.BodyMuscleLoad.bindCard(view, muscleCtx());
     const c = $("#to-cal", view);
     if (c) c.onclick = () => { S.recSub = "training"; setTab("record"); };
@@ -1534,7 +1631,7 @@
     const sheet = () => openSheet(tr("负荷目标"), `${scaleBar(cur, 0, 21, [c.target_low, c.target_high], ["plain", "good", "plain"], [[0, "0"], [c.target_low, fmtNum(c.target_low, 0)], [c.target_high, fmtNum(c.target_high, 0)], [21, "21"]])}
       ${kv(tr("区间"), `${fmtNum(c.target_low, 0)}–${fmtNum(c.target_high, 0)}`)}${kv(tr("现在"), has ? fmtNum(cur, 1) : null, c.current_missing_reason)}
       ${c.status ? tags([badge(c.status === "in_range" ? "good" : c.status === "above" ? "mid" : "plain", state)]) : ""}`);
-    return `<button class="mini" ${sheetAttr(sheet)}>
+    return `<button class="mini" data-card="strain_coach" ${sheetAttr(sheet)}>
       <span class="tile-label">${tr("负荷目标")}</span>
       <span class="mini-row"><svg class="coach-ring" viewBox="0 0 54 54" aria-hidden="true"><g transform="rotate(-90 27 27)">
         <circle class="track" cx="27" cy="27" r="${r}" fill="none" stroke-width="6"/>
@@ -1567,7 +1664,7 @@
         <div class="hbar-l">${hrs.map(([t, v]) => `<span><b>${fmtNum(v, 1)}</b> h ${t}</span>`).join("")}</div>` : ""}
       ${d.peak_hour != null ? kv(tr("峰值"), `${d.peak_hour}:00`) : ""}
       ${d.baseline?.calm_hr ? kv(tr("平静心率"), `${fmtNum(d.baseline.calm_hr)} <small class="muted">bpm</small>`) : ""}`);
-    return `<button class="mini" ${sheetAttr(sheet)}>
+    return `<button class="mini" data-card="stress" ${sheetAttr(sheet)}>
       <span class="tile-label">${tr("压力")}</span>${why ? `<span class="v">—</span><span class="s faint">${esc(reason)}</span>`
         : `<span class="v">${fmtNum(d.score, 1)}<small class="muted" style="font-size:12px;font-weight:500"> ${STRESS_LEVEL[d.level] || "/ 3"}</small></span>${line}`}</button>`;
   }
@@ -1594,7 +1691,7 @@
     const sheet = () => openSheet(tr("健康监测"), list.map((x) => `<div class="vrow"><div class="kv" style="border:0;padding-bottom:4px">${VITAL_XP[x.key]
         ? `<button class="k xp-label" ${sheetAttr(() => explainSheet("metric", VITAL_XP[x.key], VITAL_NAME[x.key]))}>${name(x)}<i class="xp-i">${ICON.info}</i></button>` : `<span class="k">${name(x)}</span>`}<span class="v">${x.value != null ? `${esc(fmtNum(x.value, 1))}${x.unit ? ` <small class="muted">${esc(x.unit)}</small>` : ""}` : `<span class="muted" style="font-weight:400">${esc(short(x.missing_reason))}</span>`}
       ${st(x) === "high" ? badge("bad", tr("偏高")) : st(x) === "low" ? badge("bad", tr("偏低")) : ""}</span></div>${range(x)}</div>`).join(""));
-    return `<button class="card" style="margin-top:8px" ${sheetAttr(sheet)}><div class="row"><span class="tile-label">${tr("健康监测")}</span>${off ? badge("bad", tr("{n} 异常", { n: off })) : badge("good", tr("正常"))}</div>
+    return `<button class="card" data-card="health_monitor" style="margin-top:8px" ${sheetAttr(sheet)}><div class="row"><span class="tile-label">${tr("健康监测")}</span>${off ? badge("bad", tr("{n} 异常", { n: off })) : badge("good", tr("正常"))}</div>
       <div class="vitals">${list.map((x) => `<span class="vital ${esc(st(x) || "")}"><i></i><span>${esc(VITAL_SHORT[x.key] || x.label)}</span></span>`).join("")}</div></button>`;
   }
 
@@ -1643,7 +1740,7 @@
       return `<div class="section"><div class="card age"><div><div class="age-l">${tr("身体年龄")}</div><div class="age-v">${dash()}</div></div><span class="small faint">${esc(short(h.missing_reason, tr("数据不足")))}</span></div></div>`;
     }
     const d = h.delta_years;
-    return `<div class="section"><button class="card age" ${sheetAttr(() => healthspanSheet(h))}>
+    return `<div class="section"><button class="card age" data-card="healthspan" ${sheetAttr(() => healthspanSheet(h))}>
       <div><div class="age-l">${tr("身体年龄")}</div><div class="age-v">${fmtNum(h.body_age, 1)}</div></div>
       <div class="age-side"><div class="x ${d > 0 ? "bad" : d < 0 ? "good" : ""}">${signed(d)}<small>${tr("岁")}</small></div>
         ${h.pace_of_aging != null ? `<div class="x ${paceClass(h.pace_of_aging)}">${signed(h.pace_of_aging, 1)}×<small>${tr("衰老速度")}</small></div>` : ""}</div></button></div>`;
@@ -1701,7 +1798,7 @@
         <div class="dbar"><span class="${v >= 0 ? "younger" : "older"} ${cls === "muted" ? "faint" : ""}" style="width:${(Math.abs(v) / max * 50).toFixed(1)}%"></span></div></div>`;
     }).join("");
     return `<div class="section"><div class="section-head">${xpLabel("behavior", tr("行为影响 · 次日恢复"))}<span class="small muted">${tr("{n} 天", { n: 90 })}</span></div>
-      <div class="card">${rows || `<div class="empty faint" style="padding:8px">—</div>`}${lack ? tags([badge("plain", tr("{n} 项样本不足", { n: lack }))]) : ""}</div></div>`;
+      <div class="card" data-card="behavior">${rows || `<div class="empty faint" style="padding:8px">—</div>`}${lack ? tags([badge("plain", tr("{n} 项样本不足", { n: lack }))]) : ""}</div></div>`;
   }
 
   // Heart-rate zone distribution (Trends page; data comes from the per-day five-zone minutes computed during scoring)
@@ -1710,7 +1807,7 @@
     const total = z.total_min.reduce((a, b) => a + b, 0);
     const bar = (mins) => mins.map((v, i) => `<span style="width:${(v / (mins.reduce((a, b) => a + b, 0) || 1) * 100).toFixed(2)}%;opacity:${(0.25 + i * 0.18).toFixed(2)}"></span>`).join("");
     const weeks = z.weeks.slice(-8);
-    return `<div class="card trend"><div class="trend-head"><div><div class="trend-label">${tr("心率区间分布")}</div>
+    return `<div class="card trend" data-card="hr_zones"><div class="trend-head"><div><div class="trend-label">${tr("心率区间分布")}</div>
         <div class="trend-value">${fmtNum(total / 60, 1)}<small>${tr("小时")}</small></div></div><div class="trend-tip">%HRmax</div></div>
       <div class="zbar">${bar(z.total_min)}</div>
       <div class="zleg">${z.total_min.map((v, i) => `<span><b>${Math.round((v / total) * 100)}%</b>${esc(z.labels[i])}</span>`).join("")}</div>
@@ -1785,7 +1882,8 @@
     g += "</g>";
     if (wide && !opts.noTicks) for (const v of [lo + (hi - lo) * 0.15, hi - (hi - lo) * 0.15]) g += `<text class="ylab" x="0" y="${(sy(v) - 3).toFixed(1)}">${fmtNum(v, Math.abs(hi - lo) < 5 ? 1 : 0)}</text>`;
     g += `<line class="grid" x1="0" x2="${W}" y1="${H - B}" y2="${H - B}"/>`;
-    g += `<text x="0" y="${H - 3}">${shortDay(dates[0])}</text>${wide ? `<text x="${W / 2}" y="${H - 3}" text-anchor="middle">${shortDay(dates[Math.floor((n - 1) / 2)])}</text>` : ""}<text x="${W}" y="${H - 3}" text-anchor="end">${shortDay(dates[n - 1])}</text>`;
+    const axisDay = spansYear(dates[0], dates[n - 1]) ? yearDay : shortDay;   // half a year or more of data: the labels carry the year
+    g += `<text x="0" y="${H - 3}">${axisDay(dates[0])}</text>${wide ? `<text x="${W / 2}" y="${H - 3}" text-anchor="middle">${axisDay(dates[Math.floor((n - 1) / 2)])}</text>` : ""}<text x="${W}" y="${H - 3}" text-anchor="end">${axisDay(dates[n - 1])}</text>`;
     g += `<line class="cursor" id="${id}-cur" x1="0" x2="0" y1="${T}" y2="${H - B}" visibility="hidden"/><circle class="cursor-dot" id="${id}-dot" r="3.5" visibility="hidden"/>`;
     const main = layers.find((l) => l.main) || layers.find((l) => l.type !== "band" && l.type !== "range");
     CH.set(id, { n, W, cx, tip: opts.tip, y: (i) => { const v = main?.values?.[i]; return v == null ? null : sy(v, main.axis); } });
@@ -1860,7 +1958,7 @@
     const s = d.series[key];
     const [l0, u0, g0, b0, c0, x0] = TCARD[key] || [];
     label ??= l0; unit ??= u0 ?? s?.unit; dig ??= g0 ?? 0; better ??= b0 ?? 0; chart ??= c0 || "line"; xp ??= x0 || key;
-    if (!s) return /授权|permission|forbidden/i.test(d.unavailable?.[key] || "") ? "" : `<div class="card trend">${xpLabel(xp, label)}<div class="trend-value">${dash()}</div></div>`;   // i18n-ok: server reason
+    if (!s) return /授权|permission|forbidden/i.test(d.unavailable?.[key] || "") ? "" : `<div class="card trend" data-card="${hookKey(key)}">${xpLabel(xp, label)}<div class="trend-value">${dash()}</div></div>`;   // i18n-ok: server reason
     if (!s.n && OPTIONAL.has(key) && !s.prev_n) return "";
     const id = `ch-${key}`;
     const hv = head !== undefined ? head : headOf(key, s);
@@ -1874,7 +1972,7 @@
         <div class="trend-value">${hv != null ? fmtNum(hv, dig) : dash()}${unit && hv != null ? `<small>${esc(unit)}</small>` : ""}${sub ? `<small class="sub">${sub}</small>` : ""}</div></div>
         <div class="trend-tip" id="tip-${id}" data-base="${esc(tipBase)}">${tipBase}</div></div>
       ${s.n ? svg : `<div class="trend-tip faint" style="text-align:left">${tr("{r} 无数据", { r: rangeName(d.days) })}</div>`}${s.baseline && s.n ? `<div class="legend"><span><i class="base-key"></i>${tr("基线")}</span></div>` : ""}`;
-    return sheet ? `<button class="card trend" ${sheetAttr(sheet)}>${inner}</button>` : `<div class="card trend">${inner}</div>`;
+    return sheet ? `<button class="card trend" data-card="${hookKey(key)}" ${sheetAttr(sheet)}>${inner}</button>` : `<div class="card trend" data-card="${hookKey(key)}">${inner}</div>`;
   }
 
   // Recovery: bars coloured green / yellow / red, the day counts, contributors (z-scores vs baseline) in the sheet
@@ -1920,7 +2018,7 @@
     if (!r?.n || !s?.n) return "";
     const body = tChart("ch-rs", d.dates, [{ type: "avg", values: r.avg7, cls: "good", main: true }, { type: "avg", values: s.avg7, cls: "train", axis: "r" }],
       { min: 0, max: 100, label: tr("恢复和负荷"), noTicks: true, tip: (i) => `${shortDay(d.dates[i])} · ${tr("恢复")} ${r.values[i] ?? "—"} · ${tr("负荷")} ${s.values[i] != null ? fmtNum(s.values[i], 1) : "—"}` });
-    return `<div class="card trend"><div class="trend-head"><div>${xpLabel("recovery_vs_strain", tr("恢复 vs 负荷"))}<div class="trend-value">${fmtNum(r.mean)}<small>/ ${fmtNum(s.mean, 1)}</small></div></div>
+    return `<div class="card trend" data-card="recovery_vs_strain"><div class="trend-head"><div>${xpLabel("recovery_vs_strain", tr("恢复 vs 负荷"))}<div class="trend-value">${fmtNum(r.mean)}<small>/ ${fmtNum(s.mean, 1)}</small></div></div>
       <div class="trend-tip" id="tip-ch-rs" data-base=""></div></div>${body}
       <div class="legend"><span><i class="k-good"></i>${tr("恢复")}</span><span><i class="k-train"></i>${tr("负荷")}</span><span class="muted">${tr("7 天均")}</span></div></div>`;
   }
@@ -1941,7 +2039,7 @@
     const body = tChart("ch-ctl", d.dates, [{ type: "avg", values: c.values, cls: "train", main: true }, ...(a ? [{ type: "avg", values: a.values, cls: "fatigue" }] : [])],
       { min: 0, label: tr("训练负荷"), tip: (i) => `${shortDay(d.dates[i])} · CTL ${fmtNum(c.values[i])} · ATL ${fmtNum(a?.values[i])} · TSB ${t?.values[i] != null ? signed(t.values[i], 0) : "—"}` });
     const tsb = lastOf(t?.values);
-    return `<div class="card trend"><div class="trend-head"><div>${xpLabel("training_load", tr("训练负荷"))}<div class="trend-value">${tsb != null ? signed(tsb, 0) : dash()}<small>TSB</small></div></div>
+    return `<div class="card trend" data-card="training_load"><div class="trend-head"><div>${xpLabel("training_load", tr("训练负荷"))}<div class="trend-value">${tsb != null ? signed(tsb, 0) : dash()}<small>TSB</small></div></div>
       <div class="trend-tip" id="tip-ch-ctl" data-base="${esc(deltaHtml(lastOf(c.values), c.prev_mean, 0, 1, ""))}">${deltaHtml(lastOf(c.values), c.prev_mean, 0, 1, "")}</div></div>${body}
       <div class="legend"><span><i class="k-train"></i>CTL ${fmtNum(lastOf(c.values))}</span><span><i class="k-fatigue"></i>ATL ${fmtNum(lastOf(a?.values))}</span></div></div>`;
   }
@@ -1953,7 +2051,7 @@
     const body = tChart(id, dates, [{ type: "bar", values: vals, cls: (v) => (target && v >= target ? "good" : "train"), main: true }],
       { min: 0, max: Math.max(target || 0, ...vals) * 1.1, bars: true, guide: target ? [[target, String(target)]] : null, label, tip: (i) => `${tr("{d} 起", { d: shortDay(dates[i]) })} · ${fmtNum(vals[i])} ${unit}` });
     const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-    return `<div class="card trend"><div class="trend-head"><div>${xpLabel(xp, label)}<div class="trend-value">${fmtNum(avg)}<small>${esc(unit)} / ${tr("周")}</small></div></div>
+    return `<div class="card trend" data-card="${hookKey(xp)}"><div class="trend-head"><div>${xpLabel(xp, label)}<div class="trend-value">${fmtNum(avg)}<small>${esc(unit)} / ${tr("周")}</small></div></div>
       <div class="trend-tip" id="tip-${id}" data-base="${target ? tr("{a}/{b} 周达标", { a: weeks.filter((w) => w.value >= target).length, b: weeks.length }) : ""}">${target ? tr("{a}/{b} 周达标", { a: weeks.filter((w) => w.value >= target).length, b: weeks.length }) : ""}</div></div>${body}</div>`;
   }
   function muscleWeeks(d) {
@@ -2063,7 +2161,7 @@
     };
     // Long ranges (or ones crossing a year) show the year, otherwise "1 year" read as "10/19 – 10/18 vs 10/19 – 10/18"
     const withYear = d.days >= 180 || String(d.prev_start).slice(0, 4) !== String(d.end).slice(0, 4);
-    const day = (x) => (withYear ? `${String(x).slice(0, 4)}/${shortDay(String(x))}` : shortDay(String(x)));
+    const day = (x) => (withYear ? yearDay(String(x)) : shortDay(String(x)));
     const range = `<div class="rep-head">${esc(`${day(d.start)} – ${day(d.end)}`)}<span class="muted"> vs ${esc(`${day(d.prev_start)} – ${day(addDays(String(d.start), -1))}`)}</span></div>`;
     // Status tiles describe "now" (as of the end date) and do not change with the range: keep them below the range-dependent charts
     const now = statusTiles(d.status);
@@ -2091,7 +2189,7 @@
     const ticks = [[6, tr("0 点")], [12, tr("6 点")], [18, tr("12 点")]].map(([h, t]) => `<text x="${x(h * 60).toFixed(1)}" y="${H - 2}" text-anchor="middle">${t}</text>`).join("");
     const sheet = () => openSheet(tr("睡眠规律性"), `${kv(tr("近 7 天"), sd.consistency_pct_7d != null ? `${sd.consistency_pct_7d}%` : null)}${kv(tr("近 30 天"), sd.consistency_pct_30d != null ? `${sd.consistency_pct_30d}%` : null)}${xpBox}`,
       (root) => explainInto(root, "metric", "sleep_consistency", false));
-    return `<button class="card trend" ${sheetAttr(sheet)}><div class="trend-head"><div><div class="trend-label">${tr("睡眠规律性")}</div>
+    return `<button class="card trend" data-card="sleep_regularity" ${sheetAttr(sheet)}><div class="trend-head"><div><div class="trend-label">${tr("睡眠规律性")}</div>
         <div class="trend-value">${sd.consistency_pct_7d ?? sd.consistency_pct_30d}<small>%</small></div></div><div class="trend-tip">${sd.consistency_pct_7d != null ? tr("7 天") : tr("30 天")}${sd.consistency_pct_30d != null && sd.consistency_pct_7d != null ? ` · ${tr("30 天")} ${sd.consistency_pct_30d}%` : ""}</div></div>
       ${bars ? `<svg class="chart regbars" viewBox="0 0 ${W} ${H}" role="img" aria-label="${tr("最近 {n} 晚的入睡到醒来", { n: nights.length })}">${bars}${ticks}</svg>` : ""}</button>`;
   }
@@ -2517,7 +2615,7 @@
       <div class="lab-rows">${rows}</div>`;
   }
   async function labSheet(key, title) {
-    openSheet(title || tr("化验"), `<div class="empty faint">…</div>`);
+    openSheet(title || tr("化验"), `<div class="empty faint">…</div>`, null, { kind: "lab", key });
     let h;
     try { h = await load(`labh:${key}`, `/v1/users/${ownerPath()}/labs/${encodeURIComponent(key)}/history`); }
     catch (e) {
@@ -2582,7 +2680,7 @@
     const groups = new Map();
     for (const it of list) { const g = it.group || ""; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(it); }
     return `<div class="section">${head}${[...groups].map(([g, items]) => `${g ? `<div class="cat">${esc(g)}</div>` : ""}
-      <div class="stat-grid">${items.map((it) => `<button class="stat" ${sheetAttr(() => (it.lab_key ? labSheet(it.lab_key, it.label) : statusSheet(it)))}>
+      <div class="stat-grid">${items.map((it) => `<button class="stat" data-card="${it.lab_key ? `lab:${hookKey(it.lab_key)}` : "status"}" ${sheetAttr(() => (it.lab_key ? labSheet(it.lab_key, it.label) : statusSheet(it)))}>
           <span class="stat-l"><span class="tone ${esc(it.tone || "neutral")}"></span><span>${esc(it.label)}</span></span>
           <span class="stat-v">${statValue(it)}${it.unit ? `<small>${esc(it.unit)}</small>` : ""}
             ${it.trend ? `<span class="trend ${trendClass(it)}">${TREND_CHAR[it.trend] || ""}</span>` : ""}</span>
@@ -2799,7 +2897,7 @@
       ${meSection(tr("账号"), [isSelf() ? langRow() : "", ...(rows["settings-account"] || [])])}
       ${meSection("AI", rows["settings-ai"] || [])}
       ${meSection(tr("导入"), rows["settings-import"] || [])}
-      ${meSection(tr("帮助"), [window.BodyIntro ? item(tr("新手引导"), null, 'id="me-intro"') : ""])}
+      ${meSection(tr("帮助"), [window.BodyIntro ? item(tr("新手引导"), null, 'id="me-intro"') : "", item(tr("更新记录"), null, 'id="me-whatsnew"')])}
       ${meSection(tr("关于"), [`<div class="item"><span class="row-title">${tr("版本")}</span><span class="val">${esc(ver || "—")}</span></div>`])}
       ${meSection("", [`<button class="item danger" id="me-logout"><span class="row-title">${tr("me.logout")}</span></button>`, ...(rows["settings-danger"] || [])])}
       ${who.self ? "" : `<p class="small faint" style="margin:14px 2px 0">${tr("这里是你自己账号的设置")}</p>`}</div>`;
@@ -2823,6 +2921,7 @@
     const computed = d?.scores?.computed_at;
     const item = (title, val, attr = "", tail = `<span class="chev">${ICON.chev}</span>`) => `<button class="item" ${attr}><span class="row-title">${title}</span>${val != null ? `<span class="val">${val}</span>` : ""}${tail}</button>`;
     const updatedVal = computed ? new Date(computed).toLocaleString(I18N.locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "—";
+    const weightRow = who.self ? `<button class="item" id="me-weight"><span class="row-title"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:8px;color:var(--text-2)"><circle cx="12" cy="5" r="3"/><path d="M6.5 8a2 2 0 0 0-1.905 1.46L2.1 18.5A2 2 0 0 0 4 21h16a2 2 0 0 0 1.925-2.54L19.4 9.5A2 2 0 0 0 17.5 8z"/></svg>${tr("记体重")}</span><span class="chev">${ICON.chev}</span></button>` : "";
     if (meSettingsOn()) {
       const chev = `<span class="chev">${ICON.chev}</span>`;
       const rows = who.self ? pluginRows(chev) : {};
@@ -2837,7 +2936,7 @@
       return `${meHead(who)}
         ${healthspanHtml(hs)}
         <div class="cols2"><div>${statusHtml(mem)}</div><div>${recentHtml(mem)}${notesHtml(mem)}
-        ${meSection("", [...(rows.profile || []),
+        ${meSection("", [...(rows.profile || []), weightRow,
           item(tr("健康档案"), esc(archiveVal) || null, sheetAttr(() => openSheet(tr("健康档案"), `<div class="group">${archive}</div>`)) + ' id="me-archive"')])}
         ${meSection("", [who.self && window.BodyAI ? item(tr("me.aiSettings"), esc(window.BodyAI.settingsValue()), 'id="me-ai"') : "",
           IN_APP ? phoneSyncRow() : "",
@@ -2859,9 +2958,11 @@
         ${isSelf() ? langRow() : ""}
         ${who.self && window.BodyAI ? item(tr("me.aiSettings"), esc(window.BodyAI.settingsValue()), 'id="me-ai"') : ""}
         ${who.self ? PLUGINS().map((p) => p.meItem?.(`<span class="chev">${ICON.chev}</span>`) || "").join("") : ""}
+        ${weightRow}
         ${IN_APP ? phoneSyncRow() : ""}
         ${item(tr("使用手册"), null, 'id="me-handbook"')}
         ${window.BodyIntro ? item(tr("新手引导"), null, 'id="me-intro"') : ""}
+        ${item(tr("更新记录"), null, 'id="me-whatsnew"')}
         ${S.viewable.length > 1 ? item(tr("me.switch"), esc(nameText(who.remark, who.display_name)), 'id="me-who"') : ""}
         ${syncCenterOn() ? "" : item(tr("me.updated"), computed ? new Date(computed).toLocaleString(I18N.locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "—", 'id="me-refresh"')}
         <button class="item danger" id="me-logout"><span class="row-title">${tr("me.logout")}</span></button>
@@ -2973,6 +3074,10 @@
     const ai = $("#me-ai", view);
     if (ai) ai.onclick = () => window.BodyAI.openSettings();
     PLUGINS().forEach((p) => p.bindMe?.(view));
+    for (const [id, file, g] of [["#me-weight", "weight.js", "BodyWeight"], ["#me-whatsnew", "whatsnew.js", "BodyWhatsNew"]]) {   // on demand (Lucide "weight", ISC)
+      const b = $(id, view);
+      if (b) b.onclick = async () => { if (await lazyScript(file)) window[g]?.open(); };
+    }
     for (const b of $$("[data-lang]", view)) b.onclick = () => { if (b.getAttribute("aria-pressed") !== "true" || !S.me?.language) setLanguage(b.dataset.lang, view); };   // the highlighted one too while the profile follows the device
     const out = $("#me-logout", view), hb = $("#me-handbook", view);
     if (out) out.onclick = logout;
@@ -3211,7 +3316,7 @@
     const extra = [sat != null && [tr("饱和脂肪"), `${fmtNum(sat, 1)}<small> g</small>`], fib != null && [tr("纤维"), `${fmtNum(fib, 1)}<small> g</small>`],
       add != null && [tr("添加糖"), `${fmtNum(add, 1)}<small> g</small>`],
       entries.length && [tr("条目"), `${entries.length}`]].filter(Boolean);
-    const total = `<div class="card food-day">
+    const total = `<div class="card food-day" data-card="food_day">
         <div class="kcal" style="margin-top:0"><span class="row-sub">${tr("热量")}</span><span class="v">${fmtNum(i.calories)}<span class="small muted"> / ${fmtNum(g.calories)} kcal</span></span></div>
         <div class="bar ${g.calories && i.calories > g.calories * 1.05 ? "over" : ""}"><span style="width:${pct(i.calories, g.calories).toFixed(0)}%"></span></div>
         <div class="macros">${m(tr("蛋白"), i.protein_g, g.protein_g)}${m(tr("碳水"), i.carbs_g, g.carbs_g)}${m(tr("脂肪"), i.fat_g, g.fat_g)}</div>
@@ -3227,7 +3332,7 @@
           <span class="k">${e.calories != null ? `${fmtNum(e.calories)}<small> kcal</small>` : "—"}</span><span class="chev">${ICON.chev}</span></button>`);
     const meals = MEAL_ORDER.filter((k) => by.get(k).length).map((k) => {
       const xs = by.get(k), kc = sumOf(xs, "calories"), pr = sumOf(xs, "protein_g");
-      return `<div class="card list food-meal"><div class="food-meal-h"><span class="row-title">${SLOT_NAME[k]}</span>
+      return `<div class="card list food-meal" data-card="food_meals"><div class="food-meal-h"><span class="row-title">${SLOT_NAME[k]}</span>
           <span class="small muted">${kc != null ? `${fmtNum(kc)} kcal` : ""}${pr != null ? ` · ${tr("蛋白")} ${fmtNum(pr)} g` : ""}</span></div>
         ${xs.map(row).join("")}</div>`;
     }).join("");
@@ -3241,6 +3346,9 @@
 
   // ---- Per-meal suggestions (GET /recipes/meal-plan, issue #43): each meal not logged yet gets 2 recipes (taste, pantry, health caps)
   function mealPlanHtml(plan) {
+    // The food log (kept in the diary service) cannot be read: the server answers at once with `unavailable` + a short label; say so, offer a retry
+    if (plan?.unavailable) return `<div class="section"><div class="section-head"><h2>${tr("每餐推荐")}</h2></div><div class="empty faint">${esc(plan.label || tr("饮食记录暂时读不到"))}</div>
+      <div class="btns" style="justify-content:center;margin-top:4px"><button class="btn" data-retry>${esc(tr("common.retry"))}</button></div></div>`;
     const slots = (plan?.slots || []).filter((s) => s.suggestions?.length);
     if (!slots.length) return "";
     const rem = plan.remaining;
@@ -3261,6 +3369,8 @@
 
   const RENDER_food = async () => {
     if (S.foodSub === "recipes" && S.foodMode !== "shopping") return recipesSubHtml();
+    // The food page's plugin files (diet-profile.js, water.js; grocery.js for 采购) are not part of the first screen: they load the first time the tab opens
+    await Promise.all([lazyScript("diet-profile.js"), lazyScript("water.js"), S.foodMode === "shopping" ? lazyScript("grocery.js") : null]);
     const seg = (friendsOn() ? recSeg() : "") + `<div class="toolbar"><div class="seg" role="group" aria-label="${tr("饮食")}">${[["diet", tr("饮食")], ["shopping", tr("采购")]].map(([k, t]) => `<button data-fmode="${k}" aria-pressed="${S.foodMode === k}">${t}</button>`).join("")}</div></div>`
       + PLUGINS().map((p) => p.foodTop?.({ owner: ownerPath(), self: isSelf(), date: S.todayDate }) || "").join("");   // diet-profile.js
     if (S.foodMode === "shopping") {
@@ -3391,6 +3501,19 @@
       ${kv(tr("睡眠"), d.sleep_min != null ? `${hm(d.sleep_min)}${d.sleep_score != null ? ` <small class="muted">· ${d.sleep_score}</small>` : ""}` : null, tr("未同步"))}
       ${kv(tr("负荷"), d.strain != null ? fmtNum(d.strain, 1) : null, tr("未同步"))}`);
   }
+  // A member card's sync state (friends/cards.py sync_info): scored (today's scores are in) / pending (data arrived, today's
+  // scores are being computed) / stale (no data for 36 h) / never. Older servers only send synced_today.
+  const syncState = (sc) => sc.state || (sc.synced_today ? "scored" : "stale");
+  // When data last arrived, coarse: just now / x min ago / x h ago / yesterday / date (days are the person's own, today = their today)
+  function syncAgo(sc, today) {
+    const mins = sc.last_sync_min, day = sc.last_sync_date;
+    if (mins == null || !day) return "";
+    if (mins < 1) return tr("刚刚");
+    if (mins < 60) return tr("{n} 分钟前", { n: mins });
+    if (day === today) return tr("{n} 小时前", { n: Math.floor(mins / 60) });
+    return day === addDays(today, -1) ? tr("昨天") : shortDay(day);
+  }
+  const syncDay = (sc) => (sc.last_sync_date || sc.last_date);   // the day shown on 「Not synced · last …」
   const remarkBtn = (m) => window.BodyRemarks?.button(m.id, m.display_name, m.remark) || "";   // 「⋯」 → 设置备注 (#212)
   function friendCardV2(m, kinds) {
     const seen = m.self ? m.seen || { hidden: [], count: 0 } : null;
@@ -3399,20 +3522,23 @@
     const canOpen = !m.self && S.viewable.some((v) => v.id === m.id);
     let hero, body = "";
     if (!sc) hero = `<span class="fd2-off">${esc(tr("未共享"))}</span>`;
-    else if (!sc.synced_today) {
-      hero = `<span class="fd2-off">${esc(sc.last_date ? tr("未同步 · 上次 {d}", { d: shortDay(sc.last_date) }) : tr("未同步"))}</span>`;
+    else if (syncState(sc) === "pending") hero = `<span class="fd2-off">${esc(tr("今天的分数计算中"))}</span>`;
+    else if (syncState(sc) !== "scored") {
+      hero = `<span class="fd2-off">${esc(syncDay(sc) ? tr("未同步 · 上次 {d}", { d: shortDay(syncDay(sc)) }) : tr("未同步"))}</span>`;
     } else {
       hero = sc.recovery != null
         ? `<span class="fd2-rec"><b class="tone-${ZONE[sc.zone] || "none"}">${sc.recovery}</b>${sc.label ? `<i>${esc(sc.label)}</i>` : ""}</span>`
         : `<span class="fd2-off">—</span>`;
     }
-    if (sc?.synced_today) {
+    if (sc && syncState(sc) === "scored") {
       body += `<div class="fd2-nums"><span><b>${sc.recovery ?? "—"}</b><i>${esc(tr("恢复"))}</i></span>
         <span><b>${sc.sleep_min != null ? hm(sc.sleep_min) : "—"}</b><i>${esc(tr("睡眠"))}</i></span>
         <span><b>${sc.strain != null ? fmtNum(sc.strain, 1) : "—"}</b><i>${esc(tr("负荷"))}</i></span>
         ${trained ? `<span class="fd2-trained">${badge("plain", tr("已训练"))}</span>` : ""}</div>`;
     } else if (trained) body += `<div class="fd2-nums">${badge("plain", tr("已训练"))}</div>`;
     if (sc) body += recoveryStrip(m, sc);
+    const ago = sc && ["scored", "pending"].includes(syncState(sc)) ? syncAgo(sc, m.date) : "";
+    if (ago) body += `<p class="fd2-note">${esc(tr("最近同步 {t}", { t: ago }))}</p>`;
     const note = !seen ? "" : seen.count === 0 ? tr("还没有朋友看到你，加入圈子后他们才看得到")
       : seen.varies ? tr("不同朋友看到的范围不一样，这里按所有人的并集显示") : "";
     const foot = m.self
@@ -3434,7 +3560,8 @@
     const tagsH = [];
     if (sc?.label) tagsH.push(badge(ZONE[sc.zone] || "plain", sc.label));
     if (m.trained) tagsH.push(badge("plain", tr("已训练")));
-    if (sc && !sc.synced_today) tagsH.push(badge("plain", sc.last_date ? tr("上次同步 {d}", { d: shortDay(sc.last_date) }) : tr("未同步")));
+    if (sc && syncState(sc) === "pending") tagsH.push(badge("plain", tr("今天的分数计算中")));
+    else if (sc && syncState(sc) !== "scored") tagsH.push(badge("plain", syncDay(sc) ? tr("上次同步 {d}", { d: shortDay(syncDay(sc)) }) : tr("未同步")));
     const canOpen = !m.self && S.viewable.some((v) => v.id === m.id);
     const cheers = m.self
       ? (() => { const got = kinds.filter((k) => m.received?.[k]?.length).map((k) => `<span title="${esc(m.received[k].join(", "))}">${NUDGE[k]} ${m.received[k].length}</span>`); return got.length ? `<div class="fd-got">${got.join("")}</div>` : ""; })()
@@ -3854,8 +3981,8 @@
             closeSheet(); render();
             // Saved even when the training log sync failed (issue #66 FB-4): say so instead of a plain OK
             toast(res.sparky_sync && res.sparky_sync.synced === false && res.sparky_sync.link !== undefined
-              ? tr("已启用：{name} · 训练记录未同步", { name: res.saved?.name || chosen })
-              : tr("已启用：{name}", { name: res.saved?.name || chosen }));
+              ? tr("已启用：{name} · 训练记录未同步", { name: sname(res.saved?.name || chosen) })
+              : tr("已启用：{name}", { name: sname(res.saved?.name || chosen) }));
           } catch (err) { toast(err.message); save.disabled = false; }
         };
       });
@@ -3936,7 +4063,7 @@
       ? `<div class="card list" style="margin-top:10px"><button class="item" id="tlog-row"><span class="row-title">${tr("训练记录")}</span><span class="val">${tlogBadge(wk.sparky)}</span><span class="chev">${ICON.chev}</span></button></div>`
       : "";
     const left = `<div class="section"><div class="section-head"><h2>${tr("本周")}</h2>${headActions}</div>
-        <div class="card"><div class="week">${week}</div>
+        <div class="card" data-card="training_week"><div class="week">${week}</div>
         <div class="msum" style="margin:14px 0 0">${[[tr("训练"), sm.training_days, tr("天")], [tr("时长"), sm.total_duration_min != null ? hm(sm.total_duration_min) : null, ""],
           [tr("消耗"), (sm.total_workout_kcal ?? sm.total_active_kcal) != null ? fmtNum(sm.total_workout_kcal ?? sm.total_active_kcal) : null, "kcal"],
           [tr("计划"), (wk.days || []).filter((x) => x.planned.length).length || null, tr("天")]]
@@ -3965,7 +4092,7 @@
     }).join("");
     const head = planned.map((p) => sname(p.name)).join(" · ");
     return `<div class="section" id="today-plan"><div class="section-head"><h2>${tr("今天")}</h2><span class="small muted">${esc(head)}${day?.change ? ` ${badge("mid", tr("已调整"))}` : ""}</span></div>
-      <div class="card">${rows || `<div class="empty faint" style="padding:8px">${day?.rest_day ? tr("休息") : tr("无计划")}</div>`}</div></div>`;
+      <div class="card" data-card="training_plan">${rows || `<div class="empty faint" style="padding:8px">${day?.rest_day ? tr("休息") : tr("无计划")}</div>`}</div></div>`;
   }
 
   // A future day's plan. Own plan: each exercise has a remove button (this day only, or never again; issue #172) and the
@@ -4127,6 +4254,9 @@
   // The Watch2Whoop app keeps its one-time login code until the page reports the outcome on its JS channel (`logged-in` after
   // /v1/web/me works, `login-failed` when the server rejected the code), so a load that was interrupted is retried next time.
   const tellApp = (msg) => { try { if (IN_APP) window.Watch2Whoop.postMessage(msg); } catch (e) { /* older app */ } };
+  // the iOS app's native views (1.0.9+, #247)
+  const nativeHello = () => { if (IN_APP && S.me && window.Watch2WhoopFeatures?.nativeUi) lazyScript("native-bridge.js"); };
+  window.addEventListener("w2w-features", nativeHello);
   async function loginFromHash() {
     const m = /(?:^#|&)login=([A-Za-z0-9-]{8,40})/.exec(location.hash);
     if (!m) return;
@@ -4156,7 +4286,7 @@
     const paths = !S.viewDate && (!keepTab || S.owner === S.me?.id) ? fast.boot?.[tab] : null;
     const bundle = flagWas("boot_api") && paths?.length ? fetchBoot(paths) : null;
     rec = { tab, paths: new Set() };
-    const painted = !keepTab && tab === "today" && flagWas("cached_first_paint") && !S.viewDate
+    const painted = !keepTab && /^(today|trends|me)$/.test(tab) && flagWas("cached_first_paint") && !S.viewDate
       ? await paintCached(fast, bundle || Promise.resolve()) : false;
     if (bundle) await bundle;
     try { me = await api("/v1/web/me"); }
@@ -4186,6 +4316,7 @@
     if (!stale) tellApp(`lang:${me.me?.language || ""}`);   // the app's native screens follow the profile language ("" = the system language)
     if (me.me?.status === "pending" && window.BodyAccount) {   // self-signed-up, no invite code yet (account.js)
       $("#login").hidden = true; $("#app").hidden = true;
+      paintDone();
       window.BodyAccount.showPending(() => boot());
       return;
     }
@@ -4199,17 +4330,26 @@
     S.assistantUrl = me.assistant_url || null; S.version = me.version || null; S.ai = me.ai || { mode: "none" };
     window.BodyAI?.init({ api, openSheet, closeSheet, toast, esc, refresh, page: pageId, isSelf, go: goPage, onAiChange: (ai, url) => { S.ai = ai || { mode: "none" }; S.assistantUrl = url || null; setupAssistant(); render(); }, me: me.me, ai: me.ai || { mode: "none" }, assistantUrl: S.assistantUrl });
     await plugged;
-    PLUGINS().forEach((p) => p.init?.({ api, openSheet, closeSheet, toast, esc, openHandbook, openAiSettings: () => window.BodyAI?.openSettings(), reload: refresh, setTab, openAssistant, needsNet }, me));
+    if (S.flags.includes("ui_ai_first")) await lazyScript("ui-ai-first.js");
+    lateInit.ctx = { api, openSheet, closeSheet, toast, esc, isSelf, openHandbook, openAiSettings: () => window.BodyAI?.openSettings(), reload: refresh, setTab, openAssistant, needsNet,
+      page: () => lastPage, todayDrawn: () => lastToday, today: () => S.todayDate,
+      dropCache: () => { for (const k of Object.keys(S.data)) if (/^(today|trends)/.test(k)) delete S.data[k]; } };
+    lateInit.me = me;
+    if (S.flags.includes("slim_mode")) await lazyScript("slim.js");   // #126
+    PLUGINS().forEach((p) => { lateInit.done.add(p); p.init?.(lateInit.ctx, me); });
+    if (me.upgrade && me.upgrade.state !== "none") lazyScript("upgrade.js");   // R2 notice / block
+    if (!stale && me.me?.intro_seen === false && !A1()) lazyScript("intro.js");   // the first-run intro (intro.js shows itself once the consent sheet is out of the way)
     setupAssistant();
     if (!S.viewable.some((v) => v.id === S.owner)) S.owner = S.me.id;
     $("#login").hidden = true;
     $("#app").hidden = false;
-    if (!stale) tellApp("logged-in");
+    if (!stale) { tellApp("logged-in"); nativeHello(); }
     let shown;
     if (keepTab) {   // a refresh, or the real data replacing the copies drawn a moment ago (the sheet / log page keep their input)
       shown = stale || !S.staleAt || (S.tab !== "record" && $("#sheet").hidden) ? render() : null;
     } else shown = setTab(savedTab());
     await shown;
+    paintDone();
     if (!stale) {
       if (S.staleAt) { S.staleAt = null; showBanner(); }
       setTimeout(endRec, 1500);
@@ -4223,8 +4363,8 @@
     return TABS[tab] ? tab : "today";
   }
 
-  // Draw today's page from this device's copies (offline.js) while the network answers (docs/ios-native-plan.md 3.5):
-  // only the account the copies belong to, copies of today and at most STALE_MAX old; the banner says 「更新中」.
+  // Draw the start tab (today / trends / me) from this device's copies (offline.js) while the network answers (3.5):
+  // only the copies' own account, of today and at most STALE_MAX old; the banner says 「更新中」.
   const STALE_MAX = 12 * 3600 * 1000;
   const zoneToday = (tz) => { try { return new Intl.DateTimeFormat("en-CA", { timeZone: tz || undefined }).format(new Date()); } catch (e) { return isoDay(new Date()); } };
   async function paintCached(fast, wait) {
@@ -4236,7 +4376,7 @@
       || String(me.today) !== zoneToday(me.me.timezone) || !(me.flags || []).includes("offline_mode")) return false;
     S.stale = { wait };
     S.staleAt = hit.at;
-    try { await start(me, false, null, true); return S.tab === "today" && !$("#app").hidden; }   // optional plugin files are not waited for
+    try { await start(me, false, null, true); return !$("#app").hidden; }   // optional plugin files are not waited for
     catch (e) { return false; }
     finally { S.stale = null; S.data = {}; showBanner(); }   // nothing from the copies stays in memory: the next reads are fresh
   }
@@ -4295,6 +4435,13 @@
     },
   };
 
+  // Flag ui_ai_first (#279): the page's own pieces for ui-ai-first.js
+  window.BodyPage = {
+    S, api, load, optional, render, setTab, goPage, openSheet, closeSheet, askAI, canAskAI, isSelf, isPast, viewDay, ownerPath, todayKey, todayPath,
+    WHOOP_API, friendsOn, recordsV2, muscleOn, muscleCtx, journalCtx, scoresHtml, remindersHtml, sleepCardHtml, goalCardHtml, dayCardHtml,
+    monitorHtml, strainCoachHtml,
+  };
+
   // Feature flags and A/B variants of the signed-in user (rollout/, docs/rollout.md), from /v1/web/me. A gated feature draws
   // its entry only when BodyFlags.on("key"); an experiment asks BodyFlags.variant("key") when it renders: one exposure per
   // page load is counted and the variant comes back (null = not in the experiment: draw the normal page).
@@ -4327,8 +4474,8 @@
         await lib.clear();
       }
     } catch (e) { /* IndexedDB trouble: the page works online as before */ }
-    // The Watch2Whoop app keeps a copy of the page for a cold start without network only while this is on (1.0.7+)
-    if (!window.W2W_SHELL) tellApp(S.offlineOn ? "offline:on" : "offline:off");
+    // The app keeps a copy of the page while this is on (1.0.7+) and opens it first (#337)
+    if (!window.W2W_SHELL) { tellApp(S.offlineOn ? "offline:on" : "offline:off"); tellApp("local-first:" + !S.flags.includes("local_first_start_off")); }
     showBanner();
   }
   // Controls that need the server: greyed out offline (app.css body.is-offline) and a tap says so

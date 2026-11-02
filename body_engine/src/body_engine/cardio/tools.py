@@ -1,4 +1,4 @@
-"""Butler tools for cardio metrics and ECG summaries (read-only; wrapped into Tool by assistant/tools.py).
+"""Butler tools for cardio metrics and ECG summaries (read-only; registered by dl_app.py).
 The ECG waveform is never given to the AI: only Apple's classification, heart rate and symptoms (docs/raw-data-plan.md §7.1)."""
 from datetime import date
 from zoneinfo import ZoneInfo

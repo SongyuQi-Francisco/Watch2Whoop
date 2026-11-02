@@ -54,6 +54,12 @@ def test_budgets():
     assert CHARS(toolsets.for_page(fb, None)) <= CHARS(toolsets.for_page(TOOLS, None))
 
 
+def test_framework_contract_check_passes():
+    """The same checks as above, done by the framework (datalayer.testing.check_toolset, issue #116): the application's
+    configuration matches its tools and every set sent to a model fits ai/params' budgets."""
+    assert toolsets.problems() == []
+
+
 def test_tool_order_is_stable():
     """Tools come first in the cached prompt prefix: the same page always gives the same list in the same order
     (TOOLS order, meta tools last), and the core is a prefix-stable subset whatever the page."""

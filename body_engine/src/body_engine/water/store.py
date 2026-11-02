@@ -134,3 +134,8 @@ def rollback(conn: psycopg.Connection, user_id: int, action: str, before: dict |
                 client_id=before.get("client_id"), hk_uuid=before.get("hk_uuid"))
         return {"restored": r["id"]}
     raise ValueError("这条喝水记录没有可回滚的内容")
+
+
+def register_rollbacks(reg) -> None:
+    """dl_app.py: the write-log kind water/tools.py writes, and how to put it back."""
+    reg.rollback("water", lambda conn, user_id, row, client=None: rollback(conn, user_id, row["action"], row["before"], row["after"]))

@@ -7,12 +7,15 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import 'account_api.dart';
 import 'app_state.dart';
+import 'backfill.dart';
 import 'config.dart';
 import 'health_sync.dart';
 import 'i18n.dart';
+import 'native_ui.dart';
 import 'platform_features.dart';
 import 'push.dart';
 import 'raw_sync.dart';
+import 'sync_engine.dart';
 
 /// Short device label the server shows in the token list.
 String get deviceLabel {
@@ -46,11 +49,23 @@ Future<SyncConnectResult> connectSyncViaAccount() async {
   final token = state.accountToken;
   if (!hasHealthSync) return const SyncConnectResult(); // Android (#253): nothing to connect yet
   if (token == null) return const SyncConnectResult(manualNeeded: true);
+  // The server's sync mode first (#219): in `app` the app's own engine syncs and Open Wearables is never set up
+  if (SyncEngine.instance.appMode ||
+      (await SyncEngine.instance.refreshInfo(serverUrl: state.config.todayUrl, token: token))?.mode == 'app') {
+    return const SyncConnectResult(connected: true);
+  }
   final api = accountApiFor(state.config.todayUrl);
   final OwInvitation inv;
   try {
     inv = await api.owInvitationWhenReady(token);
   } on AccountApiException catch (e) {
+    // 409 sync_engine (contract §7.1): the server syncs this user with the app's own engine; nothing to connect, not
+    // an error. The engine block says `app` from now on (asked again, so the mode is kept).
+    if (e.code == 'sync_engine') {
+      await SyncEngine.instance.serverSaysAppMode();
+      await SyncEngine.instance.refreshInfo(serverUrl: state.config.todayUrl, token: token);
+      return const SyncConnectResult(connected: true);
+    }
     return SyncConnectResult(manualNeeded: e.code == 'unavailable', error: e);
   }
   var owHost = state.config.owHost;
@@ -111,6 +126,9 @@ Future<void> signOutToOnboarding({bool revoke = true}) async {
   state.webLoginNeeded = false;
   await state.setAccountToken(null);
   await RawSync.instance.clear();
+  await SyncEngine.instance.clear();
+  await BackfillService.instance.clear();
+  await NativeUi.clearCache(); // the kept copy of 今天 for the native view (native_ui.dart)
   try {
     await setLangOverride(null); // the next person starts in the system language
   } catch (e) {

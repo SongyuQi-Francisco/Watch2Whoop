@@ -64,6 +64,9 @@ def _link(conn: psycopg.Connection, user_id: int, provider: str, subject: str, e
                         verified_at = CASE WHEN %s THEN now() ELSE verified_at END WHERE id = %s""",
                      (user_id, email, verified, row["id"]))
         audit(conn, kind or "move", user_id, provider, subject, email, actor, row["user_id"])
+        if provider == "apple":
+            from . import apple_tokens
+            apple_tokens.move(conn, subject, user_id)
         return "moved"
     conn.execute("""INSERT INTO user_identities (user_id, provider, subject, email, verified_at)
                     VALUES (%s, %s, %s, %s, CASE WHEN %s THEN now() END)""", (user_id, provider, subject, email, verified))

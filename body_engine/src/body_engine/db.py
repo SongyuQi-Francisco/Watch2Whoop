@@ -1,6 +1,8 @@
-"""Database connection and migrations. Migrations are SQL files under migrations/, ordered by number, each applied once.
+"""Database connection and migrations. Migrations are SQL files under migrations/, ordered by their numeric prefix (so
+`1000_x.sql` comes after `999_x.sql`; equal numbers by file name), each applied once.
 DATA_STEPS: one-time data moves that need Python (they read existing rows and write new ones), each run once after the
 SQL migration it depends on and recorded in schema_migrations under its own name."""
+import re
 from importlib import resources
 
 import psycopg
@@ -30,11 +32,27 @@ DATA_STEPS = [
 ]
 
 
+_NUMBER = re.compile(r"^(\d+)_")
+
+
+def migration_key(name: str) -> tuple[int, str]:
+    """Sort key of a migration file: its numeric prefix, then the name. A plain string sort puts `1000_` before `001_`
+    (docs/ios-native-2.0.md section 6, decision 1); files without a number go last."""
+    m = _NUMBER.match(name)
+    return (int(m.group(1)) if m else 1 << 62, name)
+
+
+def migration_files() -> list:
+    """The SQL migrations in the order migrate() applies them."""
+    return sorted((f for f in resources.files("body_engine.migrations").iterdir() if f.name.endswith(".sql")),
+                  key=lambda f: migration_key(f.name))
+
+
 def migrate(conn: psycopg.Connection) -> list[str]:
     conn.execute("""CREATE TABLE IF NOT EXISTS schema_migrations (
                       name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())""")
     done = {r["name"] for r in conn.execute("SELECT name FROM schema_migrations")}
-    files = sorted(f for f in resources.files("body_engine.migrations").iterdir() if f.name.endswith(".sql"))
+    files = migration_files()
     applied = []
     for f in files:
         if f.name in done:

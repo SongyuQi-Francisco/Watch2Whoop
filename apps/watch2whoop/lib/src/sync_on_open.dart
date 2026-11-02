@@ -38,10 +38,13 @@ class SyncOnOpen {
   bool get running => _running;
 
   /// Runs a round unless one ran less than [minGap] ago or is still running. Returns whether it ran.
-  Future<bool> trigger() async {
+  /// [force] (the Today page's 「立即同步」, sync_bridge.dart): no [minGap], still never two rounds at once.
+  /// The round itself holds [running]; [onDone] (page refresh, the app's own uploads) runs after it is released, so a
+  /// slow network there never blocks the next open's round (#295 A3).
+  Future<bool> trigger({bool force = false}) async {
     final now = _now();
     if (_running || !canSync()) return false;
-    if (_lastStart != null && now.difference(_lastStart!) < minGap) return false;
+    if (!force && _lastStart != null && now.difference(_lastStart!) < minGap) return false;
     _running = true;
     _lastStart = now;
     try {
@@ -51,13 +54,15 @@ class SyncOnOpen {
         await startRound();
         await _waitForRound();
       }
-      await onDone();
-      return true;
     } catch (_) {
       return false; // a failed round is visible on the sync page; the next open tries again
     } finally {
       _running = false;
     }
+    try {
+      await onDone();
+    } catch (_) {}
+    return true;
   }
 
   /// The round may start a moment after startSync and may also be over before the first check.

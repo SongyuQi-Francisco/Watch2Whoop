@@ -1,5 +1,5 @@
 """Scene tools (issue #100): the training / week-review context tools (assistant/scenes.py) and get_playbook (ai/playbooks/).
-Wrapped into Tool and registered by assistant/tools.py. All read-only; the context tools authorize each section against the
+Registered by dl_app.py. All read-only; the context tools authorize each section against the
 viewer's shares like get_briefing, so the tool itself only needs `profile`."""
 from datetime import date
 

@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo, available_timezones
 
 import psycopg
 
-from .. import queries
+from .. import queries, wordfilter
 from ..assistant import status as status_card
 
 SEXES = {"male", "female"}
@@ -50,6 +50,7 @@ def _validate(patch: dict, today: date) -> dict:
             v = (v or "").strip()
             if not 1 <= len(v) <= 30:
                 raise ValueError("称呼要 1–30 个字")
+            wordfilter.check(v)   # App Store 1.2: circle members see the name (wordfilter.py; 422 with its message)
         elif k == "birth_date" and v is not None:
             v = v if isinstance(v, date) else date.fromisoformat(str(v))
             if not date(1920, 1, 1) <= v <= date(today.year - 10, today.month, min(today.day, 28)):

@@ -501,7 +501,7 @@ def test_show_card_metric_actions_and_reopen(client, world, setup, dsn, rich):
     evs = sse(chat(client, tok["A"], "恢复趋势").text)
     assert evs[-1][0] == "done"
     first = FakeAdapter.calls[0]
-    assert first["tools"][-1] == cards.NAME and first["system"].endswith(cards.PROMPT)
+    assert first["tools"][-1] == cards.NAME and f"{cards.PROMPT}\n\n## 用户\n" in first["system"]
     got = [d for e, d in evs if e == "card"]
     assert [c["card"]["type"] for c in got] == ["metric", "actions"]
     m = got[0]["card"]
@@ -593,7 +593,7 @@ def test_v2_types_need_the_second_flag(client, world, setup, monkeypatch, rich):
                                           {"id": "m1", "name": "show_card", "args": SC(type="meal")}]}, {"text": "好"}]
     evs = sse(chat(client, tok["A"], "还差多少").text)
     first = FakeAdapter.calls[0]
-    assert first["system"].endswith(cards.PROMPT) and cards.PROMPT_V2 not in first["system"]
+    assert f"{cards.PROMPT}\n\n## 用户\n" in first["system"] and cards.PROMPT_V2 not in first["system"]
     got = [d["card"] for e, d in evs if e == "card"]
     assert [c["type"] for c in got] == ["meal"] and "entry_actions" not in got[0]   # exactly as before
     assert ("tool", {"name": "show_card", "status": "error"}) in evs
@@ -713,7 +713,7 @@ def test_product_card_needs_its_own_flag(client, world, setup, v2):
                           {"text": "好"}]
     evs = sse(chat(client, tok["A"], "存一下这个酸奶").text)
     first = FakeAdapter.calls[0]
-    assert cards.PROMPT_PRODUCT not in first["system"] and first["system"].endswith(cards.PROMPT_V2)   # exactly as before
+    assert cards.PROMPT_PRODUCT not in first["system"] and f"{cards.PROMPT_V2}\n\n## 用户\n" in first["system"]   # exactly as before
     assert "card" not in [e for e, _ in evs] and ("tool", {"name": "save_product", "status": "done"}) in evs
     results = {r["id"]: r for r in FakeAdapter.calls[1]["history"][-1]["content"]}
     assert results["p1"]["is_error"] and "还没有对这个用户开放" in results["p1"]["content"]
@@ -726,7 +726,7 @@ def test_product_card_after_save_product_and_on_request(client, world, setup, ds
                           {"text": "好"}]
     evs = sse(chat(client, tok["A"], "存一下这个酸奶，再给我看看").text)
     first = FakeAdapter.calls[0]
-    assert first["system"].endswith(cards.PROMPT_PRODUCT) and first["tools"][-1] == cards.NAME
+    assert f"{cards.PROMPT_PRODUCT}\n\n## 用户\n" in first["system"] and first["tools"][-1] == cards.NAME
     got = [d["card"] for e, d in evs if e == "card"]
     assert [c["type"] for c in got] == ["product", "product"]            # after the save, and the one the model asked for
     for c in got:

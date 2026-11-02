@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app_state.dart';
+import '../backfill.dart';
 import '../config.dart';
 import '../health_sync.dart';
 import '../i18n.dart';
@@ -98,7 +99,7 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
       final r = await applySetup(info);
       _today.text = _config.todayUrl;
       _ow.text = _config.owHost;
-      if (_config.todayUrl.isEmpty || _config.owHost.isEmpty) {
+      if (_config.todayUrl.isEmpty || (_config.owHost.isEmpty && !info.engineOnly)) {
         setState(() {
           _manual = true;
           _error = tr('设置信息里缺服务器地址，请手动填写', 'The setup info has no server addresses — fill them in');
@@ -107,8 +108,8 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
       }
       if (!hasHealthSync) {
         setState(() => _step = 3); // Android (#253): no sync to connect, no Health step yet
-      } else if (r.owConnected) {
-        setState(() => _step = 2);
+      } else if (r.owConnected || info.engineOnly) {
+        setState(() => _step = 2); // engine-only link (#219, mode app): no invitation code to enter
       } else {
         setState(() {
           _step = 1;
@@ -352,13 +353,11 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
 
   /// Read range (health_range.dart): stored with the config; if syncing already started, the SDK follows at once.
   Future<void> _pickRange(int days) async {
-    await AppState.instance.update(_config.copyWith(syncDaysBack: days));
+    // Open Wearables, RawSync and the app's own engine follow (backfill.dart); before connecting it is just stored
     if (_config.owConnected && _config.healthRequested) {
-      try {
-        await HealthSync.instance.changeRange(days);
-      } catch (e) {
-        debugPrint('changeRange failed: $e');
-      }
+      await BackfillService.instance.setRange(days);
+    } else {
+      await AppState.instance.update(_config.copyWith(syncDaysBack: days));
     }
     if (mounted) setState(() {});
   }

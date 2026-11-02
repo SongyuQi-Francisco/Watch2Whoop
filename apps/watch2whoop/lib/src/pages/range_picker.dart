@@ -2,9 +2,9 @@
 // by Phone sync. The logic (what each choice means for the OW SDK, progress) is in ../health_range.dart.
 import 'package:flutter/material.dart';
 
-import '../config.dart';
 import '../health_range.dart';
 import '../i18n.dart';
+import '../sync_params.dart';
 import '../ui.dart';
 
 class RangePicker extends StatelessWidget {
@@ -17,11 +17,12 @@ class RangePicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final all = isAllHistory(syncDaysBack);
-    Widget option(bool isAll, String title, String sub) {
-      final on = isAll == all;
+    // the stored range, or the nearest option (a build with another default)
+    final current = isAllHistory(syncDaysBack) ? kAllHistory : (syncDaysBack > kFirstSyncDays ? kBackfillDays : kFirstSyncDays);
+    Widget option(int days, String title, String sub) {
+      final on = days == current;
       return InkWell(
-        onTap: enabled && !on ? () => onChanged(isAll ? kAllHistory : kDefaultSyncDaysBack) : null,
+        onTap: enabled && !on ? () => onChanged(days) : null,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
@@ -51,8 +52,11 @@ class RangePicker extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          option(false, rangeLabel(kDefaultSyncDaysBack), tr('几分钟到十几分钟读完。默认。', 'Done in a few minutes to a quarter of an hour. Default.')),
-          option(true, tr('全部历史', 'All history'),
+          option(kFirstSyncDays, rangeLabel(kFirstSyncDays),
+              tr('几分钟读完，今天页最快有数据。默认；以后可以再补更早的。', 'Read in a few minutes, so the Today page has data soonest. Default; older history can be added later.')),
+          option(kBackfillDays, rangeLabel(kBackfillDays),
+              tr('先传最近 $kFirstSyncDays 天，更早的在后台补上（手机空闲、连着 Wi-Fi 时）。', 'The last $kFirstSyncDays days first, the rest in the background (while the phone is idle on Wi-Fi).')),
+          option(kAllHistory, tr('全部历史', 'All history'),
               tr('从「健康」里最早的一条开始读。数据多的话要几十分钟到几小时，中断了会接着读。',
                   'From the oldest record in Health. With a lot of data this takes tens of minutes to a few hours; it resumes if interrupted.')),
         ],

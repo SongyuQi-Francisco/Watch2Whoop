@@ -8,6 +8,8 @@
 # - All passwords come from secrets/open_wearables.env (not tracked by git)
 # - Adds a SeaweedFS as S3 for chunked export.xml upload (MinIO no longer publishes images on Docker Hub)
 # - Removes the development develop/watch and the frontend dev server
+# - One patched backend file mounted read-only (patches/refresh_token_service.py: a phone that lost a refresh answer is not
+#   locked out) and SDK access tokens valid for 24 h
 
 # Note: !reset inside an anchor has no effect; build / develop must be reset separately in each service
 x-backend: &backend
@@ -17,6 +19,11 @@ x-backend: &backend
     - ${BODY_ROOT:?}/secrets/open_wearables.env
   environment:
     TZ: Australia/Sydney
+    # SDK access tokens for 24 h instead of 60 min (also the developer portal login). A phone wakes in the background
+    # every few hours, so with 60 min nearly every wake began with 401 → refresh → retry, and every refresh rotates the
+    # refresh token, which is when a phone can lose it (patches/refresh_token_service.py). The SDK token can only
+    # upload to its own user's SDK endpoints.
+    ACCESS_TOKEN_EXPIRE_MINUTES: "1440"
   restart: unless-stopped
 
 services:
@@ -35,6 +42,11 @@ services:
     develop: !reset null
     ports: !override
       - "127.0.0.1:8200:8000"
+    # Replay tolerance for a lost refresh answer (patches/refresh_token_service.py; W2W_REFRESH_REPLAY_GRACE_HOURS, 0 = off).
+    # The image has the code twice (/root_project/app is what runs, the installed copy in site-packages); both are covered.
+    volumes:
+      - ${BODY_ROOT:?}/deploy/open-wearables/patches/refresh_token_service.py:/root_project/app/services/refresh_token_service.py:ro
+      - ${BODY_ROOT:?}/deploy/open-wearables/patches/refresh_token_service.py:/opt/venv/lib/python3.13/site-packages/app/services/refresh_token_service.py:ro
     depends_on:
       seaweedfs:
         condition: service_started

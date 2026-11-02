@@ -65,6 +65,20 @@ def decrypt(user_id: int, blob: bytes) -> str:
     return AESGCM(_key()).decrypt(blob[2:14], blob[14:], _aad(user_id)).decode()
 
 
+def encrypt_with(aad: str, plaintext: str) -> bytes:
+    """Same format, for other secrets under the same master key (e.g. account/apple_tokens.py): the caller names the
+    additional data, which binds the ciphertext to its row (opening it under another AAD fails)."""
+    nonce = secrets.token_bytes(12)
+    return VERSION + nonce + AESGCM(_key()).encrypt(nonce, plaintext.encode(), aad.encode())
+
+
+def decrypt_with(aad: str, blob: bytes) -> str:
+    blob = bytes(blob)
+    if blob[:2] != VERSION:
+        raise ValueError("unknown ciphertext version")
+    return AESGCM(_key()).decrypt(blob[2:14], blob[14:], aad.encode()).decode()
+
+
 def last4(secret: str) -> str:
     s = secret.strip()
     return s[-4:] if len(s) >= 8 else "****"

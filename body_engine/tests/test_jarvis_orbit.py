@@ -106,3 +106,87 @@ def test_hud_motion_is_transform_and_opacity_only_and_rests_when_hidden():
         sel = m.group(1).strip()
         assert sel.startswith((".jv-fan", ".jv.open")) or "jv-vp-dot" in sel, sel
     assert ":is(.jv-kglow, .jv-kring, .jv-ticks .spin) { animation: none !important; }" in CSS
+
+
+# ---------------------------------------------------------------- flag jarvis_dial: the start-up sequence from HTML layers in one ink
+DIAL_MARK = "/* ---------- flag jarvis_dial"
+CSS_OLD, CSS_DIAL = CSS.split(DIAL_MARK, 1)
+CSS_DIAL = DIAL_MARK + CSS_DIAL
+
+
+def test_dial_flag_declared_and_checked_once_at_mount():
+    assert "jarvis_dial" in registry.FLAGS
+    assert 'DIAL_FLAG = "jarvis_dial"' in JS
+    assert JS.count("window.BodyFlags?.on(DIAL_FLAG)") == 1   # read once, when the key is mounted
+    assert "let dial = false;" in JS
+    assert 'if (dial) document.body.classList.add("jv-dial");' in JS
+
+
+def test_flag_off_keeps_the_ring_menu_unchanged():
+    """The existing look and animation are all still there and run when `dial` is false; the dial code is only reached
+    through `if (dial)`, and its styles only apply under body.jv-dial."""
+    for old in ("const R_KEY = 98, R_RING = 35, START = 225, SWEEP_MS = 560", "const FLY_MS = 440, BACK_MS = 260;",
+                'lu("orbit", 1.7)', "lu(EXIT_ICON, 2.2)", 'id="jv-comet"', 'id="jv-ticks"', 'class="jv-shock"', 'class="jv-kglow"',
+                "function orbitFrames(th, overshoot = 1.25)", 'id="jv-grad"', "th: 290,", "th: 336.67,", "th: 23.33,", "th: 70,"):
+        assert old in JS, old
+    assert "if (dial) { openDial(byKeyboard); return; }" in JS and "if (dial) { closeDial(focusBack); return; }" in JS
+    assert "const seg = CIRC / SEGS, segs = dial ? [] : Array.from" in JS
+    assert 'stroke-width="${dial ? 1.75 : sw}"' in JS
+    for fn in ("function openDial", "function closeDial", "function dialLayer", "const spring = "):
+        assert fn in JS, fn
+    # the old stylesheet part has no dial rule and every dial rule starts at body.jv-dial
+    assert "jv-dial" not in CSS_OLD
+    body = re.sub(r"/\*.*?\*/", "", CSS_DIAL, flags=re.S)
+    body = re.sub(r"@media[^{]*\{", "", body)
+    for sel in re.findall(r"([^{}]+)\{[^{}]*\}", body):
+        for one in re.split(r",(?![^()]*\))", sel):
+            assert "jv-dial" in one, one.strip()
+
+
+def test_flag_on_is_html_layers_moving_only_transform_and_opacity_in_one_ink():
+    """jarvis_dial: the start-up sequence from plain HTML layers made at mount (no SVG, no stroke / filter / shadow / border animation),
+    only transform and opacity animated, at most 8 things at once, no loop, will-change only while it runs, about 320 ms open and
+    160 ms close, the press answered by a CSS class at once, neutral blacks / whites only, the final state at once with reduced motion."""
+    dial_js = JS[JS.index("// ---- jarvis_dial"):JS.index("function bindMenu")]
+    opening = dial_js[dial_js.index("function openDial"):dial_js.index("function closeDial")]
+    for props in re.findall(r"\{ ((?:offset|opacity|transform)[^{}]*)\}", dial_js):
+        for prop in re.findall(r"(\w+):", props):
+            assert prop in ("offset", "opacity", "transform"), prop
+    for gone in ("strokeDashoffset", "iterations", "Infinity", "createElementNS", "<svg", "stroke-dash", "getTotalLength", "filter", "boxShadow"):
+        assert gone not in dial_js, gone
+    assert "DIAL_CLOSE_MS = 160" in JS and "DIAL_HIT = [105, 128, 151, 174]" in JS
+    # the schedule: every delay + duration ends by 320 ms and no more than 8 animations / transitions overlap
+    iv = [(0, 70, "pulse"), (0, 70, "flash"), (30, 120, "r1"), (45, 135, "r2"), (60, 150, "r3"), (70, 230, "scan"), (230, 320, "halo"), (0, 200, "jv release"), (0, 120, "scrim")]
+    for h in (105, 128, 151, 174):
+        iv += [(h - 10, h + 80, "key"), (h + 40, h + 90, "outline")]
+    assert max(e for _, e, _ in iv) <= 320
+    assert max(sum(1 for b, e, _ in iv if b <= t < e) for t in range(0, 320)) <= 8
+    for needle in ("delay: DIAL_HIT[i] - 10, duration: 90", "delay: DIAL_HIT[i] + 40, duration: 50", "{ delay, duration: 90 }", "delay: 230, duration: 90", "delay: 70, duration: 160"):
+        assert needle in opening, needle   # the schedule above is the code's
+    assert opening.count("an(") == 7   # pulse, flash, rings (loop of 3), scan, keys and outlines (loops of 4), halo: 15 animations, never more than 8 at once
+    # built once at mount, in the laid-out fan; the press arms the layers; will-change only while armed / running; nothing is created when opening
+    assert "createElement" not in dial_js and "dialLayer()" in JS and "if (dial) dialArm(true);" in JS
+    assert "${dial ? \"\" : \"hidden\"}" in JS and "fan.classList.remove(\"arm\"); fan.classList.add(\"on\", \"anim\");" in opening
+    assert "will-change: transform, opacity" in CSS_DIAL and ":is(.arm, .anim)" in CSS_DIAL
+    # springs: CSS linear() generated from a damped spring, a plain curve where it is not supported
+    assert "linear(${pts.join" in dial_js and 'CSS?.supports?.("animation-timing-function", "linear(0, 1)")' in dial_js
+    assert "@supports (transition-timing-function: linear(0, 1))" in CSS_DIAL
+    # the scrim ends above the dock, so the dock's own backdrop blur never sees a changing picture; its fade is a plain opacity transition
+    assert "scrim.style.bottom" in opening and "backdrop-filter" not in CSS_DIAL and "filter:" not in CSS_DIAL
+    code = re.sub(r"/\*.*?\*/", "", CSS_DIAL, flags=re.S)
+    assert "@keyframes" not in code and "animation" not in code
+    for line in re.findall(r"transition[^;]*;", code):
+        assert "filter" not in line and "shadow" not in line and "background" not in line and "border" not in line, line
+    # the press: a class on pointerdown and a 50 ms transition
+    assert "body.jv-dial .jv.pressed { transform: scale(.92); transition: transform .05s ease-out;" in code
+    assert "width: 46px; height: 46px" in code
+    # one neutral ink: black / white / grey only
+    for r, g, b, _ in re.findall(r"rgba\((\d+), (\d+), (\d+), ([\d.]+)\)", code):
+        assert max(int(r), int(g), int(b)) - min(int(r), int(g), int(b)) <= 4, (r, g, b)
+    for bad in ("--sleep", "--bad", "--jv-hud", "hsl", "url(", "indigo"):
+        assert bad not in code, bad
+    for colour in re.findall(r"#[0-9a-fA-F]{3,8}\b", code):
+        assert colour.lower() in ("#ffffff", "#151517"), colour
+    # reduced motion: nothing is animated (the layers sit in their resting style = the end state), transitions off
+    assert "prefers-reduced-motion: reduce" in CSS_DIAL and "transition: none" in CSS_DIAL
+    assert "if (!rm) {" in opening

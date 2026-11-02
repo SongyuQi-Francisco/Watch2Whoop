@@ -86,6 +86,46 @@ class DataStatusReport {
   }
 }
 
+/// What the server's data says overall (sync investigation 2026-10-26: "no watch data" and "sync broken" looked the
+/// same on the sync page).
+enum SyncVerdict {
+  ok,
+
+  /// Nothing has ever arrived.
+  empty,
+
+  /// Data used to arrive, nothing is current any more: the sync is broken (or the phone was not opened for long).
+  broken,
+
+  /// The iPhone's own types arrive (steps, energy), none of the watch's (heart rate, HRV, resting heart rate, sleep):
+  /// no paired / worn watch, or its types are not allowed in Health. Not a sync problem.
+  noWatch,
+}
+
+const Set<String> _watchKinds = {'heart_rate', 'hrv', 'resting_heart_rate', 'sleep'};
+const Set<String> _phoneKinds = {'steps', 'active_energy'};
+
+SyncVerdict syncVerdict(DataStatusReport r) {
+  final relevant = r.types.where((t) => _watchKinds.contains(t.key) || _phoneKinds.contains(t.key)).toList();
+  if (relevant.isEmpty || relevant.every((t) => t.state == DataState.never)) return SyncVerdict.empty;
+  if (relevant.every((t) => t.state != DataState.ok)) return SyncVerdict.broken;
+  final watch = relevant.where((t) => _watchKinds.contains(t.key));
+  final phone = relevant.where((t) => _phoneKinds.contains(t.key));
+  if (watch.isNotEmpty && watch.every((t) => t.state == DataState.never) && phone.any((t) => t.state != DataState.never)) {
+    return SyncVerdict.noWatch;
+  }
+  return SyncVerdict.ok;
+}
+
+String? syncVerdictText(SyncVerdict v) => switch (v) {
+      SyncVerdict.ok => null,
+      SyncVerdict.empty => tr('服务器还没收到任何健康数据', 'The server has not received any health data yet'),
+      SyncVerdict.broken => tr('同步断了：最近没有收到新数据。打开 app 等一轮同步，还不行就「重新申请健康权限」或重新连接同步',
+          'Sync is broken: nothing new arrived lately. Keep the app open for a round; if that does not help, ask for Health access again or reconnect sync'),
+      SyncVerdict.noWatch => tr('只收到 iPhone 的数据，没有手表数据：确认 Apple Watch 已配对并戴着，在「健康」里允许心率和睡眠。这不是同步故障',
+          'Only iPhone data arrives, nothing from a watch: check the Apple Watch is paired and worn, and heart rate and sleep are allowed in Health. This is not a sync fault'),
+    };
+
 enum DataStatusProblem { noToken, unauthorized, oldServer, failed }
 
 class DataStatusResult {

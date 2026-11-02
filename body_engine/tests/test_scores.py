@@ -317,6 +317,31 @@ def test_naps_count_toward_next_main_sleep():
     assert rows[date(2026, 9, 3)]["sleep_actual_min"] == 510            # counted into the next night
 
 
+def test_wrist_temperature_dated_from_the_sleep_schedule():
+    """FB-18: Apple dates the sleeping wrist temperature reading from the start of the sleep schedule, hours before the
+    watch's first sleep stage. Nights sleep 23:00–07:00 here; the late night of 9-04 starts at 04:00."""
+    inp = make_inputs(4)
+    late = inp.nights[3]
+    inp.nights[3] = Night(late.wake_date, at("2026-09-04", "04:00"), at("2026-09-04", "10:00"), 350, 60, 80, 10, "ow")
+    inp.temp = [(at("2026-08-31", "22:00"), 35.0),    # 9-01: 1 h before sleep, inside the old ±2 h window
+                (at("2026-09-02", "00:30"), 35.1),    # 9-02: during the night
+                (at("2026-09-03", "23:00"), 35.4)]    # 9-04: 5 h before the late night, after 9-03 ended (07:00 + 2 h)
+    rows = {r["date"]: r for r in engine.score_days(inp, date(2026, 9, 1), date(2026, 9, 4), today=date(2026, 10, 1))}
+    wt = {d: (r["details"].get("recovery") or {}).get("wrist_temp") for d, r in rows.items()}
+    assert wt == {date(2026, 9, 1): 35.0, date(2026, 9, 2): 35.1, date(2026, 9, 3): None, date(2026, 9, 4): 35.4}
+    # one reading never serves two nights: 08:30 on 9-03 is 9-03's (ended 07:00), not the early-starting 9-04's (from 15:00)
+    inp.nights[3] = Night(late.wake_date, at("2026-09-03", "15:00"), at("2026-09-03", "22:00"), 350, 60, 80, 10, "ow")
+    inp.temp = [(at("2026-09-03", "08:30"), 35.4)]
+    rows = {r["date"]: r for r in engine.score_days(inp, date(2026, 9, 3), date(2026, 9, 4), today=date(2026, 10, 1))}
+    assert rows[date(2026, 9, 3)]["details"]["recovery"]["wrist_temp"] == 35.4
+    assert rows[date(2026, 9, 4)]["details"]["recovery"]["wrist_temp"] is None
+    # nor more than 8 h before the night
+    inp.nights[3] = Night(late.wake_date, at("2026-09-04", "08:00"), at("2026-09-04", "14:00"), 350, 60, 80, 10, "ow")
+    inp.temp = [(at("2026-09-03", "23:30"), 35.4)]
+    rows = {r["date"]: r for r in engine.score_days(inp, date(2026, 9, 4), date(2026, 9, 4), today=date(2026, 10, 1))}
+    assert (rows[date(2026, 9, 4)]["details"].get("recovery") or {}).get("wrist_temp") is None
+
+
 def test_watch_sleep_detection():
     assert is_watch_sleep({"device": None, "core_min": 100, "deep_min": 0, "rem_min": 0})
     assert is_watch_sleep({"device": "Apple Watch", "core_min": 0, "deep_min": 0, "rem_min": 0})

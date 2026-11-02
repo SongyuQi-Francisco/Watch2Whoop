@@ -1,6 +1,7 @@
 # MCP「个人数据层」框架设计（datalayer，#116）
 
-> 状态：**设计稿，等负责人审阅**（2026-10-22，基于 `main` @ `f715223`，并参考还没合并的 #107 / #109 / #123）。这一轮只有文档，不改代码。
+> 状态：**第 1–4 期已做**（代码在 `body_engine/src/body_engine/datalayer/` 和 `dl_app.py`，非健康示例在 `examples/reading-notes/`，进度和剩下的耦合点见第 8.1 节），第 5 期（试用）开始，第 6 期（拆包）没做。设计稿写于 2026-10-22（基于 `main` @ `f715223`）；第 3 节的接口是按第 3、4 期实际做的更新过的，第 9 节的问题负责人还没拍板的，都先按默认建议做。
+> 框架自己的英文文档：[README](../body_engine/src/body_engine/datalayer/README.md)（是什么、概念、安全模型）、[接口参考](../body_engine/src/body_engine/datalayer/REFERENCE.md)。
 > 工作名 `datalayer`，正式名字由负责人定（见第 9 节）。
 > 相关：#116（本设计）、#115 / #123（评分包 openbodyscore）、#78 / #99 / #107（工具分组）、#100 / #109（场景脚手架和 playbook）、[ai-assistant-plan.md](ai-assistant-plan.md) 9.13、9.16–9.18。
 
@@ -139,8 +140,10 @@ body_engine/src/body_engine/datalayer/
   mcp/server.py    build_server（tools、prompts、以后的 resources）
   mcp/stdio.py
   mcp/http.py      ASGI app：Bearer → authenticate 钩子 → SDK 的 StreamableHTTPSessionManager
-  testing.py       给接入方用的契约测试：import 边界、预算、playbook 工具名、快照
+  testing.py       给接入方用的契约测试：import 边界、工具集和预算、handler 签名、文案的占位符
+  README.md、REFERENCE.md   框架的英文文档（第 4 期）
 body_engine/src/body_engine/dl_app.py   Watch2Whoop 的注册模块（业务侧，唯一组装点）
+examples/reading-notes/                 非健康示例（第 4 期）：只 import datalayer，SQLite，stdio + HTTP，CI 里跑
 ```
 旧路径（`toolspec`、`assistant.compact`、`assistant.tools`、`assistant.writelog`、`assistant.toolsets`、`mcp_server`、`ai.mcp_http`）在整个第一阶段都保留，做法照 #123：整文件搬走的用 `sys.modules` 别名，其余重新导出。进行中的分支一行都不用改。
 
@@ -153,35 +156,42 @@ body_engine/src/body_engine/dl_app.py   Watch2Whoop 的注册模块（业务侧�
 | `name` | 工具名，全局唯一，注册后不能改（客户端的审批规则、审计按名字） | `Tool.name` |
 | `description` | 给模型看的说明，越短越好（有预算） | 同 |
 | `input_schema` | **严格形式**（全部 required，可选的写成 nullable）；MCP 发宽松版，`fill_defaults` 补回 | 同 |
-| `handler` | `handler(ctx, args) -> 结果`；`ctx` 带 `conn`、`owner_id`、`viewer_id`、`channel`、`log(...)`（写入记录） | 现在是 `(conn, owner_id, args)`，`_viewer_id` / `_channel` 塞在 args 里。第一期用 `legacy=True` 适配器包住旧签名，109 个 handler 不用改 |
+| `handler` | `handler(ctx, args) -> 结果`；`ctx`（`execute.ToolContext`）带 `conn`、`owner_id`、`viewer_id`、`channel`、`log(...)`（写入记录） | 老工具还是 `(conn, owner_id, args)`，`_viewer_id` / `_channel` 塞在 args 里，注册时标 `legacy=True`，由 `execute.invoke` 适配。第 3 期只有 `assistant/health_tools.py` 的 8 个工具用新签名 |
+| `legacy` | handler 是不是旧签名；模块整体登记时 `reg.tools(specs, legacy=True)`，单个 dict 可以自己写 `legacy=False`，一次搬一个工具 | 第 3 期新加 |
 | `scope` | 看别人的数据要哪个**数据 scope**；`""` = 不涉及别人的数据（元工具） | `Tool.scope` |
 | `writes` | 是否写；决定 `read_only_hint`、只读调用方看不看得到 | 同 |
-| `confirm` | 写之前一定先让用户确认（删除 / 撤销） | `ALWAYS_CONFIRM` 集合 |
+| `confirm` | 写之前一定先让用户确认（删除 / 撤销）；只能标在写工具上 | 原来的 `ALWAYS_CONFIRM` 集合，现在由注册表推出来（`APP.confirm`），`ai/params.ALWAYS_CONFIRM` 只是旧名字 |
+| `confirm_label` | 确认卡片在「工具说明的语言不是读者的语言」时显示的短句（可选） | 原来的 `ai/chat.CONFIRM_EN` |
 | `group` | 领域组 | #107 的 `group` |
 | `strict` | 页内对话是否用 Claude strict tools | #107 的 `strict` |
-| `owner_arg` | 哪个参数表示「看谁的」（默认 `user`，`None` = 只能是自己） | 现在固定是 `user` |
-| `result_max_chars` | 摘要档返回的字数上限（测试用） | #107 的 `READ_RESULT_MAX_CHARS_BY_TOOL` |
+
+草案里的 `owner_arg`（现在只有 `user` 一种，放在 `View` 上）和 `result_max_chars`（只有测试用，还在 `ai/params`）第 3 期没加到工具定义上：接口只收现在真的在用的东西。
 
 不变的规定：工具顺序 = 注册顺序（缓存前缀稳定）；注册表冻结之后不能再加（避免运行中 `tools/list` 变化）。
 
 ### 3.2 注册接口
 业务侧只有一个组装点 `dl_app.py`，按现在 `assistant/tools.py` 的顺序显式登记，**不用 entry point 之类的自动发现**（顺序要确定，`tools/list` 才不变）：
 ```python
-reg = Registry(messages=ZH_MESSAGES)
-reg.scope("nutrition"); reg.scope("nutrition_summary", implied_by=("nutrition",)); reg.scope("ecg", sensitive=True)
-reg.group("body", about="身体数据和评分：…", budget=12000)
-reg.tools(CORE_HEALTH_SPECS, module="assistant.tools")      # 顺序 = 现在 TOOLS 的顺序
-reg.tools(datalayer.builtin.WRITE_LOG_TOOLS)                # get_write_log / rollback_write，放回原来的位置
-reg.rollback("water", water_store.rollback)                 # 谁写的 kind 谁注册回滚
-reg.prompt("butler", title="身体管家", text=prompt.base_prompt)
-reg.playbooks(PlaybookSource.directory(resources.files("body_engine.ai.playbooks")))
-reg.view("fallback", tools=fallback.TOOL_NAMES, force_self=True, playbooks=playbooks.FALLBACK)
-reg.toolset(ToolsetConfig(core=CORE_TOOLS, contexts=PAGE_GROUPS, budgets=…))
-reg.after_write(briefing.invalidate)
-reg.call_context(lambda: use_lang("zh"))
-app = reg.freeze(policy=W2WPolicy(), audit=PgAudit("assistant_audit"), writelog=PgWriteLog("ai_write_log"))
+reg = Registry(MESSAGES)
+reg.tools(HEALTH_TOOL_SPECS)                 # 新签名 (ctx, args)；顺序 = 原来 TOOLS 的顺序
+reg.tools(SPARKY_TOOLS, legacy=True)         # 旧签名 (conn, owner_id, args)，走 legacy 适配器
+reg.tools(RECORD_TOOL_SPECS, legacy=True)    # …其余模块照原来的顺序
+for module in (sparky_write, food_combine, overrides, lab_catalog, water_store, pantry_auto, memory, memory_review):
+    module.register_rollbacks(reg)           # 谁写的 kind 谁登记回滚
+reg.view("fallback", View(tools=fallback_params.TOOL_NAMES))
+reg.view("fallback_parity", View(exclude=fallback_params.CONSENT_EXCLUDED))
+reg.view("own_only", View(force_self=False))
+APP = reg.freeze(policy=_Policy(), audit=AUDIT, writelog=writelog.LOG, toolset=_toolset,
+                 call_context=lambda: use_lang("zh"), after_write=lambda viewer_id: briefing.invalidate(viewer_id),
+                 optional_defaults=OPTIONAL_DEFAULTS)
 ```
-`app` 提供 `app.executor`、`app.toolsets`、`app.mcp_server(identity_of, connect_fn, instructions=…)`、`app.mcp_http(authenticate=…, pool=…)`。
+`APP` 提供 `APP.tools`（注册顺序）、`APP.by_name`、`APP.executor`、`APP.confirm`（从工具定义推出来）、`APP.views`、`APP.view_tools(名字, extra)`、`APP.toolset()`（每次调用现读配置，确认名单来自注册表）。旧路径（`assistant.tools.TOOLS / TOOLS_BY_NAME / EXECUTOR / run_tool`、`assistant.toolsets`、`ai.params.ALWAYS_CONFIRM`、`assistant.writelog`）都还能用，读的是同一份。
+
+冻结时会拒绝：工具重名、`confirm` 标在读工具上、`confirm_label` 没有 `confirm`、同一个回滚 kind 登记两次、视图里写了不存在的工具（包括 `exclude`：错别字不能悄悄放宽或收紧受限调用方看到的工具）。
+
+草案里的 `reg.scope`、`reg.group`、`reg.prompt`、`reg.playbooks`、`app.mcp_server`、`app.mcp_http` 第 3 期没做：组和预算还在 `ai/params`（`_toolset` 每次现读），scope 只是字符串，prompt 和 MCP 的连接池、token 查找已经是 `mcp_server.py` / `ai/mcp_http.py` 注入的。第 4 期的非健康示例验证过了：一个 `build_server(...)` 调用加 `ToolsetConfig` 就够，**这些都不需要，继续不做**；示例真正缺的是下面几节写的默认值、`WriteLogStore`、`playbook_prompts`。
+
+第 4 期给 `freeze` 加了一条拒绝：写入记录或工具集的文案和注册表不一样（第 3.8 节），`policy` 可以不传（第 3.3 节）；`ToolsetConfig` 只有 `core`、`groups`、`confirm`、`meta` 必填。
 
 ### 3.3 身份和授权钩子
 - **`Caller`**：`viewer_id`、`channel`（审计里的渠道，例 `mcp:claude-code`、`butler`、`api:anthropic_api`）、`can_write`、`view`（可选，受限视图名）。身份只从服务端可信的东西来（token、stdio 进程配置），不信客户端自报。
@@ -190,19 +200,24 @@ app = reg.freeze(policy=W2WPolicy(), audit=PgAudit("assistant_audit"), writelog=
   - `resolve_owner(caller, tool, args) -> owner_id`：默认 `"me"` → 自己，数字 → 那个人；
   - `can_view(conn, viewer_id, owner_id, scope) -> bool`：Watch2Whoop = `auth.can_view`（shares + 好友圈 + `IMPLIED_BY`）；
   - `can_write(conn, caller, owner_id, tool) -> bool`：**默认只能写给自己且 `caller.can_write`**，Watch2Whoop 沿用默认。
+- 第 4 期后的实际情况：`Policy` 只有 `can_view` 一个方法，默认实现是 `SelfOnly`（谁也看不到别人的数据），Watch2Whoop 传自己的。`resolve_owner` 是函数、固定看参数 `user`，「写只能写给自己」写死在 `Executor` 里，都**不是钩子**：放宽要改框架，这正是第 2.1 节第 4 条要的。`can_write` 由 MCP 传输和 `toolsets.resolve` 检查，`Executor` 不查（页内对话自己建 `Access`），英文 README 的安全模型一节写明了这点。
 - 两种「scope」要分清：
   - **数据 scope**（`profile`、`nutrition`、`ecg` …，现在 15 个）：工具上的 `scope`，用于「能不能看别人的」。业务登记，框架只当字符串；`sensitive=True` 的（心电图）不会被「全部共享」之类的便捷授权带上，这条规则由业务的 `Policy` 实现，框架只把标记传过去。
   - **调用能力**（token 的 `read` / `write` / `mcp`）：只决定 `Caller.can_write` 和能不能进 `/mcp`，在 `authenticate` 里处理。
 
 ### 3.4 审计和回滚钩子
 - **`AuditSink.record(caller, tool_name, args, ok, error, extra)`**：每次调用写一条，失败也写（现在靠「出错后 commit」保证，框架里写成明确的规则）；`extra` 放页内对话的 `provider_id` / `model`。Postgres 实现沿用 `assistant_audit`，表名可配。
-- **`WriteLog`**：`Executor` 对每个写工具打开记录；handler 用 `ctx.log(kind, action, target, before, after)` 记改前 / 改后；什么都没记的写工具自动记一条 `kind=other`（不能自动回滚），和现在一样。
-- **回滚**：`reg.rollback(kind, fn, only_action=None)`。`rollback_write` 按 kind 找处理函数，找不到就报「没有可自动回滚的前值」。现在 `writelog.rollback` 里的 6 个分支拆给各自的模块注册。
+- **`WriteLog`**：`Executor` 对每个写工具打开记录；handler 用 `ctx.log(kind, action, target, before, after)` 记改前 / 改后；什么都没记的写工具自动记一条 `kind=other`（不能自动回滚），和现在一样。存储在第 4 期拆成 `WriteLogStore`（`insert` / `recent` / `row_for_update` / `mark_rolled_back`），`WriteLog("表名", messages)` 还是 `PgWriteLogStore`，SQL 一字没改。
+- **回滚**：`reg.rollback(kind, fn, only_action=None)`。`rollback_write` 按 kind 找处理函数，找不到就报「没有可自动回滚的前值」。每个写这种 kind 的模块有一个 `register_rollbacks(reg)`（`sparky_write`、`food_combine`、`training/overrides`、`records/lab_catalog`、`water/store`、`grocery/pantry_auto`、`memory`、`memory_review`），`dl_app.py` 逐个调用；`assistant/writelog.py` 不再 import 这些模块。
 
 ### 3.5 MCP prompt / resource / instructions
 - **instructions**：业务文本 + 根规则（由 `RootRules` 接口给出：`text()`、`version()`），框架负责拼接，Watch2Whoop 的 `INSTRUCTIONS` 原样传入。
 - **prompt**：`reg.prompt(name, title, text_fn, description)`；playbook 自动变成同名 prompt，和 `butler` 并列，`get_playbook(name)` 返回同一份文本（#109 的约定变成框架的保证）。
-- **resource（第 4 期，可选）**：很多客户端不显示 resource，所以只做补充，工具仍然是主通道。候选：`datalayer://playbooks/{name}`、`datalayer://rules/root`、`datalayer://scopes`（有哪些数据 scope、各自是什么）。**不**把用户数据做成 resource（resource 没有工具那样的审批和审计路径）。
+- **resource（第 4 期，可选，已做）**：很多客户端不显示 resource，所以只做补充，工具仍然是主通道。`build_server(..., resources=[ResourceSpec(uri, name, description, text, mime_type)])`，帮手函数给设计里的三种：`playbook_resources(source)` → `datalayer://playbooks/{name}`、`rules_resource(text)` → `datalayer://rules/root`、`scopes_resource({scope: 说明})` → `datalayer://scopes`。
+  - **默认关**：`resources` 是空的时候不登记 `resources/*` 的 handler，`initialize` 不声明这个能力，`resources/list` 还是「method not found」。Watch2Whoop 不传，所以什么都没变（`tests/test_datalayer_generic.py` 钉住）。
+  - **不**把用户数据做成 resource（resource 没有工具那样的审批和审计路径）：`text()` 故意不带调用者，读不出「是谁在看」。第 2.1 节第 4 条的护栏落在接口形状上，不靠约定。
+  - 读 resource 也要过 `identity_of`（HTTP 上本来就要先过 Bearer），也过 `text_filter`（和工具返回一样）。scope 没有登记的地方（第 3.2 节），所以 `scopes_resource` 由业务把说明传进来。
+- **playbook → prompt**：`playbook_prompts(source)`（第 4 期），Watch2Whoop 的 `mcp_server._prompts` 也改用它，`prompts/list` 快照不变。
 - 不依赖 `tools/list_changed`：按需加载继续靠元工具（#107 的设计）。
 
 ### 3.6 工具集和预算
@@ -211,17 +226,29 @@ app = reg.freeze(policy=W2WPolicy(), audit=PgAudit("assistant_audit"), writelog=
 - `testing.check_budgets(app)`：现有 `test_tool_groups.py` 的预算检查变成框架自带、接入方一行调用。
 
 ### 3.7 视图（受限调用方）
-托底 AI 的做法通用化：`reg.view(name, tools, force_self=True, schema_transform=drop("user"), playbooks=…)`。`Caller.view` 有值时：
-- 工具集、`find_tools`、`resolve` 都只看视图里的工具（心电图出不去）；
-- `force_self=True`：schema 里去掉 owner 参数，`resolve_owner` 强制是自己，不走 shares；
-- playbook 按视图的标记返回正文或「需要用户自己的 AI」。
+托底 AI 的做法通用化成 `datalayer/views.py`：`reg.view(name, View(tools=…, exclude=…, force_self=True, owner_arg="user"))`。视图的工具 schema 里都去掉 owner 参数。Watch2Whoop 有三个视图：
+- `fallback`：托底白名单（`ai/fallback_params.TOOL_NAMES`，按白名单的顺序；`extra` 是 ai_web 开关带来的名字）；
+- `fallback_parity`：ai_parity 开着时的托底 = 全部工具减去同意书排除的（`CONSENT_EXCLUDED`）；
+- `own_only`：没有人共享数据给这个人的对话（#326），只是把 `user` 参数藏起来省 token。
+
+`force_self=True`（前两个）：`View.call_args` 把 owner 参数强制成 `"me"`，不走 shares；`force_self=False`（`own_only`）：模型如果还是写了 `user`，照常走 `Policy.can_view`。工具集、`find_tools`、`resolve` 都只看传进去的 `Access`，所以视图外的工具到不了（心电图出不去）。
+
 视图的**内容**（哪些工具、同意书版本、额度）留在业务。
 
+草案里的 `Caller.view` 和视图上的 playbook 标记第 3 期没做：MCP 上现在没有受限调用方（托底 AI 只在页内对话里，页内对话自己把视图的工具放进 `Access`）；`get_playbook` 对托底的判断还要看 ai_web / ai_parity 两个开关，留在 `assistant/scene_tools.py`。
+
 ### 3.8 文案和语言
-框架里给 AI 的固定文字（「没有这个工具」「这个 token 是只读的」「没有查看用户 X 的 Y 的授权」、元工具说明、`FIND_LINE`）集中在 `messages.py`，默认英文；Watch2Whoop 传入现在的中文，所以第一期行为不变。这和项目「给 AI 的文字用中文」的约定不冲突：约定管的是 Watch2Whoop 的文案，框架的默认值是给其他项目用的。
+框架里给 AI 的固定文字（「没有这个工具」「这个 token 是只读的」「没有查看用户 X 的 Y 的授权」、元工具说明）集中在 `messages.py`，默认英文（第 4 期的 `ENGLISH`）；Watch2Whoop 传入现在的中文，所以行为不变。这和项目「给 AI 的文字用中文」的约定不冲突：约定管的是 Watch2Whoop 的文案，框架的默认值是给其他项目用的。`FIND_LINE` 留在业务，是 `PlaybookSource` 的参数。
+
+有了默认值，「漏传」就多了一条路，所以三层防：`Messages` 没有逐字段的默认值，自己写的文案缺一条就建不起来（只想改几条用 `dataclasses.replace(ENGLISH, ...)`，这是明确的选择）；`freeze` 拒绝写入记录或工具集的文案和注册表不一样；`tests/test_datalayer_generic.py` 逐个核对 Watch2Whoop 持有文案的 6 个地方都是中文那份。`testing.check_messages` 核对译文的占位符和英文一样。`ai/datalayer_texts.py` 只新增一条 `mcp_no_such_resource`（resource 关着，现在显示不出来），原有文字一字没动。
 
 ### 3.9 存储
-第一期框架**不建表、不加迁移**：`assistant_audit`、`ai_write_log`、`api_tokens`、`shares` 都留在 Watch2Whoop 的迁移里，框架的 Postgres 实现通过表名配置用它们。开源前再决定框架要不要自带一套参考迁移（例 `dl_audit`、`dl_write_log`），并给一个内存 / SQLite 实现给示例和测试用。
+框架**不建表、不加迁移**：`assistant_audit`、`ai_write_log`、`api_tokens`、`shares` 都留在 Watch2Whoop 的迁移里，框架的 Postgres 实现通过表名配置用它们。框架对数据库的要求（第 4 期写明、示例验证）：
+- **连接**：handler 用什么都行，另外要有 `transaction()`（savepoint 的 context manager），MCP 传输还要 `connect_fn()` 是提交用的 context manager、连接有 `commit()`；psycopg 连接本来就是这样；
+- **审计**：`AuditSink`（已有的 Protocol）；
+- **写入记录**：`WriteLogStore`（第 4 期从 `WriteLog` 里拆出来）。
+
+SQLite 的实现（约 80 行）放在示例里（`examples/reading-notes/sqlite_store.py`），**框架不带**：现在只有示例用，接口只收真的在用的东西。开源前再决定框架要不要自带它和一套参考迁移（例 `dl_audit`、`dl_write_log`）；到时候整文件搬就行（第 6 节的独立测试会用到）。
 
 ## 4. 迁移步骤
 排期按 #116：**#107 和 #109 合并以后开始**（它们改的正是 `toolsets`、`params`、`mcp_server`、playbook，先合可以避免大面积冲突）。#123 和这件事互不依赖，谁先合都行；两边都改 `pyproject.toml` / `uv.lock` 时按 #123 写的规则处理（两边都留，再跑 `uv lock`）。
@@ -234,8 +261,8 @@ app = reg.freeze(policy=W2WPolicy(), audit=PgAudit("assistant_audit"), writelog=
 | **1 快照护栏**（只加测试） | 在**任何搬动之前**存下行为快照：MCP `tools/list`（可写 / 只读 token，名字、顺序、宽松 schema、注解）、`prompts/list`、每个页面 id 和托底 AI 的工具集、`find_tools` 不带参数的返回、几条护栏的报错原文（只读、跨用户、读写混用、confirm 要直接调）、一次读 / 写 / 失败调用留下的审计行和写入记录行。思路和 #123 的 golden 一样 | 快照测试在 `main` 上通过 | 小 |
 | **2a 搬纯工具件** | `spec`、`compact`、`toolsets`（逻辑）、`playbooks`（加载）、`messages` 进 `datalayer/`，配置从参数传入；旧路径做别名 / 重新导出；**加 import 边界测试**（AST 扫描 `datalayer/` 的全部 import，含函数里的，碰到 `body_engine.` 下非 `datalayer` 的模块或白名单外的第三方库就失败） | 快照不变、全部测试通过、边界测试通过 | 中 |
 | **2b 搬执行和传输** | `Executor`、`policy`、`audit`、`writelog`（通用部分）、`mcp/server`、`mcp/stdio`、`mcp/http` 进 `datalayer/`；`run_tool` 里的 `use_lang`、`briefing.invalidate`、`auth.can_view` 变成钩子；`mcp_http` 的连接池、身份查找变成注入；`writelog.rollback` 的分派改成按 kind 注册。在 `docs/oss-extraction-plan.md`（#123 新建的）第 1 节第 2 行补上这块的计划 | 同上；**#116 第一阶段验收到这里完成** | 中 |
-| **3 注册接口** | `assistant/tools.py` 里的拼接改到 `dl_app.py`；工具定义加 `confirm`（`ALWAYS_CONFIRM` 由注册表推出来，和管家 `settings.json` 的一致性测试保留）；托底白名单改成视图；新 handler 签名 `(ctx, args)`，旧的继续用 `legacy` 适配器（不要求一次改完）。`CONTRIBUTING.md` 加一句：新工具一律通过注册接口接入 | 同上；新功能（例：#78-C 之后的工具）走注册接口 | 中 |
-| **4 通用化** | 框架默认文案换成英文（Watch2Whoop 传中文，行为不变）；可选的 MCP resource；`examples/reading-notes/`（读书笔记，约 200 行，SQLite 或内存存储，两种传输都能跑，CI 里跑）证明框架不只适用于健康数据；框架自己的英文 README 和接口参考 | 示例在 CI 里跑通；Watch2Whoop 快照不变 | 中 |
+| **3 注册接口**（**已做**，见第 8.1 节） | `assistant/tools.py` 里的拼接改到 `dl_app.py`；工具定义加 `confirm`（`ALWAYS_CONFIRM` 由注册表推出来，和管家 `settings.json` 的一致性测试保留）；托底白名单改成视图；新 handler 签名 `(ctx, args)`，旧的继续用 `legacy` 适配器（不要求一次改完）。`CONTRIBUTING.md` 加一句：新工具一律通过注册接口接入 | 同上；新功能（例：#78-C 之后的工具）走注册接口 | 中 |
+| **4 通用化**（**已做**，见第 8.1 节） | 框架默认文案换成英文（Watch2Whoop 传中文，行为不变）；可选的 MCP resource；`examples/reading-notes/`（读书笔记，约 200 行，SQLite 或内存存储，两种传输都能跑，CI 里跑）证明框架不只适用于健康数据；框架自己的英文 README 和接口参考 | 示例在 CI 里跑通；Watch2Whoop 快照不变 | 中 |
 | **5 试用期** | 本项目继续开发，新功能都走注册接口；记录每次接口改动 | **接口 2–4 周没有大改**（#116 第 5 点） | — |
 | **6 拆包** | 搬到 `packages/<正式名>/`（Apache-2.0，做法照 #123：路径依赖、Docker `additional_contexts`、CI 加一步）；Body Engine 改成依赖这个包；旧路径的别名保留一个版本再删。是否建独立仓库、发 PyPI 由负责人另定 | 包能独立安装、独立测试（不装 Body Engine）；第 7 节清单全部勾上 | 中 |
 
@@ -261,15 +288,15 @@ OAuth 2.1 授权服务器（`ai/oauth*.py`）**不在上面任何一期里**：�
 - `NOTICE` 写明来源；每个文件要不要加 SPDX 头，和 #123 的待定第 6 条一起定。
 
 **文档**（英文）
-- README：是什么、不是什么、最小示例（就是 `examples/reading-notes/`）；
-- 概念：工具定义、数据 scope 和调用能力、视图、确认、写入记录和回滚、context 和预算、playbook；
-- **安全模型**：身份从哪来、谁能看谁、为什么写只能写给自己、confirm 的保证、视图的保证，以及框架**不**负责的部分（token 的发放和存储、OAuth、传输层加密）；
-- 接口参考、版本策略（0.x 期间可能有破坏性改动，写进 CHANGELOG）。
+- README：是什么、不是什么、最小示例（就是 `examples/reading-notes/`）；（第 4 期已写：`datalayer/README.md`）
+- 概念：工具定义、数据 scope 和调用能力、视图、确认、写入记录和回滚、context 和预算、playbook；（同上）
+- **安全模型**：身份从哪来、谁能看谁、为什么写只能写给自己、confirm 的保证、视图的保证，以及框架**不**负责的部分（token 的发放和存储、OAuth、传输层加密）；（同上）
+- 接口参考（第 4 期已写：`datalayer/REFERENCE.md`，测试核对每个标题解析得到、签名和字段表和代码一致）、版本策略（0.x 期间可能有破坏性改动，写进 CHANGELOG；拆包时写）。
 
 **测试**
 - 包能独立安装、独立测试，不装 Body Engine、不连真实数据库（内存实现 + 可选的 Postgres 测试）；
 - 护栏测试从 Watch2Whoop 的测试里提炼出来进包：跨用户、只读、confirm、视图、读写混用、预算、审计记真实名字、失败也审计；
-- `examples/` 在 CI 里跑；
+- `examples/` 在 CI 里跑（第 4 期已做：Body Engine job 里单独一步）；
 - Watch2Whoop 这边的快照测试一直保留。
 
 **去掉私有内容**
@@ -286,7 +313,7 @@ OAuth 2.1 授权服务器（`ai/oauth*.py`）**不在上面任何一期里**：�
 | 只有一个使用者就抽象，接口设计偏 | 拆出去以后别人用不顺，或者频繁破坏性改动 | 接口只收现在真的在用的东西；第 4 期用非健康示例做第二个使用者；第 5 期 2–4 周不大改才拆 |
 | 隐藏的耦合：ContextVar（`writelog._ctx`、`use_lang`）、懒加载（`api.pool`、`ai.oauth`） | 边界测试漏掉，或者拆包后运行时才报错 | 边界测试扫函数内的 import；ContextVar 只留在框架内部，业务通过 `ctx` 和钩子拿；懒加载全部改成注入 |
 | 同一份名单两处维护（confirm 和管家 `settings.json` 的 ask、托底白名单和同意书） | 改一处忘一处 | 名单只从注册表推出；现有一致性测试保留并改成读注册表 |
-| 框架默认英文、Watch2Whoop 给 AI 的文字是中文 | 混用、漏传导致 AI 看到英文报错 | 第 1 期快照里含报错原文；`Messages` 缺键直接报错，不静默回落 |
+| 框架默认英文、Watch2Whoop 给 AI 的文字是中文 | 混用、漏传导致 AI 看到英文报错 | 第 1 期快照里含报错原文；`Messages` 缺键直接报错，不静默回落；`freeze` 拒绝文案不一致；第 3.8 节的测试逐个核对 |
 | 改许可证的合规问题 | 拆出去的代码许可证有争议 | 第 6 节的核对；新提交继续只由负责人或签了同意的贡献者写这些文件 |
 | 页内对话留在业务里，和 MCP 走两条路 | 两边的护栏慢慢不一致 | 页内对话也只能通过 `Executor` 和 `toolsets` 调工具（第 2b 期起），不能直接调 handler |
 | 工作量被低估，和产品功能抢时间 | 拖着不完成，留下半新半旧的两套 | 每期可以单独合并、单独停；停在任何一期都是完整可用的状态 |
@@ -297,12 +324,36 @@ OAuth 2.1 授权服务器（`ai/oauth*.py`）**不在上面任何一期里**：�
 - 现有的 MCP 和页内对话行为不变：全部测试通过，`tools/list` 的内容和顺序不变（快照测试）；
 - `docs/oss-extraction-plan.md` 里补上这块的计划。
 
+## 8.1 第 2b 期之后还剩的耦合点（2026-10-27 盘点，第 4 期后更新）
+第 4 期以后，`datalayer/` 里有：`spec`、`compact`、`toolsets`、`playbooks`、`messages`、`execute`、`policy`、`audit`、`writelog`、`registry`、`views`、`mcp/{server,stdio,http}`、`testing`，以及 `README.md`、`REFERENCE.md`。下表是当时 Watch2Whoop 一侧**把框架和业务绑在一起的地方**，按拆的顺序排（风险从低到高），「状态」写现在怎么样了。「接口不变」= 旧 import 路径、`tools/list`、#201 快照都不动。
+
+| # | 耦合点 | 当时在哪 | 怎么拆 | 期 | 状态 |
+|---|---|---|---|---|---|
+| 1 | 工具集预算和配置一致性检查 | 只在 `tests/test_tool_groups.py` 里手写断言，常量在 `ai/params.py` | 框架 `toolsets.Budgets`、`config_problems`、`budget_problems`，`testing.check_toolset(cfg, tools, budgets)` 一行调用；Watch2Whoop 的 `assistant/toolsets.budgets()` / `problems()` 从 `ai/params` 读，原来的断言照留 | 3.6 节 | **已做**（#327） |
+| 2 | 「只看自己」的 schema 变换（去掉 `user` 参数） | `ai/fallback._own_schema`（托底白名单），#326 起页内对话的 own_only 对话也用它 | 框架 `views.py`：`View(tools, exclude, force_self, owner_arg)`；托底白名单、ai_parity 的托底、own_only 都是 `dl_app.py` 里登记的视图（3.7 节） | 3 | **已做**。白名单和同意书排除项搬到 `ai/fallback_params.py`，`ai/fallback.py` 留旧名字 |
+| 3 | 写前确认名单三份 | `ai/params.ALWAYS_CONFIRM`、管家 `assistant/.claude/settings.json` 的 ask、`ai/chat.CONFIRM_EN`（英文确认卡） | `Tool.confirm=True` + `confirm_label` 放在工具定义上，`ALWAYS_CONFIRM` 由注册表推出来，英文摘要读 `confirm_label` | 3 | **已做**。`settings.json` 还是静态文件（管家的 Claude Code 直接读它），靠 `test_every_write_tool_asks_in_butler_settings` 保证一致；`tests/test_datalayer_registry.py` 把 14 个名字和英文摘要逐字钉住 |
+| 4 | 工具注册表的拼接 | `assistant/tools.py`：文件里 8 个健康工具 + 模块级把 17 个模块的 `TOOL_SPECS` 拼起来（records、rules、goals、training、insights、cardio、butler、grocery、diet_profile ×2、friends、water、ui、feedback、scene、sparky） | `dl_app.py` 里 `Registry` 按顺序登记，`TOOLS` 顺序不变（快照保证） | 3 | **已做**。8 个健康工具搬到 `assistant/health_tools.py`；`assistant/tools.py` 只剩旧路径 |
+| 5 | 回滚处理登记在一个文件 | `assistant/writelog.py` 给 13 个 kind 登记处理函数，import 了 sparky_write、food_combine、lab、training、water、grocery、memory | 谁写的谁登记：各模块的 `register_rollbacks(reg)`，`dl_app.py` 逐个调用 | 3 | **已做**。`assistant/writelog.py` 的旧名字在第一次用到时才加载 `dl_app`，只 import 它的进程也能回滚 |
+| 6 | handler 旧签名 | `(conn, owner_id, args)`，viewer 和 channel 塞在 `args["_viewer_id"]` / `["_channel"]` | 新签名 `(ctx, args)`，旧的用 `legacy=True` 适配器（第 9 节问题 5） | 3 | **已做适配**。`assistant/health_tools.py` 的 8 个工具已是新签名（快照里的审计行就是经过它们留下的），其余工具继续 legacy，不一次改完；`testing.check_handlers` 检查每个工具登记的签名对不对 |
+| 7 | 执行器的业务钩子 | `assistant/tools.EXECUTOR`：`Policy` = `auth.can_view`（shares + 好友圈 + `IMPLIED_BY`）、`call_context` = `use_lang("zh")`、`after_write` = `briefing.invalidate`、`OPTIONAL_DEFAULTS`（`toolspec.py`） | 已经是注入；组装挪到 `dl_app.py` | — | **已做**：逻辑一行没改。第 4 期给了默认值：`policy` 不传 = `SelfOnly`，`call_context` / `after_write` / `optional_defaults` 本来可以不传。`audit`、`writelog` **没有默认值**：静默不记审计不是安全的默认 |
+| 8 | 给 AI 的固定文字 | `ai/datalayer_texts.py`（中文） | 框架自带英文默认，Watch2Whoop 传中文 | 4 | **已做**（第 3.8 节）。中文文件只多一条 resource 的报错，原有文字一字没动 |
+| 9 | MCP 的业务部分 | `mcp_server.INSTRUCTIONS` + 根规则、`butler` prompt（`ai/prompt.base_prompt`）、token 查找（`auth`）、`ai/mcp_http` 的连接池和 `users.status`、`ai/web/mcp.py` 往 grocery 组加联网工具 | 已经是注入；联网工具改成注册一个「附加组」 | 4 | **文案、prompt、连接池、身份查找都是注入，已验证**（示例用同一套接口接了自己的）。**联网工具的「附加组」有意不做**：`CallerTools` 已经就是通用的接口（只给部分调用方、不进 `tools/list`、`find_tools` 里按组显示、照样受只读规则管），写进了接口参考，`tests/test_datalayer_generic.py` 用非健康工具验证过。如果真的登记进 `dl_app.py`，它们就进了 `APP.tools`，`grocery` 页的工具集和 `fallback_parity` 视图都会变，违反快照不变 |
+| 10 | MCP OAuth | `ai/oauth*.py`，绑今天页登录、同意页、限流 | 第 6 期之后单独决定（第 9 节问题 3） | — | 不动 |
+| 11 | 页内对话 | `ai/chat.py` 直接调 `run_tool`、`_audit`（服务器联网工具）、`toolsets.resolve / find`；确认循环、预算、历史折叠、#326 的省 token | 第 9 节问题 2：目前算框架的**调用方**，不拆 | — | 不动（只把 `_own_tools`、托底的强制 `user` 改成读视图） |
+| 12 | 开局摘要 | `assistant/briefing.py`：内容是业务，只靠 `after_write` 清缓存 | 不进框架，只写进文档当约定 | — | 不动 |
+
+**第 3 期验收**：不加迁移、不改 API、不改 `tools/list`：`tests/fixtures/datalayer/` 的快照一字没动（名字、顺序、宽松 schema、注解、`prompts/list`、页面工具集、托底工具集）。框架部分在 `tests/test_datalayer_registry.py` 里用一个读书笔记小应用验证（注册顺序、冻结、新旧两种签名走同一套护栏、视图），不依赖 Watch2Whoop；同一个文件把 Watch2Whoop 的确认名单、英文摘要、执行器钩子、视图和原来的写法逐项对照，并在子进程里验证「先 import 哪个模块都能启动」。
+
+**第 4 期验收**：示例在 CI 里跑通（Body Engine job 的一步 `reading-notes example`：`check_imports` / `check_toolset` / `check_handlers` / `check_messages`，子进程确认运行时没加载任何业务模块，真的起 stdio 和 HTTP 进程、用 MCP SDK 的客户端走一遍读写、跨用户、只读、确认、回滚、审计）。Watch2Whoop 这边：`tests/fixtures/datalayer/` 一字没动，没有迁移，没有改 API，`tools/list`、页面工具集、托底工具集、确认名单不变，权限和写前确认的代码路径没动。`WriteLog` 拆存储只是搬代码，SQL 不变，`audit.json` 快照里的写入记录行就是经过它留下的。
+
+**还留着的**：大部分老 handler 的旧签名（第 9 节问题 5）；`Caller.view` 和视图上的 playbook 标记（3.7 节），视图只给页内对话用，MCP 上没有受限调用方；`reg.scope` / `reg.group` / `reg.prompt` 等（3.2 节，示例证明不需要）；3.5 节草案的 `RootRules`（`text()`、`version()`）接口没做，根规则的拼接还在 `mcp_server.py`，`rules_resource` 只收一个返回文本的函数；框架不带 SQLite 实现和参考迁移（3.9 节）；`psycopg` 还是硬依赖（`audit.py`、`writelog.py` 顶层 import），第 6 期拆包时做成可选。
+
 ## 9. 需要负责人决定的问题
 1. **框架的名字和位置**：工作名 `datalayer`。第一期放 `body_engine/src/body_engine/datalayer/`（#116 的建议），拆包时再定正式名（例 `openbodydata`、`personal-datalayer`）。要不要现在就定名字，免得第 6 期再改一轮？
-2. **页内对话（工具循环、确认卡、adapters、预算）算不算框架**：本设计建议第一阶段**不算**，它是框架的调用方，留在 Watch2Whoop；以后如果有外部需求，再做成可选模块 `datalayer.chat`。
-3. **OAuth 2.1 授权服务器什么时候进框架**：本设计建议拆包之后、有外部需要时再单独做，期间框架只认 `authenticate(token)`。还是希望第一次开源就带上（别人接 Claude / ChatGPT 连接器必须有 OAuth）？
-4. **非健康示例做哪个**：读书笔记（本设计默认）还是个人记账？示例用 SQLite / 内存存储，意味着框架的存储接口要真正抽象。如果只想支持 Postgres，示例也用 Postgres，存储接口可以简单很多。
-5. **handler 新签名 `(ctx, args)` 要不要全部改**：本设计是旧签名长期兼容、新工具用新签名。全部改一遍的好处是统一，代价是一个触及 14 个模块的大 PR。
+2. **页内对话（工具循环、确认卡、adapters、预算）算不算框架**：本设计建议第一阶段**不算**，它是框架的调用方，留在 Watch2Whoop；以后如果有外部需求，再做成可选模块 `datalayer.chat`。（第 3 期按这个建议做）
+3. **OAuth 2.1 授权服务器什么时候进框架**：本设计建议拆包之后、有外部需要时再单独做，期间框架只认 `authenticate(token)`。还是希望第一次开源就带上（别人接 Claude / ChatGPT 连接器必须有 OAuth）？（第 3 期没动 OAuth）
+4. **非健康示例做哪个**：读书笔记（本设计默认）还是个人记账？示例用 SQLite / 内存存储，意味着框架的存储接口要真正抽象。如果只想支持 Postgres，示例也用 Postgres，存储接口可以简单很多。（第 4 期按默认做了读书笔记 + SQLite。代价比想的小：审计本来就是 Protocol，写入记录拆出 4 个方法的 `WriteLogStore`，连接只要多一个 savepoint，SQLite 一共约 80 行）
+5. **handler 新签名 `(ctx, args)` 要不要全部改**：本设计是旧签名长期兼容、新工具用新签名。全部改一遍的好处是统一，代价是一个触及 14 个模块的大 PR。（第 3 期按这个建议做：新工具用新签名，旧的走 `legacy` 适配器）
 
 ---
 _Refs #116。本文只是设计，接口名字和细节以负责人审阅后的版本为准。_

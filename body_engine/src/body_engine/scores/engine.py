@@ -26,6 +26,7 @@ from ..cardio import hrr as cardio_hrr
 COLUMNS = ["sleep_score", "sleep_need_min", "sleep_debt_min", "sleep_performance", "sleep_actual_min",
            "hrv_kind", "hrv_night_ln", "rhr_night", "resp_rate_night", "recovery",
            "trimp", "strain", "hr_max", "muscle_load", "ctl", "atl", "tsb", "flags", "details", "algo_version"]
+WRITE_LOCK_NS = 0x4453   # advisory lock namespace ("DS") for (namespace, user_id): one daily_scores write per user at a time
 
 
 def _days(a: date, b: date):
@@ -35,10 +36,41 @@ def _days(a: date, b: date):
         d += timedelta(days=1)
 
 
-def _between(samples, start, end):
-    """samples sorted by time; take those within [start, end]."""
-    times = [t for t, _ in samples]
+def _between(samples, start, end, times=None):
+    """samples sorted by time; take those within [start, end]. times: [t for t, _ in samples], when the caller has it."""
+    times = [t for t, _ in samples] if times is None else times
     return samples[bisect_left(times, start):bisect_right(times, end)]
+
+
+def _wrist_temps(temps, times, night: Night, prev_end: datetime | None):
+    """The sleeping wrist temperature readings of a night (params WRIST_TEMP_PAD / WRIST_TEMP_LEAD): those within the pad
+    of the night; if none, those dated up to the lead before it (Apple dates the reading from the start of the sleep schedule),
+    but not before the end of the previous main sleep (+ pad), so one reading never serves two nights."""
+    near = _between(temps, night.start - P.WRIST_TEMP_PAD, night.end + P.WRIST_TEMP_PAD, times)
+    if near:
+        return near
+    lo = night.start - P.WRIST_TEMP_LEAD
+    if prev_end is not None:
+        lo = max(lo, prev_end + P.WRIST_TEMP_PAD + timedelta(microseconds=1))
+    return _between(temps, lo, night.start - P.WRIST_TEMP_PAD, times) if lo < night.start - P.WRIST_TEMP_PAD else []
+
+
+class _Segments:
+    """The sleep-stage segments (sorted by start) with their start times, so a night's segments are found by bisection
+    instead of a scan of the whole history for every night (same segments, same order)."""
+
+    def __init__(self, segments):
+        self.all = segments
+        self.starts = [s[0] for s in segments]
+        self.max_len = max((s[1] - s[0] for s in segments), default=timedelta(0))
+
+    def starting(self, lo, hi):
+        """The segments whose start is within [lo, hi], in order."""
+        return self.all[bisect_left(self.starts, lo):bisect_right(self.starts, hi)]
+
+    def within(self, start, end):
+        """= inputs.segments_in(segments, start, end)."""
+        return [s for s in self.starting(start, end) if s[1] <= end]
 
 
 def _r(x, nd=3):
@@ -57,6 +89,7 @@ def score_days(inp: Inputs, first: date, last: date, today: date | None = None) 
     main = {d: max(ns, key=lambda n: n.asleep_min) for d, ns in by_wake.items()}
     naps = sorted((n for d, ns in by_wake.items() for n in ns if n is not main[d]), key=lambda n: n.start)
     mains_sorted = sorted(main.values(), key=lambda n: n.start)
+    prev_main_end = {b.wake_date: a.end for a, b in zip(mains_sorted, mains_sorted[1:])}   # wake date -> end of the main sleep before
 
     # ---- strain: heart rate grouped by local date; the minutes each sample represents are computed over the whole timeline ----
     hr_times = [t for t, _ in inp.hr]
@@ -75,6 +108,10 @@ def score_days(inp: Inputs, first: date, last: date, today: date | None = None) 
     feats: dict[str, dict[date, float]] = {k: {} for k in ("hrv", "rhr", "sleep_performance", "resp_rate", "temp")}
     feats["rhr_daily"] = dict(inp.daily_rhr)   # Apple's all-day resting heart rate used as a fallback, with its own baseline
     rows = []
+    # time lists of the raw series and the indexed segments: built once, not once per night
+    times = {k: [t for t, _ in getattr(inp, k)] for k in ("hr", "resp", "temp", "spo2")}
+    ordered = inp.segments == sorted(inp.segments) and all(a <= b for a, b, _ in inp.segments)
+    seg_index = _Segments(inp.segments) if ordered else None
 
     for d in _days(first, last):
         flags: dict = {}
@@ -128,7 +165,7 @@ def score_days(inp: Inputs, first: date, last: date, today: date | None = None) 
             flags["no_sleep"] = ("只有非手表来源的睡眠（没有阶段数据），不计" if d in inp.non_watch_dates
                                  else "没有手表睡眠数据")
         else:
-            segs = segments_in(inp.segments, night.start, night.end)
+            segs = seg_index.within(night.start, night.end) if seg_index else segments_in(inp.segments, night.start, night.end)
             if segs:
                 awake_min, awakenings = S.waso(segs)
             else:
@@ -162,23 +199,23 @@ def score_days(inp: Inputs, first: date, last: date, today: date | None = None) 
                                 "bedtime": night.start.astimezone(tz).isoformat(timespec="minutes"),
                                 "wake_time": night.end.astimezone(tz).isoformat(timespec="minutes"),
                                 "need_from_debt": round(need["from_debt"]), "need_from_strain": round(need["from_strain"]),
-                                "source": night.source, **_latency_efficiency(inp.segments, night)}
+                                "source": night.source, **_latency_efficiency(inp.segments, night, seg_index)}
             feats["sleep_performance"][d] = perf
 
         # ================= recovery =================
         if night is not None:
             hrv_ln, n_hrv = R.night_hrv_ln(inp.hrv, night.start, night.end)
-            rhr, rhr_at = R.lowest_window(_between(inp.hr, night.start, night.end), night.start, night.end)
+            rhr, rhr_at = R.lowest_window(_between(inp.hr, night.start, night.end, times["hr"]), night.start, night.end)
             rhr_key = "rhr"
             if rhr is None and d in inp.daily_rhr:
                 # Apple's all-day resting heart rate is a few bpm above the lowest during sleep, so it can only be compared with its own baseline
                 rhr, rhr_key = inp.daily_rhr[d], "rhr_daily"
                 flags["rhr_from_daily"] = "没有睡眠期原始心率，用当天的 resting_heart_rate（Apple 全天算法），和它自己的 60 天基线比"
-            resp = [v for _, v in _between(inp.resp, night.start, night.end)]
+            resp = [v for _, v in _between(inp.resp, night.start, night.end, times["resp"])]
             resp_night = statistics.median(resp) if resp else None
-            temps = [v for _, v in _between(inp.temp, night.start - timedelta(hours=2), night.end + timedelta(hours=2))]
+            temps = [v for _, v in _wrist_temps(inp.temp, times["temp"], night, prev_main_end.get(d))]
             temp = statistics.median(temps) if temps else None
-            spo2 = [v for _, v in _between(inp.spo2, night.start, night.end)]
+            spo2 = [v for _, v in _between(inp.spo2, night.start, night.end, times["spo2"])]
             row.update(hrv_night_ln=_r(hrv_ln, 4), rhr_night=_r(rhr, 1), resp_rate_night=_r(resp_night, 2))
 
             past = [d - timedelta(days=k) for k in range(1, P.BASELINE_DAYS + 1)]
@@ -235,11 +272,14 @@ def score_days(inp: Inputs, first: date, last: date, today: date | None = None) 
     return rows
 
 
-def _latency_efficiency(segments, night: Night) -> dict:
+def _latency_efficiency(segments, night: Night, index: "_Segments | None" = None) -> dict:
     """Sleep latency ≈ the awake segment immediately before the first asleep segment (Apple Watch records awake time from the start of Sleep Focus; there is no "in bed" data,
     left empty when there is no such segment); sleep efficiency = asleep / (latency start → last wake)."""
     t, latency = night.start, 0.0
-    for a, b, stage in reversed([s for s in segments if s[1] <= night.start and s[1] >= night.start - timedelta(hours=3)]):
+    lo = night.start - timedelta(hours=3)
+    # a segment ending in [lo, night.start] starts in [lo - longest segment, night.start]: only those are looked at
+    near = index.starting(lo - index.max_len, night.start) if index else segments
+    for a, b, stage in reversed([s for s in near if s[1] <= night.start and s[1] >= lo]):
         if stage != "awake" or (t - b).total_seconds() > 60:
             break
         latency += (b - a).total_seconds() / 60
@@ -256,17 +296,35 @@ def scoring_origin(conn: psycopg.Connection, user_id: int) -> date | None:
     return r["d"]
 
 
-def write(conn: psycopg.Connection, user_id: int, rows: list[dict], start: date, end: date) -> int:
-    """Delete the old rows in [start, end] before inserting (no stale rows when the algorithm changes), idempotent."""
-    rows = [r for r in rows if start <= r["date"] <= end]
-    cols = ["user_id", "date", *COLUMNS]
+def write(conn: psycopg.Connection, user_id: int, rows: list[dict], start: date, end: date,
+          only: set[date] | None = None, origin: str = "server", bundle_version: str | None = None) -> int:
+    """Replace the rows in [start, end] (only those days when `only` is given): rows of days no longer computed are
+    deleted (no stale rows when the algorithm changes), the others upserted, so a day whose values did not change is no
+    change for the app's change log (nativesync/, migration 970). Idempotent. Two recomputes of the same user can overlap
+    (the hourly batch, the per-minute sync-refresh-run, a manual run): the writes of one user are serialised with a
+    transaction-level advisory lock, and the insert is an upsert, so the second writer replaces the first one's rows
+    instead of failing with UniqueViolation on daily_scores_pkey. origin: server, or app for the scores the iOS app
+    uploaded (nativesync/appscores.py)."""
+    rows = [r for r in rows if start <= r["date"] <= end and (only is None or r["date"] in only)]
+    cols = ["user_id", "date", *COLUMNS, "origin", "bundle_version"]
+    upd = [*COLUMNS, "origin", "bundle_version"]
+    days = [r["date"] for r in rows]
     with conn.transaction():
-        conn.execute("DELETE FROM daily_scores WHERE user_id = %s AND date BETWEEN %s AND %s", (user_id, start, end))
+        conn.execute("SELECT pg_advisory_xact_lock(%s, %s)", (WRITE_LOCK_NS, user_id))
+        if only is None:
+            conn.execute("DELETE FROM daily_scores WHERE user_id = %s AND date BETWEEN %s AND %s AND NOT date = ANY(%s)",
+                         (user_id, start, end, days))
+        else:
+            conn.execute("DELETE FROM daily_scores WHERE user_id = %s AND date = ANY(%s) AND NOT date = ANY(%s)",
+                         (user_id, sorted(d for d in only if start <= d <= end), days))
         with conn.cursor() as cur:
             cur.executemany(
-                f"INSERT INTO daily_scores ({', '.join(cols)}) VALUES ({', '.join(['%s'] * len(cols))})",
-                [[user_id, r["date"], *[Jsonb(r[c]) if c in ("flags", "details") else r[c] for c in COLUMNS]]
-                 for r in rows])
+                f"INSERT INTO daily_scores ({', '.join(cols)}) VALUES ({', '.join(['%s'] * len(cols))})"
+                f" ON CONFLICT (user_id, date) DO UPDATE SET {', '.join(f'{c} = EXCLUDED.{c}' for c in upd)},"
+                f" computed_at = now()",
+                [[user_id, r["date"], *[Jsonb(r[c]) if c in ("flags", "details") and r.get(c) is not None else r.get(c)
+                                        for c in COLUMNS],
+                  origin, bundle_version] for r in rows])
     return len(rows)
 
 
@@ -276,7 +334,7 @@ def muscle_sessions(conn: psycopg.Connection, user_id: int, start: date, end: da
     from ..training import hevy_import
     imported = hevy_import.imported_sessions(conn, user_id, start, end)
     try:
-        sparky = sparky or sparky_client.client_for_user(conn, user_id)
+        sparky = sparky or sparky_client.reader_for_user(conn, user_id)
     except sparky_client.SparkyError:
         return imported, None, False
     try:
@@ -297,26 +355,40 @@ def load_muscle(conn: psycopg.Connection, inp: Inputs, user_id: int, start: date
     return f"{len(inp.muscle)} 天有训练记录"
 
 
+def compute(conn: psycopg.Connection, client, user_id: int, start: date, end: date, origin: date, tz: ZoneInfo,
+            archive_dir: Path | None = None, sparky=None, ow_cache: str | None = None) -> tuple[list[dict], dict]:
+    """Every row from the scoring start to end, nothing written, and what run() reports about them."""
+    today = datetime.now(tz).date()
+    # HRV kind of this user (hrv_kind.py): SDNN unless switched on for RMSSD with enough beat data; never mixed
+    kind, kind_reason = HK.choose(conn, user_id, tz, start, end)
+    # pull one extra year back: the 365-day HRmax window; one extra day for sleep (the night before the first day)
+    inp = load(conn, client, user_id, origin - timedelta(days=P.HRMAX_WINDOW_DAYS), end, archive_dir, hrv_kind=kind,
+               ow_cache=ow_cache)
+    muscle_note = load_muscle(conn, inp, user_id, origin, end, sparky)
+    return score_days(inp, origin, end, today), {"inp": inp, "hrv_kind": kind, "hrv_kind_reason": kind_reason,
+                                                 "muscle_load": muscle_note}
+
+
 def run(conn: psycopg.Connection, client, user_id: int, start: date | None = None, end: date | None = None,
-        archive_dir: Path | None = None, sparky=None) -> dict:
+        archive_dir: Path | None = None, sparky=None, ow_cache: str | None = None, only: set[date] | None = None) -> dict:
+    """ow_cache: how the OW raw samples are read (importers/ow_cache.py): None = all from OW, "use" = through the local
+    copy, "refresh" = all from OW and replace the copy. only: write just these days of [start, end] (the server's
+    fallback for a user whose app computes the scores, nativesync/appscores.py)."""
     origin = scoring_origin(conn, user_id)
     if origin is None:
         return {"rows": 0, "note": "这个用户还没有手表数据（没有 resting_heart_rate）"}
     tz = ZoneInfo(conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()["timezone"])
-    today = datetime.now(tz).date()
-    end = end or today
+    end = end or datetime.now(tz).date()
     start = max(start or origin, origin)
-    # HRV kind of this user (hrv_kind.py): SDNN unless switched on for RMSSD with enough beat data; never mixed
-    kind, kind_reason = HK.choose(conn, user_id, tz, start, end)
-    # pull one extra year back: the 365-day HRmax window; one extra day for sleep (the night before the first day)
-    inp = load(conn, client, user_id, origin - timedelta(days=P.HRMAX_WINDOW_DAYS), end, archive_dir, hrv_kind=kind)
-    muscle_note = load_muscle(conn, inp, user_id, origin, end, sparky)
-    rows = score_days(inp, origin, end, today)
-    n = write(conn, user_id, rows, start, end)
-    written = [r for r in rows if start <= r["date"] <= end]
+    rows, meta = compute(conn, client, user_id, start, end, origin, tz, archive_dir, sparky, ow_cache)
+    inp, kind, kind_reason, muscle_note = meta["inp"], meta["hrv_kind"], meta["hrv_kind_reason"], meta["muscle_load"]
+    n = write(conn, user_id, rows, start, end, only)
+    written = [r for r in rows if start <= r["date"] <= end and (only is None or r["date"] in only)]
     # heart rate recovery after each workout, from the same raw heart rate (cardio/hrr.py); a failure does not affect the scores
     try:
-        hrr = cardio_hrr.compute(conn, user_id, inp.hr, {r["date"]: r["hr_max"] for r in rows if r["hr_max"]}, start, end)
+        from ..nativesync import primary   # 2.0.0 S9: the phone computes its own workouts' heart-rate recovery
+        hrr = cardio_hrr.compute(conn, user_id, inp.hr, {r["date"]: r["hr_max"] for r in rows if r["hr_max"]}, start, end,
+                                 skip_app=primary.server_primary(conn, user_id, "workouts"))
     except Exception as e:  # noqa: BLE001
         hrr = {"error": f"{type(e).__name__}: {e}"}
     return {"origin": origin, "start": start, "end": end, "rows": n, "algo_version": P.ALGO_VERSION,

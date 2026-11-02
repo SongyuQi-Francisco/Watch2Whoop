@@ -1,4 +1,4 @@
-"""Analytics matching WHOOP: butler tool specs (wrapped into Tool and registered by assistant/tools.py). All read-only."""
+"""Analytics matching WHOOP: butler tool specs (registered by dl_app.py). All read-only."""
 from datetime import date
 
 from ..toolspec import OPT_DAY, OPT_END, OPT_START, USER, schema

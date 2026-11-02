@@ -20,7 +20,6 @@ OUT = Path(__file__).resolve().parent / "dashboards"
 
 BODY = {"type": "grafana-postgresql-datasource", "uid": "body-engine"}
 OW = {"type": "grafana-postgresql-datasource", "uid": "open-wearables"}
-SPARKY = {"type": "yesoreyeram-infinity-datasource", "uid": "sparkyfitness"}
 
 F = "($__timeFrom()::timestamptz)::date"
 T = "($__timeTo()::timestamptz)::date"
@@ -228,7 +227,7 @@ def overview() -> dict:
     L.row(8, [
         (12, timeseries("负荷：strain 和肌肉负荷",
                         [sql(daily('strain AS "strain", muscle_load AS "肌肉负荷（训练容量 kg）"'))], draw="bars",
-                        desc="strain：心率 TRIMP 映射到 0–21（K = 170）。肌肉负荷：SparkyFitness 当天力量动作工作组 Σ 次数 × 重量，"
+                        desc="strain：心率 TRIMP 映射到 0–21（K = 170）。肌肉负荷：训练记录里当天力量动作工作组 Σ 次数 × 重量，"
                         "没有训练记录的天留空（没记录 ≠ 没练）。",
                         overrides=[override("肌肉负荷（训练容量 kg）", **{"custom__axisPlacement": "right", "unit": KG,
                                             "custom__drawStyle": "points", "custom__pointSize": 8, "color": {"mode": "fixed", "fixedColor": "purple"}}),
@@ -290,28 +289,27 @@ def physiology() -> dict:
 
 
 # ---------------------------------------------------------------- 3. Weight and nutrition
-WEIGHT_JSONATA = (
-    '( $r := $[weight != null].{"d": entry_date, "ms": $toMillis(entry_date & "T00:00:00+10:00"), "w": weight};'
-    ' $r.( $m := ms; $win := $r[ms > $m - 6*86400000 and ms <= $m];'
-    ' {"time": d & "T00:00:00+10:00", "weight": w, "avg7": $round($average($win.w), 2), "n7": $count($win)} ) )')
+# Weigh-ins from Body Engine's own table body_measurements (issue #252; it used to be the SparkyFitness API through the
+# Infinity data source, owner only). 7-day mean = every weigh-in of that day and the 6 days before.
+WEIGHT_SQL = f"""
+WITH w AS (SELECT date, weight_kg FROM body_measurements WHERE user_id = $user AND weight_kg IS NOT NULL
+           AND date BETWEEN {F} - 6 AND {T})
+SELECT w.date::timestamptz AS time, w.weight_kg AS "体重",
+       (SELECT round(avg(x.weight_kg)::numeric, 2) FROM w x WHERE x.date BETWEEN w.date - 6 AND w.date) AS "7 天均值",
+       (SELECT count(*) FROM w x WHERE x.date BETWEEN w.date - 6 AND w.date) AS "7 天内称重次数"
+FROM w WHERE w.date >= {F} ORDER BY 1"""
 
 
-def weight_target(fmt: str = "timeseries") -> dict:
-    return {"refId": "A", "datasource": SPARKY, "type": "json", "source": "url", "format": fmt, "parser": "backend",
-            "url": "http://host.docker.internal:8300/api/measurements/check-in-measurements-range/2020-01-01/${__to:date:YYYY-MM-DD}",
-            "url_options": {"method": "GET", "data": ""}, "root_selector": WEIGHT_JSONATA,
-            "columns": [{"selector": "time", "text": "time", "type": "timestamp"},
-                        {"selector": "weight", "text": "体重", "type": "number"},
-                        {"selector": "avg7", "text": "7 天均值", "type": "number"},
-                        {"selector": "n7", "text": "7 天内称重次数", "type": "number"}]}
+def weight_target(fmt: str = "table") -> dict:
+    return sql(WEIGHT_SQL, fmt)
 
 
 def weight_activity() -> dict:
     L = Layout()
     wt = weight_target("table")
     L.row(9, [
-        (16, timeseries("体重（SparkyFitness）", [wt], unit=KG, decimals=1,
-                        desc="来自 SparkyFitness 的称重记录（你手动记 / app 同步的）。7 天均值 = 含当天往前 7 天内所有称重的平均（规则 calorie_adjust "
+        (16, timeseries("体重", [wt], unit=KG, decimals=1,
+                        desc="称重记录（表 body_measurements：今天页 / AI 记的，迁移过来的历史）。7 天均值 = 含当天往前 7 天内所有称重的平均（规则 calorie_adjust "
                         "要求每个 7 天窗口 ≥ 2 次称重；只有 1 次时均值就等于那次）。",
                         overrides=[override("体重", **{"custom__drawStyle": "points", "custom__pointSize": 9,
                                                      "color": {"mode": "fixed", "fixedColor": "blue"}}),
@@ -345,7 +343,7 @@ SELECT date::timestamptz AS time, value AS "{label}", m AS "7 天均值" FROM b 
                         desc="Apple 的 active energy（不含基础代谢），kcal。")),
     ])
     return dashboard("body-weight", "身体管理 · 体重和活动",
-                     "体重（SparkyFitness）和 7 天均值、每日步数、活动能量。饮食明细在 SparkyFitness 里看。", L)
+                     "体重和 7 天均值、每日步数、活动能量。饮食明细在今天页里看。", L)
 
 
 # ---------------------------------------------------------------- 4. Journal and reminders

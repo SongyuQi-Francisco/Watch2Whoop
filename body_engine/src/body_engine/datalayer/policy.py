@@ -2,7 +2,8 @@
 
 Caller: the identity of one call, taken only from what the server trusts (a token, the stdio process configuration),
 never from what the client says about itself. Policy: the application's answer to "may this viewer see that owner's
-data of this scope"; the framework decides the rest (writes only for oneself, read-only callers never write)."""
+data of this scope"; the framework decides the rest (writes only for oneself, read-only callers never write).
+SelfOnly is the default answer: nobody sees anybody else's data."""
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -15,7 +16,16 @@ class Caller:
 
 
 class Policy(Protocol):
+    """Asked on every tool call, also when viewer_id == owner_id (answer True there; scope "" = a tool without a data scope)."""
+
     def can_view(self, conn, viewer_id: int, owner_id: int, scope: str) -> bool: ...
+
+
+class SelfOnly:
+    """The default Policy, for an application without sharing."""
+
+    def can_view(self, conn, viewer_id: int, owner_id: int, scope: str) -> bool:
+        return viewer_id == owner_id
 
 
 def resolve_owner(viewer_id: int, args: dict, owner_arg: str = "user") -> int:

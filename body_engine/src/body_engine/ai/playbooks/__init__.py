@@ -24,8 +24,9 @@ FALLBACK = {"plan_shopping": False, "plan_training_week": True, "weekly_review":
 # (issue #150; tests/test_playbooks.py checks the tools against that list too).
 FALLBACK_WEB = {"plan_shopping"}
 # Tools a playbook can do without: it says what to do when they are missing (weekly_review: suggest the numbers instead of
-# changing the nutrition goals). Not counted when checking FALLBACK against the whitelist.
-OPTIONAL_TOOLS = {"weekly_review": {"set_nutrition_goals"}}
+# changing the nutrition goals; memory_review: only tell the user which status card items look wrong or old). Not counted when
+# checking FALLBACK against the whitelist.
+OPTIONAL_TOOLS = {"weekly_review": {"set_nutrition_goals"}, "memory_review": {"set_status_items"}}
 FALLBACK_NO = "这件事需要用户自己的 AI（托底 AI 没有它要用的工具）：告诉用户可以在「我 → AI 设置」接入自己的 AI；能做的部分照常帮用户做。"
 # One line at the top of every playbook, so the MCP prompt and get_playbook stay the same text (#109 review)
 FIND_LINE = "提到的工具不在你的工具列表里时，用 find_tools 找，再用 run_read_tool / run_write_tool 调。"

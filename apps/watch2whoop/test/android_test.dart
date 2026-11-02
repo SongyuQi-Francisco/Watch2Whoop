@@ -129,7 +129,7 @@ void main() {
     });
 
     test('mic off = the page keeps the keyboard dictation key', () {
-      expect(kFeaturesNoMicJs, contains('{mic:false,syncCenter:true}'));
+      expect(kFeaturesNoMicJs, contains('{mic:false,syncCenter:true,syncRepair:true}'));
       expect(kFeaturesNoMicJs.replaceAll('mic:false', 'mic:true'), kFeaturesJs);
     });
   });

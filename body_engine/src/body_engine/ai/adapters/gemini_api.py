@@ -42,13 +42,15 @@ class GeminiAdapter(Adapter):
                 out.append(types.Content(role="user", parts=parts))
         return out
 
+    def tool_defs(self, tools) -> list[dict]:
+        return [{"name": t.name, "description": t.description, "parameters_json_schema": self.parameters(t)} for t in tools]
+
     def stream_turn(self, system, history, tools):
         client = genai.Client(api_key=self.api_key, http_options=types.HttpOptions(timeout=TIMEOUT_S * 1000))
         config = types.GenerateContentConfig(
             system_instruction=system, max_output_tokens=MAX_OUTPUT_TOKENS,
             tools=(([types.Tool(function_declarations=[
-                types.FunctionDeclaration(name=t.name, description=t.description, parameters_json_schema=t.input_schema)
-                for t in tools])] if tools else [])   # none for the history fold call (ai/context.py)
+                types.FunctionDeclaration(**d) for d in self.tool_defs(tools)])] if tools else [])   # none for the history fold call (ai/context.py)
                 + ([types.Tool(google_search=types.GoogleSearch()), types.Tool(url_context=types.UrlContext())] if self.web else []))
             or None,
             tool_config=(types.ToolConfig(function_calling_config=types.FunctionCallingConfig(mode="NONE"))

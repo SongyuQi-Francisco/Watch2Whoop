@@ -156,6 +156,7 @@ span.dash { color: var(--text-3); }   /* Only for the "—" placeholder; the out
   background: var(--surface); font-size: 13px; color: var(--text-2); font-weight: 500;
 }
 .chip b { color: var(--text); font-weight: 600; }
+a.chip { text-decoration: none; }
 .chip-row { display: flex; justify-content: center; margin-top: 12px; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); flex-shrink: 0; }
 .dot.good { background: var(--good); } .dot.mid { background: var(--mid); } .dot.bad { background: var(--bad); }

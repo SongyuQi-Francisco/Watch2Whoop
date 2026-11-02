@@ -22,8 +22,7 @@ import psycopg
 from .. import auth, sparky_client
 from ..assistant import briefing, sparky_write
 from ..i18n import L
-from ..ownstore import mirror
-from . import catalog, loads, params as P, plans
+from . import catalog, combo, loads, params as P, plans
 
 MAX_SETS = 20
 MAX_EXERCISES = 30
@@ -73,6 +72,9 @@ def _card(item: dict, rows: dict[str, dict], ctx: loads.Context, set_factor: flo
         "cues": item.get("cues"),
         "note": item.get("note"),
         "added_for_day": bool(item.get("added_for_day")),
+        "group": item.get("group"),   # the exercises of one superset ("A + B", combo.py) share it; the page draws them together
+        # FB-21: a name the library does not know is still a card, flagged, with the exercises it could be swapped for
+        **({"unresolved": True, "candidates": item.get("candidates") or []} if item.get("unresolved") else {}),
         "modality": item.get("modality") or row.get("modality") or "weight_reps",
         "per_side": bool(item.get("per_side")),
         "sets_text": item.get("sets_text"),
@@ -92,11 +94,14 @@ def _card(item: dict, rows: dict[str, dict], ctx: loads.Context, set_factor: flo
 def _minutes(cards: list[dict]) -> int | None:
     """The collapsed plan card's "about N minutes": sets x (work + rest) of the exercises that can be done (params EST_*)."""
     secs = 0
-    for c in cards:
+    last_of = {c["group"]: i for i, c in enumerate(cards) if c.get("group") and c["status"] != "banned"}   # a superset rests once, after its last exercise
+    for i, c in enumerate(cards):
         if c["status"] == "banned":
             continue
         t = c["target"]
         rest = P.EST_DEFAULT_REST_SEC if t.get("rest_sec") is None else t["rest_sec"]
+        if c.get("group") and last_of[c["group"]] != i:
+            rest = 0
         secs += t["sets"] * ((t.get("duration_s") or P.EST_SET_WORK_SEC) + rest)
     if not secs:
         return None
@@ -109,13 +114,26 @@ def _sparky_plan_items(conn: psycopg.Connection, viewer_id: int, owner_id: int, 
     from ..web import views
     sessions = []
     for p in views.training_today(conn, viewer_id, owner_id, day).get("planned") or []:
-        items = []
+        items, groups = [], 0
         for x in p["exercises"]:
             slug = ctx.index.slug_for(x.get("exercise_id"), x.get("name"))
-            row = {k: v for k, v in (ctx.index.rows.get(slug or "") or {}).items() if not k.startswith("_")}
             n = re.match(r"(\d+)", x.get("sets_text") or "")
-            items.append({**row, **x, "slug": slug, "name_zh": x.get("name"), "app_exercise_id": x.get("exercise_id"),
-                          "sets": int(n.group(1)) if n else 3})
+            sets = int(n.group(1)) if n else 3
+            if slug is None:   # FB-21: not in the library: "A + B" becomes a superset, any other name stays a flagged card
+                name = (x.get("name") or "").strip() or str(x.get("exercise_id") or "")
+                parts = combo.parts_of(conn, owner_id, name)
+                if parts:
+                    groups += 1
+                    for part in parts:
+                        items.append(loads.attach(ctx, plans._normalize_item(
+                            conn, owner_id, {"slug": part, "sets": sets, "rep_low": x.get("rep_low"), "rep_high": x.get("rep_high"),
+                                             "group": f"ss{groups}"}, hints=True)))
+                else:
+                    items.append({**x, "slug": name, "name_zh": name, "app_exercise_id": x.get("exercise_id"), "sets": sets,
+                                  "unresolved": True, "candidates": plans.unresolved_hints(conn, owner_id, name)})
+                continue
+            row = {k: v for k, v in (ctx.index.rows.get(slug) or {}).items() if not k.startswith("_")}
+            items.append({**row, **x, "slug": slug, "name_zh": x.get("name"), "app_exercise_id": x.get("exercise_id"), "sets": sets})
         sessions.append({"name": p["name"], "exercises": items})
     return sessions
 
@@ -141,7 +159,8 @@ def view(conn: psycopg.Connection, viewer_id: int, owner_id: int, day: date | No
             sessions = []
         plan, rest_day, change, removed = None, False, None, []
     policy = catalog.media_policy(conn)   # which demo pictures may be shown (exercise_media_licensed / _free_db_off)
-    rows = {r["slug"]: catalog.media_view(r, *policy) for r in catalog.catalog_rows(conn)}
+    need = {item.get("slug") for p in sessions for item in p["exercises"]}   # only the planned rows, not all ~6,300
+    rows = {r["slug"]: catalog.media_view(r, *policy) for r in catalog.catalog_rows(conn) if r["slug"] in need}
     out_sessions = []
     for p in sessions:
         exs = []
@@ -266,8 +285,8 @@ def submit(conn: psycopg.Connection, user_id: int, day: date, allow_duplicate: b
         raise PermissionError(L(f"禁用动作不能记录：{'、'.join(banned)}", f"Banned exercises can't be logged: {', '.join(banned)}"))
     if not exercises:
         raise ValueError(L("先勾选做完的组", "Tick the sets you have done first"))
-    try:
-        client = client or sparky_client.write_client_for_user(conn, user_id)
+    try:   # SparkyFitness, or the own tables when own_food_only (issue #252)
+        be = sparky_write.backend(conn, user_id, client)
     except (sparky_client.SparkyError, ValueError):
         raise LookupError(L("训练记录还没连接，先连接再提交", "The training log is not connected yet; connect it, then submit"))
     old_id = row.get("sparky_entry_id")
@@ -277,17 +296,17 @@ def submit(conn: psycopg.Connection, user_id: int, day: date, allow_duplicate: b
         # a resubmit replaces the page's own earlier workout (deleted below), so it is not a duplicate of it
         "allow_duplicate": allow_duplicate or bool(old_id),
         "create_missing_exercises": True,   # exercises of the user's own plan
-    }, client=client)
+    }, client=be)
     if res.get("skipped_duplicate"):
         return {"submitted": False, "duplicate": True,
                 "reason": L("今天已经记过这些动作（可能是 AI 或 SparkyFitness 里记的）", "These exercises are already logged today (by your AI or in SparkyFitness)")}
     new_id = res["created"]["id"]
     if old_id and str(old_id) != str(new_id):
         try:
-            client.request("DELETE", f"/exercise-preset-entries/{old_id}")
+            be.delete_session_id(old_id)
         except sparky_client.SparkyError:
             pass   # deleted in SparkyFitness already
-        mirror.after_write(conn, user_id, client, workouts=[day])   # dual write (issue #252): the replaced one is gone
+        be.after_write(workouts=[day])   # dual write (issue #252): the replaced one is gone
     row = conn.execute(
         """UPDATE training_session_logs SET status = 'submitted', sparky_entry_id = %s, submitted_at = now(), updated_at = now()
            WHERE user_id = %s AND date = %s AND source = 'page' RETURNING *""", (str(new_id), user_id, day)).fetchone()

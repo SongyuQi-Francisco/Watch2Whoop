@@ -111,6 +111,21 @@ def client_for_user(conn: psycopg.Connection, user_id: int) -> SparkyClient:
     return SparkyClient(path.read_text().strip())
 
 
+def reader_for_user(conn: psycopg.Connection, user_id: int):
+    """What the read paths use: the own tables (ownstore/read.OwnReader) when this user's reads come from them
+    (flags own_food_read / own_food_only, ownstore/source.py), else the SparkyFitness read-only client as before.
+    The module functions below (training_log, food_entries, weight, exercises, …) accept either."""
+    from .ownstore import source
+    if source.reads_own(conn, user_id):
+        from .ownstore.read import OwnReader
+        return OwnReader(conn, user_id, only=source.only(conn, user_id))
+    return client_for_user(conn, user_id)
+
+
+def _own(client) -> bool:
+    return getattr(client, "own", False) is True
+
+
 # What the Today page shows for the training log source (issue #66 FB-4). Bilingual: the page picks label / label_en
 # (#20's L() / tr() once it lands); the AI gets the same state in get_briefing / training tool results.
 LINK_TEXT = {
@@ -143,6 +158,9 @@ def link_state(conn: psycopg.Connection, user_id: int, probe: bool = False) -> d
     row = conn.execute("SELECT sparky_key_name, sparky_user_id FROM users WHERE id = %s", (user_id,)).fetchone()
     if row is None:
         return out("not_linked")
+    from .ownstore import source
+    if source.reads_own(conn, user_id):   # the log lives in Body Engine's own tables (issue #252): always there
+        return out("connected")
     try:
         client = client_for_user(conn, user_id)
     except SparkyError as e:
@@ -223,6 +241,8 @@ def _session(s: dict) -> dict:
 
 def training_log(client: SparkyClient, start: date, end: date) -> list[dict]:
     """Workout records in [start, end] (ascending by date); each workout contains exercises and per-set reps, weight, RIR."""
+    if _own(client):
+        return client.training_log(start, end)
     out, page = [], 1
     while True:
         res = client.get("/v2/exercise-entries/history", page=page, pageSize=HISTORY_PAGE)
@@ -252,6 +272,8 @@ def _food_entry(e: dict) -> dict:
 def food_entries(client: SparkyClient, start: date, end: date) -> list[dict]:
     """Every food entry in [start, end] (portion already converted to this entry's total nutrition).
     id is the SparkyFitness entry id (undo_sparky_entry / DELETE .../nutrition/entries/{id}); source=body_assistant = written by this system's AI."""
+    if _own(client):
+        return client.food_entries(start, end)
     return [_food_entry(e) for e in client.get(f"/food-entries/range/{start.isoformat()}/{end.isoformat()}")]
 
 
@@ -260,6 +282,8 @@ def nutrition(client: SparkyClient, start: date, end: date, entries: bool = True
     Days without records total 0 (not necessarily nothing eaten, maybe just not logged).
     Targets are looked up by date (goal_for_date, which follows the weekly goal plan switching training / rest days); the default goal in the report endpoint is not used.
     SparkyFitness-only view: the app uses nutrition/daily.py instead (goals from goals/nutrition.py, sugar extras, coverage)."""
+    if _own(client):
+        raise SparkyError("nutrition() reads the SparkyFitness report; use nutrition/daily.py")
     days = client.get("/reports/nutrition-trends-with-goals", startDate=start.isoformat(), endDate=end.isoformat())
     out = {"days": []}
     for d in days:
@@ -280,7 +304,13 @@ def nutrition(client: SparkyClient, start: date, end: date, entries: bool = True
 # ---------------------------------------------------------------- weight / body measurements
 def weight(client: SparkyClient, start: date, end: date) -> list[dict]:
     """Weigh-in / body data records in [start, end] (SparkyFitness check-ins), only those with values."""
-    rows = client.get(f"/measurements/check-in-measurements-range/{start.isoformat()}/{end.isoformat()}")
+    if _own(client):
+        return client.weight(start, end)
+    return weight_rows(client.get(f"/measurements/check-in-measurements-range/{start.isoformat()}/{end.isoformat()}"))
+
+
+def weight_rows(rows: list[dict]) -> list[dict]:
+    """Check-in records -> weigh-in rows (date + the values present), ascending by date."""
     keys = {"weight": "weight_kg", "waist": "waist_cm", "body_fat_percentage": "body_fat_pct",
             "muscle_mass_kg": "muscle_mass_kg", "height": "height_cm"}
     out = []
@@ -317,6 +347,8 @@ def _json_list(v) -> list:
 
 def exercises(client: SparkyClient) -> list[dict]:
     """This user's own exercise library (self-created + migrated); per exercise: id, name, category, primary muscles, description."""
+    if _own(client):
+        return client.exercises()
     out, page = [], 1
     while True:
         res = client.get("/exercises", currentPage=page, itemsPerPage=100, ownershipFilter="mine")
@@ -331,6 +363,8 @@ def exercises(client: SparkyClient) -> list[dict]:
 
 def workout_presets(client: SparkyClient) -> dict[int, dict]:
     """Workout templates: id -> {name, exercises: [{exercise_id, name, progression_mode, rep_goal, increment_value, sets}]}"""
+    if _own(client):
+        return client.workout_presets()
     out, page = {}, 1
     while True:
         res = client.get("/workout-presets", page=page, limit=100)
@@ -351,6 +385,8 @@ def workout_presets(client: SparkyClient) -> dict[int, dict]:
 
 def workout_plans(client: SparkyClient) -> list[dict]:
     """Weekly workout plan (SparkyFitness workout plan template). day_of_week: 0 = Sunday ... 6 = Saturday."""
+    if _own(client):
+        return client.workout_plans()
     return [{"id": t["id"], "name": t["plan_name"], "start_date": (t.get("start_date") or "")[:10] or None,
              "end_date": (t.get("end_date") or "")[:10] or None, "is_active": t.get("is_active"),
              "schedule_type": t.get("schedule_type"),
@@ -367,6 +403,8 @@ def goal_for_date(client: SparkyClient, day: date) -> dict:
     Note the goal in /reports/nutrition-trends-with-goals is the default goal and does not follow the weekly goal plan, so it is queried separately.
     Only the active weekly goal plan is followed (dates before it get the default goal), so past dates are not reliable:
     goals/nutrition.py uses this only as the fallback before a user's first Body Engine goal version."""
+    if _own(client):
+        return client.goal_for_date(day)
     g = client.get(f"/goals/by-date/{day.isoformat()}")
     return {"date": day.isoformat(), "name": g.get("preset_name"), "calories": g.get("calories"),
             "protein_g": g.get("protein"), "carbs_g": g.get("carbs"), "fat_g": g.get("fat"),

@@ -1,4 +1,5 @@
 import Flutter
+import Network
 import UIKit
 import UserNotifications
 import OpenWearablesHealthSDK
@@ -25,6 +26,14 @@ import HealthKit
     if let host = (creds["host"] ?? nil) as? String, !host.isEmpty, sdk.isSyncActive {
       sdk.configure(host: host)
     }
+    // History backfill (Backfill.swift): its BGProcessingTask must be registered before launch finishes, and its
+    // background upload session recreated so uploads that finished while the app was not running are delivered
+    Backfill.register()
+    Backfill.shared.attach()
+    // The app's own sync engine (#219 A2): its BGTasks before launch finishes, its HealthKit observers on every launch
+    // (also the background launches HealthKit makes for them); nothing runs unless the server turned it on
+    SyncEngineChannel.attach()
+    SyncEngine.register()
     // Push notifications (#175): set before launch finishes so a tap that cold-starts the app reaches didReceive
     UNUserNotificationCenter.current().delegate = self
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
@@ -36,14 +45,20 @@ import HealthKit
     SyncLogBuffer.shared.attach(to: OpenWearablesHealthSDK.shared)
 
     guard let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "Watch2WhoopNative") else { return }
+    DeviceState.shared.start()
     let native = FlutterMethodChannel(name: "watch2whoop/native", binaryMessenger: registrar.messenger())
     native.setMethodCallHandler { call, result in
       switch call.method {
       case "drainLog": result(SyncLogBuffer.shared.drain())
       case "takeLinks": result(LinkInbox.shared.take())
+      // What may hold sync back right now (sync_bridge.dart syncStatus, the page's `net`): no health values
+      case "deviceState": result(DeviceState.shared.snapshot())
       default:
         // raw*: beat-to-beat HRV series and ECG read for Body Engine (RawSync.swift)
-        if !RawSync.shared.handle(call, result) { result(FlutterMethodNotImplemented) }
+        // engine* / backfill*: the app's own sync engine and history backfill (SyncEngineChannel.swift, #219)
+        if !RawSync.shared.handle(call, result) && !SyncEngineChannel.handle(call, result) {
+          result(FlutterMethodNotImplemented)
+        }
       }
     }
     // watch2whoop://setup?… (opened by scanning the setup QR code with the camera): store it first, Dart picks it up later
@@ -53,11 +68,25 @@ import HealthKit
     let push = FlutterMethodChannel(name: "watch2whoop/push", binaryMessenger: registrar.messenger())
     PushBridge.shared.channel = push
     push.setMethodCallHandler { call, result in PushBridge.shared.handle(call, result) }
+    // Jarvis voice input with the on-device recogniser, and the Today page's haptics (#53, VoiceInput.swift)
+    let voice = FlutterMethodChannel(name: "watch2whoop/voice", binaryMessenger: registrar.messenger())
+    VoiceBridge.shared.channel = voice
+    voice.setMethodCallHandler { call, result in VoiceBridge.shared.handle(call, result) }
+    // Native SwiftUI views over the Today page (#247 phase 2, NativeUI.swift): nothing is drawn until Dart switches them on
+    let nativeUi = FlutterMethodChannel(name: "watch2whoop/nativeui", binaryMessenger: registrar.messenger())
+    NativeUI.shared.channel = nativeUi
+    nativeUi.setMethodCallHandler { call, result in NativeUI.shared.handle(call, result) }
     #if DEBUG && targetEnvironment(simulator)
     let debug = FlutterMethodChannel(name: "watch2whoop/debug", binaryMessenger: registrar.messenger())
     debug.setMethodCallHandler { call, result in
       if call.method == "seedHealthData", #available(iOS 16.0, *) {
         DebugHealthSeeder.seed { result($0) }
+      } else if call.method == "deleteTestSample", #available(iOS 16.0, *) {
+        // the newest test heart rate sample: the engine's next round must send its UUID in deleted[]
+        DebugHealthSeeder.deleteNewest { result($0) }
+      } else if call.method == "runBackfillTask" {
+        // the BGProcessingTask's body (BGTaskScheduler does not run tasks in the simulator)
+        Backfill.shared.runSlices(expired: { false }) { ok in DispatchQueue.main.async { result(ok) } }
       } else {
         result(FlutterMethodNotImplemented)
       }
@@ -70,6 +99,11 @@ import HealthKit
     handleEventsForBackgroundURLSession identifier: String,
     completionHandler: @escaping () -> Void
   ) {
+    if identifier == Backfill.sessionId {
+      Backfill.shared.sessionCompletion = completionHandler
+      Backfill.shared.attach()
+      return
+    }
     OpenWearablesHealthSdkPlugin.setBackgroundCompletionHandler(completionHandler)
   }
 
@@ -174,6 +208,59 @@ final class PushBridge {
           let ent = plist["Entitlements"] as? [String: Any],
           let env = ent["aps-environment"] as? String else { return "production" }
     return env == "development" ? "sandbox" : "production"
+  }
+}
+
+/// The phone's state that decides whether syncing can work now (for the Today page's sync status, sync_bridge.dart):
+/// Background App Refresh, Low Power Mode, whether protected data (HealthKit) is readable (locked phone), and the network
+/// path. Nothing about health data, nothing leaves the phone except through the page the user is looking at.
+final class DeviceState {
+  static let shared = DeviceState()
+  private let monitor = NWPathMonitor()
+  private let queue = DispatchQueue(label: "watch2whoop.devicestate")
+  private var path: NWPath?
+  private var started = false
+
+  func start() {
+    guard !started else { return }
+    started = true
+    monitor.pathUpdateHandler = { [weak self] p in self?.queue.async { self?.path = p } }
+    monitor.start(queue: queue)
+  }
+
+  /// net: wifi / cellular / wired / other / constrained (Low Data Mode) / offline / unknown (not known yet)
+  func snapshot() -> [String: Any] {
+    let p = queue.sync { path }
+    var net = "unknown"
+    if let p = p {
+      if p.status != .satisfied {
+        net = "offline"
+      } else if p.isConstrained {
+        net = "constrained"
+      } else if p.usesInterfaceType(.wifi) {
+        net = "wifi"
+      } else if p.usesInterfaceType(.cellular) {
+        net = "cellular"
+      } else if p.usesInterfaceType(.wiredEthernet) {
+        net = "wired"
+      } else {
+        net = "other"
+      }
+    }
+    let refresh: String
+    switch UIApplication.shared.backgroundRefreshStatus {
+    case .available: refresh = "on"
+    case .denied: refresh = "off"
+    case .restricted: refresh = "restricted"
+    @unknown default: refresh = "unknown"
+    }
+    return [
+      "net": net,
+      "expensive": p?.isExpensive ?? false,
+      "backgroundRefresh": refresh,
+      "lowPower": ProcessInfo.processInfo.isLowPowerModeEnabled,
+      "protectedData": UIApplication.shared.isProtectedDataAvailable,
+    ]
   }
 }
 
@@ -306,6 +393,14 @@ enum DebugHealthSeeder {
         samples.append(HKCategorySample(type: HKCategoryType(.sleepAnalysis), value: stage.rawValue, start: t, end: end, metadata: meta))
         t = end
       }
+      // Older history for the backfill (Backfill.swift): days 15–44 ago, 12 heart rate samples and one sleep stage a day
+      for d in 15..<45 {
+        let day = cal.date(bySettingHour: 12, minute: 0, second: 0, of: now.addingTimeInterval(-Double(d) * 86400))!
+        for h in 0..<12 { qs(.heartRate, bpm, 60 + Double((d + h) % 25), day.addingTimeInterval(Double(h) * 3600 - 6 * 3600)) }
+        let night = day.addingTimeInterval(-9 * 3600)
+        samples.append(HKCategorySample(type: HKCategoryType(.sleepAnalysis), value: HKCategoryValueSleepAnalysis.asleepCore.rawValue,
+                                        start: night, end: night.addingTimeInterval(5 * 3600), metadata: meta))
+      }
       // A 50-minute strength workout yesterday at 18:00
       let ws = cal.date(bySettingHour: 18, minute: 0, second: 0, of: now.addingTimeInterval(-86400))!
       let cfg = HKWorkoutConfiguration()
@@ -334,6 +429,22 @@ enum DebugHealthSeeder {
         }
       }
     }
+  }
+
+  /// Deletes the newest heart rate sample this seeder wrote (metadata W2WTestData = 1).
+  static func deleteNewest(_ done: @escaping (String) -> Void) {
+    // only this app's own samples can be deleted by it (another build on the simulator is another source)
+    let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [
+      HKQuery.predicateForObjects(withMetadataKey: "W2WTestData"), HKQuery.predicateForObjects(from: HKSource.default()),
+    ])
+    let q = HKSampleQuery(sampleType: HKQuantityType(.heartRate), predicate: pred, limit: 1,
+                          sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)]) { _, list, _ in
+      guard let s = list?.first else { DispatchQueue.main.async { done("nothing to delete") }; return }
+      store.delete(s) { ok, error in
+        DispatchQueue.main.async { done(ok ? "deleted \(s.uuid.uuidString.lowercased())" : "delete failed: \(error?.localizedDescription ?? "-")") }
+      }
+    }
+    store.execute(q)
   }
 
   /// The quantity types RawSync reads itself (lib/src/hk_types.dart), each with a plausible value in its registry unit.

@@ -506,10 +506,126 @@ def test_provisioning_failure_is_retried(client, dsn, _env, monkeypatch):
     assert prov["state"] == "failed" and prov["steps"] == {"ow": "done", "sparky": "error", "journal": "done", "memory": "done"}
     _env["sparky"].fail = False
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        row = conn.execute("SELECT last_error, next_attempt_at > now() AS later FROM user_provisioning WHERE user_id = %s",
+                           (s["me"]["id"],)).fetchone()
+        assert "sparky: RuntimeError: SparkyFitness sign-up 400" in row["last_error"] and row["later"]
+        # backoff: not due yet, so the hourly run leaves it alone
+        assert not [x for x in provision.run_pending(conn) if x["user_id"] == s["me"]["id"]]
+        conn.execute("UPDATE user_provisioning SET next_attempt_at = now() - interval '1 second' WHERE user_id = %s",
+                     (s["me"]["id"],))
+        conn.commit()
         done = [x for x in provision.run_pending(conn) if x["user_id"] == s["me"]["id"]]
         assert done and done[0]["state"] == "done"
         # the password saved before the first attempt is reused (same SparkyFitness account)
         assert _env["sparky"].accounts[-1][0] == f"w2w-u{s['me']['id']}@users.watch2whoop.invalid"
+        row = conn.execute("SELECT last_error, next_attempt_at FROM user_provisioning WHERE user_id = %s",
+                           (s["me"]["id"],)).fetchone()
+        assert row["last_error"] is None and row["next_attempt_at"] is None
+
+
+def test_provisioning_skips_sparkyfitness_once_own_only_for_everyone(client, dsn, _env):
+    """Issue #252: with own_food_only on for everyone the logs live in Body Engine; no SparkyFitness account is made."""
+    from body_engine.rollout import flags
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        flags.set_flag(conn, "own_food_only", "all", actor="test")
+        conn.commit()
+    try:
+        s = _email_login(client, "ownonly@example.com", "app")
+        h = {"Authorization": f"Bearer {s['token']}"}
+        r = client.post("/v1/account/redeem-invite", headers=h, json={"code": _batch(dsn)["codes"][0]})
+        assert r.status_code == 200 and r.json()["provisioning"]["state"] == "done"
+        assert r.json()["provisioning"]["steps"]["sparky"] == "skipped"
+        assert not [a for a in _env["sparky"].accounts if a[0] == f"w2w-u{s['me']['id']}@users.watch2whoop.invalid"]
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            assert sparky_client.link_state(conn, s["me"]["id"])["state"] == "connected"   # no "not connected" hint
+    finally:
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            flags.set_flag(conn, "own_food_only", "off", actor="test")
+            conn.commit()
+
+
+def test_new_accounts_on_the_engine_get_no_ow(client, dsn, _env, monkeypatch):
+    """#219 S5b: while apple_sync_new_accounts (global) and apple_sync_engine are both `all`, provisioning creates no OW
+    user and the account starts in the sync mode app; no OW invitation code anywhere; the data status, the broken check
+    and the rollback follow the mode. Off again afterwards (the database is shared by the module)."""
+    from body_engine.rawdata import cutover, engine as rx_engine
+    from body_engine.rollout import flags
+    from body_engine.sync import broken, data_status
+    created = len(_env["ow"].created)
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        assert cutover.new_accounts(conn)["reason"] == "flag_off"
+        flags.set_flag(conn, rx_engine.NEW_ACCOUNTS_FLAG, "all", actor="test")
+        flags.set_flag(conn, rx_engine.FLAG, "cohort", cohort="beta", actor="test")
+        assert cutover.new_accounts(conn)["reason"] == "engine_not_all"   # a new account would sync nowhere
+        flags.set_flag(conn, rx_engine.FLAG, "all", actor="test")
+        assert cutover.new_accounts(conn) == {"on": True, "flag": "all", "engine": "all", "reason": None}
+        conn.commit()
+    try:
+        s = _email_login(client, "engine-only@example.com", "app")
+        h = {"Authorization": f"Bearer {s['token']}"}
+        r = client.post("/v1/account/redeem-invite", headers=h, json={"code": _batch(dsn)["codes"][0]})
+        assert r.status_code == 200 and r.json()["provisioning"]["state"] == "done", r.text
+        uid = s["me"]["id"]
+        assert len(_env["ow"].created) == created   # no OW user
+        assert client.post("/v1/account/ow-invitation", headers=h).json()["detail"] == "sync_engine"
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            assert conn.execute("SELECT ow_user_id FROM users WHERE id = %s", (uid,)).fetchone()["ow_user_id"] is None
+            assert rx_engine.mode(conn, uid) == "app" and cutover.desired(conn, uid) == "app"
+            st = cutover.state(conn, uid)
+            assert st["post_check"]["skipped"] == "new_account" and "new account" in st["note"]
+            # the kill switch apple_sync_primary (off here) does not take an engine-only account back: nothing to go back to
+            assert flags.rows(conn)[rx_engine.PRIMARY_FLAG]["state"] == "off"
+            assert cutover.apply(conn, uid) == [{"user_id": uid, "action": "none", "mode": "app"}]
+            assert cutover.rollback(conn, uid)["reason"] == "no_ow" and rx_engine.mode(conn, uid) == "app"
+            assert cutover.start_on_engine(conn, uid)["reason"] == "already_app"
+            # the setup link of an activation code carries no OW address and no invitation code
+            act = activation.create(conn, uid, label="phone")
+            conn.commit()
+            ds = data_status.collect(conn, uid, extended=False)
+            assert ds["mode"] == "app" and {t["channel"] for t in ds["types"]} == {"app"}
+            assert "sdk_unsupported" not in next(t for t in ds["types"] if t["key"] == "wrist_temperature")["notes"]
+            b = broken.check(conn, uid)
+            assert (b["channel"], b["reason"]) == ("app", "never")
+        _ow_signing(monkeypatch)
+        monkeypatch.setenv("BODY_OW_PUBLIC_URL", "https://sync.example.com")
+        r = client.post("/v1/web/activate", json={"code": act["code"]})
+        assert r.status_code == 200 and r.json()["note"] == "sync_engine" and r.json()["sync"] is False
+        assert "code=" not in r.json()["setup_link"] and "ow=" not in r.json()["setup_link"]
+    finally:
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            flags.set_flag(conn, rx_engine.NEW_ACCOUNTS_FLAG, "off", actor="test")
+            flags.set_flag(conn, rx_engine.FLAG, "off", actor="test")
+            conn.commit()
+    # switched off: the next new account gets its OW user again
+    s2 = _email_login(client, "ow-again@example.com", "app")
+    r = client.post("/v1/account/redeem-invite", headers={"Authorization": f"Bearer {s2['token']}"},
+                    json={"code": _batch(dsn)["codes"][0]})
+    assert r.status_code == 200 and len(_env["ow"].created) == created + 1
+
+
+def test_provisioning_backoff_and_transient_retry():
+    from datetime import timedelta
+    assert [provision.backoff(n) for n in (1, 2, 3)] == [timedelta(minutes=10), timedelta(minutes=20), timedelta(minutes=40)]
+    assert provision.backoff(20) == provision.RETRY_MAX
+    calls, slept = [], []
+
+    def flaky():
+        calls.append(1)
+        if len(calls) < 3:
+            raise ConnectionRefusedError("SparkyFitness restarting")
+        return "ok"
+    assert provision._with_retry(flaky, sleep=slept.append) == "ok" and len(calls) == 3 and slept == [2.0, 5.0]
+    calls.clear()
+
+    def bad_request():
+        calls.append(1)
+        raise RuntimeError("SparkyFitness sign-up 400")
+    with pytest.raises(RuntimeError):
+        provision._with_retry(bad_request, sleep=slept.append)
+    assert len(calls) == 1   # not transient: no second try
+    with pytest.raises(provision.TransientError):
+        provision._raise_5xx(503, "sign-up", "busy")
+    provision._raise_5xx(400, "sign-up", "no")   # 4xx is left to the caller
 
 
 def test_web_login_code_for_app_webview(client):
@@ -520,6 +636,22 @@ def test_web_login_code_for_app_webview(client):
     assert client.post("/v1/web/login-code", json={"code": r.json()["code"]}).status_code == 200
     assert client.get("/v1/web/me").json()["me"]["id"] == s["me"]["id"]
     client.cookies.clear()
+
+
+def test_login_code_for_native_app_returns_token(client):
+    """The native iOS app (#340 N8) redeems a setup link's login code for a Bearer token: no cookie, single use."""
+    s = _email_login(client, "native@example.com", "app")
+    code = client.post("/v1/account/web-login-code", headers={"Authorization": f"Bearer {s['token']}"}).json()["code"]
+    client.cookies.clear()
+    r = client.post("/v1/web/login-code", json={"code": code, "client": "app"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["id"] == s["me"]["id"] and body["token"] and body["token"] != s["token"]
+    assert "set-cookie" not in r.headers
+    me = client.get("/v1/web/me", headers={"Authorization": f"Bearer {body['token']}"})
+    assert me.status_code == 200 and me.json()["me"]["id"] == s["me"]["id"]
+    assert client.post("/v1/web/login-code", json={"code": code, "client": "app"}).status_code == 401   # used up
+    assert client.post("/v1/web/login-code", json={"code": code, "client": "other"}).status_code == 422
 
 
 # ---------------------------------------------------------------------------------------------------- deletion, disabled
@@ -584,12 +716,12 @@ def test_purge_stale_pending(dsn):
 def test_methods_and_page_assets(client, monkeypatch):
     monkeypatch.delenv("BODY_REFERRALS_ENABLED", raising=False)
     assert client.get("/v1/auth/methods").json() == {"email": True, "apple": True, "referrals": False, "ios_web": "warn",
-                                                     "open_signup": False}
+                                                     "open_signup": False, "store_signup": False, "invite_required": True}
     monkeypatch.setenv("BODY_MAIL_MODE", "off")
     monkeypatch.delenv("BODY_APPLE_AUDIENCES")
     monkeypatch.setenv("BODY_REFERRALS_ENABLED", "1")
     assert client.get("/v1/auth/methods").json() == {"email": False, "apple": False, "referrals": True, "ios_web": "warn",
-                                                     "open_signup": False}
+                                                     "open_signup": False, "store_signup": False, "invite_required": True}
     assert '<script src="account.js?v=' in client.get("/app/").text   # linked as name?v=<fingerprint>
     js = client.get("/app/account.js")
     assert js.status_code == 200 and "watch2whoop://account-deleted" in js.text

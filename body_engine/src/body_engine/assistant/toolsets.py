@@ -5,25 +5,32 @@ Only the resident core (ai/params.CORE_TOOLS) and, in the in-page chat, the grou
 with each model call; the rest is reached through the meta tools find_tools / run_read_tool / run_write_tool. The caller
 (mcp_server.call_tool, ai/chat._loop) resolves a meta call to the real tool with `resolve`, then runs that tool through
 assistant.tools.run_tool as if it had been called directly. A "context" in the framework is a Today page id here.
-The configuration is read from ai/params on every call, so it stays the single place to change it.
+The configuration is read from ai/params on every call, so it stays the single place to change it; the tools that ask
+first come from the registry (confirm=True on their definitions, dl_app.py).
 """
 from typing import Iterable
 
 from ..ai import params
-from ..ai.datalayer_texts import MESSAGES
 from ..datalayer import toolsets as _ts
 from ..datalayer.toolsets import FIND, RUN_NAMES, RUN_READ, RUN_WRITE, Access  # noqa: F401  (old import path)
+from ..dl_app import APP, META_TOOLS  # noqa: F401  (META_TOOLS: old import path)
 from ..toolspec import OPTIONAL_DEFAULTS
 from .tools import TOOLS, Tool
 
-META_TOOLS: list[Tool] = _ts.meta_tools(params.GROUPS, MESSAGES)
 META_BY_NAME = {t.name: t for t in META_TOOLS}
+_cfg = APP.toolset
 
 
-def _cfg() -> _ts.ToolsetConfig:
-    return _ts.ToolsetConfig(core=params.CORE_TOOLS, groups=params.GROUPS, contexts=params.PAGE_GROUPS,
-                             confirm=params.ALWAYS_CONFIRM, meta=META_TOOLS, find_max=params.FIND_TOOLS_MAX,
-                             messages=MESSAGES, optional_defaults=OPTIONAL_DEFAULTS)
+def budgets() -> _ts.Budgets:
+    """ai/params' size caps in the framework's form (read on every call, like the configuration)."""
+    return _ts.Budgets(core=params.CORE_BUDGET_CHARS, meta=params.META_BUDGET_CHARS, listing=params.MCP_LIST_BUDGET_CHARS,
+                       context=params.PAGE_BUDGET_CHARS, groups=params.GROUP_BUDGET_CHARS)
+
+
+def problems() -> list[str]:
+    """The framework's contract check of Watch2Whoop's tools (datalayer.testing.check_toolset); empty = fine."""
+    from ..datalayer.testing import check_toolset
+    return check_toolset(_cfg(), TOOLS, budgets())
 
 
 def definition_chars(tools: Iterable[Tool]) -> int:

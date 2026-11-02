@@ -415,3 +415,108 @@ def test_pantry_view_page_source():
     used = js[js.index("async function usedUp"):js.index("function storesHtml")]
     assert "quantity: 0" in used and 'tr("撤销")' in used and "quantity: p.quantity" in used
     assert "i.pantry_label" in js
+
+
+# ---------------------------------------------------------------- product archive fields (#291, user feedback FB-16)
+FULL_LABEL = {"name": "全脂牛奶", "brand": "Dairy Farmers", "package_size": 2000, "package_unit": "ml", "category": "dairy_eggs",
+              "nutrition": {"kcal": 64, "protein_g": 3.4, "carbs_g": 4.8, "fat_g": 3.6, "sat_fat_g": 2.4, "trans_fat_g": 0.1,
+                            "sugar_g": 4.8, "added_sugar_g": 0, "fiber_g": 0, "sodium_mg": 40, "potassium_mg": 150,
+                            "calcium_mg": 120, "iron_mg": 0.1, "cholesterol_mg": 12},
+              "serving_size": 250, "serving_unit": "ml",
+              "nutrition_serving": {"kcal": 160, "protein_g": 8.5, "carbs_g": 12, "fat_g": 9, "calcium_mg": 300},
+              "ingredients": "Milk (100%)", "allergens": ["Milk"], "allergen_traces": [],
+              "image_url": "https://img.example.org/milk.jpg"}
+
+
+def test_nutrition_table_has_fourteen_items():
+    assert len(P.NUTRITION_KEYS) == 14 and set(P.NUTRITION_KEYS) == set(P.NUTRITION_MAX)
+    assert P.NUTRITION_KEYS[:5] == ("kcal", "protein_g", "carbs_g", "fat_g", "sat_fat_g")
+
+
+def test_product_archive_roundtrip(conn, world):
+    ids, _, _ = world
+    a = ids["A"]
+    p = store.save_product(conn, a, dict(FULL_LABEL))
+    assert p["created"] and p["image_url"] == "https://img.example.org/milk.jpg" and p["ingredients"] == "Milk (100%)"
+    assert p["allergens"] == ["Milk"] and p["allergen_traces"] == []           # [] = recorded as none
+    assert p["nutrition"]["calcium_mg"] == 120 and p["nutrition"]["added_sugar_g"] == 0 and len(p["nutrition"]) == 14
+    assert p["serving_size"] == 250 and p["serving_unit"] == "ml" and p["nutrition_serving"]["kcal"] == 160
+    # a later label photo adds some values: both tables merge, tags are replaced, null = leave alone
+    p2 = store.save_product(conn, a, {"name": "全脂牛奶", "brand": "dairy farmers", "nutrition": {"iron_mg": 0.2, "sodium_mg": None},
+                                      "nutrition_serving": {"fiber_g": 0}, "allergen_traces": ["Soy", "soy", "Tree nuts"]})
+    assert p2["id"] == p["id"] and not p2["created"]
+    assert p2["nutrition"]["iron_mg"] == 0.2 and p2["nutrition"]["sodium_mg"] == 40 and p2["nutrition"]["calcium_mg"] == 120
+    assert p2["nutrition_serving"] == {**FULL_LABEL["nutrition_serving"], "fiber_g": 0}
+    assert p2["allergens"] == ["Milk"] and p2["allergen_traces"] == ["Soy", "Tree nuts"] and p2["ingredients"] == "Milk (100%)"
+    # "" clears text fields; the product is listed with everything
+    p3 = store.save_product(conn, a, {"name": "全脂牛奶", "brand": "Dairy Farmers", "image_url": "", "ingredients": ""})
+    assert p3["image_url"] is None and p3["ingredients"] is None
+    listed = next(x for x in store.list_products(conn, a, "全脂牛奶"))
+    assert listed["nutrition_serving"]["protein_g"] == 8.5 and listed["allergens"] == ["Milk"]
+
+
+def test_old_products_are_unaffected(conn, world):
+    ids, _, _ = world
+    p = store.save_product(conn, ids["A"], {"name": "老商品", "package_size": 500, "package_unit": "g",
+                                            "nutrition": {"kcal": 100, "protein_g": 5, "carbs_g": 10, "fat_g": 4}})
+    assert p["image_url"] is None and p["ingredients"] is None and p["allergens"] is None   # None = never recorded
+    assert p["allergen_traces"] is None and p["serving_size"] is None and p["nutrition_serving"] == {}
+    row = conn.execute("SELECT image_url, ingredients, allergens, serving_size, nutrition_serving FROM grocery_products WHERE id = %s",
+                       (p["id"],)).fetchone()
+    assert row["allergens"] is None and row["nutrition_serving"] == {}
+
+
+@pytest.mark.parametrize("fields, msg", [
+    ({"image_url": "http://img.example.org/a.jpg"}, "https"),
+    ({"image_url": "javascript:alert(1)"}, "https"),
+    ({"image_url": "https://user:pw@img.example.org/a.jpg"}, "https"),
+    ({"image_url": "https://img.example.org/a b.jpg"}, "空格"),
+    ({"image_url": "https://img.example.org/" + "a" * 500}, "最多"),
+    ({"ingredients": "x" * 2001}, "最多"),
+    ({"allergens": "milk"}, "字符串列表"),
+    ({"allergens": [f"a{i}" for i in range(21)]}, "最多"),
+    ({"allergens": ["x" * 41]}, "最多"),
+    ({"nutrition": {"calcium_mg": 120000}}, "不能超过"),                       # g entered as mg
+    ({"nutrition": {"fiber_g": 130}}, "不能超过"),
+    ({"nutrition": {"fat_g": 3, "sat_fat_g": 2, "trans_fat_g": 2}}, "反式脂肪"),
+    ({"nutrition": {"sugar_g": 5, "carbs_g": 10, "added_sugar_g": 8}}, "添加糖"),
+    ({"nutrition": {"potassium": 100}}, "不认识"),
+    ({"nutrition": {"iron_mg": True}}, "≥ 0"),
+    ({"serving_size": 30}, "一起给"),
+    ({"serving_size": 30, "serving_unit": "pcs"}, "g / ml"),
+    ({"serving_size": -1, "serving_unit": "g"}, "> 0"),
+    ({"nutrition_serving": {"kcal": 100}}, "serving_size"),
+    ({"serving_size": 30, "serving_unit": "g", "nutrition_serving": {"protein_g": 40}}, "超过一份"),
+])
+def test_archive_validation(conn, world, fields, msg):
+    ids, _, _ = world
+    with pytest.raises(ValueError, match=msg):
+        store.save_product(conn, ids["A"], {"name": "校验用", **fields})
+    assert conn.execute("SELECT count(*) AS n FROM grocery_products WHERE user_id = %s AND name = '校验用'", (ids["A"],)).fetchone()["n"] == 0
+
+
+def test_archive_over_api_and_tool(client, world):
+    ids, tok, _ = world
+    body = {**FULL_LABEL, "name": "API 牛奶", "brand": "API"}
+    r = client.post("/v1/users/me/grocery/products", json=body, headers=h(tok["B"]))
+    assert r.status_code == 201, r.text
+    j = r.json()
+    assert j["nutrition"]["cholesterol_mg"] == 12 and j["nutrition_serving"]["calcium_mg"] == 300 and j["allergens"] == ["Milk"]
+    assert j["image_url"] == "https://img.example.org/milk.jpg" and j["serving_size"] == 250
+    r = client.post("/v1/users/me/grocery/products", json={"name": "坏图", "image_url": "ftp://x/y.png"}, headers=h(tok["B"]))
+    assert r.status_code == 422 and "https" in r.text
+    r = client.post("/v1/users/me/grocery/products", json={"name": "未知项", "nutrition": {"vitamin_c": 3}}, headers=h(tok["B"]))
+    assert r.status_code == 422                                                # the request model rejects unknown nutrition keys
+    props = TOOLS_BY_NAME["save_product"].input_schema["properties"]
+    assert {"ingredients", "allergens", "allergen_traces", "image_url", "serving_size", "serving_unit", "nutrition_serving"} <= set(props)
+    assert set(props["nutrition"]["properties"]) == set(P.NUTRITION_KEYS)
+
+
+def test_what_the_ai_sees_of_the_archive():
+    from body_engine.grocery import tools as GT
+    p = {"id": 1, "name": "x", "ingredients": "a" * 1000, "allergens": [], "allergen_traces": None, "image_url": None}
+    assert GT._slim_product(p)["ingredients"] == "a" * 1000
+    short = GT._slim_product(p, full=False)["ingredients"]
+    assert len(short) == GT.INGREDIENTS_SHOWN + 1 and short.endswith("…")     # long text is cut only when many products come back
+    out = GT._slim_product(p)
+    assert out["allergens"] == [] and "allergen_traces" not in out and "image_url" not in out   # [] = recorded as none, None = unknown

@@ -214,6 +214,12 @@ def _check_meta(f: dict) -> dict:
     return f
 
 
+def _mirrors(conn, user_id: int) -> bool:
+    """Recipes are mirrored to SparkyFitness meals, except with own_food_only (issue #252: nothing reads the mirror)."""
+    from ..ownstore import source
+    return not source.only(conn, user_id)
+
+
 def _sync_sparky(conn, user_id: int, row: dict, client=None) -> str | None:
     """Create / update this dish's mirror in SparkyFitness (one custom food + one meal), return the meal id. Failures do not affect Body Engine."""
     client = client or sparky_client.write_client_for_user(conn, user_id)
@@ -261,7 +267,7 @@ def create_recipe(conn, user_id: int, data: dict, source: str = "assistant", syn
         (user_id, *cols.values())).fetchone()
     row = _store_flags(conn, row["id"])
     warning = None
-    if sync:
+    if sync and _mirrors(conn, user_id):
         try:
             meal_id = _sync_sparky(conn, user_id, row, client)
             row = conn.execute("UPDATE recipe_meta SET sparky_meal_id = %s WHERE id = %s RETURNING *",
@@ -289,7 +295,8 @@ def update_recipe(conn, user_id: int, recipe_id: int, changes: dict, sync: bool 
     conn.execute(f"UPDATE recipe_meta SET {sets}, updated_at = now() WHERE id = %s", (*f.values(), row["id"]))
     row = _store_flags(conn, row["id"])
     out = view(row, detail=True)
-    if sync and {"name", "ingredients", "servings", "serving_label", "steps", "note"} & set(f) and f.get("active", True):
+    if sync and {"name", "ingredients", "servings", "serving_label", "steps", "note"} & set(f) and f.get("active", True) \
+            and _mirrors(conn, user_id):
         try:
             meal_id = _sync_sparky(conn, user_id, row, client)
             if meal_id != row["sparky_meal_id"]:
@@ -438,7 +445,7 @@ def _context(conn, user_id: int, day: date, client=None) -> dict:
     food_entry_extras), the user's diet constraints and the last 7 days against them, uric acid, the pantry and the logging habits."""
     from ..goals import nutrition as nutrition_goals
     from ..nutrition import daily
-    client = client or sparky_client.client_for_user(conn, user_id)
+    client = client or sparky_client.reader_for_user(conn, user_id)
     goal = nutrition_goals.resolve(conn, user_id, day, client)
     week_food = daily.entries(conn, user_id, day - timedelta(days=6), day, client)
     eaten = [f for f in week_food if f["date"] == day.isoformat()]

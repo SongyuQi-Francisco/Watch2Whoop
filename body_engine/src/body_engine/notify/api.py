@@ -37,6 +37,7 @@ class DeviceIn(BaseModel):
     bundle_id: str | None = Field(None, max_length=200)
     app_version: str | None = Field(None, max_length=40)
     lang: Literal["zh", "en"] | None = None
+    silent: bool = False   # the native app: also wake it with background pushes when the data changed (notify/silent.py)
 
 
 class DeviceOut(BaseModel):
@@ -49,7 +50,7 @@ def add_device(user: str, body: DeviceIn, conn=Depends(get_conn), viewer=Depends
     uid = _self(viewer, user)
     try:
         row = store.register_device(conn, uid, body.token, body.environment, viewer.get("token_id"),
-                                    body.bundle_id, body.app_version, body.lang)
+                                    body.bundle_id, body.app_version, body.lang, silent=body.silent)
     except ValueError:
         raise HTTPException(422, L("设备 token 格式不对", "Invalid device token"))
     conn.commit()

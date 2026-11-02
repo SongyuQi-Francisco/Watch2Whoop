@@ -18,7 +18,10 @@ class SyncStats {
     this.lastNoticeAt,
     this.lastNotice,
     this.authProblem = false,
-  }) : perType = perType ?? <String, int>{};
+    this.failStreak = 0,
+    Map<String, DateTime>? perTypeAt,
+  })  : perType = perType ?? <String, int>{},
+        perTypeAt = perTypeAt ?? <String, DateTime>{};
 
   /// Cumulative successfully uploaded items per type (since app install / reconnect).
   final Map<String, int> perType;
@@ -31,8 +34,16 @@ class SyncStats {
   DateTime? lastNoticeAt;
   SyncNotice? lastNotice;
 
-  /// 401 / refresh token rejected: reconnect with a new invitation code.
+  /// 401 / refresh token rejected: reconnect with a new invitation code. Set by the SDK's auth error events
+  /// (HealthSync, `authErrorStream`) and, as a fallback, by its log lines (an upload with HTTP 401 ...).
   bool authProblem;
+
+  /// Failed uploads since the last accepted one: [kAuthSuspectStreak] client errors in a row without a 2xx count as an
+  /// authentication problem too, so a changed SDK log text cannot hide a dead session for days.
+  int failStreak;
+
+  /// Last accepted upload per type (the SDK's type names, as in [perType]).
+  final Map<String, DateTime> perTypeAt;
 
   int get total => perType.values.fold(0, (a, b) => a + b);
 
@@ -49,6 +60,8 @@ class SyncStats {
     'lastNoticeAt': lastNoticeAt?.toIso8601String(),
     'lastNotice': lastNotice?.name,
     'authProblem': authProblem,
+    'failStreak': failStreak,
+    'perTypeAt': perTypeAt.map((k, v) => MapEntry(k, v.toIso8601String())),
   };
 
   static SyncStats fromJson(Map<String, Object?> j) {
@@ -62,6 +75,11 @@ class SyncStats {
       lastNoticeAt: d('lastNoticeAt'),
       lastNotice: SyncNotice.values.where((n) => n.name == j['lastNotice']).firstOrNull,
       authProblem: (j['authProblem'] as bool?) ?? false,
+      failStreak: (j['failStreak'] as num?)?.toInt() ?? 0,
+      perTypeAt: {
+        for (final e in ((j['perTypeAt'] as Map?) ?? const {}).entries)
+          if (DateTime.tryParse('${e.value}') != null) '${e.key}': DateTime.parse('${e.value}'),
+      },
     );
   }
 
@@ -77,6 +95,10 @@ class SyncStats {
 }
 
 enum SyncNotice { locked, offline, backgroundTimeout }
+
+/// Failed uploads in a row (client errors, no 2xx in between) that count as an authentication problem even without a
+/// recognised 401.
+const int kAuthSuspectStreak = 6;
 
 final _sending = RegExp(r'^Sending \d+ KB, (\d+) items \((.*)\)$');
 final _uploadStage = RegExp(r'^upload=(\S+)');
@@ -109,17 +131,23 @@ class SyncLogParser {
       if (ok) {
         // Background-session retries (outbox-retry) do not know which batch they belong to; only the time is recorded.
         if (stage != 'outbox-retry' && _pending != null) {
-          _pending!.forEach((k, v) => stats.perType[k] = (stats.perType[k] ?? 0) + v);
+          _pending!.forEach((k, v) {
+            stats.perType[k] = (stats.perType[k] ?? 0) + v;
+            stats.perTypeAt[k] = now;
+          });
         }
         _pending = null;
         stats.lastUploadAt = now;
         stats.authProblem = false;
+        stats.failStreak = 0;
         return true;
       }
       _pending = null;
       stats.lastErrorAt = now;
       stats.lastError = status != null ? 'HTTP $status' : (error ?? 'upload failed');
-      if (status == 401) stats.authProblem = true;
+      // 401, or client errors again and again with no accepted upload in between (offline / 5xx do not count)
+      if (status != null && status >= 400 && status < 500) stats.failStreak++;
+      if (status == 401 || stats.failStreak >= kAuthSuspectStreak) stats.authProblem = true;
       return true;
     }
 

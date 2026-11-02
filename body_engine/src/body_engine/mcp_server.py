@@ -1,6 +1,6 @@
 """Body Engine's MCP server: lets users read and write their own data from their own AI client (with their own subscription).
 
-Two transports, the same tools (assistant/tools.py, the same copy the in-Today-page chat uses), the same authorization and audit:
+Two transports, the same tools (dl_app.py, the same copy the in-Today-page chat uses), the same authorization and audit:
 - stdio (main in this file): local Claude Code / Claude desktop / body butler. Identity = one Body Engine token
   (default secrets/body_engine_token_owner), audit channel = BODY_MCP_CHANNEL (default mcp, the body butler uses butler).
 - Streamable HTTP (ai/mcp_http.py, mounted at /mcp): each user connects with their own AI-only token (scope mcp),
@@ -78,11 +78,8 @@ def _butler_prompt(identity: Identity, connect_fn: Callable[[], AbstractContextM
 def _prompts(connect_fn: Callable[[], AbstractContextManager]) -> list[dl_server.PromptSpec]:
     return [dl_server.PromptSpec(
         name=PROMPT_NAME, title="身体管家", description="身体管家的角色设定（根规则 + 和今天页内对话用的同一份设定，提供商无关）",
-        get_description="身体管家", text=lambda identity: _butler_prompt(identity, connect_fn))] + [
-        # the same text get_playbook returns (ai/playbooks/, issue #100)
-        dl_server.PromptSpec(name=n, title=playbooks.title(n), description=playbooks.description(n),
-                             get_description=playbooks.title(n), text=lambda identity, n=n: playbooks.text(n))
-        for n in playbooks.NAMES]
+        get_description="身体管家", text=lambda identity: _butler_prompt(identity, connect_fn))] + \
+        dl_server.playbook_prompts(playbooks._SOURCE)   # the same text get_playbook returns (ai/playbooks/, issue #100)
 
 
 def build_server(identity_of: Callable[[object], Identity],

@@ -8,9 +8,7 @@
 
 **You need an AI.** There are no input boxes and no "log" buttons here: what you ate, how you trained, your weight, lab reports, anything that feels off — you **tell your AI**, by typing, speaking, a screenshot or a photo, and it logs it for you. The pages are only for looking at charts and scores.
 
-> Screenshots in this edition still show the Chinese interface; they will be replaced with English ones.
-
-![Today page](images/tester-handbook/today.jpg)
+![Today page](images/tester-handbook/en/today.jpg)
 
 The scores are based on medical research literature. They are a lifestyle guide and **not a medical device**: don't use them to diagnose or treat anything, and see a doctor if you feel unwell.
 
@@ -111,7 +109,7 @@ Open the TestFlight invitation email → "View in TestFlight" → install TestFl
 
 On your iPhone, tap the activation link from your admin (or scan the QR code with the camera) → "Open the app to finish setup" → when "Open in Watch2Whoop" pops up, tap "Open".
 
-![Activation page](images/tester-handbook/activate.jpg)
+![Activation page](images/tester-handbook/en/activate.jpg)
 
 <!-- W2W:SETUP -->
 
@@ -121,13 +119,15 @@ Server, health sync and Today page sign-in are all set up in one go — **no cod
 
 "Turn On All" → "Allow". Read-only; nothing is written to Health.
 
-![Turn On All](images/tester-handbook/health-permission.jpg)
+![Turn On All](images/tester-handbook/en/health-permission.jpg)
+
+*This screenshot is the iOS system sheet, captured on an iPhone set to Chinese; yours appears in your iPhone's language.*
 
 ### ④ Get started
 
 Tap "Get started" → fill in your profile → "Save". The Data & Privacy Notice and the Jarvis AI Notice in the small line below the button open in full.
 
-![Get started](images/tester-handbook/consent.jpg) ![Profile](images/tester-handbook/profile.jpg)
+![Get started](images/tester-handbook/en/consent.jpg) ![Profile](images/tester-handbook/en/profile.jpg)
 
 ### ⑤ Connect your AI
 
@@ -145,7 +145,7 @@ During setup you can pick "Last 90 days" (default) or "All history". To get olde
 
 Once the app is set up (steps above), tap "Me" at the bottom → "AI settings" at the very bottom. Pick one of three ways.
 
-![AI settings](images/tester-handbook/me-ai.jpg) ![Add / connect a client](images/tester-handbook/ai-settings.jpg)
+![AI settings](images/tester-handbook/en/me-ai.jpg) ![Add / connect a client](images/tester-handbook/en/ai-settings.jpg)
 
 "Jarvis uses" at the top of "AI settings" picks which AI is active (the fallback AI is always there); you can also tap the name at the top of the chat to switch. If your own AI is disabled or deleted, Jarvis falls back to the fallback AI automatically.
 
@@ -157,19 +157,19 @@ No account to sign up for; it works as soon as it's enabled. It runs on DeepSeek
 
 "AI settings" → "Add" → under "Source" pick the provider you have a key for (for DeepSeek or Qwen choose "OpenAI-compatible API"; for a free Google AI Studio key tick "Free tier") → fill in the model, API endpoint, API key and monthly budget → "Save".
 
-![Pick a source](images/tester-handbook/ai-kinds.jpg) ![Enter the API key](images/tester-handbook/ai-api.jpg)
+![Pick a source](images/tester-handbook/en/ai-kinds.jpg) ![Enter the API key](images/tester-handbook/en/ai-api.jpg)
 
 The key is uploaded once and afterwards only its last 4 characters are shown; it stops automatically when the monthly budget is used up. The Gemini free tier has request limits, so you may have to wait; on the free tier Google may also use what you send to improve its products — if that bothers you, use a paid key or another option.
 
 ### Option 3: your Claude / ChatGPT / Google AI subscription
 
-For people who use the Claude desktop app / Claude Code, Codex, or Antigravity on a computer. "AI settings" → "Add" → choose "Claude subscription", "ChatGPT subscription" or "Google AI Pro / Ultra subscription (Antigravity)" → "Save" → "Connect a client (MCP)" → pick the client → "Generate token", then follow the 3 on-screen steps on your computer.
+For people who use the Claude desktop app / Claude Code, Codex, or Antigravity on a computer. "AI settings" → "Add" → choose "Claude subscription", "ChatGPT subscription" or "Google AI Pro / Ultra subscription (Antigravity)" → "Save" → "Connect a client (MCP)" → pick the client → "Create token", then follow the 3 on-screen steps on your computer.
 
 **Claude web / mobile and ChatGPT (developer mode) need no token**: add the address shown at the top of "Connect a client (MCP)" as a connector there; it opens the Today page, check the app name and the return address, then tap "Approve". Connected apps are listed under "Connect a client (MCP)" and can be disconnected at any time. Personal ChatGPT plans may only be able to read, not write, for now.
 
 Google AI Pro / Ultra: use Antigravity (desktop app, IDE or the `agy` CLI; Antigravity's free tier works too, with lower limits). Gemini CLI no longer accepts subscription sign-in since 2026-06-18 and only works with a paid Gemini API key. The Gemini web / mobile app's "custom apps" are open to users in the US only, so they cannot connect for now.
 
-![Connect a client (MCP)](images/tester-handbook/ai-mcp.jpg)
+![Connect a client (MCP)](images/tester-handbook/en/ai-mcp.jpg)
 
 The token is shown only once; when you no longer need it, "Revoke" it in the same place.
 
@@ -200,7 +200,7 @@ The text appears first under "Check the text". **You can fix any mistakes, and n
 
 That is how it works with the Jarvis fallback AI. If you picked your own AI (an API key or a subscription), the icon button just looks different: one tap opens the chat page, there is no menu, and you can't hold the icon button to talk. If no AI is set up yet, it points you to "AI settings".
 
-![Jarvis](images/tester-handbook/jarvis-none.jpg)
+![Jarvis](images/tester-handbook/en/jarvis-none.jpg)
 
 > You: (photo of lunch) Log my lunch
 > AI: Logged to today's lunch: about 150 g of rice, about 120 g of steamed fish, stir-fried greens… about 620 kcal and 38 g of protein in total. Tell me if a portion is off and I'll fix it.
