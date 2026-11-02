@@ -432,14 +432,25 @@ uptake. Apple's exercise minutes are not a fix: the ring starts at about 30% VO�
 
 ## 11. Open questions (found during validation, not changed)
 Changing any of these changes results, so each needs a before / after comparison reviewed by the maintainer, a new algorithm
-version and new golden files (Watch2Whoop issue #118).
-1. **Strain K** (section 5): replace the one-person calibration with a multi-user value or a reference-session definition; not per person.
-2. **Recovery calibration** (section 4): fit the logistic slope / offset on multi-user data (the weights matter little), or
-   calibrate per person; the target (e.g. WHOOP's recovery, if a comparison study happens) has to be chosen first.
-3. **Artifact threshold** (section 3): 25% lets mildly premature beats through; 20%, or a successive-difference rule
-   (e.g. Lipponen & Tarvainen 2019), did better on synthetic series. Matters once RMSSD is used for recovery.
-4. **Export resolution** (section 3): RMSSD from 10 ms beat times is biased upwards; mixing sources in one baseline needs a check.
-5. **Sleep-need baseline** (section 2): one 8 h value for everyone.
+version and new golden files (Watch2Whoop issue #118). The written rules for deciding them are in Watch2Whoop
+[`docs/scoring-calibration.md`](../../docs/scoring-calibration.md) (D2–D8 below are its rule numbers).
+1. **Strain K** (section 5, D6): a scale constant, so it is checked against the scale and never fitted. A reference-session
+   definition (60 minutes at 70–80% HRmax) removes the dependence on one person; not per person.
+2. **Recovery calibration** (section 4, D4, D5): the logistic is a monotone map, so slope and offset only decide the colours, and they get
+   a scale check, not a fit. Weights need independent criteria, which one person's data barely has. There is no external target (no multi-user data, no WHOOP comparison).
+3. **Artifact threshold** (section 3, D3): 25% lets mildly premature beats through; 20%, or a successive-difference rule
+   (e.g. Lipponen & Tarvainen 2019), did better on synthetic series. Matters when RMSSD is used for recovery.
+4. **Export resolution** (section 3, D8): RMSSD from 10 ms beat times is biased upwards; mixing sources in one baseline needs a check.
+5. **Sleep-need baseline** (section 2, D7): one 8 h value for everyone; it cannot change from one person's data.
+
+### 11.1 How a parameter may change
+A candidate is replayed through these same functions on stored nightly inputs, after the replay has been shown to reproduce the stored
+scores. It is then measured on nightly stability, agreement with same-night resting heart rate and consistency between readings, with a paired
+block-bootstrap interval, and it has to pass every gate: enough data, coverage kept, no detectable harm, a real improvement that holds in each period,
+a practical effect, more evidence for a change that repaints many days, and the synthetic checks. The current value wins ties.
+
+Passing makes a change *eligible*, nothing more: the maintainer decides, in a separate change to both the Python and JavaScript packages. Anything chosen this way
+is a **personal calibration (n = 1)**: checked on one person's data with no external reference, not a general finding.
 
 ## 12. References
 DOIs checked against Crossref on 2026-10-22 (and 2026-10-24 for Peltola 2012 and Lipponen 2019): title, authors, journal,

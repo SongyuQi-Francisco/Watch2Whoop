@@ -96,8 +96,14 @@ final class JarvisChat: ObservableObject {
 
   /// Sends one message. Video frames are announced to the model ("［视频 8 帧，约 12 秒］"), as the page does.
   /// voiceSeconds: a recognised voice message (shown with a voice tag, marked ［语音］ for the model).
-  func send(_ text: String, attachments att: [ChatAttachment] = [], voiceSeconds: Double? = nil) {
+  /// purpose: what the pictures are for; posture photos are replaced on the server when the answer ends (ai/posture.py).
+  func send(_ text: String, attachments att: [ChatAttachment] = [], voiceSeconds: Double? = nil, purpose: String? = nil) {
     guard !busy else {
+      // Never into the composer: from there they would go out without their purpose, as ordinary photos, which stay on the server
+      if purpose != nil {
+        note(tr("上一条还在回答，等它说完再发", "Still answering the last message; wait for it to finish"), warn: true)
+        return
+      }
       if !text.isEmpty { draft = draft.isEmpty ? text : "\(draft)\n\(text)" }
       attachments += att
       return
@@ -112,7 +118,7 @@ final class JarvisChat: ObservableObject {
     let shown = [photos > 0 ? tr("［图片 \(photos) 张］", "[\(photos) photo(s)]") : "", tags].filter { !$0.isEmpty }.joined()
     append(.user(text.isEmpty ? shown : (shown.isEmpty ? text : "\(text)\n\(shown)"), images: att.reduce(0) { $0 + $1.images.count },
                  voiceSeconds: voiceSeconds))
-    let body = ChatBody(message: message, images: att.flatMap(\.images), conversation_id: conversationId, page: page)
+    let body = ChatBody(message: message, images: att.flatMap(\.images), conversation_id: conversationId, page: page, purpose: purpose)
     Task { await run(try? .json(.post, Endpoint.assistantChat, body, idempotent: false), fresh: true) }
   }
 
@@ -151,6 +157,7 @@ final class JarvisChat: ObservableObject {
     let images: [ChatImage]
     let conversation_id: Int?   // swiftlint:disable:this identifier_name
     let page: String?
+    let purpose: String?
   }
 
   // MARK: - the stream
@@ -333,6 +340,9 @@ final class JarvisChat: ObservableObject {
     let view = JSONValue(any: v)
     let msgs = view["messages"]?.array ?? []
     let from = (msgs.lastIndex { $0["role"]?.string == "user" } ?? -1) + 1
+    if from > 0, let n = msgs[from - 1]["notice"]?.string, !items.contains(where: { $0.kind == .note(n, warn: true, retry: false) }) {
+      note(n, warn: true)   // the stream that would have carried it was missed
+    }
     for m in msgs[from...] where m["role"]?.string == "assistant" {
       if let t = m["text"]?.string, !t.isEmpty { append(.assistant(t)) }
       for c in m["cards"]?.array ?? [] { append(.card(c)) }
@@ -355,6 +365,7 @@ final class JarvisChat: ObservableObject {
       let text = m["text"]?.string ?? ""
       if m["role"]?.string == "user" {
         append(.user(text, images: m["images"]?.int ?? 0, voiceSeconds: nil))
+        if let n = m["notice"]?.string { note(n, warn: true) }
       } else {
         if !text.isEmpty { append(.assistant(text)) }
         for c in m["cards"]?.array ?? [] { append(.card(c)) }

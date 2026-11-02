@@ -16,6 +16,7 @@ struct JarvisChatView: View {
   @State private var picked: [PhotosPickerItem] = []
   @State private var recording = false
   @State private var preparing = false
+  @State private var posture = false
   @FocusState private var focused: Bool
 
   private var quick: [JarvisRouter.Quick] { JarvisRouter.quick(for: router.page, vision: chat.ai.vision) }
@@ -51,8 +52,25 @@ struct JarvisChatView: View {
       picked = []
       Task { await addPicked(items) }
     }
+    .sheet(isPresented: $posture) {
+      PostureSheet(chat: chat, account: session.config.userId, close: { posture = false }, describe: describePosture)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+    }
     .presentationDragIndicator(.visible)
-    .task { if chat.choices.isEmpty { await chat.loadChoices() } }
+    .task {
+      if chat.choices.isEmpty { await chat.loadChoices() }
+      #if DEBUG
+      if JarvisDemo.mode == "posture" || JarvisDemo.mode == "posture-filled" { posture = true }
+      #endif
+    }
+  }
+
+  /// The posture entry when no photo is sent: the message is started in the box.
+  private func describePosture() {
+    posture = false
+    chat.draft = chat.draft.isEmpty ? PostureFlow.inWords : "\(chat.draft)\n\(PostureFlow.inWords)"
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { focused = true }
   }
 
   private var consentShown: Binding<Bool> {
@@ -237,10 +255,16 @@ struct JarvisChatView: View {
 
   private var composer: some View {
     HStack(alignment: .bottom, spacing: 8) {
-      if chat.ai.vision {
+      if chat.ai.vision || chat.ai.posture != .off {
         Menu {
-          Button { camera = true } label: { Label(tr("拍照", "Camera"), image: Icon.Name.camera.assetName) }
-          Button { library = true } label: { Label(tr("照片或视频", "Photo or video"), image: Icon.Name.image.assetName) }
+          if chat.ai.vision {
+            Button { camera = true } label: { Label(tr("拍照", "Camera"), image: Icon.Name.camera.assetName) }
+            Button { library = true } label: { Label(tr("照片或视频", "Photo or video"), image: Icon.Name.image.assetName) }
+          }
+          if chat.ai.posture != .off {
+            Button { posture = true } label: { Label(tr("体态分析", "Posture check"), image: Icon.Name.personStanding.assetName) }
+              .disabled(chat.busy)
+          }
         } label: {
           Icon(.camera, size: 20).foregroundColor(Palette.text).frame(width: 40, height: 40)
             .background(Circle().fill(Palette.inSheet))
