@@ -520,7 +520,12 @@ Note: with steps in the history area (M1) the phone recomputes stress for the wh
   M3 port already uses UTC); (2) the phone has no Hevy import and no training plan (the plan only labels the strength
   item; the Hevy minutes are a few days a year), the spot check compares the newest week only; (3) `TodayParams.swift`
   keeps its constants (no JS call on the main thread), checked against the bundle's `TODAY_PARAMS` by `LocalCoachTests`;
-  (4) the app has no sleep-coach page (`sleep_coach` is computed into the coach document); the **bedtime-goal page**
+  (4) the sleep coach has a place in the app since #405 (it first had none: `sleep_coach` was only computed into the coach
+  document): a coach card on Today with tonight's bedtime advice (`SleepCoachCard`, opening `SleepCoachDetailView`; on a past
+  day it is left out when its bedtime came from today's goal) in `Features/Today/TodayDetailViews.swift` /
+  `TodayDetails.swift`. It reads `sleep_coach` of `coach.local:<day>` when package `coach` is primary and the day has one;
+  otherwise the server's `GET /sleep-coach?date=` as document `today.sleepcoach:<day>` (Today's refresh pulls it, and not
+  while `coach` is primary). The **bedtime-goal page**
   exists since its own PR (`Features/Sleep/BedtimeGoal.swift`, `BedtimeGoalView.swift`; entries on the sleep detail
   page and in 我 → 设置): the server's `GET /goals/sleep` now carries `settings` (the stored row, `rules/context.goal_data`)
   and `DELETE /goals/sleep` clears the goal; the app caches the answer as doc `goal.sleep` (Today's refresh pulls it),

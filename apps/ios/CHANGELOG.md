@@ -7,11 +7,35 @@ tags it and the workflow publishes this section as the release notes. The Flutte
 
 | Version | Tag | Build | Store |
 |---|---|---|---|
-| 1.0.9 | `app-ios-v1.0.9` (on the release day, replacing the voided one: docs/ios-native-app.md section 12) | 10 | TestFlight (iOS) |
+| 2.0.0 | `app-ios-v2.0.0` | 11 | TestFlight (iOS) |
+
+1.0.9 (build 10) was never released: its content ships in 2.0.0, and the `## 1.0.9` section below is a development record only. 1.0.9 从未发布：它的内容并入 2.0.0 一起发布，下面 `## 1.0.9` 一节只是开发记录。
 
 ## 2.0.0
 
-（开发中，docs/ios-native-2.0.md；各包的开关默认关闭）
+第一个原生 iOS 版本：整个 app 都是 iOS 原生页面（今天、趋势、记录、饮食、朋友、我、Jarvis），打开更快、滑动更顺；打开就是上一次的数据，没网也能看，记下的内容联网后自动发出去；恢复、睡眠、负荷这些分数在你的 iPhone 上算。这一版补上了网页版里还缺的主要功能：「我」页的账号和 AI 设置、饮食和采购、训练动作库、Jarvis 的卡片、今天页和睡眠的细节、圈子成员和家人共享给你的数据；还新增了消息中心、体态分析、圈子举报 / 屏蔽和上架需要的隐私说明。从 TestFlight 直接更新就行，**不用重新登录**；1.0.8 里的设置和同步进度都会接着用。第一次打开会弹一次「健康」授权，请点「全部打开」再「允许」。服务器上开关默认关闭的功能（消息中心 `inbox`、体态分析 `posture_photos`，以及下面各包的手机计算开关）要等服务器打开以后才会出现。
+
+The first native iOS version: the whole app is native iOS pages (Today, Trends, Log, Food, Friends, Me, Jarvis) that open faster and scroll more smoothly; they open on your last data, work offline, and send what you logged when you are back online; recovery, sleep and strain are computed on your iPhone. This version adds the main features the web version had and the app lacked: account and AI settings under Me, Food and Shopping, the exercise library, Jarvis cards, the details of Today and Sleep, and viewing what circle members and family share with you; and it adds a message center, a posture check, report / block in circles and the privacy notes the App Store needs. Update from TestFlight as usual; **you stay signed in**, and your settings and sync progress from 1.0.8 carry over. The first launch asks for Health access once (tap Turn On All, then Allow). Features whose server flag is off by default (message center `inbox`, posture check `posture_photos`, and the on-phone compute flags below) appear only once the server turns them on.
+
+- 今天页 AI 优先（内测，开关 `ui_ai_first`，目前只对内测组开）：搜索框也能问 Jarvis，示例问题来自你自己的数据，长按卡片问 Jarvis，首页模块按关注、发现和 AI 用过排列，全部功能随时能看。 / AI-first Today (beta, flag `ui_ai_first`, on for the inner test group only): the search field also asks Jarvis, example questions come from your own data, long-press a card to ask about it, modules follow your focus, findings and what your AI used, and all features are one tap away.
+- 现在可以在 app 里查看圈子成员和家人共享给你的数据（只读），他们的数据不会存在你的手机上。 / You can now view what circle members and family share with you in the app (read-only); their data is not stored on your phone.
+
+- 今天页一键进同步中心，同步卡住时直接提示并能重试。 / The Today page takes you to the sync center in one tap, and tells you when sync is stuck so you can retry.
+- 朋友发来的邀请链接现在直接打开 app，没装 app 时会告诉你怎么装。 / Invite links from friends now open the app, or show how to install it.
+
+- 饮食页补齐多选合并、每餐推荐和饮食档案；采购补齐商品库、家里存货、价格记录和超市链接；采购页一键拍小票交给你的 AI 记价格；今天页加了饮食卡。 / The Food page gains multi-select merge, meal ideas and the diet profile; Shopping gains the product library, pantry, price records and store links; scan a receipt in one tap and your AI records the prices; Today gains a food card.
+
+- 今天页可以看压力详情、今晚入睡建议和身体年龄详情，能前后翻日期；睡眠详情有规则要点；趋势加了 180 天和类别折叠（折叠随开关 `trends_v2`）。 / Today now has stress and body age details, tonight's bedtime advice and previous / next day; sleep detail shows key points; Trends gains 180 days and foldable categories (folding follows flag `trends_v2`).
+
+- 「我」页新增消息中心，圈子邀请一步加入，还能把同圈子的朋友邀请进你的另一个圈子；开关 `inbox` 默认关闭，服务器打开后才会出现。 / New Messages in Me: join a circle invite in one tap, and invite friends from one circle into another of yours; flag `inbox` is off by default and the page appears only once the server turns it on.
+
+- 原生 app 补齐训练功能：动作库和动作详情、切换分化、移除 / 恢复动作、我的动作、肌肉详情的推荐动作和让 Jarvis 分析，今天页加了训练卡和肌肉负荷卡。 / The native app now has the full training set: exercise library and details, switching splits, removing and restoring planned exercises, your own exercises, recommended exercises and Ask Jarvis on a muscle, and training and muscle load cards on Today.
+
+- 「我」页补齐：可以在 app 里添加自己的 AI（API key）、绑定登录方式、邀请好友、查看和删除长期记忆、查看反馈记录。 / The Me page now has everything: add your own AI (API key), sign-in methods, invites, long-term memory and your feedback reports, right in the app.
+
+- Jarvis 的所有卡片都换成原生显示，不再出现英文字段名；卡片上的按钮能直接打开对应页面。 / Every Jarvis card now has a native view with no raw field names, and its buttons open the matching page.
+
+- Jarvis 可以看体态了：拍正面、侧面、背面 3 张，只发给你选的 AI，回答完服务器上不留原图；只对资料里满 18 岁的人显示；用内置的托底 Jarvis、或 AI 不在 app 里对话 / 不能看图时，现在只给拍照指南，可以改用文字描述；开关 `posture_photos` 默认关闭，服务器打开后才会出现。 / Jarvis can look at your posture: take front, side and back photos; they go only to the AI you picked, and the server keeps no originals after it answers. It is shown only to people whose profile says they are 18 or older; with the built-in fallback Jarvis, or an AI that does not chat in the app or cannot read pictures, it shows the photo guide only for now and you can describe it in words instead. Flag `posture_photos` is off by default and the entry appears only once the server turns it on.
 
 - 训练计划里写成「A + B」的组合动作不再丢失（FB-21）：拆成两个动作，在记录 → 训练的今天卡片上按「超级组」放在一起，每个动作各记各的组数和重量，禁用 / 注意动作的提示各管各的。动作库认不出的名字也不会再消失，卡片上标「认不出」并给出可以换成的动作，点一下就换进周计划。 / Combination plan items written 「A + B」 no longer get lost (FB-21): they are split into two exercises and drawn together as one 「Superset」 on today's card under Record → Training, each exercise with its own sets and weights and its own banned / caution note. A name the library does not recognise no longer disappears either: the card marks it 「Not recognised」 and offers library exercises to swap it for, one tap puts it into the weekly plan.
 - 采购清单可以复制 / 分享成文字（FB-19）：「饮食 → 采购」标题右边多了「复制」和「分享」两个按钮，整张清单按分类排好，每行「□ 名称 — 数量（备注）」，开头一行写明是哪一周、还差几项；已经打勾买过的不列出，复制后有提示，分享用系统的分享面板（也可以选「拷贝」），在超市里贴到备忘录或发给家人。 / The shopping list can be copied or shared as text (FB-19): 「Food → Shopping」 has 「Copy」 and 「Share」 buttons next to the title; the whole list comes grouped by category, one line per item as 「□ name — quantity (note)」, with a first line that says which week and how many are left. Items already ticked are left out, copying shows a confirmation, and sharing uses the system share sheet (which also has Copy), so you can paste it into Notes or send it at the supermarket.
