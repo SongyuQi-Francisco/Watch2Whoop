@@ -30,6 +30,7 @@ struct MuscleLoad: Equatable {
     var trainedToday: Bool
     var sportMin: [Range: Double]
     var prevWeek: Double?
+    var delta: Double? = nil
     var id: String { key }
   }
 
@@ -37,6 +38,10 @@ struct MuscleLoad: Equatable {
   var muscles: [Muscle]
   var sports: [Range: [(String, Double)]]
   var unmatched: [String]
+  /// The profile says which body to draw; false = the male one, and a note says where to set it.
+  var sexSet = true
+  /// The sports that do not count towards any muscle (`mapped: false`).
+  var unmappedSports: Set<String> = []
 
   static func == (a: MuscleLoad, b: MuscleLoad) -> Bool {
     a.sex == b.sex && a.muscles == b.muscles && a.unmatched == b.unmatched
@@ -60,16 +65,34 @@ struct MuscleLoad: Equatable {
       return Muscle(key: key, name: m["name"] as? String ?? key, sets: byRange(m["ranges"], "sets"), volume: byRange(m["ranges"], "volume_kg"),
                     status: [.today: week, .week: week, .last7: last7], low: RecordFormat.double(t?["low"]),
                     high: RecordFormat.double(t?["high"]), trainedToday: (m["trained_today"] as? Bool) ?? false,
-                    sportMin: byRange(m["sport_min"], nil), prevWeek: RecordFormat.double((m["prev_week"] as? [String: Any])?["sets"]))
+                    sportMin: byRange(m["sport_min"], nil), prevWeek: RecordFormat.double((m["prev_week"] as? [String: Any])?["sets"]),
+                    delta: RecordFormat.double(m["delta_sets"]))
     }
     var sports: [Range: [(String, Double)]] = [:]
+    var unmapped: Set<String> = []
     for r in Range.allCases {
       sports[r] = (((j["sports"] as? [String: Any])?[r.rawValue] as? [[String: Any]]) ?? []).compactMap { s in
         guard let n = s["name"] as? String else { return nil }
+        if (s["mapped"] as? Bool) == false { unmapped.insert(n) }
         return (n, RecordFormat.double(s["min"]) ?? 0)
       }
     }
-    return MuscleLoad(sex: j["sex"] as? String ?? "male", muscles: muscles, sports: sports, unmatched: (j["unmatched"] as? [String]) ?? [])
+    return MuscleLoad(sex: j["sex"] as? String ?? "male", muscles: muscles, sports: sports, unmatched: (j["unmatched"] as? [String]) ?? [],
+                      sexSet: j["sex"] is String, unmappedSports: unmapped)
+  }
+
+  /// The other muscles drawn in the same region(s) of the body (muscle-load.js): tapping that region shows them together.
+  static func siblings(of key: String) -> [String] {
+    let mine = Set(bodyRegions[key] ?? [])
+    return bodyRegions.filter { $0.key != key && !mine.isDisjoint(with: $0.value) }.keys.sorted()
+  }
+
+  /// Regions of an exercise's muscles for the small body map: primary dark, secondary light (muscle-map.js level()).
+  static func exerciseRegions(primary: [String], secondary: [String]) -> [String: RegionState] {
+    var out: [String: RegionState] = [:]
+    for m in secondary { for r in bodyRegions[m] ?? [] { out[r] = RegionState(status: "secondary", today: false, key: m, sets: 0, sport: false) } }
+    for m in primary { for r in bodyRegions[m] ?? [] { out[r] = RegionState(status: "primary", today: false, key: m, sets: 0, sport: false) } }
+    return out
   }
 
   /// Catalog muscle → regions of the body drawing (muscle-map.js BODY_REGIONS).
@@ -233,6 +256,8 @@ struct MuscleBodyView: View {
     case "low": return Palette.train.opacity(0.4)
     case "ok": return Palette.good
     case "high": return Palette.bad
+    case "primary": return Palette.train
+    case "secondary": return Palette.train.opacity(0.38)
     default: return Palette.surface2
     }
   }

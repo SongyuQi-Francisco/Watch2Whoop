@@ -183,7 +183,7 @@ def options(conn: psycopg.Connection, user_id: int, exercise: str) -> dict:
     if plan_row is None:
         return out
     out["plan"] = {"id": plan_row["id"], "name": plan_row["name"]}
-    out["sessions"] = [{"day_of_week": d["day_of_week"], "weekday_zh": plans.WEEKDAY_ZH.get(int(d["day_of_week"])), "name": d["name"],
+    out["sessions"] = [{"day_of_week": d["day_of_week"], "weekday_zh": plans.WEEKDAY_ZH.get(int(d["day_of_week"])), "name": d["name"], **plans.template_en(d["name"]),
                         "exercise_count": len(d.get("exercises") or []),
                         "has_exercise": any((e.get("slug") or "") == ex["slug"] for e in d.get("exercises") or [])}
                        for d in plan_row.get("days") or []]
@@ -198,5 +198,6 @@ def options(conn: psycopg.Connection, user_id: int, exercise: str) -> dict:
         seen.add(d["date"])
         has = any(e.get("slug") == ex["slug"] for p in d["planned"] for e in p["exercises"])
         out["days"].append({"date": d["date"].isoformat(), "weekday_zh": d["weekday_zh"], "names": [p["name"] for p in d["planned"]],
+                            "names_en": [p.get("name_en") or p["name"] for p in d["planned"]],
                             "rest_day": d["rest_day"], "has_exercise": has})
     return out
