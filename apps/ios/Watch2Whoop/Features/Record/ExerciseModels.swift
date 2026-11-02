@@ -286,6 +286,8 @@ struct ExerciseDetail: Equatable {
   var alternatives: [ExerciseAlternative]
 
   var banned: Bool { status == "banned" }
+  /// A name from the person's own log that the catalog does not have (catalog.py LOG_PREFIX): it has a page but no place in a plan.
+  var onlyInLog: Bool { slug.hasPrefix("custom:") }
 
   static func parse(_ j: [String: Any]?) -> ExerciseDetail? {
     guard let j, let slug = j["slug"] as? String else { return nil }
