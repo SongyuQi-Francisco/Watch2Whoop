@@ -26,7 +26,8 @@ struct InviteView: View {
       }
       VStack(alignment: .leading, spacing: 10) {
         SectionHeader(title: tr("有效期", "Valid for"))
-        HStack(spacing: 6) {
+        // Wraps: in English the five pills are wider than the screen ("3 days", "Forever") and an HStack cut them short.
+        WrapLayout(spacing: 6) {
           ForEach((store.list?.limits.inviteDays ?? [1, 3, 7, 30]) + [0], id: \.self) { d in
             PillButton(title: d == 0 ? tr("永久", "Forever") : (d == 1 ? tr("1 天", "1 day") : tr("\(d) 天", "\(d) days")), on: days == d) { days = d }
           }
