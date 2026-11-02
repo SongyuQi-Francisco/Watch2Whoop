@@ -131,8 +131,6 @@
     const how = j.via === "created" ? tr("建圈")
       : j.via === "invite_code" ? (me ? tr("我邀请的 · 邀请链接") : tr("由 {who} 邀请 · 邀请链接", { who }))
       : j.via === "referral" ? (me ? tr("用了我的推荐码") : tr("用了 {who} 的推荐码", { who }))
-      : j.via === "member_invite" ? (me ? tr("我邀请的") : tr("由 {who} 邀请", { who }))
-      : j.via === "admin_invite" ? tr("管理员邀请")
       : j.via === "circle_code" ? tr("圈子激活码「{code}」", { code: j.code || "" })
       : tr("来源未记录");
     const when = m.joined_at ? new Date(m.joined_at).toLocaleDateString(window.I18N.locale(), { year: "numeric", month: "numeric", day: "numeric" }) : "";
