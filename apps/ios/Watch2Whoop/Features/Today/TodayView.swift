@@ -100,6 +100,7 @@ struct TodayView: View {
         .frame(maxWidth: .infinity)
       }
       .background(Palette.bg.ignoresSafeArea())
+      .statusBarCover()
       .refreshable {
         await store.refresh()
         if aiFirst { await home.refresh() }

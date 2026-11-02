@@ -102,6 +102,7 @@ struct TrendsView: View {
         .frame(maxWidth: .infinity)
       }
       .background(Palette.bg.ignoresSafeArea())
+      .statusBarCover()
       .refreshable { await store.refresh() }
       .onAppear {
         if PerfProbe.trendsScroll { autoScroll(proxy) }

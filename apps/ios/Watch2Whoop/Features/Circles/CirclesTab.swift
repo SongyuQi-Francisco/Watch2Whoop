@@ -61,6 +61,7 @@ private struct CirclesScreen: View {
           if store.mode == .feed { store.markSeen() }
         }
         .background(Palette.bg.ignoresSafeArea())
+        .statusBarCover()
       }
       .toolbar(.hidden, for: .navigationBar)
     }
