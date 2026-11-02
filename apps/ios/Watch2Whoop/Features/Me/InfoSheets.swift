@@ -12,7 +12,7 @@ struct WhatsNewView: View {
     VStack(alignment: .leading, spacing: 18) {
       if let w {
         ForEach(w.weeks) { week in
-          RowGroup(title: week.weekStart) {
+          RowGroup(title: WhatsNew.weekLabel(week.weekStart, today: RecordDay.string(Date()))) {
             ForEach(Array(week.items.enumerated()), id: \.offset) { i, item in
               if i > 0 { RowDivider(inset: 0) }
               if let link = item.url, AppLink.parse(link) != nil, let open {
@@ -45,7 +45,7 @@ struct WhatsNewView: View {
     VStack(alignment: .leading, spacing: 2) {
       Text(item.text).font(Typo.body).foregroundColor(Palette.text).multilineTextAlignment(.leading)
         .fixedSize(horizontal: false, vertical: true)
-      Text(item.date).font(Typo.caption).foregroundColor(Palette.text3)
+      Text(WhatsNew.monthDay(item.date)).font(Typo.caption).foregroundColor(Palette.text3)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(.vertical, 10)

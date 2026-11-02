@@ -180,6 +180,15 @@ final class NotifyAndLinksTests: XCTestCase {
     XCTAssertEqual(a.circlesJoined.map(\.name), ["Example Club"])
   }
 
+  func testWhatsNewWeekTitlesAreWordsNotDates() {
+    XCTAssertEqual(WhatsNew.weekLabel("2026-11-02", today: "2026-11-03"), tr("本周", "This week"))
+    XCTAssertEqual(WhatsNew.weekLabel("2026-11-02", today: "2026-11-08"), tr("本周", "This week"))
+    XCTAssertEqual(WhatsNew.weekLabel("2026-10-26", today: "2026-11-03"), tr("上周", "Last week"))
+    XCTAssertEqual(WhatsNew.weekLabel("2026-10-19", today: "2026-11-03"), tr("10月19日 起的一周", "Week of Oct 19"))
+    XCTAssertEqual(WhatsNew.monthDay("2026-01-05"), tr("1月5日", "Jan 5"))
+    XCTAssertEqual(WhatsNew.weekLabel("not a date", today: "2026-11-03"), "not a date")
+  }
+
   func testWhatsNewKeepsTheEntryLink() throws {
     let j = #"{"weeks": [{"week_start": "2026-10-26", "items": [{"date": "2026-10-28", "text": "A", "url": "/app/?tab=me"}, {"date": "2026-10-27", "text": "B", "url": null}]}]}"#
     let items = try XCTUnwrap(JSONDecoder().decode(WhatsNew.self, from: Data(j.utf8)).weeks.first?.items)

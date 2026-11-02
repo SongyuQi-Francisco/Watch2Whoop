@@ -269,6 +269,25 @@ struct WhatsNew: Decodable, Equatable {
     /// Where tapping it goes (a Today page link, AppLink), if anywhere.
     var url: String?
   }
+
+  /// "This week" / "Last week" / "Week of Oct 26" for the week starting on `weekStart` (a Monday), as whatsnew.js weekLabel.
+  static func weekLabel(_ weekStart: String, today: String) -> String {
+    guard let start = RecordDay.date(weekStart), let now = RecordDay.date(today) else { return weekStart }
+    let weeks = Int((now.timeIntervalSince(start) / (7 * 86_400)).rounded())
+    if weeks <= 0 { return tr("本周", "This week") }
+    if weeks == 1 { return tr("上周", "Last week") }
+    let day = monthDay(weekStart)
+    return tr("\(day) 起的一周", "Week of \(day)")
+  }
+
+  /// 10月28日 / Oct 28 (i18n.js monthDay).
+  static func monthDay(_ iso: String) -> String {
+    let p = iso.prefix(10).split(separator: "-").compactMap { Int($0) }
+    guard p.count == 3, (1...12).contains(p[1]) else { return iso }
+    return tr("\(p[1])月\(p[2])日", "\(monthsEn[p[1] - 1]) \(p[2])")
+  }
+
+  private static let monthsEn = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 }
 
 /// GET /v1/users/me/data-status.
