@@ -35,7 +35,7 @@ extension JarvisCards {
 }
 
 /// A Trends card as it is on the tab; its title opens the same explanation, over the chat.
-private struct TrendCardBody: View {
+struct TrendCardBody: View {
   let model: TrendCardModel
   let open: (String, JSONValue) -> Void
 

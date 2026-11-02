@@ -15,7 +15,7 @@ enum JarvisCards {
   ]
 
   /// Drawn without the card's own frame: they hold the Trends tab's cards, which have theirs (ai.js BARE).
-  static let bare: Set<String> = ["strain", "trend", "weight", "vo2max", "hr_zones"]
+  static let bare: Set<String> = ["recovery", "strain", "trend", "weight", "vo2max", "hr_zones"]
 
   static func title(_ type: String) -> String {
     switch type {
@@ -140,6 +140,27 @@ enum JarvisCards {
     return "\(Int(m) / 60):" + String(format: "%02d", Int(m.rounded()) % 60)
   }
 
+  /// The server's sleep performance is a fraction (0.82), shown as a percentage (ai.js recoveryBody).
+  static func percent(_ v: Double?) -> Double? { v.map { $0 * 100 } }
+
+  /// A night's stages in the sleep page's model, for its `Hypnogram`.
+  static func stages(_ main: JSONValue) -> [SleepNightModel.Stage] {
+    (main["stages"]?.array ?? []).compactMap { s in
+      guard let st = s["stage"]?.string, let o = s["offset_min"]?.double, let mins = s["minutes"]?.double else { return nil }
+      return SleepNightModel.Stage(stage: st, offset: o, minutes: mins, start: s["start"]?.string ?? "", end: s["end"]?.string ?? "")
+    }
+  }
+
+  static func sleepPart(_ key: String) -> String {
+    switch key {
+    case "duration": return tr("时长", "Duration")
+    case "stages": return tr("阶段", "Stages")
+    case "consistency": return tr("规律性", "Consistency")
+    case "interruptions": return tr("中途醒来", "Wake-ups")
+    default: return tr("其他", "Other")
+    }
+  }
+
   /// `2026-01-02` → `01-02`.
   static func mmdd(_ iso: String?) -> String? {
     guard let s = iso, s.count >= 10 else { return nil }
@@ -233,7 +254,7 @@ private struct JarvisCardBody: View, Equatable {
     case "sleep": SleepCard(c: card)
     case "actions": EmptyView()
     case "product": ProductCard(c: card)
-    case "recovery": RecoveryCard(c: card)
+    case "recovery": RecoveryCard(c: card, open: open)
     case "water": WaterCard(c: card)
     case "supplements": SupplementsCard(c: card)
     case "muscle": MuscleJarvisCard(c: card)
@@ -517,7 +538,13 @@ private struct SleepCard: View {
       if let m = c["main"], !m.isNull {
         BigNumber(value: JarvisCards.hm(m["asleep_min"]?.double), unit: "\(m["start"]?.string ?? "") → \(m["end"]?.string ?? "")",
                   note: c["need_min"]?.double.map { tr("需求", "Need") + " " + JarvisCards.hm($0) })
-        if let eff = m["efficiency_pct"]?.double {
+        let stages = JarvisCards.stages(m)
+        if !stages.isEmpty {
+          Hypnogram(stages: stages, total: max(1, m["in_bed_min"]?.double ?? 1), start: m["start"]?.string ?? "", end: m["end"]?.string ?? "")
+        }
+        if let more = c["more"], !more.isNull {
+          SleepMore(c: c, main: m, more: more)
+        } else if let eff = m["efficiency_pct"]?.double {
           Text(tr("效率", "Efficiency") + " \(JarvisCards.num(eff))%").font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2)
         }
         let keys = Array((c["notes"]?.array ?? []).filter { $0["tone"]?.string != "good" }.compactMap { $0["key"]?.string }
@@ -536,21 +563,64 @@ private struct SleepCard: View {
   }
 }
 
+/// Efficiency, time to fall asleep and wake-ups against the 7-night average, and the sleep score's parts (ai.js sleepMoreHtml).
+private struct SleepMore: View {
+  let c: JSONValue
+  let main: JSONValue
+  let more: JSONValue
+
+  var body: some View {
+    let a = c["avg7"], parts = (c["parts"]?.array ?? []).filter { $0["score"]?.double != nil }
+    let avgEff = a?["efficiency_pct"]?.double.map { tr("平均 \(JarvisCards.num($0))%", "Avg \(JarvisCards.num($0))%") }
+    let waso = more["waso_min"]?.double.map { tr("\(JarvisCards.num($0)) 分钟", "\(JarvisCards.num($0)) min") }
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(alignment: .top, spacing: 0) {
+        cell(tr("效率", "Efficiency"), main["efficiency_pct"]?.double, "%", avgEff)
+        cell(tr("入睡耗时", "To fall asleep"), more["latency_min"]?.double, tr("分", "min"), nil)
+        cell(tr("夜醒", "Wake-ups"), more["awakenings"]?.double, tr("次", ""), waso)
+      }
+      if let bed = a?["bedtime"]?.string {
+        Text(tr("近 7 晚", "Last 7 nights") + " \(bed) → \(a?["wake"]?.string ?? "")").font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2)
+      }
+      ForEach(Array(parts.enumerated()), id: \.offset) { _, p in
+        CardMeter(label: JarvisCards.sleepPart(p["key"]?.string ?? ""), value: p["score"]?.double, goal: 100, unit: "")
+      }
+    }
+  }
+
+  private func cell(_ l: String, _ v: Double?, _ u: String, _ sub: String?) -> some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Text(l).font(Typo.label).foregroundColor(Palette.text2).lineLimit(1).minimumScaleFactor(0.8)
+      HStack(alignment: .firstTextBaseline, spacing: 2) {
+        Text(JarvisCards.num(v)).font(Typo.bodyStrong.monospacedDigit()).foregroundColor(Palette.text)
+        if v != nil, !u.isEmpty { Text(u).font(Typo.unit).foregroundColor(Palette.text2) }
+      }
+      if let sub { Text(sub).font(.system(size: 11).monospacedDigit()).foregroundColor(Palette.text3).lineLimit(1) }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+/// Today's score with its parts above the last two weeks (ai.js recoveryBody).
 private struct RecoveryCard: View {
   let c: JSONValue
-
-  /// The server's sleep performance is a fraction (0.82), shown as a percentage (ai.js recoveryBody).
-  static func percent(_ v: Double?) -> Double? { v.map { $0 * 100 } }
+  let open: (String, JSONValue) -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      CardHead(title: JarvisCards.title("recovery"), date: c["date"]?.string, badge: c["word"]?.string)
-      BigNumber(value: JarvisCards.num(c["recovery"]?.double), unit: "%",
-                note: c["last"]?.double.map { tr("上次", "Last") + " \(JarvisCards.num($0))%" })
-      HStack(spacing: 16) {
-        kv("HRV", c["hrv_ms"]?.double, "ms")
-        kv(tr("静息心率", "Resting HR"), c["rhr"]?.double, "bpm")
-        kv(tr("睡眠表现", "Sleep"), Self.percent(c["sleep_performance"]?.double), "%")
+      VStack(alignment: .leading, spacing: 8) {
+        CardHead(title: JarvisCards.title("recovery"), date: c["date"]?.string, badge: c["word"]?.string)
+        BigNumber(value: JarvisCards.num(c["recovery"]?.double), unit: "%",
+                  note: c["last"]?.double.map { tr("上次", "Last") + " \(JarvisCards.num($0))%" })
+        HStack(spacing: 16) {
+          kv("HRV", c["hrv_ms"]?.double, "ms")
+          kv(tr("静息心率", "Resting HR"), c["rhr"]?.double, "bpm")
+          kv(tr("睡眠表现", "Sleep"), JarvisCards.percent(c["sleep_performance"]?.double), "%")
+        }
+      }
+      .jarvisCardFrame()
+      if let d = JarvisCards.trendsData(c), let m = TrendCards.recovery(d), m.spec != nil {
+        TrendCardBody(model: m, open: open)
       }
     }
   }

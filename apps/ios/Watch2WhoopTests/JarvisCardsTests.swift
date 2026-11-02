@@ -83,6 +83,19 @@ final class JarvisCardsTests: XCTestCase {
 
   // MARK: - body cards
 
+  func testRecoveryAndSleep() throws {
+    let all = try fixture()
+    XCTAssertEqual(try XCTUnwrap(JarvisCards.percent(0.51)), 51, accuracy: 0.001)
+    XCTAssertNil(JarvisCards.percent(nil))
+    let r = try XCTUnwrap(JarvisCards.trendsData(card("recovery", all)))
+    XCTAssertNotNil(TrendCards.recovery(r)?.spec)
+    let s = try card("sleep", all)
+    XCTAssertEqual(JarvisCards.stages(try XCTUnwrap(s["main"])).count, 3)
+    XCTAssertEqual(JarvisCards.stages(json("{}")).count, 0)
+    XCTAssertEqual(JarvisCards.sleepPart("duration"), tr("时长", "Duration"))
+    XCTAssertEqual(JarvisCards.sleepPart("nope"), tr("其他", "Other"))
+  }
+
   func testStrain() throws {
     let c = try card("strain", fixture()), coach = try XCTUnwrap(c["coach"])
     XCTAssertEqual(StrainJarvisCard.state(json(#"{"status":"in_range"}"#)).1, .good)
