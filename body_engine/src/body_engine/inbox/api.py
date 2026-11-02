@@ -6,6 +6,7 @@ the person) and is about oneself only (`me` or one's own id; anyone else: 403). 
   DELETE /v1/users/{user}/inbox/items/{id}                hide one item (notice:3, invite:12 …)
   POST   /v1/users/{user}/inbox/invites/{id}/accept       join with the circle's default scopes; the circle as /v1/friends/join
   POST   /v1/users/{user}/inbox/invites/{id}/ignore       decline
+  POST   /v1/users/{user}/inbox/invites/{id}/mute         decline, and no more invites from whoever sent it (card.can_mute)
   GET    /v1/users/{user}/inbox/invites/{id}/avatar       the circle's picture, for the person the open invite is addressed to
 
 Refusals are {code, message}: 404 invite_gone (no such invite for you, expired, withdrawn, blocked: all look the same),
@@ -82,6 +83,13 @@ def ignore(user: str, invite_id: InviteId, conn=Depends(get_conn), viewer=Depend
     _run(store.ignore, conn, _self(viewer, user), invite_id)
     conn.commit()
     return {"ignored": True}
+
+
+@router.post("/invites/{invite_id}/mute")
+def mute(user: str, invite_id: InviteId, conn=Depends(get_conn), viewer=Depends(current_user)):
+    _run(store.mute_sender, conn, _self(viewer, user), invite_id)
+    conn.commit()
+    return {"muted": True}
 
 
 @router.get("/invites/{invite_id}/avatar")

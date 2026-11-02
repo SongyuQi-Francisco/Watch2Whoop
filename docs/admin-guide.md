@@ -342,6 +342,7 @@ body-engine invite-code revoke --code-id N     # 停掉某个人的邀请码（N
      --avatar logo.png --max-members 60 [--scopes scores,sleep,training,nutrition_summary]
    body-engine circle-admin list                                   # 团体圈子：id、圈主、人数、上限、有没有头像
    body-engine circle-admin avatar --circle 12 --file logo.png     # 换头像；--clear 去掉（没有头像时显示首字母）
+   body-engine circle-admin invite --circle 12 --users 3,4,5       # 给这些账号各发一张邀请卡片（开关 inbox；只发给同意书够的活跃用户，不发明文邀请码，可以重复跑）
    ```
 
    - `--max-members` 要大于等于「现有成员 + 码的次数」（默认 `friends/params.py` 的 `MAX_MEMBERS`，30）；还没确认同意书的新用户也占名额。

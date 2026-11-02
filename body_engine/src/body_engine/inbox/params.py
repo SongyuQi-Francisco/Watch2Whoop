@@ -12,6 +12,12 @@ PAGE_LIMIT_MAX = 200    # … and the most a client may ask for
 SOURCE_MAX = 500        # newest rows read from one source per request, so a very busy account stays cheap
 READ_IDS_MAX = 500      # ids in one POST /inbox/read
 
+# Notifications listed besides the circle ones: category system, and ai_card while its own flag is on for the person (off for
+# everyone today). Left out: an upgrade reminder is a notice too (client/notice.py), so it would be there twice; a test push is
+# the admin's (notify/admin.py).
+AI_CARDS_FLAG = "ai_cards"
+NOT_LISTED_KINDS = ("system.upgrade", "system.test")
+
 # What an invite card says the person would share, by circle scope (friends/params.CIRCLE_SCOPES; a test checks they match).
 # The same words as the Friends page's join sheet (web/static/circles.js).
 SCOPE_LABELS = {
