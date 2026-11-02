@@ -16,14 +16,14 @@ enum Money {
   /// A$12.50; 2 decimals, none from 100 up.
   static func full(_ v: Double?, _ cur: String?) -> String {
     guard let v else { return "" }
-    return prefix(cur, spaced: true) + String(format: v >= 100 ? "%.0f" : "%.2f", v)
+    return prefix(cur, spaced: true) + (v >= 100 ? String(format: "%.0f", v.rounded()) : String(format: "%.2f", v))
   }
 
   /// A$13 / A$2.5: for tiles and badges at phone width.
   static func short(_ v: Double?, _ cur: String?) -> String {
     guard let v else { return "" }
-    if v >= 10 { return prefix(cur, spaced: false) + String(format: "%.0f", v) }
-    let one = String(format: "%.1f", v)
+    if v >= 10 { return prefix(cur, spaced: false) + String(format: "%.0f", v.rounded()) }   // .5 up, as the page's Math.round
+    let one = String(format: "%.1f", (v * 10).rounded() / 10)
     return prefix(cur, spaced: false) + (one.hasSuffix(".0") ? String(one.dropLast(2)) : one)
   }
 

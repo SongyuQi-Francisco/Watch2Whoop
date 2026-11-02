@@ -48,6 +48,9 @@ struct TodayFoodCard: View {
     }
     .task(id: day) {
       store.select(day ?? store.today)
+      #if DEBUG
+      if RecordDevShot.value("W2W_DEV_TODAYFOOD") == "day" { sheet = .day }
+      #endif
       await store.refresh()
     }
     .onReceive(NotificationCenter.default.publisher(for: JarvisRouter.wroteNotification)) { _ in

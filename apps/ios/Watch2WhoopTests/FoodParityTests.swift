@@ -69,8 +69,10 @@ final class GroceryParityTests: XCTestCase {
     XCTAssertEqual(Money.full(12.5, "AUD"), "A$12.50")
     XCTAssertEqual(Money.full(120, "CNY"), "¥120")
     XCTAssertEqual(Money.full(3, "SEK"), "SEK 3.00")
-    XCTAssertEqual(Money.short(12.5, "AUD"), "A$12")
+    XCTAssertEqual(Money.short(12.5, "AUD"), "A$13", ".5 goes up, as on the page")
+    XCTAssertEqual(Money.short(10.5, "AUD"), "A$11")
     XCTAssertEqual(Money.short(2.5, "AUD"), "A$2.5")
+    XCTAssertEqual(Money.short(5.25, "AUD"), "A$5.3")
     XCTAssertEqual(Money.short(2, "AUD"), "A$2")
     XCTAssertEqual(Money.full(nil, "AUD"), "")
   }

@@ -95,9 +95,9 @@ struct GroceryView: View {
     HStack(spacing: 8) {
       MetricTile(label: tr("已买", "Bought"), value: "\(g.bought)", unit: "/ \(g.items.count)")
       MetricTile(label: tr("估价", "Estimate"), value: Money.joined(g.estTotal) ?? "—")
-      MetricTile(label: tr("未估价", "No estimate"), value: "\(g.unpriced)", unit: tr("项", "items"))
+      MetricTile(label: tr("未估价", "No estimate"), value: "\(g.unpriced)", unit: g.unpriced == 1 ? tr("项", "item") : tr("项", "items"))
       if g.halfItems > 0 {
-        MetricTile(label: tr("半价省 · \(g.halfItems)", "Half price · \(g.halfItems)"), value: Money.joined(g.halfSave) ?? "—", tone: .good)
+        MetricTile(label: tr("半价省 · \(g.halfItems)", "Half off · \(g.halfItems)"), value: Money.joined(g.halfSave) ?? "—", tone: .good)
       }
     }
   }
@@ -351,6 +351,8 @@ private struct GroceryItemRow: View {
 struct StoreLinks: View {
   let links: [GroceryLink]
   let name: String
+  /// A plain chip's background: it has to differ from what is behind it.
+  var plain = Palette.bg
 
   var body: some View {
     HStack(spacing: 6) {
@@ -359,7 +361,7 @@ struct StoreLinks: View {
           Text(l.label).font(.system(size: 12, weight: .medium))
             .foregroundColor(l.isProduct ? Palette.text : Palette.text2)
             .padding(.vertical, 4).padding(.horizontal, 10)
-            .background(Capsule().fill(l.isProduct ? Palette.surface2 : Palette.bg))
+            .background(Capsule().fill(l.isProduct ? Palette.surface2 : plain))
         }
         .accessibilityLabel(l.isProduct ? tr("\(l.label) 商品页：\(name)", "\(l.label) product page: \(name)")
                               : tr("\(l.label) 搜索：\(name)", "\(l.label) search: \(name)"))
@@ -460,7 +462,7 @@ struct GroceryProductSheet: View {
       }
       kv(tr("品牌", "Brand"), p.brand)
       kv(tr("门店", "Store"), p.storeLabel)
-      if !p.links.isEmpty { linkRow(tr("链接", "Link")) { StoreLinks(links: p.links, name: p.name) } }
+      if !p.links.isEmpty { linkRow(tr("链接", "Link")) { StoreLinks(links: p.links, name: p.name, plain: Palette.inSheet) } }
       kv(tr("类别", "Category"), p.categoryLabel)
       kv(tr("规格", "Size"), p.sizeLabel)
       kv(tr("价格", "Price"), p.price != nil ? Money.full(p.price, p.currency) : nil)
@@ -611,7 +613,7 @@ struct PriceHistorySheet: View {
           HStack {
             Text(tr("链接", "Link")).font(Typo.body).foregroundColor(Palette.text2)
             Spacer()
-            StoreLinks(links: [l], name: h.name)
+            StoreLinks(links: [l], name: h.name, plain: Palette.inSheet)
           }
           .padding(.vertical, 10)
           .overlay(Rectangle().fill(Palette.hair).frame(height: 1), alignment: .top)

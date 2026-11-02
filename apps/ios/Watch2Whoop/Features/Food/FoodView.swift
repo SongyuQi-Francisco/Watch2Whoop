@@ -39,11 +39,17 @@ struct FoodContent: View {
   enum OtherSheet: Identifiable {
     case diet
     case combine(FoodCombine.Action, [FoodEntry])
+    #if DEBUG
+    case dev(String)
+    #endif
 
     var id: String {
       switch self {
       case .diet: return "diet"
       case .combine(let a, _): return "combine.\(a.rawValue)"
+      #if DEBUG
+      case .dev(let what): return "dev.\(what)"
+      #endif
       }
     }
   }
@@ -98,17 +104,55 @@ struct FoodContent: View {
     }
   }
 
-  /// Debug screenshots (`W2W_DEV_FOOD=shopping|diet|pick`, with `W2W_DEV_TAB` / `W2W_DEV_RECORD` / `W2W_DEV_SCROLL`).
+  /// Debug screenshots (`W2W_DEV_FOOD=shopping|diet|pick|scan|products|prices|product|history|grams|allmeals|combine`, with
+  /// `W2W_DEV_TAB` / `W2W_DEV_RECORD` / `W2W_DEV_SCROLL`).
   private func devShot() {
     #if DEBUG
     switch RecordDevShot.value("W2W_DEV_FOOD") {
+    case nil: break
     case "shopping": mode = .shopping
     case "diet": other = .diet
     case "pick": picked = []
-    default: break
+    case "scan":
+      mode = .shopping
+      DispatchQueue.main.asyncAfter(deadline: .now() + 2) { JarvisRouter.current?.devScanShot() }
+    case let what?: other = .dev(what)
     }
     #endif
   }
+
+  #if DEBUG
+  /// The sheets and sub-pages that otherwise need a tap, for simulator screenshots.
+  @ViewBuilder private func devSheet(_ what: String) -> some View {
+    switch what {
+    case "products": NavigationStack { GroceryProductsView(store: store) }
+    case "prices": NavigationStack { StoreProductsView(store: store) }
+    case "product":
+      if let p = store.products.first(where: { !$0.nutrition.isEmpty }) {
+        SheetContainer(title: p.name, close: { other = nil }) { GroceryProductSheet(p: p, staplesOn: true) }
+      }
+    case "history":
+      if let p = store.storeProducts.first {
+        SheetContainer(title: p.name, close: { other = nil }) { PriceHistorySheet(product: p, store: store) }
+      }
+    case "grams":
+      if let t = store.templates.first(where: \.needsConfirmation) {
+        SheetContainer(title: t.name, close: { other = nil }) { MealTemplateSheet(template: t) { _ in } }
+      }
+    case "allmeals":
+      SheetContainer(title: tr("快捷记录", "Quick log"), close: { other = nil }) {
+        AllTemplatesSheet(templates: MealTemplate.byUse(store.templates), tap: { _ in }, edit: { _ in })
+      }
+    case "combine":
+      if let n = store.nutrition {
+        SheetContainer(title: tr("合并成一条", "Merge into one"), close: { other = nil }) {
+          FoodCombineSheet(action: .merge, picked: n.entries, store: store) { _ in }
+        }
+      }
+    default: EmptyView()
+    }
+  }
+  #endif
 
   /// Which page Jarvis is asked from (its quick questions, the server's extra tools): food also as a segment of 记录, as on the
   /// page. A tick later, so it comes after the Jarvis layer's own change for the tab.
@@ -143,6 +187,9 @@ struct FoodContent: View {
 
   @ViewBuilder private func otherSheet(_ s: OtherSheet) -> some View {
     switch s {
+    #if DEBUG
+    case .dev(let what): devSheet(what)
+    #endif
     case .diet:
       SheetContainer(title: tr("我的饮食档案", "My diet profile"), close: { other = nil }) {
         DietProfileSheet(store: store)
@@ -194,10 +241,10 @@ struct FoodContent: View {
         SectionHeader(title: store.isToday ? tr("今天吃了", "Eaten today") : tr("\(RecordDay.short(store.day)) 吃了", "Eaten on \(RecordDay.short(store.day))"))
         if let name = store.nutrition?.goalName { Badge(label: name) }
         if store.nutrition?.notLogged == true { Badge(label: tr("未记录", "Not logged")) }
-        Spacer(minLength: 0)
         if store.mergeOn, store.nutrition?.entries.contains(where: { !$0.isLocal }) == true {
           Button(picked == nil ? tr("选择", "Select") : tr("完成", "Done")) { picked = picked == nil ? [] : nil }
             .font(.system(size: 14, weight: .medium)).foregroundColor(Palette.text2)
+            .padding(.leading, 6)
         }
       }
       if let n = store.nutrition {

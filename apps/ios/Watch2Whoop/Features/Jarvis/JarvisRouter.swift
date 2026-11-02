@@ -143,7 +143,7 @@ final class JarvisRouter: ObservableObject {
 
   /// What goes with the picture. Plain words: the tool is the AI's business (its description says the same).
   static var receiptPrompt: String {
-    tr("记下这张小票 / 价签的价格：逐行读商品、规格、价格、特价和原价，超市和日期也记上，一次记完。小票上的算我买了；读不准的行问我，别猜。", "Record the prices on this receipt / price tag: read each line's product, size, price, special and original price, plus the store and date, and record them in one go. Items on a receipt count as bought; ask me about any line you can't read, don't guess.")
+    tr("记下这张小票 / 价签的价格：逐行读商品、规格、价格、特价和原价，超市和日期也记上，一次记完。小票上的算我买了；读不准的行问我，别猜。", "Record the prices on this receipt / price tag: each line's product, size, price, special and original price, plus store and date, in one go. Receipt items count as bought; ask me about lines you can't read, don't guess.")
   }
 
   /// A tap on the Jarvis key: the menu where the chat runs in the app, otherwise what the Today page's key does
@@ -228,6 +228,15 @@ final class JarvisRouter: ObservableObject {
   func prepareForTesting(chat: JarvisChat, photoPrompt: String?) {
     self.chat = chat
     self.photoPrompt = photoPrompt
+  }
+
+  /// Simulator screenshots (`W2W_DEV_FOOD=scan`): what the chat looks like after the camera, with a blank picture.
+  func devScanShot() {
+    photoPrompt = Self.receiptPrompt
+    sendPhoto(UIGraphicsImageRenderer(size: CGSize(width: 600, height: 900)).image { ctx in
+      UIColor.lightGray.setFill()
+      ctx.fill(CGRect(x: 0, y: 0, width: 600, height: 900))
+    })
   }
   #endif
 
