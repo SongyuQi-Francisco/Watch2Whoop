@@ -245,6 +245,7 @@ enum MeSheet: Identifiable, Equatable {
 
 private struct MeSheetView: View {
   let sheet: MeSheet
+  @EnvironmentObject private var app: AppModel
   @Environment(\.dismiss) private var dismiss
 
   var body: some View {
@@ -253,7 +254,7 @@ private struct MeSheetView: View {
       case .profile: ProfileSetupView(first: false) { dismiss() }
       case .ai: AISettingsView()
       case .notifications: NotificationSettingsView()
-      case .whatsNew: WhatsNewView()
+      case .whatsNew: WhatsNewView { link in dismiss(); app.handle(link: link) }
       case .dataStatus: DataStatusView()
       case .appearance: AppearanceView()
       case .unsent: UnsentChangesView()

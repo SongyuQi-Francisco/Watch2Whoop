@@ -97,6 +97,8 @@ struct Icon: View {
     case info
     // 2.0.0: bedtime goal
     case moon
+    // 2.0.0: user guide
+    case bookOpenText = "book-open-text"
 
     var assetName: String { "lucide.\(rawValue)" }
   }

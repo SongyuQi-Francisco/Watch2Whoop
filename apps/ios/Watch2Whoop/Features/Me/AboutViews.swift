@@ -1,4 +1,38 @@
+import SafariServices
 import SwiftUI
+
+/// The user guide: static pages of the server the person signs in to (`/app/handbook/`, English in `en/`), opened in the app's
+/// Safari view. Not a first-run tutorial (zero tutorial): one row in 我 → 关于.
+enum HandbookLink {
+  static func url(server: String, zh: Bool = Lang.isZh) -> URL? {
+    guard var c = URLComponents(string: server), c.scheme == "https" || c.scheme == "http", c.host != nil else { return nil }
+    c.path = zh ? "/app/handbook/" : "/app/handbook/en/"
+    c.query = nil
+    c.fragment = nil
+    return c.url
+  }
+}
+
+/// A web page inside the app, with Safari's own controls.
+struct SafariView: UIViewControllerRepresentable {
+  let url: URL
+  let done: () -> Void
+
+  func makeUIViewController(context: Context) -> SFSafariViewController {
+    let v = SFSafariViewController(url: url)
+    v.delegate = context.coordinator
+    return v
+  }
+
+  func updateUIViewController(_ c: SFSafariViewController, context: Context) {}
+  func makeCoordinator() -> Coordinator { Coordinator(done: done) }
+
+  final class Coordinator: NSObject, SFSafariViewControllerDelegate {
+    let done: () -> Void
+    init(done: @escaping () -> Void) { self.done = done }
+    func safariViewControllerDidFinish(_ controller: SFSafariViewController) { done() }
+  }
+}
 
 /// The privacy policy and terms of use are public pages of the server (`GET /legal/privacy|terms?lang=`, docs/legal/,
 /// body_engine legal/). The base is the build's `W2WLegalBaseURL` (Info.plist, from the git-ignored local xcconfig) when
@@ -29,14 +63,19 @@ enum LegalLinks {
   }
 }
 
-/// 「关于」 in 我: privacy policy, terms, open-source licences, version.
+/// 「关于」 in 我: the user guide, privacy policy, terms, open-source licences, version.
 struct AboutRows: View {
   let server: String
   let licences: () -> Void
   @Environment(\.openURL) private var openURL
+  @State private var handbook: URL?
 
   var body: some View {
     RowGroup(title: tr("关于", "About")) {
+      if let u = HandbookLink.url(server: server) {
+        ListRow(icon: .bookOpenText, title: tr("使用手册", "User guide")) { handbook = u }
+        RowDivider()
+      }
       if let u = LegalLinks.url(.privacy, server: server) {
         ListRow(icon: .lock, title: LegalLinks.title(.privacy)) { openURL(u) }
         RowDivider()
@@ -48,6 +87,11 @@ struct AboutRows: View {
       ListRow(icon: .bookOpen, title: tr("开源许可", "Open-source licences"), action: licences)
       RowDivider()
       ListRow(icon: .info, title: tr("版本", "Version"), value: APIClient.appVersion)
+    }
+    .sheet(isPresented: Binding(get: { handbook != nil }, set: { if !$0 { handbook = nil } })) {
+      if let handbook {
+        SafariView(url: handbook) { self.handbook = nil }.ignoresSafeArea()
+      }
     }
   }
 }

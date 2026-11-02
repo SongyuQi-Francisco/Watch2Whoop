@@ -212,7 +212,7 @@ final class CircleLinkTests: XCTestCase {
     XCTAssertEqual(InviteCode.extract("EXAMPLECLUB"), "EXAMPLECLUB")   // an activation code of another shape
     XCTAssertNil(InviteCode.extract("  "))
     XCTAssertEqual(InviteShare.webLink(server: "https://body.example.com", code: "QWERT-YUP23")?.absoluteString,
-                   "https://body.example.com/app/?circle=QWERT-YUP23")
+                   "https://body.example.com/app/join.html#QWERT-YUP23")
     XCTAssertEqual(apiRequest(relative: "/v1/avatars/users/2?v=4").query.first?.value, "4")
   }
 }

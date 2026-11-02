@@ -3,6 +3,8 @@ import SwiftUI
 /// The consent (profile/consent.py): the summary, the full text on demand, one tick and one button. Text and version come
 /// from the server (`GET /v1/consent`, in the app's language); `POST /v1/users/me/consent` records the version that was read.
 /// Required = no way past it (health data is only stored, not processed, until then); reconfirm = a revised version.
+/// The consent text itself is never changed here; around it, the sheet names the circles an activation code will join and
+/// who will see what (`circle_pending`), and afterwards says what happened (profile.js).
 struct ConsentView: View {
   @EnvironmentObject private var session: AccountSession
   @EnvironmentObject private var app: AppModel
@@ -15,6 +17,8 @@ struct ConsentView: View {
   @State private var busy = false
   @State private var message: String?
   @State private var declined = false
+  @State private var pending: [PendingCircle] = []
+  @State private var thanks: String?
 
   var body: some View {
     ScrollView(.vertical, showsIndicators: false) {
@@ -35,6 +39,9 @@ struct ConsentView: View {
                 }
               }
             }
+          }
+          ForEach(Array(pending.enumerated()), id: \.offset) { _, c in
+            Banner(text: Self.joinNotice(c), tone: .mid)
           }
           Button(showFull ? tr("收起全文", "Hide the full text") : tr("阅读完整同意书（版本 \(t.version)）", "Read the full consent (version \(t.version))")) {
             showFull.toggle()
@@ -61,10 +68,14 @@ struct ConsentView: View {
           }
           .buttonStyle(PressScale())
           .accessibilityAddTraits(agreed ? .isSelected : [])
-          PrimaryButton(title: tr("同意并继续", "Agree and continue"), busy: busy) { Task { await accept(t) } }
-            .disabled(!agreed)
-            .opacity(agreed ? 1 : 0.5)
-          if !reconfirm {
+          if let thanks {
+            Banner(text: thanks, tone: .good)
+          } else {
+            PrimaryButton(title: tr("同意并继续", "Agree and continue"), busy: busy) { Task { await accept(t) } }
+              .disabled(!agreed)
+              .opacity(agreed ? 1 : 0.5)
+          }
+          if !reconfirm && thanks == nil {
             Button(tr("不同意", "I don't agree")) { declined = true }
               .font(Typo.caption).foregroundColor(Palette.text2).frame(maxWidth: .infinity)
           }
@@ -91,6 +102,7 @@ struct ConsentView: View {
     message = nil
     do {
       text = try await session.api.send(.get(Endpoint.consent), as: ConsentText.self)
+      pending = (try? await session.api.send(.get(Endpoint.profile), as: Profile.self))?.circlePending ?? []
     } catch let e as APIError {
       message = e.userMessage
     } catch {
@@ -104,13 +116,29 @@ struct ConsentView: View {
     var body: [String: AnyEncodable] = ["version": AnyEncodable(t.version), "agree": AnyEncodable(true)]
     if let l = t.language { body["language"] = AnyEncodable(l) }
     do {
-      _ = try await session.api.data(try .json(.post, Endpoint.myConsent, body, idempotent: false))
+      let answer = try await session.api.data(try .json(.post, Endpoint.myConsent, body, idempotent: false))
+      let joined = (try? JSONDecoder.api.decode(ConsentAccepted.self, from: answer))?.circlesJoined.map(\.name) ?? []
+      thanks = Self.thanks(joined: joined)
+      try? await Task.sleep(nanoseconds: 1_400_000_000)   // long enough to read, then the next step
       await done()
     } catch let e as APIError {
       message = e.userMessage
     } catch {
       message = String(describing: error)
     }
+  }
+
+  /// Before agreeing: which circle this joins and what its members will see (profile.js).
+  static func joinNotice(_ c: PendingCircle) -> String {
+    let list = c.scopes.map(CircleScope.label).joined(separator: " · ")
+    let shown = list.isEmpty ? tr("什么都不共享", "nothing") : list
+    return tr("同意后你会加入圈子「\(c.name)」，圈子里的人能看到你的：\(shown)。随时可以在「朋友」里修改或退出。", "After you agree you join the circle \u{201C}\(c.name)\u{201D}. Its members will see your: \(shown). You can change this or leave any time under Friends.")
+  }
+
+  /// After agreeing.
+  static func thanks(joined: [String]) -> String {
+    let names = joined.joined(separator: " · ")
+    return joined.isEmpty ? tr("谢谢！现在开始处理你同步上来的数据", "Thanks! Your synced data will now be processed") : tr("谢谢！已加入「\(names)」", "Thanks! You joined \u{201C}\(names)\u{201D}")
   }
 
   /// The consent's Markdown as plain paragraphs (headings and list markers dropped, **bold** kept as AttributedString).

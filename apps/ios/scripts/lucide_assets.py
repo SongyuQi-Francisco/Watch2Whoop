@@ -111,6 +111,7 @@ ICONS = {
     # N4: trends
     "info": "trends: explain a metric (N4)",
     "moon": "bedtime goal (sleep detail, Me)",
+    "book-open-text": "user guide (Me, About)",
 }
 # Icons that also get a filled twin `lucide.<name>.fill` (same path, `fill` = the stroke colour), the way the Today page
 # fills the heart of a liked post with CSS (circle-feed.js). Not a drawing of our own: the Lucide outline, filled.

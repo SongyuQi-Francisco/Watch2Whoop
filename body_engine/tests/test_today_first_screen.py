@@ -45,7 +45,8 @@ def test_first_screen_budget():
     # + 200 for the sync-repair sheet opening the app's sync page for users on the own sync engine (#219 S5b)
     # + 200 for the two R2 forced-upgrade hooks in app.js (upgrade.js itself loads on demand)
     # + 200 for the wrist-temperature reason in app.js short() ("手表没记录", FB-18)
-    assert total <= 997_500, total
+    # + 1,700 for the invite landing page's texts in i18n.js (join.html) and the older links' redirect in ios-web.js
+    assert total <= 999_200, total
     for heavy in ("i18n-en.js", "muscle-body-data.js", "intro.js", "grocery.js", "diet-profile.js", "water.js", "ui-ai-first.js"):
         assert heavy not in names, f"{heavy} is loaded on demand, not at start"
 
@@ -283,5 +284,5 @@ def test_viewport_blocks_zoom_and_fields_do_not_trigger_focus_zoom():
             size = re.search(r"font-size:\s*([^;]+)", body).group(1).strip()
             px = re.fullmatch(r"(\d+(?:\.\d+)?)px", size)
             assert not px or float(px.group(1)) >= 16, f"{sel.strip()[:60]}: font-size {size}"
-    for page in ("activate.html", "install.html", "oauth.html"):
+    for page in ("activate.html", "install.html", "join.html", "oauth.html"):
         assert "user-scalable" not in (STATIC / page).read_text(encoding="utf-8")

@@ -39,7 +39,7 @@ from ..appearance import store as appearance
 from ..client import policy as upgrade_policy
 
 STATIC = Path(__file__).parent / "static"
-WEB_VERSION = "v2.159-2026-10-30"   # Today page frontend version (bump whenever the page changes)
+WEB_VERSION = "v2.160-2026-11-03"   # Today page frontend version (bump whenever the page changes)
 
 
 router = APIRouter(tags=["web"])

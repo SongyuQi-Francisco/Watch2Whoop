@@ -364,10 +364,10 @@ def test_activation_page_flow(client, tmp_path):
 
 IOS_WEB_HARNESS = r"""
 const src = require("fs").readFileSync(process.argv[1], "utf8");
-async function run(device, mode, inApp) {
+async function run(device, mode, inApp, search) {
   const body = { first: null, prepend(n) { this.first = n; } };
   const root = { style: { visibility: "" } };
-  const location = { replaced: null, replace(v) { this.replaced = v; } };
+  const location = { search: search || "", replaced: null, replace(v) { this.replaced = v; } };
   const window = inApp ? { Watch2Whoop: {} } : {};
   const fetches = [];
   const fetch = async (url) => { fetches.push(url); return { ok: true, json: async () => ({ ios_web: mode }) }; };
@@ -383,6 +383,8 @@ const IPHONE = { userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS
 const MAC = { userAgent: "Mozilla/5.0 (Macintosh)", platform: "MacIntel", maxTouchPoints: 0 };
 (async () => console.log(JSON.stringify({
   warn: await run(IPHONE, "warn"), off: await run(IPHONE, "off"), app: await run(IPHONE, "off", true), mac: await run(MAC, "off"),
+  invite: await run(IPHONE, "warn", false, "?circle=QWERT-YUP23"), inviteOff: await run(IPHONE, "off", false, "?circle=QWERT-YUP23"),
+  inviteMac: await run(MAC, "off", false, "?circle=QWERT-YUP23"), inviteApp: await run(IPHONE, "off", true, "?circle=QWERT-YUP23"),
 })))();
 """
 
@@ -409,8 +411,10 @@ def test_ios_safari_today_page_modes(client, tmp_path, monkeypatch):
     out = json.loads(subprocess.run([node, "-e", IOS_WEB_HARNESS, str(src)], capture_output=True, text=True, check=True).stdout)
     assert out["warn"]["banner"] == "activate.iosBanner" and 'href="install.html"' in out["warn"]["href"] and not out["warn"]["hidden"]
     assert out["off"]["replaced"] == "install.html" and out["off"]["banner"] is None
-    for name in ("app", "mac"):
+    for name in ("app", "mac", "inviteMac", "inviteApp"):
         assert out[name] == {"fetched": 0, "banner": None, "href": None, "replaced": None, "hidden": False}, name
+    for name in ("invite", "inviteOff"):   # an older invite link on an iPhone: the landing page, before anything else loads
+        assert out[name] == {"fetched": 0, "banner": None, "href": None, "replaced": "join.html#QWERT-YUP23", "hidden": False}, name
 
 
 def test_web_activation_mints_no_ow_code(client, users, dsn, ow):

@@ -131,6 +131,9 @@ struct TodayModel: Equatable {
     var label: String
     var tone: Tone
     var ago: String?
+    /// The overview's `issue`, when the server sees sync stuck (SyncStuck).
+    var issueCode: String?
+    var issueLabel: String?
   }
 
   struct Circles: Equatable {
@@ -182,6 +185,8 @@ struct TodayModel: Equatable {
   var status: [StatusGroup] = []
   var reminders: [Reminder] = []
   var sync: SyncCard?
+  /// How much history the server has and the reminder to fill it in (the overview's `coverage`).
+  var coverage: BackfillCoverage?
   var circles: Circles?
   var sleepDate: String?
   /// The day's training card (the today document's `training`), this week's muscle map (never on a look-back day).
@@ -354,7 +359,10 @@ struct TodayModel: Equatable {
       default: tone = .text
       }
       let mins = (s["minutes_ago"] as? NSNumber)?.intValue
-      sync = SyncCard(state: state, label: s["label"] as? String ?? "", tone: tone, ago: mins.map(Self.ago))
+      let issue = s["issue"] as? [String: Any]
+      sync = SyncCard(state: state, label: s["label"] as? String ?? "", tone: tone, ago: mins.map(Self.ago),
+                      issueCode: issue?["code"] as? String, issueLabel: issue?["label"] as? String)
+      coverage = BackfillCoverage(s["coverage"] as? [String: Any])
     }
 
     if inp.circlesOn && !isPast {
