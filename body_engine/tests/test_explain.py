@@ -19,7 +19,7 @@ from psycopg_pool import ConnectionPool
 from body_engine import api, auth
 from body_engine.config import Settings
 from body_engine.db import migrate
-from body_engine.explain import glossary as G, glossary_en as GE
+from body_engine.explain import glossary as G, glossary_en as GE, personal
 
 TEST_DB = os.environ.get("BODY_TEST_DB_NAME_EXPLAIN", "body_test_explain")
 TZ = ZoneInfo("Australia/Sydney")
