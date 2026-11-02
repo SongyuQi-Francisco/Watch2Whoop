@@ -455,6 +455,18 @@ def export_segments(conn, owner_id: int, start: datetime, end: datetime) -> list
     return [Segment(r["start_at"], r["end_at"], r["stage"], r["source"]) for r in rows]
 
 
+def uploaded_segments(conn, owner_id: int, start: datetime, end: datetime) -> list:
+    """Stage segments the phone uploaded with its sleep sessions (2.0.0, nativesync/derived_kinds/sleep.py:
+    sleep_sessions.segments, [[start, end, stage], ...] in UTC seconds): the night's stages when its raw samples are not here."""
+    from ..importers.common import Segment
+    rows = conn.execute(
+        """SELECT segments, device FROM sleep_sessions
+           WHERE user_id = %s AND segments IS NOT NULL AND start_at < %s AND end_at > %s ORDER BY start_at""",
+        (owner_id, end, start)).fetchall()
+    return [Segment(datetime.fromtimestamp(a, timezone.utc), datetime.fromtimestamp(b, timezone.utc), stage, r["device"])
+            for r in rows for a, b, stage in r["segments"]]
+
+
 def hypnogram(segments: list, start: datetime, end: datetime, tz: ZoneInfo) -> list[dict]:
     """Clip segments to [start, end] and merge adjacent same-stage ones; offset_min is minutes since falling asleep (for drawing the timeline)."""
     # Convert everything to UTC before comparing / subtracting: two datetimes with the same ZoneInfo subtract by wall-clock time, which is off by an hour on the DST night
@@ -516,13 +528,14 @@ def recent_bedtimes_compute(mains: list[dict], tz: ZoneInfo) -> list[dict]:
 
 
 def night_stages(conn, owner_id: int, tz: ZoneInfo, start: datetime, end: datetime) -> tuple[list[dict], str | None, str | None]:
-    """The stage timeline of one night: OW first, then the Shortcut samples, then the imported Apple Health history; in
-    the sync mode `app` the app's own sync engine before all of them (rawdata/samples.py).
+    """The stage timeline of one night: what the phone uploaded with its sessions, OW, the Shortcut samples, then the imported
+    Apple Health history; in the sync mode `app` the app's own sync engine before all of them (rawdata/samples.py).
     Returns (stages, source, reason when there are none)."""
     from ..rawdata import ow_archive as rx_archive, samples as rx_samples
     problems = []
     archived = rx_archive.reads_archive(conn, owner_id)   # app mode, OW's history archived (step S6): OW is not asked
-    fetchers = [("ow", lambda: rx_archive.sleep_segments(conn, owner_id, start, end) if archived
+    fetchers = [("app", lambda: uploaded_segments(conn, owner_id, start, end)),
+                ("ow", lambda: rx_archive.sleep_segments(conn, owner_id, start, end) if archived
                  else ow_segments(conn, owner_id, tz, start, end)),
                 ("shortcut", lambda: shortcut_segments(conn, owner_id, start, end)),
                 ("export", lambda: export_segments(conn, owner_id, start, end))]

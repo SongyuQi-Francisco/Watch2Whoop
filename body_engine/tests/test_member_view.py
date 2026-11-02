@@ -251,9 +251,15 @@ def test_app_mode_owner_is_read_from_the_server_copy(client, dsn, world, monkeyp
         assert r.status_code == 200, (kind, r.text)
         return r.json()
 
+    def staged(rows):
+        """A night with the stage segments the phone uploads; none of its raw samples are on the server."""
+        a, b = rows[0]["start"], rows[0]["end"]
+        rows[0]["segments"] = [[a, a + 3600, "core"], [a + 3600, a + 5400, "deep"], [a + 5400, b, "rem"]]
+        return rows
+
     phone = {
         "daily": [(d, daily_rows(12000 + i)) for i, d in enumerate(days)],
-        "sleep": [(d, sleep_rows(d, 431 + i)) for i, d in enumerate(days)],
+        "sleep": [(d, staged(sleep_rows(d, 431 + i)) if d == days[-1] else sleep_rows(d, 431 + i)) for i, d in enumerate(days)],
         "workouts": [(d, [workout_row(d, f"w-{i}", 42.5 + i)]) for i, d in enumerate(days)],
         "stress": [(d, stress_rows(1.11 + i / 100)) for i, d in enumerate(days)],
         "healthspan": [(monday, healthspan_rows(monday, today, 23.1))],
@@ -291,6 +297,14 @@ def test_app_mode_owner_is_read_from_the_server_copy(client, dsn, world, monkeyp
     assert t["series"]["stress"]["values"][-2] == pytest.approx(1.13)
     assert "433" in json.dumps(get("/sleep/nights", end=last.isoformat(), days=3))
     assert get("/sleep/night", date=last.isoformat())["date"] == last.isoformat()
+    # the stage chart of a night whose raw samples are not here: the segments the phone uploaded, on both pages
+    night = get("/sleep/night", date=last.isoformat())["main"]
+    assert night["stages_source"] == "app" and [s["stage"] for s in night["stages"]] == ["core", "deep", "rem"]
+    assert night["stages"][0]["minutes"] == 60 and night["stages"][1]["offset_min"] == 60
+    assert [s["stage"] for s in get("/today", date=last.isoformat())["sleep"]["stages"]] == ["core", "deep", "rem"]
+    # a night uploaded without segments stays without a chart
+    plain = get("/sleep/night", date=days[0].isoformat())["main"]
+    assert plain["stages"] == [] and plain["stages_source"] is None
     assert "42.5" in json.dumps(get(f"/training/day/{days[0].isoformat()}"))
     assert get("/training/calendar", month=last.strftime("%Y-%m"))["days"]
     assert any(d.get("scores") for d in get("/days", month=last.strftime("%Y-%m"))["days"])
