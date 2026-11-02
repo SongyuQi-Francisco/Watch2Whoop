@@ -73,7 +73,7 @@ private struct CirclesScreen: View {
         .presentationDetents(s == .manage ? [.large] : [.medium, .large])
     }
     .task {
-      take(app.route, settled: settled)
+      take(app.route, settled: settled, tab: tab)
       askPush(settled: settled, tab: tab)
       await store.refresh()
       if store.mode == .feed { store.markSeen() }
@@ -85,10 +85,10 @@ private struct CirclesScreen: View {
         if store.unread > 0 && store.mode == .feed { await store.refreshFeed(); store.markSeen() }
       }
     }
-    .onChange(of: app.route) { take($0, settled: settled) }
+    .onChange(of: app.route) { take($0, settled: settled, tab: tab) }
     // the new value as an argument: inside these closures the view's own `settled` is still the old one
-    .onChange(of: settled) { on in take(app.route, settled: on); askPush(settled: on, tab: tab) }
-    .onChange(of: tab) { t in askPush(settled: settled, tab: t) }
+    .onChange(of: settled) { on in take(app.route, settled: on, tab: tab); askPush(settled: on, tab: tab) }
+    .onChange(of: tab) { t in take(app.route, settled: settled, tab: t); askPush(settled: settled, tab: t) }
     .onChange(of: phase) { p in if p == .active { Task { await store.refresh() } } }
   }
 
@@ -99,9 +99,10 @@ private struct CirclesScreen: View {
     Task { await PushRegistration.shared.askOnFirstVisit(api: store.session.api) }
   }
 
-  /// A route meant for this tab (a notification, a link): consumed here.
-  private func take(_ r: AppModel.Route?, settled: Bool) {
-    guard settled else { return }
+  /// A route meant for this tab (a notification, a link): consumed here, once the tab is on screen. The tab bar builds this
+  /// view before it is shown; taking the route then would leave `CircleRouting` nothing to switch to the tab for.
+  private func take(_ r: AppModel.Route?, settled: Bool, tab: AppTab) {
+    guard settled, tab == .circles else { return }
     switch r {
     case .circles(let post)?:
       app.route = nil
