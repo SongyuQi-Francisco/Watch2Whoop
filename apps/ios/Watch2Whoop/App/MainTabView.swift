@@ -55,10 +55,33 @@ struct MainTabView: View {
     .overlay { JarvisLayer(tab: $selection) }                                             // N6
     .environment(\.askAI, AskAIAction { p in Task { @MainActor in JarvisRouter.ask(prompt: p) } })   // N6
     .devTab($selection)                                                                    // N5: Debug screenshots
+    .fullScreenCover(item: $session.viewing) { p in                                        // someone else's pages, read-only
+      MemberScreen(person: p, client: session.api.uncached(), tab: Self.devMemberTab, exit: { session.viewing = nil })
+        .environmentObject(session)
+    }
+    .onChange(of: session.viewing) { p in if p == nil { Task { await session.refreshViewable() } } }
+    .task { await openDevMember() }
     .onChange(of: session.circlesTab) { on in
       if selection == .circles && !on { selection = .today }
       if selection == .food && on { selection = .record }
     }
+  }
+
+  /// `SIMCTL_CHILD_W2W_DEV_MEMBER=<user id>[:today|trends|sleep|food|record|health]` (Debug, simulator screenshots): opens that
+  /// person's read-only view, when the server says they share with me.
+  private func openDevMember() async {
+    #if DEBUG
+    guard let v = RecordDevShot.value("W2W_DEV_MEMBER"), let id = Int(v.split(separator: ":")[0]) else { return }
+    await session.refreshViewable()
+    session.viewing = session.viewable.first { $0.id == id }
+    #endif
+  }
+
+  private static var devMemberTab: MemberTab {
+    #if DEBUG
+    if let t = RecordDevShot.value("W2W_DEV_MEMBER")?.split(separator: ":").dropFirst().first.flatMap({ MemberTab(rawValue: String($0)) }) { return t }
+    #endif
+    return .today
   }
 
   // Each tab is owned by one page agent (docs/ios-native-app.md section 9); they replace their placeholder here.

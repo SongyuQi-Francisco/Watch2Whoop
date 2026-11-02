@@ -143,13 +143,41 @@ private struct HealthRecordContent: View {
 
   // MARK: supplements
 
-  @ViewBuilder private var supplements: some View {
-    let active = store.supplements.filter(\.active), other = store.supplements.filter { !$0.active }
-    if store.supplements.isEmpty {
-      EmptyNote(text: tr("还没有补剂。让你的 AI 记下你在吃的。", "No supplements yet. Ask your AI to add what you take."))
+  private var supplements: some View {
+    SupplementsList(supplements: store.supplements) { s in
+      Task {
+        let out = await store.setTaken(s, !s.takenToday)
+        if !out.sent { toast = Toast(out.message) }
+      }
+    }
+  }
+
+  // MARK: labs
+
+  private var labs: some View {
+    LabsList(labs: store.labs) { lab = $0 }
+  }
+
+  // MARK: events
+
+  @ViewBuilder private var events: some View {
+    SecondaryButton(icon: .plus, title: tr("记身体事件", "Log a body event")) { addEvent = true }
+    EventsList(events: store.events)
+  }
+}
+
+/// Supplements with today's check-in. `toggle` nil = read-only (someone else's page).
+struct SupplementsList: View {
+  let supplements: [Supplement]
+  var toggle: ((Supplement) -> Void)?
+
+  var body: some View {
+    let active = supplements.filter(\.active), other = supplements.filter { !$0.active }
+    if supplements.isEmpty {
+      EmptyNote(text: toggle == nil ? tr("暂无", "None") : tr("还没有补剂。让你的 AI 记下你在吃的。", "No supplements yet. Ask your AI to add what you take."))
     }
     if !active.isEmpty {
-      RowGroup(title: tr("今天打卡", "Today's check-in")) {
+      RowGroup(title: toggle == nil ? tr("在吃", "Taking") : tr("今天打卡", "Today's check-in")) {
         ForEach(Array(active.enumerated()), id: \.element.id) { n, s in
           if n > 0 { RowDivider(inset: 34) }
           supplementRow(s)
@@ -176,18 +204,16 @@ private struct HealthRecordContent: View {
 
   private func supplementRow(_ s: Supplement) -> some View {
     Button {
-      guard s.journalKey != nil else { return }
-      Task {
-        let out = await store.setTaken(s, !s.takenToday)
-        if !out.sent { toast = Toast(out.message) }
-      }
+      if s.journalKey != nil { toggle?(s) }
     } label: {
       HStack(spacing: 12) {
-        ZStack {
-          Circle().stroke(s.takenToday ? Palette.good : Palette.text3, lineWidth: 1.5).frame(width: 22, height: 22)
-          if s.takenToday { Icon(.check, size: 14).foregroundColor(Palette.good) }
+        if toggle != nil || s.takenToday {
+          ZStack {
+            Circle().stroke(s.takenToday ? Palette.good : Palette.text3, lineWidth: 1.5).frame(width: 22, height: 22)
+            if s.takenToday { Icon(.check, size: 14).foregroundColor(Palette.good) }
+          }
+          .opacity(s.journalKey == nil ? 0.3 : 1)
         }
-        .opacity(s.journalKey == nil ? 0.3 : 1)
         VStack(alignment: .leading, spacing: 2) {
           Text(s.name).font(Typo.body).foregroundColor(Palette.text)
           Text([s.dose, s.timing].compactMap { $0 }.joined(separator: " · ")).font(Typo.caption).foregroundColor(Palette.text2)
@@ -200,19 +226,25 @@ private struct HealthRecordContent: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(PressScale())
+    .disabled(toggle == nil)
     .accessibilityAddTraits(s.takenToday ? .isSelected : [])
   }
+}
 
-  // MARK: labs
+/// The lab tests with their latest value; a tap opens the trend.
+struct LabsList: View {
+  let labs: [LabSummary]
+  var emptyText: String?
+  let open: (LabSummary) -> Void
 
-  @ViewBuilder private var labs: some View {
-    if store.labs.isEmpty {
-      EmptyNote(text: tr("还没有化验记录。把化验单拍给你的 AI。", "No lab results yet. Send your lab report to your AI."))
+  var body: some View {
+    if labs.isEmpty {
+      EmptyNote(text: emptyText ?? tr("还没有化验记录。把化验单拍给你的 AI。", "No lab results yet. Send your lab report to your AI."))
     } else {
       RowGroup {
-        ForEach(Array(store.labs.enumerated()), id: \.element.id) { n, l in
+        ForEach(Array(labs.enumerated()), id: \.element.id) { n, l in
           if n > 0 { RowDivider(inset: 0) }
-          Button { lab = l } label: {
+          Button { open(l) } label: {
             HStack(spacing: 10) {
               VStack(alignment: .leading, spacing: 3) {
                 Text(l.name).font(Typo.body).foregroundColor(Palette.text).lineLimit(1)
@@ -235,16 +267,18 @@ private struct HealthRecordContent: View {
       }
     }
   }
+}
 
-  // MARK: events
+/// Body events, newest first.
+struct EventsList: View {
+  let events: [BodyEvent]
 
-  @ViewBuilder private var events: some View {
-    SecondaryButton(icon: .plus, title: tr("记身体事件", "Log a body event")) { addEvent = true }
-    if store.events.isEmpty {
+  var body: some View {
+    if events.isEmpty {
       EmptyNote(text: tr("还没有身体事件", "No body events yet"))
     } else {
       RowGroup {
-        ForEach(Array(store.events.enumerated()), id: \.element.id) { n, e in
+        ForEach(Array(events.enumerated()), id: \.element.id) { n, e in
           if n > 0 { RowDivider(inset: 0) }
           HStack(alignment: .top, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
@@ -287,10 +321,20 @@ struct TrendLine: View {
 /// One test over time: the readings as a line (lab = filled, home device = hollow), the reference range as a band,
 /// then every reading with its change from the previous one.
 struct LabTrendView: View {
-  @ObservedObject var store: HealthStore
-  let key: String
+  /// The copy to show at once (nil = none).
+  var cached: LabHistory?
+  let load: () async -> LabHistory?
   @State private var history: LabHistory?
   @State private var loaded = false
+
+  init(cached: LabHistory? = nil, load: @escaping () async -> LabHistory?) {
+    self.cached = cached
+    self.load = load
+  }
+
+  init(store: HealthStore, key: String) {
+    self.init(cached: store.labHistory(key), load: { await store.loadLab(key) })
+  }
 
   /// The y range: the readings and the reference range, with a little room.
   static func domain(_ h: LabHistory, _ values: [Double]) -> ClosedRange<Double> {
@@ -371,8 +415,8 @@ struct LabTrendView: View {
       }
     }
     .task {
-      history = store.labHistory(key)
-      if let h = await store.loadLab(key) { history = h }
+      history = cached
+      if let h = await load() { history = h }
       loaded = true
     }
   }

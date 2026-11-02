@@ -6,11 +6,19 @@ struct ReportView: View {
   let end: String?
   let explain: (String, String) -> Void
   @EnvironmentObject private var session: AccountSession
+  @Environment(\.memberView) private var member
   @StateObject private var store = ReportStore()
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      SegControl(items: ReportModel.Period.allCases.map { ($0, $0.label) }, selected: store.period) { store.setPeriod($0, session: session) }
+      SegControl(items: ReportModel.Period.allCases.map { ($0, $0.label) }, selected: store.period) { p in
+        if let member {
+          store.period = p
+          Task { await store.load(member, end: end, regression: ReportStore.regression(session)) }
+        } else {
+          store.setPeriod(p, session: session)
+        }
+      }
         .padding(.top, 4)
       if let r = store.report {
         content(r)
@@ -21,12 +29,19 @@ struct ReportView: View {
       }
       behavior.padding(.top, 22)
     }
-    .onAppear { store.observe(session, end: end) }
+    .onAppear { if member == nil { store.observe(session, end: end) } }
     .onChange(of: end) { e in
-      store.observe(session, end: e)
-      Task { await store.refresh(session) }
+      if let member {
+        Task { await store.load(member, end: e, regression: ReportStore.regression(session)) }
+      } else {
+        store.observe(session, end: e)
+        Task { await store.refresh(session) }
+      }
     }
-    .task { await store.refresh(session) }
+    .task {
+      if let member { await store.load(member, end: end, regression: ReportStore.regression(session)) }
+      else { await store.refresh(session) }
+    }
   }
 
   @ViewBuilder private func content(_ r: ReportModel) -> some View {

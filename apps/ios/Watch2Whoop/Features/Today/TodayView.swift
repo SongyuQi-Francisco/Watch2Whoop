@@ -138,107 +138,18 @@ struct TodayView: View {
 
   @ViewBuilder private var content: some View {
     let m = store.model
-    rings(m).padding(.top, 10)
-    if let w = m.word {
-      Text(w).font(Typo.heroWord).foregroundColor(m.wordMuted ? Palette.text2 : Palette.text)
-        .frame(maxWidth: .infinity).padding(.top, 12)
-    }
-    if let s = m.sub {
-      Text(s).font(Typo.caption).foregroundColor(Palette.text2).frame(maxWidth: .infinity).padding(.top, 3)
-    }
-    if let n = m.recoveryNext {
-      Button { runRecoveryNext(n.action) } label: { Chip(label: n.label) }
-        .buttonStyle(PressScale())
-        .frame(maxWidth: .infinity).padding(.top, 10)
-        .id("recoveryNext")
-    }
-    if m.loadChip != nil || m.local {
-      HStack(spacing: 8) {
-        if let l = m.loadChip {
-          Button { sheet = .load } label: { Chip(label: "\(tr("负荷", "Load")) \(l)") }.buttonStyle(PressScale())
-        }
-        if m.local { Chip(label: tr("本机计算", "On this phone")) }
-      }
-      .frame(maxWidth: .infinity).padding(.top, 14)
-    }
-    if let e = m.error { ToneBadge(text: e).frame(maxWidth: .infinity).padding(.top, 10) }
-
-    // 需要注意 (#357): only when something is off on the day
-    if !m.attention.isEmpty {
-      VStack(alignment: .leading, spacing: 10) {
-        SectionHeader(title: tr("需要注意", "Needs attention"))
-        AttentionList(items: m.attention) { open($0.open) }
-      }
-      .padding(.top, 22)
-      .id("attention")
-    }
-
-    // 今日核心 (#357): the strain target (live) and our algorithms' results for the day
-    if !m.core.isEmpty {
-      VStack(alignment: .leading, spacing: 10) {
-        SectionHeader(title: tr("今日核心", "Today's core"))
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-          ForEach(m.core) { c in CoreCardView(card: c) { open(c.open) } }
-        }
-      }
-      .padding(.top, 22)
-      .id("core")
-    }
-
-    ForEach(m.sections) { s in
-      VStack(alignment: .leading, spacing: 10) {
-        SectionHeader(title: s.title)
-        HStack(spacing: 8) { ForEach(s.metrics) { TapTile(metric: $0, action: handle) } }
-      }
-      .padding(.top, 22)
-    }
-
-    if let c = m.tonight {
-      SleepCoachCard(coach: c, isPast: m.isPast) { sheet = .detail(.sleepCoach) }.padding(.top, 22).id("sleepCoach")
-    }
-
-    // the strain target lives in 今日核心; the health monitor keeps its own card
-    if !m.vitals.isEmpty {
-      MonitorCard(vitals: m.vitals, off: m.vitalsOff) { sheet = .monitor }.padding(.top, 22)
-    }
-
-    if m.date != nil {
-      Button {
-        TrendsLink.shared.open(day: store.date)
-        tab = .trends
-      } label: {
-        HStack(spacing: 4) {
-          Text(tr("全部指标", "All metrics")).font(Typo.bodyStrong)
-          Icon(.chevronRight, size: 14)
-        }
-        .foregroundColor(Palette.text2)
-        .frame(maxWidth: .infinity, alignment: .trailing)
-        .padding(.vertical, 6)
-        .contentShape(Rectangle())
-      }
-      .buttonStyle(PressScale())
-      .padding(.top, 12)
-      .id("allMetrics")
-    }
-
-    if let t = m.training {
-      TodayTrainingCard(training: t, open: { trainingOpen = true }, history: openTraining).padding(.top, 22).id("training")
-    }
-    if !m.isPast, let mm = m.muscle { TodayMuscleCard(muscle: mm, open: openTraining).padding(.top, 22).id("muscle") }
-
-    if !m.isPast && !m.status.isEmpty { statusBlock(m.status).padding(.top, 22) }
-
-    TodayFoodCard(session: session, day: store.date, toast: $toast).id("n3.food")
-
-    if !m.reminders.isEmpty {
-      VStack(alignment: .leading, spacing: 8) {
-        SectionTitle(title: tr("提醒", "Reminders"), trailing: m.reminders.count > 3 ? tr("全部 \(m.reminders.count)", "All \(m.reminders.count)") : nil) {
-          sheet = .reminders
-        }
-        ForEach(m.topReminders) { r in ReminderRow(reminder: r) { sheet = .reminder(r.id) } }
-      }
-      .padding(.top, 22)
-    }
+    TodayDayCards(model: m, hasData: store.hasData, onRingsShown: { PerfProbe.shared.ringsShown() }, handle: handle, open: open, show: { sheet = $0 },
+                  openStatus: { it in
+                    if it.key == "weight" { sheet = .weight }
+                    else if let lab = it.labKey { sheet = .detail(.lab(key: lab, title: it.label)) }
+                    else { sheet = .explain(kind: "status", key: it.key, title: it.label) }
+                  },
+                  allMetrics: {
+                    TrendsLink.shared.open(day: store.date)
+                    tab = .trends
+                  },
+                  recoveryNext: runRecoveryNext, openTraining: { trainingOpen = true }, openHistory: openTraining,
+                  foodCard: AnyView(TodayFoodCard(session: session, day: store.date, toast: $toast).id("n3.food")))
 
     if let s = m.sync {
       SyncCardView(card: s, sync: session.sync, open: { app.route = .syncCenter }) {
@@ -251,45 +162,6 @@ struct TodayView: View {
     Button { app.route = .syncCenter } label: { SyncStatusLine(sync: session.sync, hasData: store.hasData) }
       .buttonStyle(.plain)
       .padding(.top, 18)
-  }
-
-  /// Three rings side by side, recovery in the middle and 1.4× bigger (NativeToday.swift of 1.0.9).
-  private func rings(_ m: TodayModel) -> some View {
-    let width = min(UIScreen.main.bounds.width, Metrics.maxContentWidth) - Metrics.gutter * 2
-    // 1 + 1.4 + 1 ring sides, plus each ring's stroke padding (≈ 0.24 side in all) and two 12 pt gaps
-    let side = min(100, (max(width, 200) - 24) / 3.7), big = side * 1.4
-    return HStack(alignment: .center, spacing: 12) {
-      ForEach(m.rings, id: \.key) { r in
-        let isBig = r.key == "recovery"
-        Button { handle(r.key == "sleep" ? .sleepDetail(m.sleepDate) : r.action) } label: {
-          RingView(value: r.value, label: r.label, fraction: r.fraction, tone: r.tone, side: isBig ? big : side, big: isBig)
-        }
-        .buttonStyle(PressScale())
-      }
-    }
-    .frame(maxWidth: .infinity)
-    .onAppear { if store.hasData { PerfProbe.shared.ringsShown() } }
-    .onChange(of: store.hasData) { if $0 { PerfProbe.shared.ringsShown() } }
-  }
-
-  private func statusBlock(_ groups: [TodayModel.StatusGroup]) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
-      SectionHeader(title: tr("身体状态", "Body status"))
-      ForEach(groups) { g in
-        if groups.count > 1, !g.name.isEmpty {
-          Text(g.name).font(Typo.label).foregroundColor(Palette.text3).padding(.top, 2)
-        }
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-          ForEach(g.items) { it in
-            StatusCell(item: it) {
-              if it.key == "weight" { sheet = .weight }
-              else if let lab = it.labKey { sheet = .detail(.lab(key: lab, title: it.label)) }
-              else { sheet = .explain(kind: "status", key: it.key, title: it.label) }
-            }
-          }
-        }
-      }
-    }
   }
 
   /// 记录 → 训练 (the muscle card, 训练历史, 逐组记录).
@@ -344,6 +216,164 @@ struct TodayView: View {
         try? await Task.sleep(nanoseconds: 1_400_000_000)
       }
       PerfProbe.shared.stopFrames(label: "today_scroll")
+    }
+  }
+}
+
+// MARK: - the day's cards
+
+/// Everything a day shows, from the rings to the reminders: the Today tab's page and the read-only view of someone else
+/// (`MemberTodayPage`) draw the same cards from a `TodayModel`. What happens on a tap belongs to the page. What leads to my own
+/// data (the button under an empty ring, the training cards, the food card) is only there when the page passes it.
+struct TodayDayCards: View {
+  let model: TodayModel
+  var hasData = true
+  var onRingsShown: () -> Void = {}
+  let handle: (TodayModel.Action) -> Void
+  let open: (TodayOpen) -> Void
+  let show: (TodaySheet) -> Void
+  let openStatus: (TodayModel.StatusItem) -> Void
+  let allMetrics: () -> Void
+  var recoveryNext: ((RecoveryNext.Action) -> Void)?
+  var openTraining: (() -> Void)?
+  var openHistory: (() -> Void)?
+  var foodCard: AnyView?
+
+  // no container here: inside the page's LazyVStack each card stays its own lazy row
+  var body: some View {
+    let m = model
+    if !m.rings.isEmpty { rings(m).padding(.top, 10) }
+    if let w = m.word {
+      Text(w).font(Typo.heroWord).foregroundColor(m.wordMuted ? Palette.text2 : Palette.text)
+        .frame(maxWidth: .infinity).padding(.top, 12)
+    }
+    if let s = m.sub {
+      Text(s).font(Typo.caption).foregroundColor(Palette.text2).frame(maxWidth: .infinity).padding(.top, 3)
+    }
+    if let n = m.recoveryNext, let recoveryNext {
+      Button { recoveryNext(n.action) } label: { Chip(label: n.label) }
+        .buttonStyle(PressScale())
+        .frame(maxWidth: .infinity).padding(.top, 10)
+        .id("recoveryNext")
+    }
+    if m.loadChip != nil || m.local {
+      HStack(spacing: 8) {
+        if let l = m.loadChip {
+          Button { show(.load) } label: { Chip(label: "\(tr("负荷", "Load")) \(l)") }.buttonStyle(PressScale())
+        }
+        if m.local { Chip(label: tr("本机计算", "On this phone")) }
+      }
+      .frame(maxWidth: .infinity).padding(.top, 14)
+    }
+    if let e = m.error { ToneBadge(text: e).frame(maxWidth: .infinity).padding(.top, 10) }
+
+    // 需要注意 (#357): only when something is off on the day
+    if !m.attention.isEmpty {
+      VStack(alignment: .leading, spacing: 10) {
+        SectionHeader(title: tr("需要注意", "Needs attention"))
+        AttentionList(items: m.attention) { open($0.open) }
+      }
+      .padding(.top, 22)
+      .id("attention")
+    }
+
+    // 今日核心 (#357): the strain target (live) and our algorithms' results for the day
+    if !m.core.isEmpty {
+      VStack(alignment: .leading, spacing: 10) {
+        SectionHeader(title: tr("今日核心", "Today's core"))
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+          ForEach(m.core) { c in CoreCardView(card: c) { open(c.open) } }
+        }
+      }
+      .padding(.top, 22)
+      .id("core")
+    }
+
+    ForEach(m.sections) { s in
+      VStack(alignment: .leading, spacing: 10) {
+        SectionHeader(title: s.title)
+        HStack(spacing: 8) { ForEach(s.metrics) { TapTile(metric: $0, action: handle) } }
+      }
+      .padding(.top, 22)
+    }
+
+    if let c = m.tonight {
+      SleepCoachCard(coach: c, isPast: m.isPast) { show(.detail(.sleepCoach)) }.padding(.top, 22).id("sleepCoach")
+    }
+
+    // the strain target lives in 今日核心; the health monitor keeps its own card
+    if !m.vitals.isEmpty {
+      MonitorCard(vitals: m.vitals, off: m.vitalsOff) { show(.monitor) }.padding(.top, 22)
+    }
+
+    if m.date != nil {
+      Button(action: allMetrics) {
+        HStack(spacing: 4) {
+          Text(tr("全部指标", "All metrics")).font(Typo.bodyStrong)
+          Icon(.chevronRight, size: 14)
+        }
+        .foregroundColor(Palette.text2)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(PressScale())
+      .padding(.top, 12)
+      .id("allMetrics")
+    }
+
+    if let t = m.training, let openTraining, let openHistory {
+      TodayTrainingCard(training: t, open: openTraining, history: openHistory).padding(.top, 22).id("training")
+    }
+    if !m.isPast, let mm = m.muscle, let openHistory { TodayMuscleCard(muscle: mm, open: openHistory).padding(.top, 22).id("muscle") }
+
+    if !m.isPast && !m.status.isEmpty { statusBlock(m.status).padding(.top, 22) }
+
+    if let foodCard { foodCard }
+
+    if !m.reminders.isEmpty {
+      VStack(alignment: .leading, spacing: 8) {
+        SectionTitle(title: tr("提醒", "Reminders"), trailing: m.reminders.count > 3 ? tr("全部 \(m.reminders.count)", "All \(m.reminders.count)") : nil) {
+          show(.reminders)
+        }
+        ForEach(m.topReminders) { r in ReminderRow(reminder: r) { show(.reminder(r.id)) } }
+      }
+      .padding(.top, 22)
+    }
+  }
+
+  /// Three rings side by side, recovery in the middle and 1.4× bigger (NativeToday.swift of 1.0.9).
+  private func rings(_ m: TodayModel) -> some View {
+    let width = min(UIScreen.main.bounds.width, Metrics.maxContentWidth) - Metrics.gutter * 2
+    // 1 + 1.4 + 1 ring sides, plus each ring's stroke padding (≈ 0.24 side in all) and two 12 pt gaps
+    let side = min(100, (max(width, 200) - 24) / 3.7), big = side * 1.4
+    return HStack(alignment: .center, spacing: 12) {
+      ForEach(m.rings, id: \.key) { r in
+        let isBig = r.key == "recovery"
+        Button { handle(r.key == "sleep" ? .sleepDetail(m.sleepDate) : r.action) } label: {
+          RingView(value: r.value, label: r.label, fraction: r.fraction, tone: r.tone, side: isBig ? big : side, big: isBig)
+        }
+        .buttonStyle(PressScale())
+      }
+    }
+    .frame(maxWidth: .infinity)
+    .onAppear { if hasData { onRingsShown() } }
+    .onChange(of: hasData) { if $0 { onRingsShown() } }
+  }
+
+  private func statusBlock(_ groups: [TodayModel.StatusGroup]) -> some View {
+    VStack(alignment: .leading, spacing: 10) {
+      SectionHeader(title: tr("身体状态", "Body status"))
+      ForEach(groups) { g in
+        if groups.count > 1, !g.name.isEmpty {
+          Text(g.name).font(Typo.label).foregroundColor(Palette.text3).padding(.top, 2)
+        }
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+          ForEach(g.items) { it in
+            StatusCell(item: it) { openStatus(it) }
+          }
+        }
+      }
     }
   }
 }

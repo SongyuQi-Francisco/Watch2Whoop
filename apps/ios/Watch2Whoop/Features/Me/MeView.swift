@@ -63,6 +63,14 @@ private struct MeScreen: View {
             RowDivider()
             ListRow(icon: .archive, title: tr("长期记忆", "Long-term memory")) { sheet = .memory }
           }
+          if !session.viewable.isEmpty {
+            RowGroup(title: tr("共享给我的", "Shared with me")) {
+              ForEach(Array(session.viewable.enumerated()), id: \.element.id) { n, p in
+                if n > 0 { RowDivider() }
+                ListRow(icon: .users, title: p.shownName) { session.viewing = p }
+              }
+            }
+          }
           RowGroup(title: tr("设置", "Settings")) {
             ListRow(icon: .user, title: tr("个人资料", "Profile")) { sheet = .profile }
             RowDivider()
@@ -119,6 +127,7 @@ private struct MeScreen: View {
     .onChange(of: app.route) { take($0) }
     .task {
       await countUnsent()
+      await session.refreshViewable()
       await loadAccountRows()
       await inbox.refresh()
     }

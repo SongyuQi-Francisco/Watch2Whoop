@@ -49,7 +49,6 @@ struct TrendsView: View {
   @State private var sheet: TrendsSheet?
   @State private var path: [SleepRoute] = []
   @SceneStorage("w2w.trends.mode") private var mode: Mode = .metrics
-  @AppStorage(TrendsFold.storageKey) private var foldedRaw = ""
 
   init(session: AccountSession) {
     _store = StateObject(wrappedValue: TrendsStore(session: session))
@@ -147,11 +146,48 @@ struct TrendsView: View {
   // MARK: - metrics
 
   @ViewBuilder private var metrics: some View {
-    SegControl(items: TrendRange.allCases.map { ($0, $0.label) }, selected: store.range) { store.setRange($0) }
+    TrendsMetricsContent(page: store.page, range: store.range, loading: store.loading, offline: store.offline,
+                         foldOn: session.flags.contains(TrendsFold.flag), setRange: { store.setRange($0) }, open: { sheet = $0 })
+    SyncStatusLine(sync: session.sync, hasData: store.page != nil).padding(.top, 18)
+  }
+
+  /// `W2W_PERF=1 W2W_PERF_SCROLL_TRENDS=1`: scroll the tab down and up three times while the frame meter counts.
+  private func autoScroll(_ proxy: ScrollViewProxy) {
+    Task { @MainActor in
+      // after the range's data is on screen and the refresh is done
+      for _ in 0..<40 where store.page == nil || store.loading { try? await Task.sleep(nanoseconds: 250_000_000) }
+      try? await Task.sleep(nanoseconds: 1_500_000_000)
+      PerfProbe.shared.startFrames()
+      for _ in 0..<3 {
+        withAnimation(.easeInOut(duration: 2)) { proxy.scrollTo("bottom", anchor: .bottom) }
+        try? await Task.sleep(nanoseconds: 2_200_000_000)
+        withAnimation(.easeInOut(duration: 2)) { proxy.scrollTo("top", anchor: .top) }
+        try? await Task.sleep(nanoseconds: 2_200_000_000)
+      }
+      PerfProbe.shared.stopFrames(label: "trends_scroll_\(store.range.rawValue)d")
+    }
+  }
+}
+
+/// 指标 of the Trends tab: the range control, then 今天's list or the range's cards. The tab and the read-only view of someone
+/// else (`MemberTrendsPage`) draw the same thing from a `TrendsPage`.
+struct TrendsMetricsContent: View {
+  let page: TrendsPage?
+  let range: TrendRange
+  let loading: Bool
+  let offline: Bool
+  let foldOn: Bool
+  let setRange: (TrendRange) -> Void
+  let open: (TrendsSheet) -> Void
+  @AppStorage(TrendsFold.storageKey) private var foldedRaw = ""
+
+  // no container here: inside the page's LazyVStack each card stays its own lazy row
+  var body: some View {
+    SegControl(items: TrendRange.allCases.map { ($0, $0.label) }, selected: range) { setRange($0) }
       .padding(.top, 8)
-    if let p = store.page, store.range == .today {
+    if let p = page, range == .today {
       dayList(p)
-    } else if let p = store.page {
+    } else if let p = page {
       let d = p.data
       let cur = Text("\(TrendsFormat.day(d.start, year: d.withYear)) – \(TrendsFormat.day(d.end, year: d.withYear))")
         .font(Typo.bodyStrong.monospacedDigit()).foregroundColor(Palette.text)
@@ -166,18 +202,17 @@ struct TrendsView: View {
         groupHeader(g.id, g.title, count: g.cards.count, page: p)
         if !isFolded(g.id) {
           ForEach(g.cards) { c in
-            TrendCardView(card: c) { sheet = $0 }.padding(.bottom, 8).id("card.\(c.id)")
+            TrendCardView(card: c) { open($0) }.padding(.bottom, 8).id("card.\(c.id)")
           }
         }
       }
       if !p.status.tiles.isEmpty { statusBlock(p) }
-    } else if store.loading {
+    } else if loading {
       ProgressView().tint(Palette.text3).frame(maxWidth: .infinity).padding(.vertical, 60)
     } else {
-      Text(store.offline ? tr("需要联网", "Needs a connection") : tr("暂无", "Nothing yet")).font(Typo.body).foregroundColor(Palette.text3)
+      Text(offline ? tr("需要联网", "Needs a connection") : tr("暂无", "Nothing yet")).font(Typo.body).foregroundColor(Palette.text3)
         .frame(maxWidth: .infinity).padding(.vertical, 60)
     }
-    SyncStatusLine(sync: session.sync, hasData: store.page != nil).padding(.top, 18)
   }
 
   /// 「今天」 (#357): the end day, its status cards first (they are "today" by nature), then every metric as one row.
@@ -188,15 +223,13 @@ struct TrendsView: View {
     ForEach(TrendDay.groups(d), id: \.id) { g in
       groupHeader(g.id, g.title, count: g.rows.count, page: p)
       if !isFolded(g.id) {
-        TrendDayList(rows: g.rows) { r in sheet = r.id == "body_age" ? .bodyAge : .explain(key: r.explain, title: r.label) }
+        TrendDayList(rows: g.rows) { r in open(r.id == "body_age" ? .bodyAge : .explain(key: r.explain, title: r.label)) }
           .id("day.\(g.id)")
       }
     }
   }
 
   // MARK: - foldable categories (flag trends_v2)
-
-  private var foldOn: Bool { session.flags.contains(TrendsFold.flag) }
 
   private func isFolded(_ group: String) -> Bool { foldOn && TrendsFold.contains(foldedRaw, group) }
 
@@ -225,28 +258,11 @@ struct TrendsView: View {
         Text(TodayModel.shortDay(p.data.end)).font(Typo.label.monospacedDigit()).foregroundColor(Palette.text3)
       }
       LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-        ForEach(p.status.tiles) { t in StatusTileView(tile: t) { sheet = .status(t) } }
+        ForEach(p.status.tiles) { t in StatusTileView(tile: t) { open(.status(t)) } }
       }
     }
     .padding(.top, 22)
     .id("status")
-  }
-
-  /// `W2W_PERF=1 W2W_PERF_SCROLL_TRENDS=1`: scroll the tab down and up three times while the frame meter counts.
-  private func autoScroll(_ proxy: ScrollViewProxy) {
-    Task { @MainActor in
-      // after the range's data is on screen and the refresh is done
-      for _ in 0..<40 where store.page == nil || store.loading { try? await Task.sleep(nanoseconds: 250_000_000) }
-      try? await Task.sleep(nanoseconds: 1_500_000_000)
-      PerfProbe.shared.startFrames()
-      for _ in 0..<3 {
-        withAnimation(.easeInOut(duration: 2)) { proxy.scrollTo("bottom", anchor: .bottom) }
-        try? await Task.sleep(nanoseconds: 2_200_000_000)
-        withAnimation(.easeInOut(duration: 2)) { proxy.scrollTo("top", anchor: .top) }
-        try? await Task.sleep(nanoseconds: 2_200_000_000)
-      }
-      PerfProbe.shared.stopFrames(label: "trends_scroll_\(store.range.rawValue)d")
-    }
   }
 }
 
@@ -261,6 +277,7 @@ struct TrendsSheetView: View {
   let end: String?
   @ObservedObject var store: TrendsStore
   let close: () -> Void
+  @Environment(\.memberView) private var member
 
   var body: some View {
     SheetContainer(title: title, close: close) { content }
@@ -309,7 +326,7 @@ struct TrendsSheetView: View {
         close()
       }
     case .bodyAge:
-      BodyAgeView()
+      if member == nil { BodyAgeView() }   // it reads my own tables
     }
   }
 

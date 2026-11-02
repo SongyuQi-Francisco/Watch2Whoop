@@ -243,7 +243,8 @@ struct FoodContent: View {
       DayStepper(day: store.day, today: store.today) { store.select($0) }
       Spacer()
     }
-    intakeSection
+    FoodIntakeSection(nutrition: store.nutrition, day: store.day, isToday: store.isToday, refreshing: store.refreshing, picked: picked,
+                      selectButton: selectButton, pickBar: pickedBar, open: tapEntry)
     if let w = store.water { FoodWaterCard(water: w, canWrite: store.isToday, add: addWater, undo: undoWater).id("n5.water") }
     if store.isToday && !store.templates.isEmpty {
       VStack(alignment: .leading, spacing: 10) {
@@ -264,87 +265,18 @@ struct FoodContent: View {
 
   // MARK: intake
 
-  @ViewBuilder private var intakeSection: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack {
-        SectionHeader(title: store.isToday ? tr("今天吃了", "Eaten today") : tr("\(RecordDay.short(store.day)) 吃了", "Eaten on \(RecordDay.short(store.day))"))
-        if let name = store.nutrition?.goalName { Badge(label: name) }
-        if store.nutrition?.notLogged == true { Badge(label: tr("未记录", "Not logged")) }
-        if store.mergeOn, store.nutrition?.entries.contains(where: { !$0.isLocal }) == true {
-          Button(picked == nil ? tr("选择", "Select") : tr("完成", "Done")) { picked = picked == nil ? [] : nil }
-            .font(.system(size: 14, weight: .medium)).foregroundColor(Palette.text2)
-            .padding(.leading, 6)
-        }
-      }
-      if let n = store.nutrition {
-        Card {
-          HStack(spacing: 4) {
-            GoalRing(label: tr("热量", "Energy"), value: n.intake.kcal, goal: n.goal.kcal, unit: "kcal", tone: .train)
-            GoalRing(label: tr("蛋白质", "Protein"), value: n.intake.protein, goal: n.goal.protein, unit: "g", tone: .good)
-            GoalRing(label: tr("碳水", "Carbs"), value: n.intake.carbs, goal: n.goal.carbs, unit: "g", tone: .mid)
-            GoalRing(label: tr("脂肪", "Fat"), value: n.intake.fat, goal: n.goal.fat, unit: "g", tone: .sleep)
-          }
-        }
-        let extras = n.extras
-        if !extras.isEmpty {
-          HStack(spacing: 8) {
-            ForEach(extras, id: \.0) { label, value in
-              VStack(alignment: .leading, spacing: 2) {
-                Text(label).font(Typo.label).foregroundColor(Palette.text2).lineLimit(1).minimumScaleFactor(0.8)
-                Text(value).font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text).lineLimit(1)
-              }
-              .frame(maxWidth: .infinity, alignment: .leading)
-            }
-          }
-          .padding(.horizontal, 4)
-        }
-        if let err = n.error { Banner(text: err, tone: .mid) }
-        if n.entries.isEmpty {
-          EmptyNote(text: tr("还没有记录", "Nothing logged yet"))
-        } else {
-          ForEach(n.meals(), id: \.0) { meal, xs in mealCard(meal, xs) }
-          if let picked { pickBar(picked, entries: n.entries) }
-        }
-      } else {
-        Card { EmptyNote(text: store.refreshing ? "…" : tr("暂无", "None")) }
-      }
-    }
+  /// 选择 / 完成, when entries can be merged.
+  private var selectButton: AnyView? {
+    guard store.mergeOn, store.nutrition?.entries.contains(where: { !$0.isLocal }) == true else { return nil }
+    return AnyView(
+      Button(picked == nil ? tr("选择", "Select") : tr("完成", "Done")) { picked = picked == nil ? [] : nil }
+        .font(.system(size: 14, weight: .medium)).foregroundColor(Palette.text2)
+        .padding(.leading, 6))
   }
 
-  private func mealCard(_ meal: MealSlot, _ xs: [FoodEntry]) -> some View {
-    let total = xs.reduce(Macros()) { $0 + $1.macros }
-    return VStack(alignment: .leading, spacing: 0) {
-      HStack(alignment: .firstTextBaseline) {
-        Text(meal.title).font(Typo.bodyStrong).foregroundColor(Palette.text)
-        Spacer()
-        Text("\(RecordFormat.num(total.kcal)) kcal · \(tr("蛋白", "protein")) \(RecordFormat.num(total.protein)) g")
-          .font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2)
-      }
-      .padding(.bottom, 6)
-      ForEach(xs) { e in
-        Button { tapEntry(e) } label: {
-          HStack(spacing: 8) {
-            if let picked, !e.isLocal {
-              ZStack {
-                Circle().stroke(picked.contains(e.id) ? Palette.good : Palette.text3, lineWidth: 1.5).frame(width: 20, height: 20)
-                if picked.contains(e.id) { Icon(.check, size: 12).foregroundColor(Palette.good) }
-              }
-            }
-            Text(e.food).font(Typo.body).foregroundColor(Palette.text).lineLimit(2)
-            if let p = e.pending { PendingMark(needsAttention: p.needsAttention) }
-            Spacer(minLength: 8)
-            Text("\(RecordFormat.num(e.macros.kcal)) kcal").font(Typo.body.monospacedDigit()).foregroundColor(Palette.text2)
-            if !e.isLocal && picked == nil { Icon(.chevronRight, size: 14).foregroundColor(Palette.text3) }
-          }
-          .padding(.vertical, 10)
-          .contentShape(Rectangle())
-          .overlay(Rectangle().fill(Palette.hair).frame(height: 1), alignment: .top)
-        }
-        .buttonStyle(PressScale())
-      }
-    }
-    .padding(16)
-    .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
+  private var pickedBar: AnyView? {
+    guard let picked, let n = store.nutrition, !n.entries.isEmpty else { return nil }
+    return AnyView(pickBar(picked, entries: n.entries))
   }
 
   private func tapEntry(_ e: FoodEntry) {
@@ -423,6 +355,99 @@ struct FoodContent: View {
       }
       .buttonStyle(PressScale())
     }
+  }
+}
+
+/// The day's intake: the goal rings and each meal's entries. `open` nil = read-only (someone else's page); picking entries to
+/// merge belongs to my own page, which passes its button and bar.
+struct FoodIntakeSection: View {
+  let nutrition: NutritionDay?
+  let day: String
+  let isToday: Bool
+  let refreshing: Bool
+  var picked: Set<String>?
+  var selectButton: AnyView?
+  var pickBar: AnyView?
+  var open: ((FoodEntry) -> Void)?
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack {
+        SectionHeader(title: isToday ? tr("今天吃了", "Eaten today") : tr("\(RecordDay.short(day)) 吃了", "Eaten on \(RecordDay.short(day))"))
+        if let name = nutrition?.goalName { Badge(label: name) }
+        if nutrition?.notLogged == true { Badge(label: tr("未记录", "Not logged")) }
+        if let selectButton { selectButton }
+      }
+      if let n = nutrition {
+        Card {
+          HStack(spacing: 4) {
+            GoalRing(label: tr("热量", "Energy"), value: n.intake.kcal, goal: n.goal.kcal, unit: "kcal", tone: .train)
+            GoalRing(label: tr("蛋白质", "Protein"), value: n.intake.protein, goal: n.goal.protein, unit: "g", tone: .good)
+            GoalRing(label: tr("碳水", "Carbs"), value: n.intake.carbs, goal: n.goal.carbs, unit: "g", tone: .mid)
+            GoalRing(label: tr("脂肪", "Fat"), value: n.intake.fat, goal: n.goal.fat, unit: "g", tone: .sleep)
+          }
+        }
+        let extras = n.extras
+        if !extras.isEmpty {
+          HStack(spacing: 8) {
+            ForEach(extras, id: \.0) { label, value in
+              VStack(alignment: .leading, spacing: 2) {
+                Text(label).font(Typo.label).foregroundColor(Palette.text2).lineLimit(1).minimumScaleFactor(0.8)
+                Text(value).font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text).lineLimit(1)
+              }
+              .frame(maxWidth: .infinity, alignment: .leading)
+            }
+          }
+          .padding(.horizontal, 4)
+        }
+        if let err = n.error { Banner(text: err, tone: .mid) }
+        if n.entries.isEmpty {
+          EmptyNote(text: tr("还没有记录", "Nothing logged yet"))
+        } else {
+          ForEach(n.meals(), id: \.0) { meal, xs in mealCard(meal, xs) }
+          if let pickBar { pickBar }
+        }
+      } else {
+        Card { EmptyNote(text: refreshing ? "…" : tr("暂无", "None")) }
+      }
+    }
+  }
+
+  private func mealCard(_ meal: MealSlot, _ xs: [FoodEntry]) -> some View {
+    let total = xs.reduce(Macros()) { $0 + $1.macros }
+    return VStack(alignment: .leading, spacing: 0) {
+      HStack(alignment: .firstTextBaseline) {
+        Text(meal.title).font(Typo.bodyStrong).foregroundColor(Palette.text)
+        Spacer()
+        Text("\(RecordFormat.num(total.kcal)) kcal · \(tr("蛋白", "protein")) \(RecordFormat.num(total.protein)) g")
+          .font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2)
+      }
+      .padding(.bottom, 6)
+      ForEach(xs) { e in
+        Button { open?(e) } label: {
+          HStack(spacing: 8) {
+            if let picked, !e.isLocal {
+              ZStack {
+                Circle().stroke(picked.contains(e.id) ? Palette.good : Palette.text3, lineWidth: 1.5).frame(width: 20, height: 20)
+                if picked.contains(e.id) { Icon(.check, size: 12).foregroundColor(Palette.good) }
+              }
+            }
+            Text(e.food).font(Typo.body).foregroundColor(Palette.text).lineLimit(2)
+            if let p = e.pending { PendingMark(needsAttention: p.needsAttention) }
+            Spacer(minLength: 8)
+            Text("\(RecordFormat.num(e.macros.kcal)) kcal").font(Typo.body.monospacedDigit()).foregroundColor(Palette.text2)
+            if !e.isLocal && picked == nil && open != nil { Icon(.chevronRight, size: 14).foregroundColor(Palette.text3) }
+          }
+          .padding(.vertical, 10)
+          .contentShape(Rectangle())
+          .overlay(Rectangle().fill(Palette.hair).frame(height: 1), alignment: .top)
+        }
+        .buttonStyle(PressScale())
+        .disabled(open == nil)
+      }
+    }
+    .padding(16)
+    .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
   }
 }
 

@@ -95,41 +95,7 @@ struct RecipeSheet: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
-      let m = recipe.perServing.scaled(servings)
-      HStack(spacing: 8) {
-        MetricTile(label: tr("热量", "Energy"), value: RecordFormat.num(m.kcal), unit: "kcal")
-        MetricTile(label: tr("蛋白", "Protein"), value: RecordFormat.num(m.protein), unit: "g")
-        MetricTile(label: tr("碳水", "Carbs"), value: RecordFormat.num(m.carbs), unit: "g")
-        MetricTile(label: tr("脂肪", "Fat"), value: RecordFormat.num(m.fat), unit: "g")
-      }
-      if let s = recipe.servingLabel {
-        Text(tr("每份 = \(s)", "1 serving = \(s)")).font(Typo.caption).foregroundColor(Palette.text2)
-      }
-      if !recipe.badges.isEmpty {
-        ScrollView(.horizontal, showsIndicators: false) {
-          HStack(spacing: 6) { ForEach(recipe.badges, id: \.0) { Badge(label: $0.0, tone: $0.1) } }
-        }
-      }
-      if !recipe.ingredients.isEmpty {
-        VStack(alignment: .leading, spacing: 0) {
-          SectionHeader(title: servings == 1 ? tr("食材", "Ingredients") : tr("食材 · \(RecordFormat.num(servings, 1)) 份", "Ingredients · \(RecordFormat.num(servings, 1))"))
-            .padding(.bottom, 4)
-          ForEach(Array(recipe.ingredients.enumerated()), id: \.offset) { _, i in
-            KeyValueRow(label: i.food, value: i.grams.map { "\(RecordFormat.num($0 * servings / max(recipe.servings, 0.5))) g" } ?? i.amount ?? "—")
-          }
-        }
-      }
-      if !recipe.steps.isEmpty {
-        VStack(alignment: .leading, spacing: 8) {
-          SectionHeader(title: tr("做法", "Method"))
-          ForEach(Array(recipe.steps.enumerated()), id: \.offset) { n, s in
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-              Text("\(n + 1)").font(Typo.label.monospacedDigit()).foregroundColor(Palette.text3).frame(width: 16)
-              Text(s).font(Typo.body).foregroundColor(Palette.text).fixedSize(horizontal: false, vertical: true)
-            }
-          }
-        }
-      }
+      RecipeDetails(recipe: recipe, servings: servings)
       VStack(alignment: .leading, spacing: 12) {
         SegmentedControl(items: MealSlot.allCases.map { ($0, $0.title) }, selection: $meal)
         HStack {
@@ -178,6 +144,52 @@ struct RecipeSheet: View {
         })
       } else {
         done(Toast(out.sent ? tr("已记 · \(RecordFormat.num(servings, 1)) 份", "Logged · \(RecordFormat.num(servings, 1))") : out.message))
+      }
+    }
+  }
+}
+
+/// A recipe's numbers, ingredients and steps for `servings` servings: its sheet and the read-only view of someone else's.
+struct RecipeDetails: View {
+  let recipe: Recipe
+  var servings = 1.0
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      let m = recipe.perServing.scaled(servings)
+      HStack(spacing: 8) {
+        MetricTile(label: tr("热量", "Energy"), value: RecordFormat.num(m.kcal), unit: "kcal")
+        MetricTile(label: tr("蛋白", "Protein"), value: RecordFormat.num(m.protein), unit: "g")
+        MetricTile(label: tr("碳水", "Carbs"), value: RecordFormat.num(m.carbs), unit: "g")
+        MetricTile(label: tr("脂肪", "Fat"), value: RecordFormat.num(m.fat), unit: "g")
+      }
+      if let s = recipe.servingLabel {
+        Text(tr("每份 = \(s)", "1 serving = \(s)")).font(Typo.caption).foregroundColor(Palette.text2)
+      }
+      if !recipe.badges.isEmpty {
+        ScrollView(.horizontal, showsIndicators: false) {
+          HStack(spacing: 6) { ForEach(recipe.badges, id: \.0) { Badge(label: $0.0, tone: $0.1) } }
+        }
+      }
+      if !recipe.ingredients.isEmpty {
+        VStack(alignment: .leading, spacing: 0) {
+          SectionHeader(title: servings == 1 ? tr("食材", "Ingredients") : tr("食材 · \(RecordFormat.num(servings, 1)) 份", "Ingredients · \(RecordFormat.num(servings, 1))"))
+            .padding(.bottom, 4)
+          ForEach(Array(recipe.ingredients.enumerated()), id: \.offset) { _, i in
+            KeyValueRow(label: i.food, value: i.grams.map { "\(RecordFormat.num($0 * servings / max(recipe.servings, 0.5))) g" } ?? i.amount ?? "—")
+          }
+        }
+      }
+      if !recipe.steps.isEmpty {
+        VStack(alignment: .leading, spacing: 8) {
+          SectionHeader(title: tr("做法", "Method"))
+          ForEach(Array(recipe.steps.enumerated()), id: \.offset) { n, s in
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+              Text("\(n + 1)").font(Typo.label.monospacedDigit()).foregroundColor(Palette.text3).frame(width: 16)
+              Text(s).font(Typo.body).foregroundColor(Palette.text).fixedSize(horizontal: false, vertical: true)
+            }
+          }
+        }
       }
     }
   }

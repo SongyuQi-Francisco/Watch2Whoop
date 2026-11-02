@@ -49,6 +49,7 @@ struct MonthPicker: View {
   let userToday: String?
   let pick: (String?) -> Void
   @EnvironmentObject private var session: AccountSession
+  @Environment(\.memberView) private var member
   @State private var month: String = ""
   @State private var data: MonthDays?
   @State private var cancellable: AnyDatabaseCancellable?
@@ -144,6 +145,14 @@ struct MonthPicker: View {
 
   /// The server's month, or the phone's own (M3 `SeriesLocal`, package `series` primary); computed after the pull.
   private func load() {
+    if let member {   // someone else's month: only in memory
+      let r = Endpoint.monthDays(month, user: member.user)
+      Task {
+        await member.load([r])
+        if let json = member.json(r) { data = MonthDays(json: json) }
+      }
+      return
+    }
     let key = TodayDocs.days(month), local = SeriesLocal.daysKey(month)
     cancellable = ValueObservation.tracking { db in try SeriesLocal.shown(db, server: key, local: local) }
       .removeDuplicates()
