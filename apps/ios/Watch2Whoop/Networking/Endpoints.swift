@@ -74,6 +74,9 @@ enum Endpoint {
   static let ingestResync = "/v1/ingest/resync"
   static let ingestSyncDevice = "/v1/ingest/sync-device"
   static let historyBackfill = "/v1/users/me/sync/backfill"
+  static let syncHistory = "/v1/users/me/sync/history"              // coverage: how much history, the reminder's state
+  static let syncHistorySeen = "/v1/users/me/sync/history/seen"
+  static let syncHistoryMute = "/v1/users/me/sync/history/mute"
 
   // N4: trends (series and status cards), VO₂max level, sleep regularity, nights, reports, journal behaviour
   static func trends(days: Int, end: String?, user: String = "me") -> APIRequest {

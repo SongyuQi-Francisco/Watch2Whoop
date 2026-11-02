@@ -3,7 +3,7 @@ import UIKit
 
 /// Invite friends to a circle I own: pick how long the code works (1 / 3 / 7 / 30 days or never), get the code, then
 /// copy it, share the link, or share a picture card (WeChat / Messages / AirDrop through the system share sheet). The live
-/// codes are listed with 「作废」 (a code already used keeps its members).
+/// codes are listed with 「作废」 (a code already used keeps its members) and 「重置邀请」 (all of them, and a new one).
 struct InviteView: View {
   @ObservedObject var store: CirclesStore
   let circleId: Int
@@ -14,6 +14,7 @@ struct InviteView: View {
   @State private var share: [Any]?
   @State private var copied = false
   @State private var confirmRevoke: FriendCircle.LiveInvites.Code?
+  @State private var confirmReset = false
 
   private var circle: FriendCircle? { store.list?.circles.first { $0.id == circleId } }
 
@@ -59,6 +60,15 @@ struct InviteView: View {
             }
             .padding(.vertical, 10)
           }
+          RowDivider(inset: 0)
+          Button { confirmReset = true } label: {
+            Text(tr("重置邀请", "Reset invites")).font(.system(size: 14, weight: .medium)).foregroundColor(Palette.bad)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(.vertical, 12)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(PressScale())
+          .disabled(busy)
         }
       }
     }
@@ -73,6 +83,21 @@ struct InviteView: View {
       Button(tr("取消", "Cancel"), role: .cancel) {}
     } message: {
       Text(tr("已发出的链接立即失效，已经加入的人不受影响。", "Links already sent stop working; people who joined stay."))
+    }
+    .confirmationDialog(tr("重置邀请？", "Reset invites?"), isPresented: $confirmReset, titleVisibility: .visible) {
+      Button(tr("重置", "Reset"), role: .destructive) {
+        Task {
+          busy = true
+          if let m = await store.mintInvite(circleId, days: days == 0 ? nil : days, reset: true) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { minted = m }
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+          }
+          busy = false
+        }
+      }
+      Button(tr("取消", "Cancel"), role: .cancel) {}
+    } message: {
+      Text(tr("之前发出的邀请链接立即失效，再生成一个新的。已经加入的人不受影响。", "Invite links already sent stop working and a new one is made; people who joined stay."))
     }
   }
 
@@ -92,7 +117,7 @@ struct InviteView: View {
     .transition(.scale(scale: 0.95).combined(with: .opacity))
   }
 
-  /// The card as a picture, the text with the code, and the link (the Today page's join link; the app opens it too).
+  /// The card as a picture, the text with the code, and the link (the server's landing page, which opens the app).
   private func shareItems(_ m: MintedInvite, name: String) -> [Any] {
     var items: [Any] = []
     let r = ImageRenderer(content: InviteCard(circle: name, code: m.code, expires: m.expiresAt, inviter: store.me.name)

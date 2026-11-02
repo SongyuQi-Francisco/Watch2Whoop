@@ -19,6 +19,7 @@ struct SyncCenterView: View {
   @State private var showBackgroundHelp = false
   @State private var showSleepFocusSteps = false
   @State private var confirmResync: Int?? = nil
+  @State private var coverage: BackfillCoverage?
   @State private var tick = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
   var body: some View {
@@ -58,6 +59,7 @@ struct SyncCenterView: View {
       await sync.refreshPermission()
       await sync.reloadDetails(server: true)
       if let days = startHistory { message = await sync.startHistory(days: days) ?? tr("已开始补全历史，会在后台接着传", "History started; it carries on in the background") }
+      await loadCoverage()
     }
     .onReceive(tick) { _ in
       Task {
@@ -267,6 +269,15 @@ struct SyncCenterView: View {
     let b = sync.backfill
     return RowGroup(title: tr("补全历史", "Fill in history")) {
       VStack(alignment: .leading, spacing: 10) {
+        if let c = coverage, c.days > 0 {
+          HStack(spacing: 8) {
+            Text(tr("服务器上 \(c.days) / \(c.targetDays) 天", "On the server: \(c.days) / \(c.targetDays) days"))
+              .font(Typo.body.monospacedDigit()).foregroundColor(Palette.text)
+            Spacer(minLength: 4)
+            if !c.complete, let l = c.impactLabel { Text(l).font(Typo.caption).foregroundColor(Palette.mid).multilineTextAlignment(.trailing) }
+          }
+          if !c.complete && !b.active { ProgressBar(fraction: Double(c.days) / Double(max(c.targetDays, 1))) }
+        }
         if b.active || b.done {
           HStack {
             Text(b.target == 0 ? tr("全部历史", "All history") : tr("近 \(b.target) 天", "Last \(b.target) days"))
@@ -292,9 +303,23 @@ struct SyncCenterView: View {
             historyButton(tr("全部历史", "All history"), days: 0)
           }
         }
+        if let c = coverage, !c.complete {
+          RowDivider(inset: 0)
+          ToggleRow(title: tr("提醒我补全", "Remind me"),
+                    isOn: Binding(get: { !c.muted }, set: { on in Task { await setReminder(on) } }))
+        }
       }
       .padding(.vertical, 12)
     }
+  }
+
+  private func loadCoverage() async {
+    if let j = try? await session.api.json(.get(Endpoint.syncHistory)) { coverage = BackfillCoverage(j) }
+  }
+
+  private func setReminder(_ on: Bool) async {
+    coverage?.muted = !on
+    if let j = try? await session.api.json(try .json(.put, Endpoint.syncHistoryMute, ["muted": !on])) { coverage = BackfillCoverage(j) }
   }
 
   private func historyButton(_ title: String, days: Int) -> some View {

@@ -15,6 +15,8 @@ struct CirclesTab: View {
 
 private struct CirclesScreen: View {
   @EnvironmentObject private var app: AppModel
+  @Environment(\.flowsSettled) private var settled
+  @SceneStorage("w2w.tab") private var tab: AppTab = .today
   @ObservedObject var store: CirclesStore
   @State private var sheet: CircleSheet?
   @Environment(\.scenePhase) private var phase
@@ -71,6 +73,7 @@ private struct CirclesScreen: View {
     }
     .task {
       take(app.route)
+      askPush()
       await store.refresh()
       if store.mode == .feed { store.markSeen() }
       // the red dot keeps up while the tab is open (circle-feed.js polls every minute)
@@ -82,11 +85,21 @@ private struct CirclesScreen: View {
       }
     }
     .onChange(of: app.route) { take($0) }
+    .onChange(of: settled) { on in if on { take(app.route); askPush() } }
+    .onChange(of: tab) { _ in askPush() }
     .onChange(of: phase) { p in if p == .active { Task { await store.refresh() } } }
+  }
+
+  /// The first visit here is when the question has a reason (likes, comments), never at launch (notify.js askOnce). iOS
+  /// asks only once; after that this is a no-op.
+  private func askPush() {
+    guard settled, tab == .circles, store.session.flags.contains("notifications") else { return }
+    Task { await PushRegistration.shared.askOnFirstVisit(api: store.session.api) }
   }
 
   /// A route meant for this tab (a notification, a link): consumed here.
   private func take(_ r: AppModel.Route?) {
+    guard settled else { return }
     switch r {
     case .circles(let post)?:
       app.route = nil
@@ -198,26 +211,32 @@ private struct EmptyCircles: View {
 // MARK: - routing (MainTabView)
 
 extension View {
-  /// Switches the tab bar to 朋友 when a notification or a link points into the circles (N7); the tab itself then
-  /// opens the post or the join sheet. One line in `MainTabView`.
+  /// Switches the tab bar when a notification or a link points at a tab: to 朋友 for the circles (N7; the tab itself then
+  /// opens the post or the join sheet), else to the tab it names (AppLink). One line in `MainTabView`.
   func circleRouting(selection: Binding<AppTab>) -> some View { modifier(CircleRouting(selection: selection)) }
 }
 
 private struct CircleRouting: ViewModifier {
   @EnvironmentObject private var app: AppModel
   @EnvironmentObject private var session: AccountSession
+  @Environment(\.flowsSettled) private var settled
   @Binding var selection: AppTab
 
   func body(content: Content) -> some View {
     content
       .onAppear { follow(app.route) }   // a tap that launched the app came before the tabs
       .onChange(of: app.route) { follow($0) }
+      .onChange(of: settled) { _ in follow(app.route) }
   }
 
   private func follow(_ r: AppModel.Route?) {
+    guard settled else { return }
     switch r {
     case .circles?, .circleJoin?:
       if session.circlesTab { selection = .circles } else { app.route = nil }
+    case .tab(let t)?:
+      selection = t.landing(circles: session.circlesTab)
+      app.route = nil
     default:
       break
     }

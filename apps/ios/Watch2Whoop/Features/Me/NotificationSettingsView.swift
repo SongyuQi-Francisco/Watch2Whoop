@@ -10,6 +10,7 @@ struct NotificationSettingsView: View {
   @State private var s: NotificationSettings?
   @State private var off = false
   @State private var message: String?
+  @State private var pendingTimes: Task<Void, Never>?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 18) {
@@ -46,8 +47,14 @@ struct NotificationSettingsView: View {
           }
         }
         RowGroup(title: tr("免打扰", "Quiet hours")) {
-          ToggleRow(title: tr("夜间不推送", "No pushes at night"), subtitle: "\(s.quiet.start)–\(s.quiet.end)",
+          ToggleRow(title: tr("夜间不推送", "No pushes at night"), subtitle: s.quiet.enabled ? nil : "\(s.quiet.start)–\(s.quiet.end)",
                     isOn: Binding(get: { s.quiet.enabled }, set: { v in Task { await save(quiet: v) } }))
+          if s.quiet.enabled {
+            RowDivider(inset: 0)
+            timeRow(tr("开始", "From"), \.start)
+            RowDivider(inset: 0)
+            timeRow(tr("结束", "To"), \.end)
+          }
         }
       } else {
         ProgressView().tint(Palette.text2).frame(maxWidth: .infinity)
@@ -57,6 +64,30 @@ struct NotificationSettingsView: View {
     .task {
       await push.refresh()
       await load()
+    }
+  }
+
+  private func timeRow(_ title: String, _ key: WritableKeyPath<NotificationSettings.Quiet, String>) -> some View {
+    HStack {
+      Text(title).font(Typo.body).foregroundColor(Palette.text)
+      Spacer()
+      DatePicker("", selection: Binding(get: { BedtimeGoalView.date(s?.quiet[keyPath: key] ?? "") },
+                                        set: { d in setTime(key, BedtimeGoalView.hhmm(d)) }),
+                 displayedComponents: .hourAndMinute)
+        .labelsHidden()
+        .accessibilityLabel(title)
+    }
+    .padding(.vertical, 8)
+  }
+
+  /// The wheel reports every stop: the page shows it at once, the server gets the last one.
+  private func setTime(_ key: WritableKeyPath<NotificationSettings.Quiet, String>, _ value: String) {
+    s?.quiet[keyPath: key] = value
+    pendingTimes?.cancel()
+    pendingTimes = Task {
+      try? await Task.sleep(nanoseconds: 500_000_000)
+      guard !Task.isCancelled, let q = s?.quiet else { return }
+      await save(times: q)
     }
   }
 
@@ -78,10 +109,11 @@ struct NotificationSettingsView: View {
     } catch {}
   }
 
-  private func save(categories: [String: Bool]? = nil, quiet: Bool? = nil) async {
+  private func save(categories: [String: Bool]? = nil, quiet: Bool? = nil, times: NotificationSettings.Quiet? = nil) async {
     var body: [String: AnyEncodable] = [:]
     if let categories { body["categories"] = AnyEncodable(categories) }
     if let quiet { body["quiet"] = AnyEncodable(["enabled": quiet]) }
+    if let times { body["quiet"] = AnyEncodable(["start": times.start, "end": times.end]) }
     do {
       s = try await session.api.send(try .json(.put, Endpoint.notificationSettings, body), as: NotificationSettings.self)
       message = nil
@@ -101,6 +133,12 @@ final class PushRegistration: ObservableObject {
 
   func refresh() async {
     state = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+  }
+
+  /// The first visit to the Friends tab: asks while the permission was never decided (at most once, iOS remembers).
+  func askOnFirstVisit(api: APIClient) async {
+    await refresh()
+    if state == .notDetermined { await enable(api: api) }
   }
 
   /// Asks for the permission (once; iOS shows its dialog only the first time), then registers.

@@ -1,7 +1,9 @@
 import SwiftUI
 
-/// 更新记录: what shipped, by week (`GET /v1/whats-new`, the same list for everyone, in the app's language).
+/// 更新记录: what shipped, by week (`GET /v1/whats-new`, the same list for everyone, in the app's language). An entry with
+/// a link goes there (whatsnew.js): `open` gets the link and takes the sheet away.
 struct WhatsNewView: View {
+  var open: ((String) -> Void)?
   @EnvironmentObject private var session: AccountSession
   @State private var w: WhatsNew?
   @State private var message: String?
@@ -13,12 +15,18 @@ struct WhatsNewView: View {
           RowGroup(title: week.weekStart) {
             ForEach(Array(week.items.enumerated()), id: \.offset) { i, item in
               if i > 0 { RowDivider(inset: 0) }
-              VStack(alignment: .leading, spacing: 2) {
-                Text(item.text).font(Typo.body).foregroundColor(Palette.text).fixedSize(horizontal: false, vertical: true)
-                Text(item.date).font(Typo.caption).foregroundColor(Palette.text3)
+              if let link = item.url, AppLink.parse(link) != nil, let open {
+                Button { open(link) } label: {
+                  HStack(spacing: 8) {
+                    entry(item)
+                    Icon(.chevronRight, size: 16).foregroundColor(Palette.text3)
+                  }
+                  .contentShape(Rectangle())
+                }
+                .buttonStyle(PressScale())
+              } else {
+                entry(item)
               }
-              .frame(maxWidth: .infinity, alignment: .leading)
-              .padding(.vertical, 10)
             }
           }
         }
@@ -31,6 +39,16 @@ struct WhatsNewView: View {
     .task {
       do { w = try await session.api.send(.get(Endpoint.whatsNew), as: WhatsNew.self) } catch let e as APIError { message = e.userMessage } catch {}
     }
+  }
+
+  private func entry(_ item: WhatsNew.Item) -> some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Text(item.text).font(Typo.body).foregroundColor(Palette.text).multilineTextAlignment(.leading)
+        .fixedSize(horizontal: false, vertical: true)
+      Text(item.date).font(Typo.caption).foregroundColor(Palette.text3)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(.vertical, 10)
   }
 }
 

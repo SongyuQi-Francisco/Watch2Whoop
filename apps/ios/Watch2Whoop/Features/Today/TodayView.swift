@@ -13,6 +13,7 @@ struct SleepRoute: Hashable {
 /// only — the words are in the explain sheets. The date on top looks back at any day.
 struct TodayView: View {
   @EnvironmentObject private var session: AccountSession
+  @EnvironmentObject private var app: AppModel
   @StateObject private var store: TodayStore
   @State private var sheet: TodaySheet?
   @State private var path: [SleepRoute] = []
@@ -44,6 +45,9 @@ struct TodayView: View {
         // Lazy: the first frame builds only what is on screen (rings and the first tiles)
         LazyVStack(alignment: .leading, spacing: 0) {
           header.id("top")
+          if !store.model.isPast {
+            SyncNudges(card: store.model.sync, coverage: store.model.coverage) { await store.refresh() }
+          }
           content
           Color.clear.frame(height: 1).id("bottom")
         }
@@ -85,6 +89,7 @@ struct TodayView: View {
       if store.date != nil {
         Button { store.select(nil) } label: { Chip(label: tr("回到今天", "Back to today")) }.buttonStyle(PressScale())
       }
+      SyncHeaderButton()
     }
     .padding(.top, 10).padding(.bottom, 8)
   }
@@ -193,10 +198,17 @@ struct TodayView: View {
       .padding(.top, 22)
     }
 
-    if let s = m.sync { SyncCardView(card: s, sync: session.sync) { Task { await store.refresh() } }.padding(.top, 22) }
+    if let s = m.sync {
+      SyncCardView(card: s, sync: session.sync, open: { app.route = .syncCenter }) {
+        Task { _ = await HealthSyncService.shared.syncNow(); await store.refresh() }
+      }
+      .padding(.top, 22)
+    }
     if m.circles != nil { CircleSummaryCard { tab = .circles }.padding(.top, 22) }
 
-    SyncStatusLine(sync: session.sync, hasData: store.hasData).padding(.top, 18)
+    Button { app.route = .syncCenter } label: { SyncStatusLine(sync: session.sync, hasData: store.hasData) }
+      .buttonStyle(.plain)
+      .padding(.top, 18)
   }
 
   /// Three rings side by side, recovery in the middle and 1.4× bigger (NativeToday.swift of 1.0.9).
@@ -435,27 +447,41 @@ struct StatusCell: View {
   }
 }
 
-/// Sync state: a dot, the server's short label, how long ago; tap = sync now (N8 adds the sync center).
+/// Sync state: a dot, the server's short label, how long ago. The row opens the sync center; the button at its end syncs now.
 struct SyncCardView: View {
   let card: TodayModel.SyncCard
   @ObservedObject var sync: SyncCoordinator
-  let refresh: () -> Void
+  @ObservedObject private var health = HealthSyncService.shared
+  let open: () -> Void
+  let syncNow: () -> Void
 
   var body: some View {
-    Button(action: refresh) {
-      HStack(spacing: 10) {
-        Circle().fill(card.tone == .text ? Palette.text3 : card.tone.color).frame(width: 8, height: 8)
-        Text(card.label).font(Typo.body).foregroundColor(Palette.text).lineLimit(1)
-        Spacer(minLength: 6)
-        if let a = card.ago { Text(a).font(Typo.caption).foregroundColor(Palette.text2) }
-        if sync.status == .syncing { ProgressView().scaleEffect(0.7).tint(Palette.text3) }
-        else { Icon(.refreshCw, size: 16).foregroundColor(Palette.text3) }
+    HStack(spacing: 0) {
+      Button(action: open) {
+        HStack(spacing: 10) {
+          Circle().fill(card.tone == .text ? Palette.text3 : card.tone.color).frame(width: 8, height: 8)
+          Text(card.label).font(Typo.body).foregroundColor(Palette.text).lineLimit(1)
+          Spacer(minLength: 6)
+          if let a = card.ago { Text(a).font(Typo.caption).foregroundColor(Palette.text2) }
+        }
+        .padding(.leading, 14).padding(.vertical, 14)
+        .contentShape(Rectangle())
       }
-      .padding(14)
-      .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
+      .buttonStyle(PressScale())
+      .accessibilityLabel("\(tr("同步中心", "Sync center")) \(card.label)")
+      Button(action: syncNow) {
+        Group {
+          if sync.status == .syncing || health.running { ProgressView().scaleEffect(0.7).tint(Palette.text3) }
+          else { Icon(.refreshCw, size: 16).foregroundColor(Palette.text3) }
+        }
+        .frame(width: 44, height: 44)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(PressScale())
+      .disabled(health.running)
+      .accessibilityLabel(tr("立即同步", "Sync now"))
     }
-    .buttonStyle(PressScale())
-    .accessibilityLabel("\(tr("同步", "Sync")) \(card.label)")
+    .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
   }
 }
 

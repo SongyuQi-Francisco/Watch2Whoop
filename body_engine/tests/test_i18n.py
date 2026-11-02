@@ -30,8 +30,8 @@ def table(name: str) -> dict[str, str]:
 
 
 ZH, EN = table("ZH"), table("EN")
-SCRIPTS = ["app.js", "ai.js", "ai-media.js", "jarvis-entry.js", "account.js", "grocery.js", "profile.js", "weight.js", "whatsnew.js", "diet-profile.js", "water.js", "muscle-map.js", "muscle-load.js", "custom-exercises.js", "journal.js", "exercise-plan.js", "training-day.js", "hevy-import.js", "sleep-detail.js", "feedback.js", "data-status.js", "notify.js", "circles.js", "circle-feed.js", "identities.js", "intro.js", "sync.js", "sync-repair.js", "sync-status.js", "ui-ai-first.js", "slim.js", "slim-quotes.js", "notices.js", "upgrade.js", "offline.js", "activate.js", "ios-web.js", "oauth.js", "sw.js", "avatars.js", "remarks.js", "md.js", "muscle-body-data.js", "lang-gate.js", "native-bridge.js"]
-PAGES = ["index.html", "activate.html", "install.html", "oauth.html"]
+SCRIPTS = ["app.js", "ai.js", "ai-media.js", "jarvis-entry.js", "account.js", "grocery.js", "profile.js", "weight.js", "whatsnew.js", "diet-profile.js", "water.js", "muscle-map.js", "muscle-load.js", "custom-exercises.js", "journal.js", "exercise-plan.js", "training-day.js", "hevy-import.js", "sleep-detail.js", "feedback.js", "data-status.js", "notify.js", "circles.js", "circle-feed.js", "identities.js", "intro.js", "sync.js", "sync-repair.js", "sync-status.js", "ui-ai-first.js", "slim.js", "slim-quotes.js", "notices.js", "upgrade.js", "offline.js", "activate.js", "join.js", "ios-web.js", "oauth.js", "sw.js", "avatars.js", "remarks.js", "md.js", "muscle-body-data.js", "lang-gate.js", "native-bridge.js"]
+PAGES = ["index.html", "activate.html", "install.html", "join.html", "oauth.html"]
 
 
 def test_every_page_script_and_page_is_checked():
@@ -165,7 +165,7 @@ def test_html_marked(name):
 
 
 def test_loaded_first_and_cached():
-    for page, user in (("index.html", "ai-media.js"), ("activate.html", "activate.js")):
+    for page, user in (("index.html", "ai-media.js"), ("activate.html", "activate.js"), ("join.html", "join.js")):
         html = (STATIC / page).read_text(encoding="utf-8")
         assert html.index('src="i18n.js"') < html.index('src="i18n-en.js"') < html.index(f'src="{user}"'), page
     sw = (STATIC / "sw.js").read_text(encoding="utf-8")

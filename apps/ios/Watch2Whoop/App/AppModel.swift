@@ -67,6 +67,10 @@ final class AppModel: ObservableObject {
     case circles(post: Int?)
     /// The join sheet with an invite code (`watch2whoop://circle?code=…`, a shared invite link).
     case circleJoin(String)
+    /// 更新记录 (the weekly 「本周更新」 message).
+    case whatsNew
+    /// A tab (a notification or an update entry that points at it).
+    case tab(AppTab)
   }
 
   let store: CredentialStore
@@ -189,12 +193,15 @@ final class AppModel: ObservableObject {
     }
   }
 
-  /// A notification's `url` (`/app/?tab=friends&feed=12`) or a circle link: where it points (N7: circles only so far).
+  /// A notification's `url`, an update entry's link or a circle link: where it points (AppLink).
   func handle(link: String) {
-    switch CircleLink.parse(link) {
+    switch AppLink.parse(link) {
     case .post(let id)?: route = .circles(post: id)
     case .join(let code)?: route = .circleJoin(code)
-    case nil: if link.contains("tab=friends") { route = .circles(post: nil) }
+    case .friends?: route = .circles(post: nil)
+    case .whatsNew?: route = .whatsNew
+    case .tab(let t)?: route = .tab(t)
+    case nil: break
     }
   }
 

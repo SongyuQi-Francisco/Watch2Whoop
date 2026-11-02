@@ -2,8 +2,8 @@ import Foundation
 import UserNotifications
 
 /// Tapped notifications (#175 pushes, notify/core.py): the payload's `url` (`/app/?tab=friends&feed=<post>` for a like or
-/// a comment) goes to `AppModel.handle(link:)`, which routes it (N7: to the post in the Friends tab). A tap that launches
-/// the app arrives before the model is ready: it waits here until `open` is set.
+/// a comment, `/app/?whatsnew=1` for the weekly message, `/app/?tab=me` …) goes to `AppModel.handle(link:)`, which routes it
+/// (AppLink). A tap that launches the app arrives before the model is ready: it waits here until `open` is set.
 /// While the app is open, circle notifications (`circle.*`) still show as a banner, like any social app; other kinds stay
 /// in Notification Center as before.
 final class NotificationTaps: NSObject, UNUserNotificationCenterDelegate {
