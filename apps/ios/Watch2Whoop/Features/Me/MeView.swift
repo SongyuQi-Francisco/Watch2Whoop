@@ -13,6 +13,9 @@ struct MeTab: View {
   @State private var deleteText = ""
   @State private var deleteError: String?
   @State private var busy = false
+  /// Rows that depend on the server: friends can be invited, a code can still be entered (AccountViews.swift).
+  @State private var referrals = false
+  @State private var inviteOptional = false
 
   var body: some View {
     NavigationStack {
@@ -37,6 +40,8 @@ struct MeTab: View {
             ListRow(icon: .flaskConical, title: tr("化验", "Lab results")) { sheet = .records(.labs) }
             RowDivider()
             ListRow(icon: .calendarDays, title: tr("身体事件", "Body events")) { sheet = .records(.events) }
+            RowDivider()
+            ListRow(icon: .archive, title: tr("长期记忆", "Long-term memory")) { sheet = .memory }
           }
           if !session.viewable.isEmpty {
             RowGroup(title: tr("共享给我的", "Shared with me")) {
@@ -52,6 +57,14 @@ struct MeTab: View {
             ListRow(icon: .moon, title: tr("入睡目标", "Bedtime goal")) { sheet = .bedtimeGoal }
             RowDivider()
             ListRow(icon: .sparkles, title: tr("AI 设置", "AI settings")) { sheet = .ai }
+            if session.flags.contains("muscle_load") {
+              RowDivider()
+              ListRow(icon: .dumbbell, title: tr("训练设置", "Training settings")) { sheet = .trainingGoals }
+            }
+            if session.flags.contains("hevy_import") {
+              RowDivider()
+              ListRow(icon: .cloudUpload, title: tr("从 Hevy 导入", "Import from Hevy")) { sheet = .hevy }
+            }
             RowDivider()
             ListRow(icon: .bell, title: tr("通知", "Notifications")) { sheet = .notifications }
             RowDivider()
@@ -62,6 +75,20 @@ struct MeTab: View {
             }
             RowDivider()
             ListRow(icon: .megaphone, title: tr("更新记录", "What's new")) { sheet = .whatsNew }
+          }
+          RowGroup(title: tr("账号", "Account")) {
+            ListRow(icon: .logIn, title: tr("登录方式", "Sign-in methods")) { sheet = .signIn }
+            if referrals {
+              RowDivider()
+              ListRow(icon: .userPlus, title: tr("邀请好友", "Invite friends")) { sheet = .invite }
+            }
+            if inviteOptional {
+              RowDivider()
+              ListRow(icon: .keyRound, title: tr("填写邀请码", "Enter an invite code")) { sheet = .lateInvite }
+            }
+          }
+          RowGroup(title: tr("帮助", "Help")) {
+            ListRow(icon: .messageCircle, title: tr("反馈记录", "Feedback")) { sheet = .feedback }
           }
           AboutRows(server: session.config.server) { sheet = .licences }
           RowGroup {
@@ -77,8 +104,9 @@ struct MeTab: View {
     .task {
       await countUnsent()
       await session.refreshViewable()
+      await loadAccountRows()
     }
-    .sheet(item: $sheet, onDismiss: { Task { await countUnsent() } }) { s in
+    .sheet(item: $sheet, onDismiss: { Task { await countUnsent(); await loadAccountRows() } }) { s in
       MeSheetView(sheet: s).environmentObject(session).environmentObject(app)
     }
     .confirmationDialog(tr("退出登录？", "Sign out?"), isPresented: $confirmSignOut, titleVisibility: .visible) {
@@ -105,19 +133,25 @@ struct MeTab: View {
   }
 
   private var header: some View {
-    HStack(spacing: 14) {
-      Text(String((session.displayName ?? "?").prefix(1)).uppercased())
-        .font(.system(size: 22, weight: .semibold)).foregroundColor(Palette.text)
-        .frame(width: 52, height: 52)
-        .background(Circle().fill(Palette.surface2))
-      VStack(alignment: .leading, spacing: 2) {
-        Text(session.displayName ?? tr("我的账号", "My account")).font(Typo.heroWord).foregroundColor(Palette.text)
-        Text(URL(string: session.config.server)?.host ?? session.config.server).font(Typo.caption).foregroundColor(Palette.text2)
+    Button { sheet = .profile } label: {
+      HStack(spacing: 14) {
+        Text(String((session.displayName ?? "?").prefix(1)).uppercased())
+          .font(.system(size: 22, weight: .semibold)).foregroundColor(Palette.text)
+          .frame(width: 52, height: 52)
+          .background(Circle().fill(Palette.surface2))
+        VStack(alignment: .leading, spacing: 2) {
+          Text(session.displayName ?? tr("我的账号", "My account")).font(Typo.heroWord).foregroundColor(Palette.text)
+          Text(URL(string: session.config.server)?.host ?? session.config.server).font(Typo.caption).foregroundColor(Palette.text2)
+        }
+        Spacer()
+        Icon(.chevronRight, size: 16).foregroundColor(Palette.text3)
       }
-      Spacer()
+      .padding(16)
+      .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
+      .contentShape(Rectangle())
     }
-    .padding(16)
-    .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
+    .buttonStyle(PressScale())
+    .accessibilityLabel(tr("打开个人资料", "Open your profile"))
   }
 
   private var languageRow: some View {
@@ -163,10 +197,17 @@ struct MeTab: View {
   private func countUnsent() async {
     unsent = ((try? session.sync.queue.all()) ?? []).count   // everything not on the server yet
   }
+
+  /// A failed read leaves the rows as they are: they only add something.
+  private func loadAccountRows() async {
+    if let m = try? await session.api.send(.get(Endpoint.authMethods), as: AuthService.Methods.self) { referrals = m.referrals }
+    if let a = try? await session.api.send(.get(Endpoint.account), as: AccountInfo.self) { inviteOptional = a.inviteOptional }
+  }
 }
 
 enum MeSheet: Identifiable, Equatable {
   case profile, ai, notifications, whatsNew, dataStatus, appearance, unsent, bedtimeGoal, licences
+  case memory, trainingGoals, signIn, invite, lateInvite, feedback, hevy
   case records(RecordKind)
 
   enum RecordKind: String { case supplements, labs, events }
@@ -182,7 +223,7 @@ private struct MeSheetView: View {
   @Environment(\.dismiss) private var dismiss
 
   var body: some View {
-    SheetContainer(title: title, close: { dismiss() }) {
+    SheetContainer(title: title, close: { dismiss() }, keyboardDone: keyboardDone) {
       switch sheet {
       case .profile: ProfileSetupView(first: false) { dismiss() }
       case .ai: AISettingsView()
@@ -193,11 +234,26 @@ private struct MeSheetView: View {
       case .unsent: UnsentChangesView()
       case .bedtimeGoal: BedtimeGoalView()                                                // 2.0.0
       case .licences: LicensesView()
+      case .memory: MemoryView()
+      case .trainingGoals: TrainingGoalsView { dismiss() }
+      case .signIn: SignInMethodsView()
+      case .invite: InviteFriendsView()
+      case .lateInvite: LateInviteView { dismiss() }
+      case .feedback: FeedbackView()
+      case .hevy: HevyImportView()
       case .records(let k): HealthRecordView(kind: k)                                    // N5
       }
     }
     .presentationDetents([.large])
     .presentationDragIndicator(.visible)
+  }
+
+  /// The forms with a number pad or a field that covers its own button.
+  private var keyboardDone: Bool {
+    switch sheet {
+    case .profile, .signIn, .lateInvite, .trainingGoals: return true
+    default: return false
+    }
   }
 
   private var title: String {
@@ -211,6 +267,13 @@ private struct MeSheetView: View {
     case .unsent: return tr("没提交的修改", "Unsent changes")
     case .bedtimeGoal: return tr("入睡目标", "Bedtime goal")
     case .licences: return tr("开源许可", "Open-source licences")
+    case .memory: return tr("长期记忆", "Long-term memory")
+    case .trainingGoals: return tr("训练设置", "Training settings")
+    case .signIn: return tr("登录方式", "Sign-in methods")
+    case .invite: return tr("邀请好友", "Invite friends")
+    case .lateInvite: return tr("填写邀请码", "Enter an invite code")
+    case .feedback: return tr("反馈记录", "Feedback")
+    case .hevy: return tr("从 Hevy 导入", "Import from Hevy")
     case .records(.supplements): return tr("补剂", "Supplements")
     case .records(.labs): return tr("化验", "Lab results")
     case .records(.events): return tr("身体事件", "Body events")

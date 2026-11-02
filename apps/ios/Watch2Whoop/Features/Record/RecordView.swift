@@ -37,6 +37,9 @@ struct RecordTab: View {
           .task { await devShot(proxy) }
         }
       }
+      .onReceive(JarvisPageLink.shared.$segment) { s in   // a Jarvis card's button (also when this tab is created by that tap)
+        if let s { segment = s; JarvisPageLink.shared.segment = nil }
+      }
       .refreshable {
         switch shown {
         case .training: await training.refresh()

@@ -142,6 +142,10 @@ final class APIClient {
     return u
   }
 
+  /// The same client for calls whose 401 means "that code is wrong", not "signed out" (binding an e-mail, entering an
+  /// invite code while signed in): the caller shows the error and the account stays signed in.
+  func keepingSignIn() -> APIClient { APIClient(baseURL: baseURL, token: token, session: session, sleep: sleep) }
+
   /// Raw answer body (2xx). Throws `APIError`.
   func data(_ r: APIRequest) async throws -> Data {
     guard token() != nil else { throw APIError.notConfigured }

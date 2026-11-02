@@ -62,6 +62,29 @@ struct DataStatusView: View {
             .padding(.vertical, 11)
           }
         }
+        if let c = s.channels {
+          RowGroup(title: tr("收到时间", "When it arrived")) {
+            ListRow(title: tr("app 直传：最近上传", "App upload: latest"), value: DataStatus.when(c.appUploadAt))
+            RowDivider(inset: 0)
+            ListRow(title: tr("手机同步：最新数据", "Phone sync: newest data"), value: DataStatus.when(c.owLastSampleAt))
+            if let shortcut = c.shortcutUploadAt {
+              RowDivider(inset: 0)
+              ListRow(title: tr("快捷指令：最近上传", "Shortcut: latest upload"), value: DataStatus.when(shortcut))
+            }
+          }
+        }
+        if let st = s.strength {
+          RowGroup(title: tr("力量训练记录（近 \(st.weeks) 周）", "Strength training (last \(st.weeks) weeks)")) {
+            ListRow(title: tr("天数", "Days"), value: tr("\(st.days) 天有记录", "\(st.days) days with records"))
+            RowDivider(inset: 0)
+            VStack(alignment: .leading, spacing: 2) {
+              Text(tr("来源（次）", "Sources (sessions)")).font(Typo.body).foregroundColor(Palette.text)
+              Text(st.sourcesLine(hideBackEnd: session.flags.contains("ai_parity"))).font(Typo.caption).foregroundColor(Palette.text2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 12)
+          }
+        }
       } else if let message {
         Banner(text: message, tone: .bad)
       } else {

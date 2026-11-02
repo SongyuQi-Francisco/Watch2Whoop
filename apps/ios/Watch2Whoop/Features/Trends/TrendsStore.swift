@@ -43,7 +43,8 @@ final class TrendsLink: ObservableObject {
   struct Request: Equatable {
     /// nil = the user's today.
     var end: String?
-    var range: TrendRange = .today
+    /// nil = keep the tab's range (a Jarvis card only picks the mode).
+    var range: TrendRange? = .today
     var mode: TrendsView.Mode = .metrics
   }
 
@@ -51,6 +52,9 @@ final class TrendsLink: ObservableObject {
 
   /// `day`: the day the Today tab shows (nil = today).
   func open(day: String?) { pending = Request(end: day) }
+
+  /// A Jarvis card's button: this mode, up to today, in the range the tab has.
+  func open(mode: TrendsView.Mode) { pending = Request(end: nil, range: nil, mode: mode) }
 
   /// The pending request, once.
   func take() -> Request? {
@@ -183,9 +187,10 @@ final class TrendsStore: ObservableObject {
   /// A request from 「全部指标 →」: range and end date at once, one reload.
   func apply(_ r: TrendsLink.Request) {
     let d = (r.end == userToday) ? nil : r.end
-    guard r.range != range || d != end else { return }
-    range = r.range
-    Self.sessionRange = r.range
+    let newRange = r.range ?? range
+    guard newRange != range || d != end else { return }
+    range = newRange
+    Self.sessionRange = newRange
     end = d
     guard let session else { return }
     observe(session)

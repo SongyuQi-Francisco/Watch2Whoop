@@ -342,6 +342,12 @@ def main(args) -> int:
                 res["sync_changes_compacted"] = sync_store.compact(conn)
         except Exception as e:  # noqa: BLE001  housekeeping only
             res["errors"].append(f"sync-compact: {type(e).__name__}: {e}")
+        try:   # posture photos no turn's end reached (a crash, a confirmation never answered): all users, idempotent
+            from .ai import posture
+            with db.connect() as conn:
+                res["ai_images_redacted"] = posture.redact_overdue(conn)
+        except Exception as e:  # noqa: BLE001  fails the run so the doctor sees it; the next run tries again
+            res["errors"].append(f"posture-redact: {type(e).__name__}")
     print(f"{len(users)} 个用户，{res['skipped_steps']} 步没变跳过，{len(res['errors'])} 项失败（{res['seconds']:.0f} 秒，{args.workers} 个进程）")
     print(RESULT_PREFIX + json.dumps(res, ensure_ascii=False), flush=True)
     return 1 if res["errors"] else 0

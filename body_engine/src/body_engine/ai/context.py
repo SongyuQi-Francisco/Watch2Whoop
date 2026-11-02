@@ -12,6 +12,7 @@ so every later call reuses it. The tail kept after a fold fits in TAIL_SHARE of 
 That call is recorded in ai_usage (purpose 'compact') and counts against the same monthly budget / fallback quota.
 If it fails, the call goes on with the old summary + the recent turns only (nothing stored; the next call tries again).
 Images in folded turns are not resent (the summary says they were there); images in the kept turns are.
+A picture replaced when its turn ended (posture.py) is a line of text wherever history is read from (show_redacted).
 """
 import json
 
@@ -45,6 +46,24 @@ def limits(fallback: bool) -> tuple[int, int, int]:
     if fallback:
         return fp.CONTEXT_MAX_CHARS, fp.CONTEXT_MAX_MESSAGES, fp.KEEP_TURNS
     return MAX_CHARS, MAX_MESSAGES, KEEP_TURNS
+
+
+def redacted_text(block: dict) -> str:
+    n = block.get("n", 1)
+    if block.get("purpose") == "posture":
+        return f"（这里有 {n} 张体态照片，按设置没有保存）"
+    return f"（这里有 {n} 张照片，按设置没有保存）"
+
+
+def show_redacted(messages: list[dict]) -> list[dict]:
+    """History as the model reads it: a replaced picture is a line of text, and the model goes on from its own earlier answer."""
+    out = []
+    for m in messages:
+        if any(b.get("type") == "image_redacted" for b in m["content"]):
+            m = {**m, "content": [{"type": "text", "text": redacted_text(b)} if b.get("type") == "image_redacted" else b
+                                  for b in m["content"]]}
+        out.append(m)
+    return out
 
 
 def size(messages: list[dict]) -> int:
