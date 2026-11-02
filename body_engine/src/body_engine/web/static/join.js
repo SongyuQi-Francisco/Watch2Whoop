@@ -35,6 +35,7 @@
   const cancel = () => { clearTimeout(timer); timer = 0; };
   document.addEventListener("visibilitychange", () => { if (document.hidden) { left = true; cancel(); } });
   window.addEventListener("pagehide", () => { left = true; cancel(); });
+  window.addEventListener("hashchange", () => location.reload());   // another invite link opened in this tab: no new page load
 
   function openTheApp() {
     cancel();

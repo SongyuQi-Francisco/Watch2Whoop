@@ -72,8 +72,8 @@ private struct CirclesScreen: View {
         .presentationDetents(s == .manage ? [.large] : [.medium, .large])
     }
     .task {
-      take(app.route)
-      askPush()
+      take(app.route, settled: settled)
+      askPush(settled: settled, tab: tab)
       await store.refresh()
       if store.mode == .feed { store.markSeen() }
       // the red dot keeps up while the tab is open (circle-feed.js polls every minute)
@@ -84,21 +84,22 @@ private struct CirclesScreen: View {
         if store.unread > 0 && store.mode == .feed { await store.refreshFeed(); store.markSeen() }
       }
     }
-    .onChange(of: app.route) { take($0) }
-    .onChange(of: settled) { on in if on { take(app.route); askPush() } }
-    .onChange(of: tab) { _ in askPush() }
+    .onChange(of: app.route) { take($0, settled: settled) }
+    // the new value as an argument: inside these closures the view's own `settled` is still the old one
+    .onChange(of: settled) { on in take(app.route, settled: on); askPush(settled: on, tab: tab) }
+    .onChange(of: tab) { t in askPush(settled: settled, tab: t) }
     .onChange(of: phase) { p in if p == .active { Task { await store.refresh() } } }
   }
 
   /// The first visit here is when the question has a reason (likes, comments), never at launch (notify.js askOnce). iOS
   /// asks only once; after that this is a no-op.
-  private func askPush() {
+  private func askPush(settled: Bool, tab: AppTab) {
     guard settled, tab == .circles, store.session.flags.contains("notifications") else { return }
     Task { await PushRegistration.shared.askOnFirstVisit(api: store.session.api) }
   }
 
   /// A route meant for this tab (a notification, a link): consumed here.
-  private func take(_ r: AppModel.Route?) {
+  private func take(_ r: AppModel.Route?, settled: Bool) {
     guard settled else { return }
     switch r {
     case .circles(let post)?:
@@ -224,12 +225,13 @@ private struct CircleRouting: ViewModifier {
 
   func body(content: Content) -> some View {
     content
-      .onAppear { follow(app.route) }   // a tap that launched the app came before the tabs
-      .onChange(of: app.route) { follow($0) }
-      .onChange(of: settled) { _ in follow(app.route) }
+      .onAppear { follow(app.route, settled: settled) }   // a tap that launched the app came before the tabs
+      .onChange(of: app.route) { follow($0, settled: settled) }
+      // the new value as an argument: inside this closure the modifier's own `settled` is still the old one
+      .onChange(of: settled) { on in follow(app.route, settled: on) }
   }
 
-  private func follow(_ r: AppModel.Route?) {
+  private func follow(_ r: AppModel.Route?, settled: Bool) {
     guard settled else { return }
     switch r {
     case .circles?, .circleJoin?:
