@@ -94,13 +94,20 @@ enum TrendCards {
                                        weekly("vol", tr("训练量", "Training volume"), "muscle_load", d.muscleWeeks, unit: "kg", target: nil),
                                        hrZones(d), c("steps"), c("active_kcal"), c("total_kcal"), c("hr_recovery")]),
       ("stress", tr("压力", "Stress"), [c("stress"), c("resilience")]),
-      ("long", tr("长期", "Long term"), [metric("vo2max", d, base: p.fitness), c("weight"), c("body_age")]),
+      ("long", tr("长期", "Long term"), [metric("vo2max", d, base: p.fitness), c("weight"), bodyAge(c("body_age"))]),
     ]
     list = list.map { ($0.0, $0.1, $0.2.filter { $0 != nil }) }
     return list.compactMap { g in
       let cards = g.2.compactMap { $0 }
       return cards.isEmpty ? nil : (g.0, g.1, cards)
     }
+  }
+
+  /// The body-age card opens the body-age sheet instead of the plain explanation.
+  private static func bodyAge(_ card: TrendCardModel?) -> TrendCardModel? {
+    guard var card else { return nil }
+    card.sheet = .bodyAge
+    return card
   }
 
   // MARK: - helpers

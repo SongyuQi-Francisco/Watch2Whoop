@@ -217,6 +217,10 @@ def test_after_the_block(client, conn, users, dsn):
                        json={"jsonrpc": "2.0", "id": 1, "method": "initialize",
                              "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "pytest", "version": "1"}}})
     assert init.status_code == 200, init.text
+    # static pages stay open: the invite landing page (join.js) and the handbook the app opens in its Safari view
+    client.cookies.clear()
+    for path in ("/app/join.html", "/app/handbook/", "/app/handbook/en/"):
+        assert client.get(path).status_code == 200, path
 
 
 def test_kill_switch(client, conn, users):

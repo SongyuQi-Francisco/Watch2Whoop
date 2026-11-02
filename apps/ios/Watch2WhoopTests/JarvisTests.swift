@@ -17,9 +17,12 @@ final class JarvisTests: XCTestCase {
     return c
   }
 
+  /// Until the condition holds, returning at once when it does. The limit only has to outlast a busy CI machine, which can
+  /// stall for seconds; a state that never comes still fails.
   private func wait(_ cond: @autoclosure () -> Bool, _ file: StaticString = #filePath, _ line: UInt = #line) async {
-    for _ in 0..<300 where !cond() { try? await Task.sleep(nanoseconds: 10_000_000) }
-    XCTAssertTrue(cond(), "timed out", file: file, line: line)
+    let deadline = Date().addingTimeInterval(30)
+    while !cond(), Date() < deadline { try? await Task.sleep(nanoseconds: 10_000_000) }
+    XCTAssertTrue(cond(), "timed out after 30 s", file: file, line: line)
   }
 
   private func body(_ r: URLRequest) -> [String: Any] {

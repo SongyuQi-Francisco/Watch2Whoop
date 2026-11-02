@@ -15,10 +15,12 @@ struct Profile: Decodable, Equatable {
   var language: String?
   var missing: [String] = []
   var consent: ConsentStatus = ConsentStatus()
+  /// Circles of an activation code used at sign-up, joined once the consent is given (friends/codes.py).
+  var circlePending: [PendingCircle] = []
 
   enum CodingKeys: String, CodingKey {
     case displayName = "display_name", birthDate = "birth_date", sex, heightCm = "height_cm", timezone
-    case goalWeightKg = "goal_weight_kg", language, missing, consent
+    case goalWeightKg = "goal_weight_kg", language, missing, consent, circlePending = "circle_pending"
   }
 
   init() {}
@@ -34,6 +36,42 @@ struct Profile: Decodable, Equatable {
     language = try c.decodeIfPresent(String.self, forKey: .language)
     missing = try c.decodeIfPresent([String].self, forKey: .missing) ?? []
     consent = try c.decodeIfPresent(ConsentStatus.self, forKey: .consent) ?? ConsentStatus()
+    circlePending = try c.decodeIfPresent([PendingCircle].self, forKey: .circlePending) ?? []
+  }
+}
+
+/// A circle the person joins with the consent: its name and what its members will see.
+struct PendingCircle: Decodable, Equatable {
+  let name: String
+  var scopes: [String] = []
+
+  enum CodingKeys: String, CodingKey { case name, scopes }
+
+  init(name: String, scopes: [String] = []) {
+    self.name = name
+    self.scopes = scopes
+  }
+
+  init(from d: Decoder) throws {
+    let c = try d.container(keyedBy: CodingKeys.self)
+    name = try c.decode(String.self, forKey: .name)
+    scopes = try c.decodeIfPresent([String].self, forKey: .scopes) ?? []
+  }
+}
+
+/// The answer of POST /v1/users/me/consent, what the sheet says afterwards.
+struct ConsentAccepted: Decodable, Equatable {
+  var circlesJoined: [Joined] = []
+
+  struct Joined: Decodable, Equatable { let name: String }
+
+  enum CodingKeys: String, CodingKey { case circlesJoined = "circles_joined" }
+
+  init(circlesJoined: [Joined] = []) { self.circlesJoined = circlesJoined }
+
+  init(from d: Decoder) throws {
+    let c = try d.container(keyedBy: CodingKeys.self)
+    circlesJoined = try c.decodeIfPresent([Joined].self, forKey: .circlesJoined) ?? []
   }
 }
 
@@ -228,6 +266,8 @@ struct WhatsNew: Decodable, Equatable {
   struct Item: Decodable, Equatable, Hashable {
     let date: String
     let text: String
+    /// Where tapping it goes (a Today page link, AppLink), if anywhere.
+    var url: String?
   }
 }
 

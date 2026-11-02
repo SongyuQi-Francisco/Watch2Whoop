@@ -221,7 +221,7 @@ struct MemberTodayPage: View {
     MemberScroll(store: store) {
       MemberDayHeader(overline: overline, title: model.isPast ? TodayModel.shortDay(model.date) : tr("今天", "Today"), lookingBack: day != nil,
                       pick: { sheet = .calendar }, back: { day = nil })
-      TodayDayCards(model: model, handle: handle, open: { sheet = TodaySheet(open: $0) },
+      TodayDayCards(model: model, handle: handle, open: { sheet = TodaySheet(open: $0) }, show: { sheet = $0 },
                     openStatus: { sheet = .explain(kind: "status", key: $0.key, title: $0.label) },
                     allMetrics: { allMetrics(day) })
     }
@@ -307,7 +307,11 @@ struct MemberTrendsPage: View {
       case .report:
         ReportView(end: end) { key, title in sheet = .explain(key: key, title: title) }.padding(.top, 10).id(store.refreshes)
       default:
-        TrendsMetricsContent(page: page, range: range, loading: loading, offline: offline, setRange: { range = $0 }, open: { sheet = $0 })
+        TrendsMetricsContent(page: page, range: range, loading: loading, offline: offline, foldOn: session.flags.contains(TrendsFold.flag),
+                             setRange: { range = $0 }, open: { s in
+          // the body age sheet reads my own tables: their number goes through the explanation
+          if case .bodyAge = s { sheet = .explain(key: "body_age", title: tr("身体年龄", "Body age")) } else { sheet = s }
+        })
       }
     }
     .sheet(item: $sheet) { s in sheetView(s) }

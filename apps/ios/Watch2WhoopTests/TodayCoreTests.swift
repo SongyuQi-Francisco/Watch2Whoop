@@ -129,7 +129,7 @@ final class TodayCoreTests: XCTestCase {
 
     Lang.override = "en"
     XCTAssertEqual(TrendCards.meanBasis(page.data), "7-day mean")
-    XCTAssertEqual(TrendRange.allCases.map(\.label), ["Today", "7 d", "30 d", "90 d", "365 d"])
+    XCTAssertEqual(TrendRange.allCases.map(\.label), ["Today", "7 d", "30 d", "90 d", "180 d", "365 d"])
     XCTAssertEqual(TrendRange.today.docDays, TodayParams.trendsDays)
     XCTAssertEqual(TrendRange.week.docDays, 7)
   }

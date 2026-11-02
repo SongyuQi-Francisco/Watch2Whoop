@@ -59,6 +59,8 @@ private struct MeScreen: View {
             RowDivider()
             ListRow(icon: .calendarDays, title: tr("身体事件", "Body events")) { sheet = .records(.events) }
             RowDivider()
+            ListRow(icon: .activity, title: tr("身体年龄", "Body age")) { sheet = .bodyAge }
+            RowDivider()
             ListRow(icon: .archive, title: tr("长期记忆", "Long-term memory")) { sheet = .memory }
           }
           if !session.viewable.isEmpty {
@@ -238,7 +240,7 @@ private struct MeScreen: View {
 }
 
 enum MeSheet: Identifiable, Equatable {
-  case profile, ai, notifications, whatsNew, dataStatus, appearance, unsent, bedtimeGoal, licences
+  case profile, ai, notifications, whatsNew, dataStatus, appearance, unsent, bedtimeGoal, bodyAge, licences
   case memory, trainingGoals, signIn, invite, lateInvite, feedback, hevy
   case records(RecordKind)
 
@@ -252,6 +254,7 @@ enum MeSheet: Identifiable, Equatable {
 
 private struct MeSheetView: View {
   let sheet: MeSheet
+  @EnvironmentObject private var app: AppModel
   @Environment(\.dismiss) private var dismiss
 
   var body: some View {
@@ -260,14 +263,15 @@ private struct MeSheetView: View {
       case .profile: ProfileSetupView(first: false) { dismiss() }
       case .ai: AISettingsView()
       case .notifications: NotificationSettingsView()
-      case .whatsNew: WhatsNewView()
+      case .whatsNew: WhatsNewView { link in dismiss(); app.handle(link: link) }
       case .dataStatus: DataStatusView()
       case .appearance: AppearanceView()
       case .unsent: UnsentChangesView()
       case .bedtimeGoal: BedtimeGoalView()                                                // 2.0.0
+      case .bodyAge: BodyAgeView()
       case .licences: LicensesView()
       case .memory: MemoryView()
-      case .trainingGoals: TrainingGoalsView { dismiss() }
+      case .trainingGoals: TrainingSettingsView { dismiss() }
       case .signIn: SignInMethodsView()
       case .invite: InviteFriendsView()
       case .lateInvite: LateInviteView { dismiss() }
@@ -298,6 +302,7 @@ private struct MeSheetView: View {
     case .appearance: return tr("外观", "Appearance")
     case .unsent: return tr("没提交的修改", "Unsent changes")
     case .bedtimeGoal: return tr("入睡目标", "Bedtime goal")
+    case .bodyAge: return tr("身体年龄", "Body age")
     case .licences: return tr("开源许可", "Open-source licences")
     case .memory: return tr("长期记忆", "Long-term memory")
     case .trainingGoals: return tr("训练设置", "Training settings")

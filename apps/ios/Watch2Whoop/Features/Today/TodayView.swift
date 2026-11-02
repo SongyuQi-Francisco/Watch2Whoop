@@ -13,9 +13,12 @@ struct SleepRoute: Hashable {
 /// only — the words are in the explain sheets. The date on top looks back at any day.
 struct TodayView: View {
   @EnvironmentObject private var session: AccountSession
+  @EnvironmentObject private var app: AppModel
   @StateObject private var store: TodayStore
   @State private var sheet: TodaySheet?
+  @State private var showConsent = false
   @State private var path: [SleepRoute] = []
+  @State private var toast: Toast?
   @SceneStorage("w2w.tab") private var tab: AppTab = .today
   @SceneStorage("w2w.record.segment") private var recordSegment: RecordTab.Segment = .training
   @State private var trainingOpen = false
@@ -35,6 +38,14 @@ struct TodayView: View {
     .sheet(item: $sheet) { s in
       TodaySheetView(sheet: s, model: store.model, store: store, open: { sheet = $0 }, close: { sheet = nil })
         .environmentObject(session)
+    }
+    .fullScreenCover(isPresented: $showConsent) {
+      ConsentView(reconfirm: false) {
+        showConsent = false
+        await store.refresh()
+      }
+      .environmentObject(session)
+      .environmentObject(app)
     }
     .sheet(isPresented: $trainingOpen) {
       if let t = store.model.training {
@@ -56,6 +67,9 @@ struct TodayView: View {
         // Lazy: the first frame builds only what is on screen (rings and the first tiles)
         LazyVStack(alignment: .leading, spacing: 0) {
           header.id("top")
+          if !store.model.isPast {
+            SyncNudges(card: store.model.sync, coverage: store.model.coverage) { await store.refresh() }
+          }
           content
           Color.clear.frame(height: 1).id("bottom")
         }
@@ -66,6 +80,8 @@ struct TodayView: View {
       }
       .background(Palette.bg.ignoresSafeArea())
       .refreshable { await store.refresh() }
+      .toast($toast)
+      .modifier(DaySwipe { store.step($0) })
       .onAppear {
         if store.hasData && PerfProbe.autoScroll { autoScroll(proxy) }
         #if DEBUG
@@ -97,6 +113,8 @@ struct TodayView: View {
       if store.date != nil {
         Button { store.select(nil) } label: { Chip(label: tr("回到今天", "Back to today")) }.buttonStyle(PressScale())
       }
+      DayNavButtons(canGoNext: store.date != nil) { store.step($0) }
+      SyncHeaderButton()
     }
     .padding(.top, 10).padding(.bottom, 8)
   }
@@ -120,21 +138,30 @@ struct TodayView: View {
 
   @ViewBuilder private var content: some View {
     let m = store.model
-    TodayDayCards(model: m, hasData: store.hasData, onRingsShown: { PerfProbe.shared.ringsShown() }, handle: handle, open: open,
+    TodayDayCards(model: m, hasData: store.hasData, onRingsShown: { PerfProbe.shared.ringsShown() }, handle: handle, open: open, show: { sheet = $0 },
                   openStatus: { it in
                     if it.key == "weight" { sheet = .weight }
+                    else if let lab = it.labKey { sheet = .detail(.lab(key: lab, title: it.label)) }
                     else { sheet = .explain(kind: "status", key: it.key, title: it.label) }
                   },
                   allMetrics: {
                     TrendsLink.shared.open(day: store.date)
                     tab = .trends
                   },
-                  openTraining: { trainingOpen = true }, openHistory: openTraining)
+                  recoveryNext: runRecoveryNext, openTraining: { trainingOpen = true }, openHistory: openTraining,
+                  foodCard: AnyView(TodayFoodCard(session: session, day: store.date, toast: $toast).id("n3.food")))
 
-    if let s = m.sync { SyncCardView(card: s, sync: session.sync) { Task { await store.refresh() } }.padding(.top, 22) }
+    if let s = m.sync {
+      SyncCardView(card: s, sync: session.sync, open: { app.route = .syncCenter }) {
+        Task { _ = await HealthSyncService.shared.syncNow(); await store.refresh() }
+      }
+      .padding(.top, 22)
+    }
     if m.circles != nil { CircleSummaryCard { tab = .circles }.padding(.top, 22) }
 
-    SyncStatusLine(sync: session.sync, hasData: store.hasData).padding(.top, 18)
+    Button { app.route = .syncCenter } label: { SyncStatusLine(sync: session.sync, hasData: store.hasData) }
+      .buttonStyle(.plain)
+      .padding(.top, 18)
   }
 
   /// 记录 → 训练 (the muscle card, 训练历史, 逐组记录).
@@ -143,11 +170,38 @@ struct TodayView: View {
     tab = .record
   }
 
-  private func open(_ o: TodayOpen) { sheet = TodaySheet(open: o) }
+  private func open(_ o: TodayOpen) {
+    switch o {
+    case .coach: sheet = .coach
+    case .metric("stress", _): sheet = .detail(.stress)
+    case .metric(let k, let t): sheet = .explain(kind: "metric", key: k, title: t)
+    case .status(let t): sheet = .status(t)
+    }
+  }
+
+  /// The button under an empty recovery ring (app.js recoveryNext).
+  private func runRecoveryNext(_ a: RecoveryNext.Action) {
+    switch a {
+    case .consent: showConsent = true
+    case .sync: app.route = .syncCenter
+    case .sleepHelp: sheet = .detail(.sleepHelp)
+    }
+  }
 
   private func handle(_ a: TodayModel.Action) {
-    if case .sleepDetail(let d) = a { path.append(SleepRoute(date: d ?? store.model.sleepDate)) }
-    else { sheet = TodaySheet(action: a) }
+    switch a {
+    case .recovery: sheet = .recovery
+    case .strain: sheet = .strain
+    case .load: sheet = .load
+    case .coach: sheet = .coach
+    case .monitor: sheet = .monitor
+    case .weight: sheet = .weight
+    case .allReminders: sheet = .reminders
+    case .reminder(let id): sheet = .reminder(id)
+    case .sleepDetail(let d): path.append(SleepRoute(date: d ?? store.model.sleepDate))
+    case .explainMetric(let k, let t): sheet = .explain(kind: "metric", key: k, title: t)
+    case .explainStatus(let k, let t): sheet = .explain(kind: "status", key: k, title: t)
+    }
   }
 
   /// `W2W_PERF_SCROLL=1`: scroll down and up three times while the frame meter counts (PerfProbe).
@@ -169,18 +223,21 @@ struct TodayView: View {
 // MARK: - the day's cards
 
 /// Everything a day shows, from the rings to the reminders: the Today tab's page and the read-only view of someone else
-/// (`MemberTodayPage`) draw the same cards from a `TodayModel`. What happens on a tap belongs to the page. The training cards
-/// (`openTraining`, `openHistory`) lead to my own log, so without those there are none.
+/// (`MemberTodayPage`) draw the same cards from a `TodayModel`. What happens on a tap belongs to the page. What leads to my own
+/// data (the button under an empty ring, the training cards, the food card) is only there when the page passes it.
 struct TodayDayCards: View {
   let model: TodayModel
   var hasData = true
   var onRingsShown: () -> Void = {}
   let handle: (TodayModel.Action) -> Void
   let open: (TodayOpen) -> Void
+  let show: (TodaySheet) -> Void
   let openStatus: (TodayModel.StatusItem) -> Void
   let allMetrics: () -> Void
+  var recoveryNext: ((RecoveryNext.Action) -> Void)?
   var openTraining: (() -> Void)?
   var openHistory: (() -> Void)?
+  var foodCard: AnyView?
 
   // no container here: inside the page's LazyVStack each card stays its own lazy row
   var body: some View {
@@ -193,10 +250,16 @@ struct TodayDayCards: View {
     if let s = m.sub {
       Text(s).font(Typo.caption).foregroundColor(Palette.text2).frame(maxWidth: .infinity).padding(.top, 3)
     }
+    if let n = m.recoveryNext, let recoveryNext {
+      Button { recoveryNext(n.action) } label: { Chip(label: n.label) }
+        .buttonStyle(PressScale())
+        .frame(maxWidth: .infinity).padding(.top, 10)
+        .id("recoveryNext")
+    }
     if m.loadChip != nil || m.local {
       HStack(spacing: 8) {
         if let l = m.loadChip {
-          Button { handle(.load) } label: { Chip(label: "\(tr("负荷", "Load")) \(l)") }.buttonStyle(PressScale())
+          Button { show(.load) } label: { Chip(label: "\(tr("负荷", "Load")) \(l)") }.buttonStyle(PressScale())
         }
         if m.local { Chip(label: tr("本机计算", "On this phone")) }
       }
@@ -234,9 +297,13 @@ struct TodayDayCards: View {
       .padding(.top, 22)
     }
 
+    if let c = m.tonight {
+      SleepCoachCard(coach: c, isPast: m.isPast) { show(.detail(.sleepCoach)) }.padding(.top, 22).id("sleepCoach")
+    }
+
     // the strain target lives in 今日核心; the health monitor keeps its own card
     if !m.vitals.isEmpty {
-      MonitorCard(vitals: m.vitals, off: m.vitalsOff) { handle(.monitor) }.padding(.top, 22)
+      MonitorCard(vitals: m.vitals, off: m.vitalsOff) { show(.monitor) }.padding(.top, 22)
     }
 
     if m.date != nil {
@@ -262,12 +329,14 @@ struct TodayDayCards: View {
 
     if !m.isPast && !m.status.isEmpty { statusBlock(m.status).padding(.top, 22) }
 
+    if let foodCard { foodCard }
+
     if !m.reminders.isEmpty {
       VStack(alignment: .leading, spacing: 8) {
         SectionTitle(title: tr("提醒", "Reminders"), trailing: m.reminders.count > 3 ? tr("全部 \(m.reminders.count)", "All \(m.reminders.count)") : nil) {
-          handle(.allReminders)
+          show(.reminders)
         }
-        ForEach(m.topReminders) { r in ReminderRow(reminder: r) { handle(.reminder(r.id)) } }
+        ForEach(m.topReminders) { r in ReminderRow(reminder: r) { show(.reminder(r.id)) } }
       }
       .padding(.top, 22)
     }
@@ -312,7 +381,7 @@ struct TodayDayCards: View {
 #if DEBUG
 /// Debug builds only, for simulator screenshots: `SIMCTL_CHILD_W2W_DEV_SCROLL=<anchor id>` (`attention`, `core`,
 /// `allMetrics`, `bottom`),
-/// `SIMCTL_CHILD_W2W_DEV_SHEET=recovery|strain|load|coach|monitor|calendar|weight|explain:<kind>:<key>`,
+/// `SIMCTL_CHILD_W2W_DEV_SHEET=recovery|strain|load|coach|monitor|calendar|weight|stress|sleepCoach|bodyAge|sleepHelp|lab:<key>|explain:<kind>:<key>`,
 /// `SIMCTL_CHILD_W2W_DEV_SLEEP=1` (open the sleep detail page), `SIMCTL_CHILD_W2W_DEV_DATE=YYYY-MM-DD` (look back).
 enum DevShot {
   static func apply(proxy: ScrollViewProxy, sheet: @escaping (TodaySheet) -> Void, push: @escaping (SleepRoute) -> Void,
@@ -330,6 +399,11 @@ enum DevShot {
       case "monitor": sheet(.monitor)
       case "calendar": sheet(.calendar)
       case "weight": sheet(.weight)
+      case "stress": sheet(.detail(.stress))
+      case "sleepCoach": sheet(.detail(.sleepCoach))
+      case "bodyAge": sheet(.detail(.bodyAge))
+      case "sleepHelp": sheet(.detail(.sleepHelp))
+      case let x where x.hasPrefix("lab:"): sheet(.detail(.lab(key: String(x.dropFirst(4)), title: String(x.dropFirst(4)))))
       case let x where x.hasPrefix("explain:"):
         let p = x.split(separator: ":").map(String.init)
         if p.count == 3 { sheet(.explain(kind: p[1], key: p[2], title: p[2])) }
@@ -467,27 +541,41 @@ struct StatusCell: View {
   }
 }
 
-/// Sync state: a dot, the server's short label, how long ago; tap = sync now (N8 adds the sync center).
+/// Sync state: a dot, the server's short label, how long ago. The row opens the sync center; the button at its end syncs now.
 struct SyncCardView: View {
   let card: TodayModel.SyncCard
   @ObservedObject var sync: SyncCoordinator
-  let refresh: () -> Void
+  @ObservedObject private var health = HealthSyncService.shared
+  let open: () -> Void
+  let syncNow: () -> Void
 
   var body: some View {
-    Button(action: refresh) {
-      HStack(spacing: 10) {
-        Circle().fill(card.tone == .text ? Palette.text3 : card.tone.color).frame(width: 8, height: 8)
-        Text(card.label).font(Typo.body).foregroundColor(Palette.text).lineLimit(1)
-        Spacer(minLength: 6)
-        if let a = card.ago { Text(a).font(Typo.caption).foregroundColor(Palette.text2) }
-        if sync.status == .syncing { ProgressView().scaleEffect(0.7).tint(Palette.text3) }
-        else { Icon(.refreshCw, size: 16).foregroundColor(Palette.text3) }
+    HStack(spacing: 0) {
+      Button(action: open) {
+        HStack(spacing: 10) {
+          Circle().fill(card.tone == .text ? Palette.text3 : card.tone.color).frame(width: 8, height: 8)
+          Text(card.label).font(Typo.body).foregroundColor(Palette.text).lineLimit(1)
+          Spacer(minLength: 6)
+          if let a = card.ago { Text(a).font(Typo.caption).foregroundColor(Palette.text2) }
+        }
+        .padding(.leading, 14).padding(.vertical, 14)
+        .contentShape(Rectangle())
       }
-      .padding(14)
-      .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
+      .buttonStyle(PressScale())
+      .accessibilityLabel("\(tr("同步中心", "Sync center")) \(card.label)")
+      Button(action: syncNow) {
+        Group {
+          if sync.status == .syncing || health.running { ProgressView().scaleEffect(0.7).tint(Palette.text3) }
+          else { Icon(.refreshCw, size: 16).foregroundColor(Palette.text3) }
+        }
+        .frame(width: 44, height: 44)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(PressScale())
+      .disabled(health.running)
+      .accessibilityLabel(tr("立即同步", "Sync now"))
     }
-    .buttonStyle(PressScale())
-    .accessibilityLabel("\(tr("同步", "Sync")) \(card.label)")
+    .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
   }
 }
 

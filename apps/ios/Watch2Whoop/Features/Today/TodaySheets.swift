@@ -7,6 +7,8 @@ enum TodaySheet: Identifiable, Equatable {
   case explain(kind: String, key: String, title: String)
   /// A status card of 今日核心 / 需要注意 (#357), the same sheet as Trends'.
   case status(TrendStatus.Tile)
+  /// Stress, the sleep coach, body age, … (TodayDetails.swift).
+  case detail(TodayDetail)
 
   /// The sheet of a tap on the day's cards (the sleep detail is a page, weight is my own form: no sheet here).
   init?(action a: TodayModel.Action) {
@@ -46,6 +48,7 @@ enum TodaySheet: Identifiable, Equatable {
     case .reminder(let id): return "reminder:\(id)"
     case .explain(let k, let key, _): return "explain:\(k):\(key)"
     case .status(let t): return "status:\(t.key)"
+    case .detail(let d): return "detail:\(d.id)"
     }
   }
 }
@@ -69,6 +72,7 @@ struct TodaySheetView: View {
     switch sheet {
     case .reminder, .load, .coach: return [.medium]
     case .calendar, .weight: return [.large]
+    case .detail(let d) where d.large: return [.large]
     default: return [.medium, .large]
     }
   }
@@ -87,6 +91,7 @@ struct TodaySheetView: View {
     case .reminder: return tr("提醒", "Reminder")
     case .explain(_, _, let t): return t
     case .status(let t): return t.label
+    case .detail(let d): return d.title
     }
   }
 
@@ -175,6 +180,10 @@ struct TodaySheetView: View {
       }
     case .weight:
       WeightSheet(today: store.userToday) { close() }
+    case .detail where member != nil:
+      EmptyView()   // these read my own tables
+    case .detail(let detail):
+      TodayDetailBody(detail: detail, date: model.date ?? store.userToday, past: day, coach: model.tonight, open: open, close: close)
     }
   }
 

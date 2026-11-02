@@ -212,7 +212,7 @@ final class CircleLinkTests: XCTestCase {
     XCTAssertEqual(InviteCode.extract("EXAMPLECLUB"), "EXAMPLECLUB")   // an activation code of another shape
     XCTAssertNil(InviteCode.extract("  "))
     XCTAssertEqual(InviteShare.webLink(server: "https://body.example.com", code: "QWERT-YUP23")?.absoluteString,
-                   "https://body.example.com/app/?circle=QWERT-YUP23")
+                   "https://body.example.com/app/join.html#QWERT-YUP23")
     XCTAssertEqual(apiRequest(relative: "/v1/avatars/users/2?v=4").query.first?.value, "4")
   }
 }
@@ -268,6 +268,19 @@ final class CirclesStoreTests: XCTestCase {
     for k in ["w2w.circles.circle.v1", "w2w.circles.board.v1", "w2w.circles.mode.v1"] { UserDefaults.standard.removeObject(forKey: k) }
   }
 
+  /// Until `cond` holds: the queue and the store's observer run on their own schedule (seconds late on a busy CI machine), so
+  /// a test waits for the state it needs, not for a fixed time. A state that never comes still fails.
+  private func until(_ what: String, _ file: StaticString = #filePath, _ line: UInt = #line, _ cond: () throws -> Bool) async throws {
+    let deadline = Date().addingTimeInterval(30)
+    while try !cond() {
+      guard Date() < deadline else {
+        XCTFail("timed out after 30 s: \(what)", file: file, line: line)
+        return
+      }
+      try await Task.sleep(nanoseconds: 10_000_000)
+    }
+  }
+
   private func session() throws -> AccountSession {
     let c = URLSessionConfiguration.ephemeral
     c.protocolClasses = [StubRouter.self]
@@ -302,19 +315,22 @@ final class CirclesStoreTests: XCTestCase {
     StubRouter.offline = true
     store.setLike(store.posts[0], true)
     XCTAssertEqual(store.posts[0].likes, Post.Likes(count: 2, mine: true))
-    try await Task.sleep(nanoseconds: 300_000_000)
+    // its first try failed and it is back in the queue: an entry on its way (`sending`) is never superseded (OfflineQueue)
+    try await until("the like's first try") {
+      try s.sync.queue.all().first.map { $0.attempts >= 1 && $0.state == .pending } ?? false
+    }
     let queued = try s.sync.queue.all()
     XCTAssertEqual(queued.map(\.kind), [FeedLogic.likeKind])
     XCTAssertEqual(queued.first?.method, "PUT")
     // un-like before it went out: only the newest state stays queued
     store.setLike(store.posts[0], false)
-    try await Task.sleep(nanoseconds: 300_000_000)
     XCTAssertEqual(try s.sync.queue.all().map(\.method), ["DELETE"])
+    try await until("the store sees the queue") { store.pending.map(\.method) == ["DELETE"] }
     XCTAssertEqual(store.posts[0].likes, Post.Likes(count: 1, mine: false))
 
     // a comment offline: listed as sending under the post
     store.addComment(9, "  Example comment ")
-    try await Task.sleep(nanoseconds: 300_000_000)
+    try await until("the queued comment is listed") { store.commentList(9)?.last != nil }
     XCTAssertEqual(store.commentList(9)?.last?.body, "Example comment")
     XCTAssertEqual(store.commentList(9)?.last?.local, .pending)
     XCTAssertEqual(store.posts[0].commentCount, 1)

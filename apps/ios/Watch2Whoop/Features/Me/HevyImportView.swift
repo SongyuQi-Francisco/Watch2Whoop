@@ -66,7 +66,7 @@ struct HevyStatus: Decodable, Equatable {
 }
 
 /// An exercise of the library (`/training/exercises`), to match an unknown name to.
-struct LibraryExercise: Decodable, Equatable, Identifiable {
+struct HevyLibraryExercise: Decodable, Equatable, Identifiable {
   let slug: String
   var nameZh: String?
   var nameEn: String?
@@ -78,7 +78,7 @@ struct LibraryExercise: Decodable, Equatable, Identifiable {
 struct HevyImportView: View {
   @EnvironmentObject private var session: AccountSession
   @State private var status: HevyStatus?
-  @State private var library: [LibraryExercise] = []
+  @State private var library: [HevyLibraryExercise] = []
   @State private var picking = false
   @State private var busy = false
   @State private var note: String?
@@ -152,7 +152,7 @@ struct HevyImportView: View {
   }
 
   private func loadLibrary() async {
-    struct Answer: Decodable { var exercises: [LibraryExercise] = [] }
+    struct Answer: Decodable { var exercises: [HevyLibraryExercise] = [] }
     let a = try? await session.api.send(.get("/v1/users/me/training/exercises", ["limit": "200"]), as: Answer.self)
     library = (a?.exercises ?? []).sorted { $0.name < $1.name }
   }
@@ -185,7 +185,7 @@ struct HevyImportView: View {
     }
   }
 
-  private func map(_ u: HevyStatus.Unmatched, to x: LibraryExercise) async {
+  private func map(_ u: HevyStatus.Unmatched, to x: HevyLibraryExercise) async {
     struct Body: Encodable { let name: String; let exercise: String }
     do {
       _ = try await session.api.data(try .json(.put, Self.path + "/map", Body(name: u.name, exercise: x.slug)))

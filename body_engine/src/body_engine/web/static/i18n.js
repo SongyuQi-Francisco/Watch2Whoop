@@ -127,6 +127,15 @@
     "activate.computer": "电脑上用浏览器打开今天页就行",
     "activate.iosBanner": "iPhone 请改用 Watch2Whoop App，网页版即将停用",
     "activate.iosBannerLink": "怎么安装",
+    "activate.joinTitle": "加入圈子",
+    "activate.joinLead": "朋友邀请你加入 Watch2Whoop 的圈子",
+    "activate.copyCode": "复制邀请码",
+    "activate.copied": "已复制",
+    "activate.joinWeChat": "微信里打不开 App：点右上角 ··· →「在 Safari 中打开」",
+    "activate.joinManual": "也可以打开 Watch2Whoop → 朋友 → 用邀请码加入",
+    "activate.joinNoCode": "链接里没有邀请码，请朋友再发一次",
+    "activate.joinInstallLead": "iPhone 上要用 Watch2Whoop App。装好以后再点一次这个邀请链接。",
+    "activate.joinInstall4": "回到这里，再点一次邀请链接",
   };
   const EN = {
     "app.title": "Body · Today",
@@ -239,6 +248,15 @@
     "activate.computer": "On a computer, just open the Today page in a browser",
     "activate.iosBanner": "On iPhone, please use the Watch2Whoop app — the web version is being retired",
     "activate.iosBannerLink": "How to install",
+    "activate.joinTitle": "Join a circle",
+    "activate.joinLead": "A friend invited you to a circle on Watch2Whoop",
+    "activate.copyCode": "Copy code",
+    "activate.copied": "Copied",
+    "activate.joinWeChat": "WeChat can't open the app: tap ··· at the top right, then Open in Safari",
+    "activate.joinManual": "Or open Watch2Whoop → Friends → Join with a code",
+    "activate.joinNoCode": "This link has no invite code; ask your friend to send it again",
+    "activate.joinInstallLead": "On iPhone you need the Watch2Whoop app. Once it is installed, tap this invite link again.",
+    "activate.joinInstall4": "Come back here and tap the invite link again",
   };
   const TABLES = { zh: ZH, en: EN };
   const PREF_KEY = "be.lang";
