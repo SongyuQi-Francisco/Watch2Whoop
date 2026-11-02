@@ -212,6 +212,7 @@ def test_after_the_block(client, conn, users, dsn):
     assert client.get("/v1/users/me/notices", headers=H(t["a"], **{"X-App-Client": "android", "X-App-Version": "0.1"})).status_code == 200
     assert client.get("/v1/users/me/notices", headers=H(t["a"], **{"X-App-Client": "ios-native"})).status_code == 200
     assert client.post("/v1/ingest/healthkit", headers=H(t["a"], **OLD), json={}).status_code != 426
+    assert client.get("/v1/oauth/requests/unknown", headers=H(t["a"], **OLD)).status_code != 426, "connecting an AI stays possible"
     init = client.post("/mcp", headers={**MCP_H, **OLD, "Authorization": f"Bearer {t['mcp']}"},
                        json={"jsonrpc": "2.0", "id": 1, "method": "initialize",
                              "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "pytest", "version": "1"}}})
