@@ -244,9 +244,9 @@ struct TodayHomePage: View {
         link(.dumbbell, tr("训练计划和记录", "Training plan and log")) { run.go(.record(.training)) }
       }
     case "muscle_load":
-      link(.flame, tr("肌肉负荷", "Muscle load")) { run.go(.record(.training)) }
+      link(.flame, tr("肌肉负荷图", "Muscle load map")) { run.go(.record(.training)) }
     case "journal":
-      link(.fileText, tr("日记", "Journal")) { run.go(.record(.journal)) }
+      link(.fileText, tr("今天的日记", "Today's journal")) { run.go(.record(.journal)) }
     default:
       EmptyView()
     }
@@ -380,7 +380,8 @@ struct TodayHomeSheetView: View {
   private var detents: Set<PresentationDetent> {
     switch sheet {
     case .focus: return [.medium]
-    case .allFeatures, .bedtimeGoal: return [.large]
+    // the first screen's buttons must be in sight without a drag
+    case .overview, .allFeatures, .bedtimeGoal: return [.large]
     default: return [.medium, .large]
     }
   }
