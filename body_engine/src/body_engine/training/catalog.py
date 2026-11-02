@@ -44,6 +44,8 @@ _GROUP_BY_ZH = {v: k for k, v in CD.GROUP_ZH.items()} | {
     "腿": "legs", "臀": "legs", "有氧": "cardio", "拉伸": "mobility", "灵活": "mobility",
 }
 
+LOG_PREFIX = "custom:"   # search() row of an exercise in the person's log that is not in the catalog
+
 
 LOCAL_IMAGE_BASE = "/app/media/exercises"   # served from media_dir()/exercises by web/api.py (never hotlinked from GitHub)
 
@@ -731,6 +733,8 @@ def resolve_with_candidates(
     alias (several hits: the first, with the names of up to 8 as candidates), the same without a bracketed tail, else no row
     and up to 8 names containing the query."""
     q_raw = (query_or_slug or "").strip()
+    if sp := _log_exercise(conn, user_id, q_raw):   # the library row of an exercise in the person's log: answer by its name
+        q_raw = sp["name"]
     return _scoped(("resolve", user_id, with_meta, q_raw), lambda: _resolve(conn, user_id, q_raw, with_meta))
 
 
@@ -961,41 +965,56 @@ def search(
         )
         if not include_banned and st == "banned":
             continue
-        scored.append((-40, sp["id"], {
-            "slug": f"custom:{sp['id']}",
-            "exercise_id": sp["id"],
-            "app_exercise_id": sp["id"],
-            "name": sp["name"],
-            "name_zh": sp["name"],
-            "name_en": sp["name"],
-            "category": sp.get("category") or "strength",
-            "modality": sp.get("modality") or "weight_reps",
-            "group": "other",
-            "group_zh": "自定义",
-            "muscle_groups": [],
-            "movement_pattern": None,
-            "pattern_zh": None,
-            "movement_pattern_zh": None,
-            "equipment": [],
-            "equipment_zh": [],
-            "primary_muscles": prim,
-            "primary_muscles_zh": [CD.MUSCLE_ZH.get(x, x) for x in prim],
-            "secondary_muscles": [],
-            "secondary_muscles_zh": [],
-            "joint_stress": [],
-            "joint_stress_zh": [],
-            "joint_flags": {},
-            "joint_flags_zh": {},
-            "default_increment_kg": None,
-            "per_side": False,
-            "status": st,
-            "cues": desc[:120] if desc else None,
-            "reason": None,
-            "source": "sparky_custom",
-        }))
+        scored.append((-40, sp["id"], _log_exercise_item(sp, prim, st, desc)))
 
     scored.sort(key=lambda t: (t[0], t[1]))
     return [t[2] for t in scored[: max(1, min(limit, 150))]]
+
+
+def _log_exercise_item(sp: dict, prim: list[str], status: str, desc: str) -> dict:
+    return {
+        "slug": f"{LOG_PREFIX}{sp['id']}",
+        "exercise_id": sp["id"],
+        "app_exercise_id": sp["id"],
+        "name": sp["name"],
+        "name_zh": sp["name"],
+        "name_en": sp["name"],
+        "category": sp.get("category") or "strength",
+        "modality": sp.get("modality") or "weight_reps",
+        "group": "other",
+        "group_zh": "自定义",
+        "muscle_groups": [],
+        "movement_pattern": None,
+        "pattern_zh": None,
+        "movement_pattern_zh": None,
+        "equipment": [],
+        "equipment_zh": [],
+        "primary_muscles": prim,
+        "primary_muscles_zh": [CD.MUSCLE_ZH.get(x, x) for x in prim],
+        "secondary_muscles": [],
+        "secondary_muscles_zh": [],
+        "joint_stress": [],
+        "joint_stress_zh": [],
+        "joint_flags": {},
+        "joint_flags_zh": {},
+        "default_increment_kg": None,
+        "per_side": False,
+        "status": status,
+        "cues": desc[:120] if desc else None,
+        "reason": None,
+        "source": "sparky_custom",
+    }
+
+
+def _log_exercise(conn: psycopg.Connection, user_id: int | None, ref: str) -> dict | None:
+    """An exercise of the person's own log that search() lists as `custom:<id>` (the AI logged a name the catalog does not have)."""
+    if user_id is None or not ref.startswith(LOG_PREFIX):
+        return None
+    try:
+        lib = sparky_client.exercises(sparky_client.reader_for_user(conn, user_id))
+    except Exception:  # noqa: BLE001  best effort, as in search(): not connected, or the log cannot be read
+        return None
+    return next((x for x in lib if x["id"] == ref[len(LOG_PREFIX):]), None)
 
 
 def recommend_alternatives(
@@ -1081,6 +1100,9 @@ def get_exercise(conn: psycopg.Connection, user_id: int | None, exercise: str,
                  *, with_meta: bool = True) -> dict:
     """Full exercise card + user restrictions + top 5 biomechanical alternatives."""
     row, meta, cands = resolve_with_candidates(conn, user_id, exercise, with_meta=with_meta)
+    if row is None and (sp := _log_exercise(conn, user_id, exercise)):   # only in the person's log: its name, nothing more to say
+        return {**_log_exercise_item(sp, [x.lower() for x in (sp.get("primary_muscles") or [])], "active", ""),
+                "alternatives": []}
     if row is None:
         hint = f"（相近动作：{'、'.join(cands)}）" if cands else ""
         raise ValueError(L(f"动作库里找不到「{exercise}」{hint}；可先用 search_exercises 搜索",

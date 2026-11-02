@@ -42,7 +42,7 @@
     if (library) return library;
     try {
       const r = await C.api("/v1/users/me/training/exercises?limit=200");
-      library = (r.exercises || []).slice().sort((a, b) => String(a.name_zh).localeCompare(String(b.name_zh), "zh"));
+      library = (r.exercises || []).filter((x) => !String(x.slug).startsWith("custom:")).sort((a, b) => String(a.name_zh).localeCompare(String(b.name_zh), "zh"));
     } catch (e) { library = []; }
     return library;
   }
