@@ -265,7 +265,12 @@ struct FeedbackList: Decodable, Equatable {
 
     var done: Bool { status == "fixed" || status == "public" }
     var kindLabel: String { kind == "bug" ? tr("问题", "Bug") : tr("需求", "Request") }
-    var day: String { String((createdAt ?? "").dropFirst(5).prefix(5)) }
+    /// The server's time is UTC: in the morning in Sydney its date is still yesterday's. 11-03 on this phone's calendar.
+    var day: String {
+      guard let c = createdAt else { return "" }
+      guard let d = FeedFormat.parseDate(c) else { return String(c.dropFirst(5).prefix(5)) }
+      return String(RecordDay.string(d).dropFirst(5))
+    }
     /// Only https links open (they come from the maintainers' side of the server).
     var link: URL? { publicURL.flatMap { $0.hasPrefix("https://") ? URL(string: $0) : nil } }
   }
