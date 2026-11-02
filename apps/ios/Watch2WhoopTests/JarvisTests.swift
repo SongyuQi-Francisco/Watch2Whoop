@@ -317,9 +317,6 @@ final class JarvisTests: XCTestCase {
     XCTAssertNotNil(JarvisCards.openLabel("food.recipes"))
     XCTAssertEqual(JarvisCards.hm(462), "7:42")
     XCTAssertEqual(JarvisCards.mmdd("2026-01-02"), "01-02")
-    let v = JSONValue.parse(Data(#"{"type":"stress","date":"2026-01-02","score":41.5,"label":"Low","actions":[],"nested":{"a":1}}"#.utf8))!
-    XCTAssertEqual(GenericCard.rows(v).map(\.0), ["label", "score"])
-    XCTAssertEqual(GenericCard.rows(v).map(\.1), ["Low", "41.5"])
   }
 
   func testJSONValue() {

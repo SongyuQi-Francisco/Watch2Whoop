@@ -35,6 +35,7 @@ struct JarvisChatView: View {
     }
     .background(Palette.sheet.ignoresSafeArea())
     .sheet(isPresented: $history) { HistorySheet(chat: chat) }
+    .sheet(item: $router.detail) { d in JarvisDetailSheet(detail: d) { router.detail = nil }.environmentObject(session) }
     .sheet(isPresented: consentShown) {
       if let t = chat.consent { ConsentSheet(chat: chat, terms: t) }
     }
@@ -204,7 +205,7 @@ struct JarvisChatView: View {
         if !text.isEmpty { DisclaimerTag(kind: .ai) }
       }
     case .card(let c):
-      JarvisCardView(card: c, busy: chat.busy, send: { chat.send($0) }, open: { router.open(page: $0) })
+      JarvisCardView(card: c, busy: chat.busy, send: { chat.send($0) }, open: { router.open(page: $0, card: $1) })
     case .confirm(let call, let approved):
       ConfirmCard(call: call, approved: approved, busy: chat.busy) { chat.confirm(call, approve: $0) }
     case .note(let text, let warn, let retry):
