@@ -302,6 +302,13 @@ final class TrainingPlanModelTests: XCTestCase {
     XCTAssertEqual(TrainingDaySheet.listed(s).count, 2, "the workout's own name without sets is not listed again")
   }
 
+  func testRuleWithoutANameReadsWell() {
+    XCTAssertEqual(ExerciseRule.shown("upright_row"), "Upright row")
+    XCTAssertEqual(ExerciseRule.shown("Upright Row (narrow)"), "Upright Row (narrow)", "a name standing in for a slug stays")
+    XCTAssertEqual(ExerciseRule.shown("直立划船"), "直立划船")
+    XCTAssertEqual(ExerciseRule.parseList([["exercise_ref": "upright_row", "status": "banned"]]).first?.name, "Upright row")
+  }
+
   func testDevSwitchFindsTheMuscle() throws {
     let m = try XCTUnwrap(MuscleLoad.parse(json(#"{"muscles": [{"key": "middle back", "name": "Mid back", "ranges": {}, "status": {}}]}"#)))
     XCTAssertEqual(TrainingSheet.dev("muscle:middle back", muscle: m)?.id, "muscle:middle back")

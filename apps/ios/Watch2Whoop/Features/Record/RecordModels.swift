@@ -519,8 +519,15 @@ struct ExerciseRule: Equatable, Identifiable {
     (list ?? []).compactMap { r in
       guard let ref = r["exercise_ref"] as? String, let st = r["status"] as? String, st == "banned" || st == "caution" else { return nil }
       let name = Lang.isZh ? (r["name_zh"] as? String) : ((r["name_en"] as? String) ?? (r["name_zh"] as? String))
-      return ExerciseRule(ref: ref, name: name ?? ref, banned: st == "banned", reason: r["reason"] as? String, cues: r["cues"] as? String)
+      return ExerciseRule(ref: ref, name: name ?? shown(ref), banned: st == "banned", reason: r["reason"] as? String, cues: r["cues"] as? String)
     }
     .sorted { ($0.banned ? 0 : 1, $0.name) < ($1.banned ? 0 : 1, $1.name) }
+  }
+
+  /// A rule set by slug has no name of its own: `upright_row` reads as "Upright row". A name standing in for a slug stays as written.
+  static func shown(_ ref: String) -> String {
+    guard !ref.isEmpty, ref.allSatisfy({ $0 == "_" || $0.isNumber || ($0.isASCII && $0.isLowercase) }) else { return ref }
+    let t = ref.replacingOccurrences(of: "_", with: " ")
+    return t.prefix(1).uppercased() + t.dropFirst()
   }
 }

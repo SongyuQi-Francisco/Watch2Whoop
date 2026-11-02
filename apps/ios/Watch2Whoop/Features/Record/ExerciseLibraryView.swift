@@ -549,7 +549,7 @@ struct AddToPlanView: View {
   private func option(title: String, subtitle: String, on: Bool, disabled: Bool, action: @escaping () -> Void) -> some View {
     Button(action: action) {
       HStack(spacing: 10) {
-        Icon(on ? .circleCheck : .circleGauge, size: 18).foregroundColor(on ? Palette.good : Palette.text3).opacity(on ? 1 : 0)
+        Icon(.circleCheck, size: 18).foregroundColor(Palette.good).opacity(on ? 1 : 0)
         VStack(alignment: .leading, spacing: 2) {
           Text(title).font(Typo.body).foregroundColor(disabled ? Palette.text3 : Palette.text).multilineTextAlignment(.leading)
           Text(subtitle).font(Typo.caption).foregroundColor(Palette.text2).lineLimit(2).multilineTextAlignment(.leading)

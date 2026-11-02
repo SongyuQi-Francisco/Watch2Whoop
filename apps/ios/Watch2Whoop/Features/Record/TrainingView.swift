@@ -448,8 +448,12 @@ struct TrainingSection: View {
   /// The user's own list plus the week's cautions (plan exercises with a restriction), once each.
   private var mergedRules: [ExerciseRule] {
     var out = store.rules
-    for c in store.week?.cautions ?? [] where !out.contains(where: { $0.ref == c.slug || $0.name == c.name }) {
-      out.append(ExerciseRule(ref: c.slug, name: c.name, banned: c.banned, reason: c.reason, cues: c.cues))
+    for c in store.week?.cautions ?? [] {
+      if let i = out.firstIndex(where: { $0.ref == c.slug }) {
+        out[i].name = c.name   // the plan's name, in the app's language
+      } else if !out.contains(where: { $0.name == c.name }) {
+        out.append(ExerciseRule(ref: c.slug, name: c.name, banned: c.banned, reason: c.reason, cues: c.cues))
+      }
     }
     return out
   }
