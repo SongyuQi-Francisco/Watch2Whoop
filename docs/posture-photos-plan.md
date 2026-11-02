@@ -1,7 +1,8 @@
 # 体态照片给 AI 看（#174、#177）设计方案
 
-> 状态：**方案，等负责人决定**（第 9 节）。这次只有文档，不写功能代码、不调用任何付费 API、不用任何真实用户的照片。
-> 同意书的任何改动在本文里都只是**草案**（第 5 节），必须由负责人批准后才进 `profile/consent.md` / `docs/family-consent.md`。
+> 状态：**第一期（开关 `posture_photos`）已做**（#401，2026-11-03，部署后开关默认关闭，要用 `flags set` 打开）；**第零期评估、第二期、第三期没做**。实际做的和下面方案的差别写在第 10 节，两者不一致时以第 10 节和代码为准。第 9 节的决定里没被第 10 节覆盖的，仍等负责人决定。
+> 同意书没有改：第一期用首次使用提示代替（第 5.1 节）。第二期的同意书改动在本文里仍只是**草案**（第 5.2 节），必须由负责人批准后才进 `profile/consent.md` / `docs/family-consent.md`。
+> 方案本身（第 0–9 节）写于 2026-10-24，没有调用付费 API、没有用真实用户的照片；第零期评估还没批准预算。
 
 ## 0. 一句话结论
 - **第一期（开关 `posture_photos`）**：用户在 Jarvis 里按引导拍正面 / 侧面 / 背面 3 张，照片**只随这次提问**发给他自己选的 AI；服务器在回答结束后**删掉原图**，只留 AI 的文字结论。AI 结合 `get_muscle_load` 给建议、把结论写进长期记忆，**改训练计划要用户确认**（沿用 `propose_plan` → 确认 → `save_plan`）。
@@ -193,10 +194,38 @@
 | D12 | 同意书里写不写「管理员技术上能接触加密数据和密钥」 | **写**（如实，和现有「管理员能接触数据库」一致） |
 | D13 | 同意书草案（5.1 补句、5.2 两处改动、体态记录同意要点） | 等负责人逐字批准，批准前不进 `consent.md` |
 
+## 10. 第一期实际做的（#401，2026-11-03）
+> 范围：服务器 + 原生 iOS app，开关 `posture_photos`（`rollout/registry.py`，默认关闭，不改同意书）。下面只写代码里有的；方案里没提到的细节也列出来。
+
+**做了什么**
+- 服务器：`POST /v1/assistant/chat` 多一个 `purpose`，只认 `posture`（`ai/posture_params.py` 的 `PURPOSES`），别的值 422 `bad_purpose`，不会被当成普通聊天照片；`ai/posture.py` 管换占位和清理；迁移 `1160_ai_message_redact_after.sql`（`ai_messages.redact_after`）；`/v1/web/me`、`/ai-choice` 的 `ai` 里多 `posture`（`off` / `guide` / `photos`，由 `posture.mode` 算）。
+- 提示词：`ai/system_prompt.md` 和 `assistant/CLAUDE.md`（两份同步）的「边界」里加一条体态照片（只说观察和把握程度、不诊断不评价外貌、结合 `get_muscle_load` 和 `get_exercise_rules`、不因照片把动作设成禁用、改计划先让用户确认、疼痛或明显不对称建议就医）；`system_prompt_lite.md` 只加一句「体态只说观察，不下医疗结论」。
+- app：Jarvis 对话的照片菜单里有「体态分析」（`Features/Jarvis/JarvisPosture.swift`）：三张引导照片（正面 / 侧面 / 背面，拍照或从相册选，每张有站位提示，「相机齐腰高，约 2 米外」），预填一个问题，发送时带 `purpose = "posture"`。三张照片只放在内存里，发出去就丢。第一次用（每个账号、每个 AI 各一次）先显示一条提示，文字照第 5.1 节那段改的，名字换成用户选的 AI。
+
+**和方案的差别**
+1. **「回答结束后换占位」的做法**：用户消息照常写进 `ai_messages`（工具循环每次调模型都从库里读历史），带 `redact_after`（写入时 = 现在 + `REDACT_AFTER_MINUTES`）。回合结束时 `chat.py` 在 `finally` 里调 `posture.finish_turn`，答完、出错、被停掉都一样，把这几张图换成 `{"type": "image_redacted", "purpose", "n"}` 并清掉 `redact_after`。**等写入确认的回合没有结束**（会话状态 `awaiting_confirmation`），图片留到确认后的回答结束，或者用户发了新消息而不是确认。
+2. **`redact_after` 和 30 分钟阈值（方案里没有）**：回合结束这一步没走到的（服务器中途停了、确认一直没人回答），由每小时批处理 `hourly-batch` 的全局清理（`posture.redact_overdue`，结果里的 `ai_images_redacted`）在 `redact_after` 之后换掉。`REDACT_AFTER_MINUTES = 30`，代码里断言它比一个回合最长的运行时间（`run_params.MAX_RUN_SECONDS`，600 秒）长，所以不会拿走还在用的图。最坏情况是 30 分钟加上到下一次每小时任务的时间。清理失败会记进批处理的 `errors`，下一轮再试。
+3. **托底 AI 不收体态照片（决定 D4）**：第零期没跑、没有批准的预算，所以 `posture_params.FALLBACK_PHOTOS = False`：托底的体态入口只给拍照指南和「用文字描述」（`mode = guide`）。不在 app 里对话的 AI（订阅类、管家链接：照片本来就不经过我们的服务器）和不能看图的提供商（`vision` 为 false）的状态也是 `guide`。托底仍收到带图片的 `purpose` 请求时回 403 `posture_off`，不能看图的提供商回 422 `no_vision`，两种都不存下来。要打开托底的照片，要先做第零期评估，还要把首次提示写明照片发给谁（见 `posture_params.py` 的注释）。
+4. **只对满 18 岁的人（决定 D11）**：`posture.mode` 要开关打开、资料里有生日且满 `MIN_AGE`（18），否则是 `off`，没有入口，带图片的请求也被拒。
+5. **固定提示按「没有模型通过评估」处理**：方案是没过门槛的模型才加提示、并在 `ai/catalog.py` 给模型记 `posture: "limited"`。现在没有任何模型评估过，所以**每一次**体态回答前都发一个 `notice` 事件（`code = "posture"`，「这个模型看体态的准确度有限，结论仅供参考」），重新打开对话时用户消息上也带这句；`catalog.py` 没有加 `posture` 字段。
+6. **之后的轮次**：`context.show_redacted` 把占位读成一行文字（「这里有 3 张体态照片，按设置没有保存」），模型靠自己上一轮的结论继续；中途换了 AI，新 AI 也拿不到那几张图。
+7. **只管体态照片（决定 D2 还没定）**：换占位只对 `purpose = posture` 的图生效，由 `REDACT_PURPOSES` 一个设置决定；普通聊天照片没有变，仍存到用户删除对话为止（测试 `test_known_gap_an_ordinary_photo_still_reaches_the_new_ai` 把这点记成已知缺口）。负责人定了 D2，要扩大到所有聊天照片时，只改 `REDACT_PURPOSES`（加 `None`）。
+8. **入口只做在原生 app**：没有改网页版的 `web/static/ai-media.js`。
+
+**方案第 6.2 节里这次没做的**
+- 记忆 topic `posture` 和 `STALE_DAYS`、`training/params.py` 的 `POSTURE_HINTS`、`get_muscle_load` 里的 `posture` 块（现在 AI 靠系统设定里那一条，自己调 `get_muscle_load` 和 `get_exercise_rules`）。
+- 肌肉卡的 `highlight` 参数。
+- 手动涂掉脸：没做，只在首次提示里写了「可以不露脸」。
+- 「我 → 训练设置」和肌肉负荷页里的「拍体态照片让 Jarvis 看」入口，以及订阅类用户的「复制提示词」入口（订阅类现在只是没有体态入口）。
+- 使用手册（中英）里的体态一节：等负责人决定对外开放时再加。
+- 第零期评估（`tools/posture_eval/`）、第二期 `posture_records`、第三期 `posture_keypoints`。
+
+**测试**：`body_engine/tests/test_ai_posture.py`（回合各种结束方式、写入确认、每小时清理、`purpose` 只认已知值、开关关着不存、成年人、托底和不能看图的 AI）、`apps/ios/Watch2WhoopTests/JarvisTests.swift`。模拟器演示用 `SIMCTL_CHILD_W2W_JARVIS_DEMO=posture|posture-filled|posture-send`（`docs/ios-native-app.md` 第 9.2 节）。
+
 ---
 
 ## English summary
-Design for #174 / #177 (posture photos analysed by the user's own AI, linked to the muscle load map). Documentation only: no feature code, no paid API calls, no real user photos.
+Design for #174 / #177 (posture photos analysed by the user's own AI, linked to the muscle load map). The design (sections 0–9) was documentation only: no paid API calls, no real user photos. **Status: phase 1 is built** (#401, flag `posture_photos`, off by default); phase 0, 2 and 3 are not. Section 10 lists what was built and where it differs from the plan: the placeholder is set when the turn ends, with a `redact_after` column and an hourly-batch cleanup after 30 minutes (`REDACT_AFTER_MINUTES`) for turns that never reached their end; the fallback AI takes no posture photos (guide and words only, `FALLBACK_PHOTOS = False`); the entry is shown only to adults and only in the native app; every posture answer starts with the fixed accuracy notice; only posture photos are replaced (D2 is still open); the memory topic, `POSTURE_HINTS`, the muscle card highlight, face masking and the handbook section are not done.
 
 - **Phase 0 – evaluation (no flag)**: synthetic human renders (MakeHuman CC0 assets posed in Blender with known shoulder protraction, forward head, shoulder height difference and pelvic tilt, plus neutral controls and capture variations), qualitative checks on CC0 / CC BY illustrations only, and an open-source keypoint baseline (MediaPipe Pose / MoveNet). Models: fallback DeepSeek `deepseek-flash`, Claude, GPT and Gemini (default + a cheaper tier). Metrics: detection, false positives on neutral poses, weighted kappa, side accuracy, repeat stability, photo-quality awareness, wording (no diagnosis, no appearance judgements), use of muscle load, cost and latency. Budget awaiting approval: DeepSeek ≈ ¥9 (cap ¥20), the three others ≤ US$100 total after a 10-set pilot.
 - **Phase 1 – `posture_photos`**: guided front / side / back capture in Jarvis, EXIF dropped by canvas re-encoding, optional manual face masking; photos go only to the user's chosen AI for that question and are **replaced by a placeholder in `ai_messages` once the answer completes** (today, in-app chat images are stored until the conversation is deleted — the plan proposes fixing this for all chat images). MCP subscription users send photos in their own AI app; nothing reaches our server. The AI reads `get_muscle_load` and exercise rules, writes an observation (new memory topic `posture`), shows the muscle card with highlighted muscles, and changes the plan only after the user confirms (`propose_plan` → confirm → `save_plan`). No consent text change; a first-use notice instead.

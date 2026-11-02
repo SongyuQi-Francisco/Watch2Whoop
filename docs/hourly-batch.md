@@ -39,6 +39,14 @@ server: 19 users = 275 s, about 14.5 s per user, so 300 users ≈ 72 minutes —
 - **Output.** One line per step in the old log format (`✓ compute-scores user 3（2026-10-22 起）（1 秒）…`, `✗ …`, `· … 跳过`), then
   a summary line and the machine-readable `BATCH_RESULT {json}` as the last line. Exit code 1 when any step failed. The ops scripts copy the
   lines into their log and put `errors` into `state.json`.
+- **Global housekeeping.** After the per-user steps, a run for all users (no `--user-id`) also does two jobs that belong to nobody in
+  particular, each in its own connection and each reported in the `BATCH_RESULT` json; a failure goes into `errors` (so the run exits 1 and
+  the doctor sees it) and the next run tries again:
+  - `sync_changes_compacted`: the native app's change log keeps only the newest row per key (`nativesync/store.py compact`).
+  - `ai_images_redacted`: posture photos that no turn's end replaced (the server stopped mid-turn, a write confirmation was never
+    answered) are replaced by a text placeholder once `ai_messages.redact_after` has passed (`ai/posture.py redact_overdue`; `redact_after`
+    is set to 30 minutes after the message, `ai/posture_params.REDACT_AFTER_MINUTES`). The number is how many messages were rewritten;
+    every other message has no `redact_after` and is not touched. Idempotent (docs/posture-photos-plan.md section 10).
 - **Nightly** = `hourly-batch --full` (full `compute-scores`, nothing skipped), then the backup as before.
 
 Not in the batch (a handful of global commands, each one container per run): `provision-run`, `oauth-cleanup`, `ai-cards periodic`,
@@ -121,7 +129,7 @@ of each user after the deploy fills the copy and takes as long as before.
 ## 中文摘要
 每小时 / 每晚任务原来对每个用户、每一步各起一个容器（启动约 2 秒），19 个用户 275 秒，300 个用户约 72 分钟。现在 `body-engine hourly-batch`
 在一个进程里循环所有用户：每个用户独立连接和异常隔离，`--workers N` 并发，上次成功后输入（按内容指纹 + 本地日期）没变的步骤跳过（至少每 2 小时
-重算一次，doctor 把超过 3 小时的评分判为失败），`--full` 用于夜间。日志仍是一步一行的老格式，最后一行是 `BATCH_RESULT {json}`。
+重算一次，doctor 把超过 3 小时的评分判为失败），`--full` 用于夜间。日志仍是一步一行的老格式，最后一行是 `BATCH_RESULT {json}`。对所有用户跑的那一次（不带 `--user-id`）最后还做两件全局清理：压缩 app 的变更记录（`sync_changes_compacted`），以及把回合结束时没换掉的体态照片换成文字占位（`ai_images_redacted`，`redact_after` 过期后，见 `docs/posture-photos-plan.md` 第 10 节）。
 
 新数据几分钟内出分（迁移 770）：API 进程每 30 秒问一次 OW 哪些用户刚上传过（`GET /users` 按 `last_synced_at` 排序，一个请求），上传停了
 45 秒的用户在 `sync_refresh` 里排队（同一用户最多 3 分钟一次）；每分钟任务已有的 `sync-refresh-run` 先 import-ow 再算分，算完记下每小时任务的
