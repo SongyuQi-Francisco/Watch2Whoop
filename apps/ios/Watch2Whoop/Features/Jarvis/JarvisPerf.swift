@@ -116,6 +116,12 @@ enum JarvisDemo {
         router.present(.chat)
         await sec(1)
         router.chat?.send("cards")
+        // W2W_JARVIS_OPEN=<page>: then press that page's button, to see where it lands
+        if let p = ProcessInfo.processInfo.environment["W2W_JARVIS_OPEN"] {
+          await sec(4)
+          let s = { (v: String) in JSONValue.string(v) }
+          router.open(page: p, card: .object(["test_key": s("uric_acid"), "test_name": s("Sample"), "date": s("2026-11-02"), "id": s("1"), "title": s("HRV")]))
+        }
       case "hold":
         h.press(h.center())
         await sec(1.5)

@@ -145,9 +145,11 @@ enum JarvisCards {
 
   /// A night's stages in the sleep page's model, for its `Hypnogram`.
   static func stages(_ main: JSONValue) -> [SleepNightModel.Stage] {
-    (main["stages"]?.array ?? []).compactMap { s in
+    let rows: [JSONValue] = main["stages"]?.array ?? []
+    return rows.compactMap { s -> SleepNightModel.Stage? in
       guard let st = s["stage"]?.string, let o = s["offset_min"]?.double, let mins = s["minutes"]?.double else { return nil }
-      return SleepNightModel.Stage(stage: st, offset: o, minutes: mins, start: s["start"]?.string ?? "", end: s["end"]?.string ?? "")
+      let from: String = s["start"]?.string ?? "", to: String = s["end"]?.string ?? ""
+      return SleepNightModel.Stage(stage: st, offset: o, minutes: mins, start: from, end: to)
     }
   }
 
@@ -186,7 +188,7 @@ struct JarvisCardView: View {
       }
     } else {
       VStack(alignment: .leading, spacing: 10) {
-        content
+        if type != "actions" { content }   // only buttons: no empty row above them
         actions
       }
       .jarvisCardFrame()
@@ -332,7 +334,7 @@ struct CardMeter: View {
       HStack {
         Text(label).font(Typo.caption).foregroundColor(Palette.text2)
         Spacer()
-        Text("\(JarvisCards.num(value))\(goal.map { " / \(JarvisCards.num($0))" } ?? "") \(unit)")
+        Text("\(JarvisCards.num(value))\(goal.map { " / \(JarvisCards.num($0))" } ?? "")\(unit.isEmpty ? "" : " \(unit)")")
           .font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text)
       }
       if let g = goal, g > 0 {

@@ -11,17 +11,32 @@ struct MuscleJarvisCard: View {
   /// The card's rows (one range) in the Record tab's model, so the regions colour as they do there.
   static func load(_ c: JSONValue) -> (MuscleLoad, MuscleLoad.Range) {
     let r = MuscleLoad.Range(rawValue: c["range"]?.string ?? "") ?? .week
-    let muscles = (c["muscles"]?.array ?? []).map { m in
-      MuscleLoad.Muscle(key: m["key"]?.string ?? "", name: m["name"]?.string ?? "", sets: [r: m["sets"]?.double ?? 0], volume: [r: m["kg"]?.double ?? 0],
-                        status: [r: m["status"]?.string ?? "none"], low: nil, high: nil, trainedToday: m["today"]?.bool ?? false,
-                        sportMin: [r: m["sport_min"]?.double ?? 0], prevWeek: nil)
-    }
-    return (MuscleLoad(sex: c["sex"]?.string ?? "male", muscles: muscles, sports: [:], unmatched: []), r)
+    let rows: [JSONValue] = c["muscles"]?.array ?? []
+    let muscles: [MuscleLoad.Muscle] = rows.map { muscle($0, r) }
+    let sex: String = c["sex"]?.string ?? "male"
+    return (MuscleLoad(sex: sex, muscles: muscles, sports: [:], unmatched: []), r)
+  }
+
+  private static func muscle(_ m: JSONValue, _ r: MuscleLoad.Range) -> MuscleLoad.Muscle {
+    let key: String = m["key"]?.string ?? ""
+    let name: String = m["name"]?.string ?? ""
+    let sets: Double = m["sets"]?.double ?? 0
+    let kg: Double = m["kg"]?.double ?? 0
+    let status: String = m["status"]?.string ?? "none"
+    let today: Bool = m["today"]?.bool ?? false
+    let sport: Double = m["sport_min"]?.double ?? 0
+    return MuscleLoad.Muscle(key: key, name: name, sets: [r: sets], volume: [r: kg], status: [r: status], low: nil, high: nil,
+                             trainedToday: today, sportMin: [r: sport], prevWeek: nil)
   }
 
   /// 偏少 / 没练 by name (at most six), as the page's card has them.
   static func low(_ c: JSONValue) -> [String] {
-    (c["muscles"]?.array ?? []).filter { ["none", "low"].contains($0["status"]?.string ?? "") }.compactMap { $0["name"]?.string }
+    let rows: [JSONValue] = c["muscles"]?.array ?? []
+    let short = rows.filter { m in
+      let s: String = m["status"]?.string ?? ""
+      return s == "none" || s == "low"
+    }
+    return short.compactMap { $0["name"]?.string }
   }
 
   var body: some View {
@@ -114,7 +129,10 @@ enum JarvisRows {
   /// kcal (with the rice it needs) · protein · minutes (app.js recipeCard).
   static func meta(_ r: JSONValue) -> String {
     var out: [String] = []
-    if let k = r["kcal"]?.double { out.append("\(JarvisCards.num(k)) kcal" + (r["with_staple"]?.bool == true ? " " + tr("含饭", "with rice") : "")) }
+    if let k = r["kcal"]?.double {
+      out.append("\(JarvisCards.num(k)) kcal")
+      if r["with_staple"]?.bool == true { out[0] += " " + tr("含饭", "with rice") }
+    }
     if let p = r["protein_g"]?.double { out.append(tr("蛋白", "Protein") + " \(JarvisCards.num(p)) g") }
     if let m = r["min"]?.int { out.append("\(m)′") }
     return out.joined(separator: " · ")
@@ -189,7 +207,13 @@ struct SuggestJarvisCard: View {
 
   /// Slots with something to say (ai.js suggestBody).
   static func slots(_ c: JSONValue) -> [JSONValue] {
-    (c["slots"]?.array ?? []).filter { !($0["items"]?.array ?? []).isEmpty || ($0["logged"].map { !$0.isNull } ?? false) }
+    let slots: [JSONValue] = c["slots"]?.array ?? []
+    return slots.filter { s in
+      let items: [JSONValue] = s["items"]?.array ?? []
+      if !items.isEmpty { return true }
+      guard let logged = s["logged"] else { return false }
+      return !logged.isNull
+    }
   }
 
   var body: some View {
@@ -198,7 +222,8 @@ struct SuggestJarvisCard: View {
       VStack(alignment: .leading, spacing: 2) {
         CardHead(title: JarvisCards.title("suggest"), date: c["date"]?.string)
         if let k = c["remaining"]?["kcal"]?.double {
-          let left = JarvisCards.num(max(0, k)), p = JarvisCards.num(max(0, c["remaining"]?["protein_g"]?.double ?? 0))
+          let proteinLeft: Double = c["remaining"]?["protein_g"]?.double ?? 0
+          let left = JarvisCards.num(max(0, k)), p = JarvisCards.num(max(0, proteinLeft))
           Text(tr("余 \(left) kcal · \(p) g 蛋白", "\(left) kcal · \(p) g protein left")).font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2)
         }
       }
@@ -226,8 +251,9 @@ struct SuggestJarvisCard: View {
 
   private func line(_ s: JSONValue) -> String {
     if let k = s["logged"]?["kcal"]?.double { let v = JarvisCards.num(k); return tr("已吃 \(v) kcal", "Eaten \(v) kcal") }
-    if let k = s["target"]?["kcal"]?.double, k > 0 { return "≈ \(JarvisCards.num(k)) kcal · \(JarvisCards.num(s["target"]?["protein_g"]?.double)) g" }
-    return ""
+    guard let k = s["target"]?["kcal"]?.double, k > 0 else { return "" }
+    let protein: Double? = s["target"]?["protein_g"]?.double
+    return "≈ \(JarvisCards.num(k)) kcal · \(JarvisCards.num(protein)) g"
   }
 }
 
@@ -342,13 +368,20 @@ struct ShoppingJarvisCard: View {
 
   /// To buy first (ai.js shoppingBody), in the list's order.
   static func ordered(_ c: JSONValue) -> [JSONValue] {
-    let all = c["items"]?.array ?? []
-    return all.filter { $0["bought"]?.bool != true } + all.filter { $0["bought"]?.bool == true }
+    let all: [JSONValue] = c["items"]?.array ?? []
+    let toBuy = all.filter { $0["bought"]?.bool != true }
+    let bought = all.filter { $0["bought"]?.bool == true }
+    return toBuy + bought
   }
 
   /// `≈ AUD 12.50`, per currency, in a stable order.
   static func cost(_ c: JSONValue) -> String {
-    (c["est_total"]?.object ?? [:]).sorted { $0.key < $1.key }.compactMap { cur, v in v.double.map { "≈ \(cur) \(JarvisCards.num($0, 2))" } }.joined(separator: " · ")
+    let totals: [String: JSONValue] = c["est_total"]?.object ?? [:]
+    let parts: [String] = totals.keys.sorted().compactMap { cur in
+      guard let v = totals[cur]?.double else { return nil }
+      return "≈ \(cur) \(JarvisCards.num(v, 2))"
+    }
+    return parts.joined(separator: " · ")
   }
 
   var body: some View {

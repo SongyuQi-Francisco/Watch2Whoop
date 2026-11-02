@@ -24,13 +24,27 @@ extension JarvisCards {
     }
     if let m = TrendCards.metric(key, d, base: base) { return m }
     guard let s = d.series[key] else { return nil }
-    let digits = abs(s.mean ?? 0) < 100 ? 1 : 0
-    let unit = s.unit.isEmpty ? nil : s.unit
+    let mean: Double = s.mean ?? 0
+    let digits: Int = abs(mean) < 100 ? 1 : 0
+    let unit: String? = s.unit.isEmpty ? nil : s.unit
+    let value: String? = s.mean.map { TodayModel.fmt($0, digits: digits) }
+    let hasData = s.n > 0
+    let layers: [ChartLayer] = [ChartLayer(kind: .line, values: s.values, tone: .text, faint: true, main: true), ChartLayer(kind: .avg, values: s.avg7)]
+    let spec: ChartSpec? = hasData ? TrendCards.spec(key, d, layers, label: s.label) : nil
     return TrendCardModel(
-      id: key, title: s.label, explain: key, value: s.mean.map { TodayModel.fmt($0, digits: digits) }, unit: unit,
-      basis: s.n > 0 ? TrendCards.meanBasis(d) : nil, base: TrendCards.delta(s.mean, s.prevMean, digits: digits, better: 0),
-      spec: s.n > 0 ? TrendCards.spec(key, d, [ChartLayer(kind: .line, values: s.values, tone: .text, faint: true, main: true), ChartLayer(kind: .avg, values: s.avg7)], label: s.label) : nil,
-      tip: TrendCards.tipDay(d, s.values, digits: digits, unit: s.unit), empty: s.n > 0 ? nil : TrendCards.noData(d))
+      id: key, title: s.label, explain: explainKey(key), value: value, unit: unit,
+      basis: hasData ? TrendCards.meanBasis(d) : nil, base: TrendCards.delta(s.mean, s.prevMean, digits: digits, better: 0),
+      spec: spec, tip: TrendCards.tipDay(d, s.values, digits: digits, unit: s.unit), empty: hasData ? nil : TrendCards.noData(d))
+  }
+
+  /// The explanation of a series that shares one with others (the keys `TrendCards` uses for them).
+  static func explainKey(_ key: String) -> String {
+    switch key {
+    case "ctl", "atl", "tsb": return "training_load"
+    case "restorative_pct": return "restorative"
+    case "sleep_need_hours": return "sleep_need"
+    default: return key
+    }
   }
 }
 
@@ -140,12 +154,20 @@ struct HRZonesJarvisCard: View {
 
   /// Same shape as `/trends`' `hr_zones` (`TrendsData.init`).
   static func zones(_ c: JSONValue) -> TrendsData.HRZones? {
-    guard let z = c["zones"], let total = z["total_min"]?.array?.map({ $0.double ?? 0 }), total.contains(where: { $0 > 0 }) else { return nil }
-    return TrendsData.HRZones(labels: z["labels"]?.array?.compactMap(\.string) ?? [], totalMin: total,
-                              weeks: (z["weeks"]?.array ?? []).map { w in
-                                (String((w["week"]?.string ?? "").prefix(10)), (w["minutes"]?.array ?? []).map { $0.double ?? 0 })
-                              })
+    guard let z = c["zones"], let raw = z["total_min"]?.array else { return nil }
+    let total: [Double] = numbers(raw)
+    guard total.contains(where: { $0 > 0 }) else { return nil }
+    let labels: [String] = (z["labels"]?.array ?? []).compactMap(\.string)
+    let rows: [JSONValue] = z["weeks"]?.array ?? []
+    var weeks: [(week: String, minutes: [Double])] = []
+    for w in rows {
+      let week: String = w["week"]?.string ?? ""
+      weeks.append((week: String(week.prefix(10)), minutes: numbers(w["minutes"]?.array ?? [])))
+    }
+    return TrendsData.HRZones(labels: labels, totalMin: total, weeks: weeks)
   }
+
+  private static func numbers(_ a: [JSONValue]) -> [Double] { a.map { $0.double ?? 0 } }
 
   var body: some View {
     if let z = Self.zones(c) {
@@ -165,10 +187,12 @@ struct StressJarvisCard: View {
 
   /// A reason in a few words (app.js STRESS_SHORT); the server's longer `flags` text stays for the AI.
   static func reason(_ flags: JSONValue?) -> String? {
-    let keys = (flags?.object ?? [:]).keys
-    return [("no_raw_hr", tr("无心率", "No heart rate")), ("baseline_insufficient", tr("基线不足", "Baseline too short")),
-            ("no_calm_hours", tr("无安静时段", "No calm hours")), ("no_motion_data", tr("无步数", "No step data"))]
-      .first { keys.contains($0.0) }?.1
+    let keys: [String: JSONValue] = flags?.object ?? [:]
+    if keys["no_raw_hr"] != nil { return tr("无心率", "No heart rate") }
+    if keys["baseline_insufficient"] != nil { return tr("基线不足", "Baseline too short") }
+    if keys["no_calm_hours"] != nil { return tr("无安静时段", "No calm hours") }
+    if keys["no_motion_data"] != nil { return tr("无步数", "No step data") }
+    return nil
   }
 
   static func level(_ l: String?) -> (String, Tone)? {
@@ -241,9 +265,9 @@ private struct StressHours: View {
   let d: JSONValue
 
   var body: some View {
-    let parts: [(String, Double, Tone)] = [(tr("高", "High"), d["high_h"]?.double ?? 0, .bad), (tr("中", "Medium"), d["medium_h"]?.double ?? 0, .mid),
-                                           (tr("低", "Low"), d["low_h"]?.double ?? 0, .good)]
-    let total = parts.map(\.1).reduce(0, +)
+    let high: Double = d["high_h"]?.double ?? 0, medium: Double = d["medium_h"]?.double ?? 0, low: Double = d["low_h"]?.double ?? 0
+    let parts: [(String, Double, Tone)] = [(tr("高", "High"), high, .bad), (tr("中", "Medium"), medium, .mid), (tr("低", "Low"), low, .good)]
+    let total: Double = high + medium + low
     if total > 0 {
       VStack(alignment: .leading, spacing: 5) {
         GeometryReader { g in
@@ -329,12 +353,9 @@ struct HealthspanJarvisCard: View {
 
   /// Each item's contribution in years, by domain, in the server's order (app.js healthspanDetailHtml).
   @ViewBuilder private var contributors: some View {
-    let list = c["contributors"]?.array ?? []
-    let top = max(0.5, list.compactMap { $0["years"]?.double }.map(abs).max() ?? 0.5)
-    let cats = list.reduce(into: [String]()) { out, x in
-      let k = x["category"]?.string ?? "other"
-      if !out.contains(k) { out.append(k) }
-    }
+    let list: [JSONValue] = c["contributors"]?.array ?? []
+    let top: Double = Self.largest(list)
+    let cats: [String] = Self.categories(list)
     ForEach(cats, id: \.self) { cat in
       VStack(alignment: .leading, spacing: 8) {
         Text(Self.category(cat)).font(Typo.label).foregroundColor(Palette.text2)
@@ -350,6 +371,24 @@ struct HealthspanJarvisCard: View {
         FlowRow(spacing: 6) { ForEach(lack, id: \.self) { ToneBadge(text: $0) } }
       }
     }
+  }
+
+  /// The longest bar's length in years, at least half a year.
+  static func largest(_ list: [JSONValue]) -> Double {
+    var top = 0.5
+    for x in list {
+      if let y = x["years"]?.double, abs(y) > top { top = abs(y) }
+    }
+    return top
+  }
+
+  static func categories(_ list: [JSONValue]) -> [String] {
+    var out: [String] = []
+    for x in list {
+      let k: String = x["category"]?.string ?? "other"
+      if !out.contains(k) { out.append(k) }
+    }
+    return out
   }
 
   private func contributor(_ x: JSONValue, top: Double) -> some View {
@@ -528,13 +567,20 @@ struct MonitorJarvisCard: View {
 
   /// The Today page's vitals from the card's `metrics`; an item without data does not count as off.
   static func vitals(_ c: JSONValue) -> [TodayModel.Vital] {
-    (c["metrics"]?.array ?? []).map { x in
-      let key = x["key"]?.string ?? "", value = x["value"]?.double, st = x["status"]?.string, label = x["label"]?.string
-      return TodayModel.Vital(id: key, name: TodayModel.vitalName(key, label), short: TodayModel.vitalShort(key, label), value: value,
-                              unit: x["unit"]?.string, low: x["low"]?.double, high: x["high"]?.double,
-                              off: value != nil && (st == "high" || st == "low"), missing: x["missing_reason"]?.string,
-                              explainKey: ["rhr": "resting_hr", "hrv": "hrv"][key])
-    }
+    let rows: [JSONValue] = c["metrics"]?.array ?? []
+    return rows.map(vital)
+  }
+
+  private static func vital(_ x: JSONValue) -> TodayModel.Vital {
+    let key: String = x["key"]?.string ?? ""
+    let label: String? = x["label"]?.string
+    let value: Double? = x["value"]?.double
+    let st: String? = x["status"]?.string
+    let off: Bool = value != nil && (st == "high" || st == "low")
+    let explain: String? = key == "rhr" ? "resting_hr" : key == "hrv" ? "hrv" : nil
+    return TodayModel.Vital(id: key, name: TodayModel.vitalName(key, label), short: TodayModel.vitalShort(key, label), value: value,
+                            unit: x["unit"]?.string, low: x["low"]?.double, high: x["high"]?.double, off: off,
+                            missing: x["missing_reason"]?.string, explainKey: explain)
   }
 
   var body: some View {
@@ -591,12 +637,11 @@ struct DataStatusJarvisCard: View {
 
   /// Never first, then stale, then fine (ai.js dataStatusBody).
   static func sorted(_ c: JSONValue) -> [JSONValue] {
-    let rank = ["never": 0, "stale": 1, "ok": 2]
-    return (c["types"]?.array ?? []).enumerated().sorted {
-      let a = rank[$0.element["status"]?.string ?? ""] ?? 3, b = rank[$1.element["status"]?.string ?? ""] ?? 3
-      return a != b ? a < b : $0.offset < $1.offset
-    }
-    .map(\.element)
+    let rows: [JSONValue] = c["types"]?.array ?? []
+    var out: [JSONValue] = []
+    for status in ["never", "stale", "ok"] { out += rows.filter { $0["status"]?.string == status } }
+    out += rows.filter { !["never", "stale", "ok"].contains($0["status"]?.string ?? "") }
+    return out
   }
 
   static func state(_ s: String?) -> (String, Tone) {

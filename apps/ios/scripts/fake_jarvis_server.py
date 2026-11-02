@@ -10,6 +10,7 @@ events, cards, a pending delete, the AI switcher, the fallback AI's terms, voice
 so the rest of the app shows its empty states. Standard library only.
 """
 import json
+import os
 import pathlib
 import sys
 import time
@@ -121,7 +122,8 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         p = self.path.split("?")[0]
         if p == "/v1/web/me":
-            return self.json({"me": {"id": 1, "display_name": "Demo"}, "flags": ["water", "jarvis_voice_direct"], "ai": ai()})
+            extra = [f for f in os.environ.get("W2W_FAKE_FLAGS", "").split(",") if f]   # e.g. friends: food moves into 记录
+            return self.json({"me": {"id": 1, "display_name": "Demo"}, "flags": ["water", "jarvis_voice_direct", *extra], "ai": ai()})
         if p == "/v1/users/me/ai-choice":
             return self.json({"options": options(), "ai": ai()})
         if p == "/v1/users/me/ai-fallback":
