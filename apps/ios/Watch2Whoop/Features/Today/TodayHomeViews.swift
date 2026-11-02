@@ -201,7 +201,7 @@ struct TodayHomePage: View {
     let details = self.details(mod.key)
     // only what the document lists can be taken off (no document yet: nothing to change)
     let remove: (() -> Void)? = store.home == nil ? nil : { store.setModule(mod.key, state: "hidden") }
-    return VStack(alignment: .leading, spacing: 10) {
+    return VStack(alignment: .leading, spacing: TodayHome.cardHasHeading(mod.key, model: m) ? 2 : 10) {
       HStack(spacing: 6) {
         // the training and muscle cards bring their own heading (TodayTrainingCards.swift)
         if !TodayHome.cardHasHeading(mod.key, model: m) {
