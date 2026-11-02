@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import psycopg
 
+from ..water.store import tz_of
 from . import findings as F
 from . import params as P
 
@@ -52,9 +53,28 @@ def used_modules(conn: psycopg.Connection, user_id: int, now: datetime | None = 
     return list(dict.fromkeys(P.TOOLS[r["tool"]] for r in rows))
 
 
+def pace(first_day: date | None, created: date, today: date) -> dict:
+    """How many cards my Today starts with (design 4.2, 4.6, D6, D8). first_day: the day the first screen was seen (None: not yet,
+    so today). {day: days since then, limit: FIRST_DAY_MODULES + NEW_MODULES_PER_DAY a day up to MAX_MODULES, veteran: the account
+    was already VETERAN_ACCOUNT_DAYS old by then, so there is no new-user pace}. Worked out from dates only: nothing more to store,
+    the same on every device of the account, and it only ever grows."""
+    first = first_day or today
+    veteran = (first - created).days >= P.VETERAN_ACCOUNT_DAYS
+    day = max(0, (today - first).days)
+    limit = P.MAX_MODULES if veteran else min(P.MAX_MODULES, P.FIRST_DAY_MODULES + P.NEW_MODULES_PER_DAY * day)
+    return {"day": day, "limit": limit, "veteran": veteran}
+
+
+def _pace_of(conn: psycopg.Connection, user_id: int, seen_at: datetime | None, today: date) -> dict:
+    tz = tz_of(conn, user_id)
+    created = conn.execute("SELECT created_at FROM users WHERE id = %s", (user_id,)).fetchone()["created_at"]
+    return pace(seen_at.astimezone(tz).date() if seen_at else None, created.astimezone(tz).date(), today)
+
+
 def home(conn: psycopg.Connection, user_id: int, today: date) -> dict:
     """{focus, modules: [{key, reason}] in order (every candidate; the page shows the first MAX_MODULES that have content),
-    hidden, overview (null once seen: the first screen's findings and what the history covers), focus_options, max_modules}."""
+    hidden, overview (null once seen: the first screen's findings and what the history covers), focus_options, max_modules,
+    pace (the native app's new-user pace, see pace(); the web page does not use it)}."""
     st = state(conn, user_id)
     chosen = conn.execute("SELECT module_key, state, pin_order FROM ui_modules WHERE user_id = %s ORDER BY pin_order, module_key",
                           (user_id,)).fetchall()
@@ -82,4 +102,5 @@ def home(conn: psycopg.Connection, user_id: int, today: date) -> dict:
         add(key, None)
     overview = None if st["overview_seen_at"] else {"findings": found[:P.OVERVIEW_FINDINGS], "stats": F.stats(conn, user_id)}
     return {"focus": st["focus"], "modules": out, "hidden": sorted(hidden), "overview": overview,
-            "focus_options": list(P.FOCUS), "max_modules": P.MAX_MODULES}
+            "focus_options": list(P.FOCUS), "max_modules": P.MAX_MODULES,
+            "pace": _pace_of(conn, user_id, st["overview_seen_at"], today)}

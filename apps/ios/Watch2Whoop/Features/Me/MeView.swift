@@ -19,6 +19,7 @@ struct MeTab: View {
       PageScaffold(title: tr("我", "Me")) {
         VStack(alignment: .leading, spacing: 18) {
           header
+          if TodayHome.isOn(session.flags) { TodayHomeMeEntry() }   // flag ui_ai_first
           RowGroup(title: tr("同步", "Sync")) {
             NavigationLink { SyncCenterView() } label: {
               row(.heartPulse, tr("同步中心", "Sync center"), value: sync.diagnosis.headline, tone: tone(sync.diagnosis.overall))

@@ -77,6 +77,19 @@ final class JarvisRouter: ObservableObject {
     }
   }
 
+  /// A question the user tapped or typed on the AI-first Today (flag `ui_ai_first`): sent at once in an in-app AI, as on the web
+  /// page (ui-ai-first.js ask); any other AI goes the way `ask` goes.
+  func send(prompt: String) {
+    let ai = self.ai
+    guard ai.inApp, let chat else { ask(prompt: prompt); return }
+    if ai.mode == .fallback && !ai.consent {
+      Task { await chat.askConsent { [weak self] in self?.send(prompt: prompt) } ; presentOverOthers(.chat) }
+      return
+    }
+    presentOverOthers(.chat)
+    chat.send(prompt)
+  }
+
   /// A tap on the Jarvis key: the menu where the chat runs in the app, otherwise what the Today page's key does
   /// (open the butler link, or say where this AI is used).
   func tapKey() {

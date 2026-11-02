@@ -52,6 +52,9 @@ final class TrendsLink: ObservableObject {
   /// `day`: the day the Today tab shows (nil = today).
   func open(day: String?) { pending = Request(end: day) }
 
+  /// A mode of the tab on the user's today (flag `ui_ai_first`: 全部功能).
+  func open(mode: TrendsView.Mode) { pending = Request(end: nil, mode: mode) }
+
   /// The pending request, once.
   func take() -> Request? {
     defer { pending = nil }

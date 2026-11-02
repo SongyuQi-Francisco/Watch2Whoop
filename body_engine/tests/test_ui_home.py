@@ -143,6 +143,38 @@ def test_home_order_reasons_and_choices(dsn, users):
         conn.rollback()
 
 
+def test_pace_only_sets_the_pace():
+    created = date(2026, 10, 1)
+    # a new account: three cards on the first day (also before the first screen was seen), two more a day, never over the maximum
+    assert H.pace(None, created, created) == {"day": 0, "limit": P.FIRST_DAY_MODULES, "veteran": False}
+    assert H.pace(created, created, created + timedelta(days=1)) == {"day": 1, "limit": 5, "veteran": False}
+    assert H.pace(created, created, created + timedelta(days=14)) == {"day": 14, "limit": P.MAX_MODULES, "veteran": False}
+    # an account that was already two weeks old when it first reached the page keeps all it had, from the first day
+    old = created - timedelta(days=P.VETERAN_ACCOUNT_DAYS)
+    assert H.pace(None, old, created) == {"day": 0, "limit": P.MAX_MODULES, "veteran": True}
+    assert H.pace(created, old, created + timedelta(days=30))["veteran"] is True
+    # one day short of that is still new, and a clock or a date in the past never makes the limit shrink below the first day
+    assert H.pace(None, old + timedelta(days=1), created)["veteran"] is False
+    assert H.pace(created, created, created - timedelta(days=3))["limit"] == P.FIRST_DAY_MODULES
+
+
+def test_home_carries_the_pace_of_the_account(dsn, users):
+    ids, _ = users
+    with conn_of(dsn) as conn:
+        uid = ids["fine"]
+        # the account "was opened" a month before the first screen: every value comes from the account, none from the device
+        conn.execute("UPDATE users SET created_at = %s WHERE id = %s", (datetime(2026, 9, 1, 12, tzinfo=TZ), uid))
+        h = H.home(conn, uid, TODAY)
+        assert h["pace"] == {"day": 0, "limit": P.MAX_MODULES, "veteran": True}
+        conn.execute("UPDATE users SET created_at = %s WHERE id = %s", (datetime(2026, 10, 27, 12, tzinfo=TZ), uid))
+        assert H.home(conn, uid, TODAY)["pace"] == {"day": 0, "limit": P.FIRST_DAY_MODULES, "veteran": False}
+        # days count from the first screen, in the user's own time zone (02:00 local is still that local day)
+        conn.execute("INSERT INTO ui_state (user_id, overview_seen_at) VALUES (%s, %s)", (uid, datetime(2026, 10, 26, 2, tzinfo=TZ)))
+        conn.execute("UPDATE users SET created_at = %s WHERE id = %s", (datetime(2026, 10, 26, 1, tzinfo=TZ), uid))
+        assert H.home(conn, uid, TODAY)["pace"] == {"day": 1, "limit": 5, "veteran": False}
+        conn.rollback()
+
+
 @pytest.fixture(scope="module")
 def client(dsn):
     api.pool = ConnectionPool(dsn, kwargs={"row_factory": dict_row}, min_size=1, max_size=3, open=True)

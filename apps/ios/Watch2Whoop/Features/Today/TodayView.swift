@@ -17,6 +17,13 @@ struct TodayView: View {
   @State private var sheet: TodaySheet?
   @State private var path: [SleepRoute] = []
   @SceneStorage("w2w.tab") private var tab: AppTab = .today
+  // Flag `ui_ai_first` (#279, TodayHome.swift). With it off the store never starts and `content` below is the whole page.
+  @StateObject private var home = TodayHomeStore()
+  @State private var homeSheet: TodayHomeSheet?
+  @State private var afterHomeSheet: TodayHomeDest?
+  @SceneStorage("w2w.record.segment") private var recordSegment: RecordTab.Segment = .training
+
+  private var aiFirst: Bool { TodayHome.isOn(session.flags) }
 
   init(session: AccountSession) {
     _store = StateObject(wrappedValue: TodayStore(session: session))
@@ -29,6 +36,11 @@ struct TodayView: View {
         .navigationDestination(for: SleepRoute.self) { r in
           SleepDetailView(initialDate: r.date) { key, title in sheet = .explain(kind: "metric", key: key, title: title) }
         }
+        .sheet(item: $homeSheet, onDismiss: afterHomeSheetClosed) { s in
+          TodayHomeSheetView(sheet: s, model: store.model, flags: session.flags, circles: session.circlesTab, store: home,
+                             close: { homeSheet = nil }, go: { afterHomeSheet = $0; homeSheet = nil })
+            .environmentObject(session)
+        }
     }
     .sheet(item: $sheet) { s in
       TodaySheetView(sheet: s, model: store.model, store: store, open: { sheet = $0 }, close: { sheet = nil })
@@ -36,6 +48,16 @@ struct TodayView: View {
     }
     .onAppear { if !store.isObserving { store.observe(session) } }
     .task { await store.refresh() }
+    .task(id: aiFirst) { await runHome() }
+    .onChange(of: home.home) { _ in maybeOverview() }
+    .onChange(of: store.hasData) { _ in maybeOverview() }
+    .onChange(of: sheet) { _ in maybeOverview() }
+    .onChange(of: tab) { _ in maybeOverview() }
+    .onReceive(TodayHomeLink.shared.$pending) { d in
+      guard let d else { return }
+      TodayHomeLink.shared.pending = nil
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { go(d) }
+    }
   }
 
   private var page: some View {
@@ -44,7 +66,7 @@ struct TodayView: View {
         // Lazy: the first frame builds only what is on screen (rings and the first tiles)
         LazyVStack(alignment: .leading, spacing: 0) {
           header.id("top")
-          content
+          if aiFirst { homePage } else { content }
           Color.clear.frame(height: 1).id("bottom")
         }
         .padding(.horizontal, Metrics.gutter)
@@ -53,11 +75,15 @@ struct TodayView: View {
         .frame(maxWidth: .infinity)
       }
       .background(Palette.bg.ignoresSafeArea())
-      .refreshable { await store.refresh() }
+      .refreshable {
+        await store.refresh()
+        if aiFirst { await home.refresh() }
+      }
       .onAppear {
         if store.hasData && PerfProbe.autoScroll { autoScroll(proxy) }
         #if DEBUG
         DevShot.apply(proxy: proxy, sheet: { sheet = $0 }, push: { path.append($0) }, day: { store.select($0) })
+        if aiFirst { DevShot.applyHome { go($0) } }
         #endif
       }
       .onChange(of: store.hasData) { has in if has && PerfProbe.autoScroll { autoScroll(proxy) } }
@@ -199,6 +225,77 @@ struct TodayView: View {
     SyncStatusLine(sync: session.sync, hasData: store.hasData).padding(.top, 18)
   }
 
+  // MARK: - flag ui_ai_first: the page, and what it asks of this view
+
+  private var homePage: some View {
+    TodayHomePage(
+      model: store.model, home: home.home ?? .fallback, flags: session.flags, circlesTab: session.circlesTab, store: home,
+      sync: session.sync, hasData: store.hasData,
+      run: TodayHomeActions(
+        action: handle, open: open, sheet: { sheet = $0 }, go: go,
+        refresh: { Task { await store.refresh(); await home.refresh() } },
+        allMetrics: {
+          TrendsLink.shared.open(day: store.date)
+          tab = .trends
+        },
+        circles: { tab = .circles }))
+  }
+
+  private func go(_ d: TodayHomeDest) {
+    switch d {
+    case .sheet(let s): tab = .today; sheet = s
+    case .sleepDetail: tab = .today; path.append(SleepRoute(date: store.model.sleepDate))
+    case .trends(let mode):
+      TrendsLink.shared.open(mode: mode)
+      tab = .trends
+    case .record(let segment):
+      recordSegment = segment
+      tab = .record
+    case .food:
+      // 饮食 is a segment of 记录 while 朋友 has its place in the tab bar
+      if session.circlesTab { recordSegment = .food; tab = .record } else { tab = .food }
+    case .circles: tab = .circles
+    case .me: tab = .me
+    case .bodyStatus: tab = .today; homeSheet = .bodyStatus
+    case .bedtimeGoal: tab = .today; homeSheet = .bedtimeGoal
+    case .focus: tab = .today; homeSheet = .focus
+    case .allFeatures: tab = .today; homeSheet = .allFeatures
+    }
+  }
+
+  private func afterHomeSheetClosed() {
+    if let d = afterHomeSheet {
+      afterHomeSheet = nil
+      go(d)
+    }
+    maybeOverview()
+  }
+
+  /// Follows the flag: on = the account's document and, once, the first screen; off = nothing.
+  private func runHome() async {
+    guard aiFirst else { home.stop(); return }
+    home.start(session)
+    maybeOverview()
+    await home.refresh()
+    // the sign-in flows may still be over the page: try again for a moment (afterwards any change on this page tries)
+    for _ in 0..<5 where !home.overviewOpened && home.home?.overview != nil {
+      maybeOverview()
+      try? await Task.sleep(nanoseconds: 2_000_000_000)
+    }
+  }
+
+  /// The first screen (design 4.6), once: on today's Today, with the data there, when nothing else is on screen; right away, or
+  /// when that closes (web: ui-ai-first.js maybeOverview). Seen as soon as it opens.
+  private func maybeOverview() {
+    guard aiFirst, tab == .today, store.date == nil, store.hasData, sheet == nil, homeSheet == nil, !home.overviewOpened,
+          let o = home.home?.overview else { return }
+    let root = UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.rootViewController
+    guard root?.presentedViewController == nil else { return }
+    home.overviewOpened = true
+    homeSheet = .overview(o)
+    home.overviewSeen()
+  }
+
   /// Three rings side by side, recovery in the middle and 1.4× bigger (NativeToday.swift of 1.0.9).
   private func rings(_ m: TodayModel) -> some View {
     let width = min(UIScreen.main.bounds.width, Metrics.maxContentWidth) - Metrics.gutter * 2
@@ -305,6 +402,13 @@ enum DevShot {
       }
     }
   }
+
+  /// Flag `ui_ai_first`: `SIMCTL_CHILD_W2W_DEV_HOME=all|focus|status|bedtime` opens that sheet of the page.
+  static func applyHome(go: @escaping (TodayHomeDest) -> Void) {
+    let dest: [String: TodayHomeDest] = ["all": .allFeatures, "focus": .focus, "status": .bodyStatus, "bedtime": .bedtimeGoal]
+    guard let d = ProcessInfo.processInfo.environment["W2W_DEV_HOME"].flatMap({ dest[$0] }) else { return }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { go(d) }
+  }
 }
 #endif
 
@@ -376,13 +480,15 @@ struct CoreCardView: View {
 struct MonitorCard: View {
   let vitals: [TodayModel.Vital]
   let off: Int
+  /// The AI-first page has the title (and why the card is there) above the card.
+  var showTitle = true
   let action: () -> Void
 
   var body: some View {
     Button(action: action) {
       VStack(alignment: .leading, spacing: 10) {
         HStack {
-          Text(tr("健康监测", "Health monitor")).font(Typo.label).foregroundColor(Palette.text2).lineLimit(1)
+          if showTitle { Text(tr("健康监测", "Health monitor")).font(Typo.label).foregroundColor(Palette.text2).lineLimit(1) }
           Spacer(minLength: 4)
           ToneBadge(text: off > 0 ? tr("\(off) 异常", "\(off) off") : tr("正常", "Normal"), tone: off > 0 ? .bad : .good)
         }

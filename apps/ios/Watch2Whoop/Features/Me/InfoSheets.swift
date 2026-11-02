@@ -174,6 +174,7 @@ struct UnsentChangesView: View {
     case "supplement": return tr("补剂", "Supplement")
     case "circle.like": return tr("圈子点赞", "Circle like")          // N7
     case "circle.comment": return tr("圈子评论", "Circle comment")    // N7
+    case TodayHome.queueKind: return tr("首页设置", "Today settings")   // flag ui_ai_first
     default: return k
     }
   }
