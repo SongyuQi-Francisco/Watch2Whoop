@@ -304,16 +304,13 @@ struct ChartTouchLayer: View {
     GeometryReader { geo in
       let w = geo.size.width, h = geo.size.height, n = spec.dates.count
       ZStack(alignment: .topLeading) {
-        Rectangle().fill(Color.clear).contentShape(Rectangle())
-          .onTapGesture { loc in
-            let i = index(at: loc.x, width: w)
+        ChartTouchCatcher(
+          tap: { x in
+            let i = index(at: x, width: w)
             selection.index = (i == selection.index) ? nil : i
-          }
-          .gesture(LongPressGesture(minimumDuration: 0.18).sequenced(before: DragGesture(minimumDistance: 0))
-            .onChanged { v in
-              if case .second(true, let drag) = v, let drag { pick(index(at: drag.location.x, width: w)) }
-              else if case .second(true, nil) = v { feedback.prepare() }
-            })
+          },
+          pressBegan: { feedback.prepare() },
+          press: { x in pick(index(at: x, width: w)) })
         if let i = selection.index, i < n, n > 0 {
           let x = (Double(i) + 0.5) / Double(n) * w
           Rectangle().fill(Palette.text2).frame(width: 1, height: h)
@@ -346,6 +343,45 @@ struct ChartTouchLayer: View {
     guard let l = spec.layers.first(where: \.main) ?? spec.layers.first(where: { $0.kind != .band && $0.kind != .range }),
           let v = l.values[safe: i] ?? nil else { return nil }
     return TrendChartBody.mapped(v, right: l.rightAxis, y: y)
+  }
+}
+
+/// A tap, and a press-and-drag along the chart, as UIKit recognizers. A flick that starts on the chart has to scroll the page: the
+/// press fails as soon as the finger moves, before the scroll view's pan starts. SwiftUI's `LongPressGesture` sequenced before a
+/// `DragGesture` in this place kept the page from scrolling.
+private struct ChartTouchCatcher: UIViewRepresentable {
+  let tap: (CGFloat) -> Void
+  let pressBegan: () -> Void
+  let press: (CGFloat) -> Void
+
+  func makeCoordinator() -> Coordinator { Coordinator() }
+
+  func makeUIView(context: Context) -> UIView {
+    let view = UIView()
+    view.backgroundColor = .clear
+    let c = context.coordinator
+    view.addGestureRecognizer(UITapGestureRecognizer(target: c, action: #selector(Coordinator.tapped(_:))))
+    let long = UILongPressGestureRecognizer(target: c, action: #selector(Coordinator.pressed(_:)))
+    long.minimumPressDuration = 0.18
+    view.addGestureRecognizer(long)
+    return view
+  }
+
+  func updateUIView(_ view: UIView, context: Context) {
+    context.coordinator.owner = self
+  }
+
+  final class Coordinator: NSObject {
+    var owner: ChartTouchCatcher?
+
+    @objc func tapped(_ g: UITapGestureRecognizer) {
+      owner?.tap(g.location(in: g.view).x)
+    }
+
+    @objc func pressed(_ g: UILongPressGestureRecognizer) {
+      if g.state == .began { owner?.pressBegan() }
+      if g.state == .began || g.state == .changed { owner?.press(g.location(in: g.view).x) }
+    }
   }
 }
 
