@@ -1,6 +1,6 @@
 # iOS 原生 app（SwiftUI）：架构和开发约定
 
-> 状态：#340 N0（架构文档 + 工程骨架），2026-10-29；N2 服务器接口已实现（第 5.2、5.3、6.3、7.2、7.3 节）；N2b 本机算分全链路已打通（第 6.1、9.1 节）；本机完整历史（第 4、9.1 节「本机完整历史」）；N9 发布前回归和上线顺序（第 12 节，`ios-native-1.0.9-regression.md`）。这份文档是 N1–N9 各个 agent 的共同依据：改约定先改这里，在 PR 里说明。
+> 状态：#340 N0（架构文档 + 工程骨架），2026-10-29；N2 服务器接口已实现（第 5.2、5.3、6.3、7.2、7.3 节）；N2b 本机算分全链路已打通（第 6.1、9.1 节）；本机完整历史（第 4、9.1 节「本机完整历史」）；N9 发布前回归和上线顺序（第 12 节，`ios-native-1.0.9-regression.md`）；2.0.0 发布前补齐（#399–#407，2026-11-03）：「我」和账号、饮食和采购、训练、Jarvis 的卡片和体态分析、今天页和睡眠的细节、消息中心、同步入口和链接、看别人的数据（第 3、4.2、5.5、7.1、9.1–9.3 节），上线顺序按 2.0.0 写（第 12 节）。这份文档是 N1–N9 各个 agent 的共同依据：改约定先改这里，在 PR 里说明。
 > 相关：#340（总纲）、#337（本地优先的决定）、#219（自建同步引擎，`apple-sync-engine.md`、`apple-sync-engine-app-contract.md`）、`ios-native-plan.md`（测量和分期）、`apps.md`（版本号和发版）。
 > 文中的数字都是示例，不是任何真人的数据。
 
@@ -63,7 +63,7 @@
 - 原文件更新后跑 `apps/ios/scripts/sync_flutter_sources.sh`；CI 里的 `--check` 发现不一致只给警告，不让 job 失败。
 - 拷贝件仍然是 method channel 的形状：`handle(FlutterMethodCall, result)`。`HealthSyncBridge.call(.engine, "engineRead", args)` 把它包成 `await`。
 - Dart 那一侧的逻辑（`lib/src/sync_engine.dart`、`raw_sync.dart`、`backfill.dart`、`resync_flow.dart`）N8 已改写成 Swift，在 `Features/Sync/`：`HealthSyncService`（交给引擎服务器、token、注册表和 engine 块，前台轮次、补全历史、重新同步的手机部分、状态）、`RawUploadPass`（心跳序列 / 心电图 / 喝水，200 之后才提交锚点）、`SyncDiagnosis`（卡在哪里、怎么自救）。`SyncEngine.swift`、`Backfill.swift` 从 #344 起就是原生接口；`RawSync.swift` 还是 method channel 的形状，经 `HealthSyncBridge.raw` 调用，等 Flutter 原文件拆出原生接口后再删 `FlutterShim`。
-- 1.0.9 只走引擎（`app` 模式）：不调 `ow-invitation`，设置链接里的 `ow` / `code` 读到也不用（契约第 7.1 节）。注册表里的数量类型全由引擎读，RawSync 在原生 app 里只管心跳序列、心电图和喝水。
+- 原生 app（原来的 1.0.9，现在发布的是 2.0.0）只走引擎（`app` 模式）：不调 `ow-invitation`，设置链接里的 `ow` / `code` 读到也不用（契约第 7.1 节）。注册表里的数量类型全由引擎读，RawSync 在原生 app 里只管心跳序列、心电图和喝水。
 - 后台：`AppDelegate` 在启动结束前 `SyncEngine.register()`（BGAppRefresh `watch2whoop.sync.refresh`、BGProcessing `watch2whoop.sync.process`、HealthKit 观察者和后台送达）和 `Backfill.register()`；回到前台时 `HealthSyncService.syncOnOpen()`（至少隔 3 分钟）。引擎自己存配置（服务器、Keychain 里的 token、注册表、模式），没有页面也能在后台跑。
 - 锚点和 backfill 状态存在 `UserDefaults` 里，键不带 `flutter.` 前缀（`w2w.sync.anchor.*`、`w2w.raw.anchor.*`、`w2w.backfill.state.v1`）；backfill 的上传 token 在 Keychain 的 `w2w.backfill` / `token`。这些和 Flutter 版是同一份，升级后直接接着用，不用迁移。
 - `AppDelegate` 已经注册了 `watch2whoop.sync.backfill` 后台任务，并在每次启动时重新挂上后台 URLSession。`BGTaskSchedulerPermittedIdentifiers` 里还预留了 `watch2whoop.sync.refresh`，给 N8 的定时刷新用。
@@ -85,6 +85,8 @@
 - `AccountSession`（`@MainActor ObservableObject`）通过 `environmentObject` 注入，里面有 `config`、`api`、`db`、`sync` 和 `flags`。页面用 `@EnvironmentObject var session: AccountSession` 拿。
 - 功能开关来自 `/v1/web/me` 的 `flags`，本机缓存在 `w2w.native.flags.v1`。每个原生页面如果需要服务器开关，就读 `session.flags`。
 - Debug 版可以用启动环境变量自动登录，给模拟器和截图用：`SIMCTL_CHILD_W2W_DEV_SERVER`、`SIMCTL_CHILD_W2W_DEV_TOKEN`、`SIMCTL_CHILD_W2W_DEV_LANG=zh|en`。
+- **链接**（#406，`App/AppLinks.swift`）：点通知的 `url` 和 app 里的链接都由纯函数 `AppLink.parse` 解析，认的是今天页同一批：圈子（`/app/?tab=friends&feed=<id>`、`/app/?circle=<码>`、`/app/join.html#<码>`、`watch2whoop://circle?code=…`）、`/app/?whatsnew=1`（「本周更新」）、`/app/?tab=me|today|trends|food|record|friends`；`/app/` 和 `#notifications` 不算（打开 app 就是全部回答）。登录后的同意书 / 资料 / 健康权限这几步没走完时（环境值 `flowsSettled` 为 false），链接和「第一次进来的提问」先等着，走完再处理：没登录就点邀请链接的人，登录后看到加入圈子的弹层。
+- **邀请落地页** `/app/join.html#<码>`（`web/static/join.html`、`join.js`，静态页，不调 API，不受强制升级拦截；码在 URL 片段里，不进服务器日志）：iPhone / iPad 上先试 `watch2whoop://circle?code=<码>`，1.8 秒后页面还在前面就说明没装 app，显示安装指引，「在 App 里打开」留着再试；微信的内置浏览器打不开自定义 scheme，页面不自动试，说明怎么用 Safari 打开；电脑上走今天页自己的加入弹层。码总可以复制后在 app 里输入。
 
 ## 4. 本地数据库
 
@@ -128,7 +130,7 @@
 
 `sleep_sessions` 在 `v2_local_scoring` 里加了 `payload`（睡眠 stream 的整段 session：入睡 / 各阶段分钟、设备），算分用。`v3_local_history` 给 `heartbeat_series` 加了 `analyzed`：逐拍数据不再在算完后删掉。`v4_derive_tables`（2.0.0 M1）：上面两张新表；`score_dirty` 以 `(date, kind)` 重建（本机自己的队列，原有的行搬成 `kind = scores`）；`hk_samples` 按 `source_id` 加索引（手机读 HealthKit 时记下来源，和服务器一样按来源分组睡眠和累计值）。
 
-**不存在本地的**：别人的数据（只存圈子动态的缓存文档）、AI 对话全文、心电图波形、AI 设置里的 key。
+**不存在本地的**：别人的数据（只存圈子动态的缓存文档）、AI 对话全文、心电图波形、AI 设置里的 key。「看别人的数据」（第 5.5 节）也不例外：对方的数据由 `MemberViewStore`（`Features/MemberView/`）放在内存里，用 `APIClient.uncached()` 请求（临时会话：不留 URL 缓存、Cookie 和凭据），退出这个页面就丢掉，不写本地库。
 
 ### 4.3 迁移规则
 
@@ -222,6 +224,12 @@ session.sync.enqueue(kind: "water", group: "water", method: .post, path: "/v1/us
 
 Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞和评论例外，走离线队列，见第 9.2 节）、账号和 AI 设置、化验录入、建食谱 / 快捷记餐模板、看别人的数据。离线时这些入口显示为灰色，点了提示「需要联网」。
 
+- **AI 设置（含自己的 API key）是原生页面**（#399，`Features/Me/AISettingsView.swift`、`AIProviderForm.swift`、`AIConnectView.swift`）：选哪个 AI（`/ai-choice`，立即生效）、自己的 AI（`/ai-providers`：添加 / 修改 / 停用 / 删除）、托底 AI 的额度和条款（`/ai-fallback`）、连接客户端（MCP）的地址、已连接的应用和 AI token（`/ai-connections`、`/ai-tokens`），全部只在线，没有缓存，也不进离线队列。**API key 只在表单里**：它放在表单的视图状态（`AIProviderDraft`）中，请求发出前清空，页面关掉时也清空，不写本地库、不写 Keychain，也不进日志（请求体类型 `AIProviderBody` 的 `description` / `dump` / `Mirror` 都不打印它）；服务器只回末 4 位。新建的 AI token 同样只显示一次。
+- **「我」页的其他账号功能**（#399，`AccountViews.swift`、`MemoryFeedbackViews.swift`、`HevyImportView.swift`）：登录方式（绑定邮箱 / Apple ID；已属于别的账号的返回 409，不合并）、邀请好友（服务器打开推荐时才显示）、填写邀请码（开放注册的头几天）、长期记忆（「还准确」/ 删除，`memory_hygiene` 关着时只能删笔记）、反馈记录、训练设置（开关 `muscle_load`）、从 Hevy 导入（开关 `hevy_import`）。这些读写都直接请求服务器。
+- **消息中心**（开关 `inbox`，#403，`Features/Me/InboxStore.swift`）：「加入」「忽略」圈子邀请和「邀请到另一个圈子」只在线。已读、全部已读和隐藏先改本地缓存文档 `inbox:list`，联网时再发出去，**不走离线队列**：发出时已经不在列表里的项不算失败，不需要用户处理。
+- **训练页的计划编辑**（#402，`Features/Record/TrainingPlanActions.swift`）：动作库、切换分化、移除 / 恢复动作、加入计划、我的动作、训练设置都不排队，因为它们改的是服务器检查禁用动作用的计划，要拿到服务器的回答才知道结果；离线时提示「离线，连上网络后重试」，什么也不改。逐组记录和当天训练草稿仍走离线队列（第 9.3 节）。
+- **看别人的数据（只读）**（#407，`Features/MemberView/`）：入口是朋友 tab 的成员卡和「我 → 共享给我的」。数据不进本地库（第 4.2 节）；离线时点进去提示「需要联网」。
+
 ### 5.6 同步中心的同步结果（HealthKit 同步，2026-10-31）
 
 负责人反馈「同步按钮显示已最新，但仍提示部分数据未同步」。根因：手机对比用的是「本机 HealthKit 最新一条」对「服务器上引擎收到的最新一条」（`hk_samples`）。引擎首次只读近 14 天（之后按锚点增量），手机上最新一条比这还早的类型（体重、身高这类很久前记的，或只在导出里有的）引擎永远不会读，服务器的引擎样本里也没有，于是同一时刻「没有新数据」（锚点已追平）和「N 类没同步」（对比）同时成立；另外「后台同步碰上锁屏」「后台 App 刷新关着」和「数据状态」的「很久没收到」各说各的，分不清是没采集还是没送到。
@@ -295,6 +303,11 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 | Jarvis（N6） | `POST /v1/assistant/chat`（SSE）、`/chat/confirm`、`GET /chat/{id}/events`、`/conversations…`、`POST /v1/assistant/transcribe`、`/voice-fix`、`GET /v1/users/me/ai-cards`、`/ai-choice`、`/ai-fallback…` |
 | 圈子（N7） | `GET /v1/friends`、`/overview`、`/leaderboard`、`/referral`、`/invite`、`POST /v1/friends/join`、`/circles…`、`/nudges`、`/remarks…`、`/v1/friends/feed…`（动态、点赞、评论、未读）、`/v1/avatars…` |
 | 我 / 设置 / 同步中心（N8） | `/memory…`、`/ai-providers…`、`/ai-tokens…`、`/ai-connections…`、`/notification-settings`、`/notifications…`、`POST/DELETE /push-devices`、`GET /v1/whats-new`、`/notices…`、`/feedback…`、`/data-status`、`/history-import…`、`/appearance`、`/flags`；同步：`GET/POST /v1/ingest/healthkit`、`GET /v1/ingest/sync-status`、`/v1/ingest/resync`、`PUT /v1/ingest/sync-device`、`/sync/engine/status`、`/sync/overview`、`/sync/history…`、`/health-history`、`POST /v1/web/ingest-token` |
+| 我 → 账号和 AI（#399） | 绑定登录方式 `POST /v1/account/identities/email`、`/apple`；`GET /v1/users/me/invite-code`；`/memory/profile/<键>`、`/memory/observations/<id>`（还准确 / 删除）；`/feedback`、`/feedback-mode`、`DELETE /feedback/{ref}`；`/ai-providers…`、`/ai-connections/{id}`、`/ai-tokens…`；`GET/PUT /training/goals`（`muscle_load`） |
+| 消息中心（#403，开关 `inbox`） | `GET /v1/users/me/inbox`、`POST …/inbox/read`、`DELETE …/inbox/items/{id}`、`POST …/inbox/invites/{id}/accept`、`/ignore`、`/mute`；邀请到另一个圈子 `GET /v1/friends/people/{id}/invite-options`、`POST …/people/{id}/invites`、`/v1/friends/invite-mutes…` |
+| 看别人的数据（只读，#407） | `GET /v1/users/{id}/…`，`{id}` 是对方。只读页能读的路径白名单是 `MemberViewStore.readable`（`today`、`trends`、`sleep/…`、`strain-coach`、`health-monitor`、`memory`、`reports`、`journal…`、`training/day`、`training/calendar`、`training/week`、`training/muscle-load`、`exercises`、`water`、`recipes`、`supplements`、`labs…`、`events`、`explain` 等），只发 GET、永远是对方的路径、从不用 `me`；不在白名单里的路径不会发出，那一块按「没有共享」处理。**加新的只读路径要同时改这份白名单** |
+
+**今天页上有条件的请求**（#405）：`GET /sleep-coach?date=`（睡眠教练卡，文档 `today.sleepcoach:<日期>`）、`GET /stress?start=&end=&hours=true`（压力详情，文档 `today.stress:<日期>`）、`GET /healthspan?weeks=26`（身体年龄详情，文档 `healthspan:me`）都只在对应的包（`coach`、`stress`、`healthspan`）不是 primary，或本机这一天 / 这几周没有结果时才请求；primary 且本机有结果时读本机的，不请求服务器（`ios-native-2.0.md` 第 3.1 节；睡眠教练是 `coach` 包，在今天页刷新时拉，`coach` 为 primary 时不拉）。
 
 ### 7.2 N2 新加的接口（已实现，开关 `native_sync`，关着时都是 404）
 
@@ -381,7 +394,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 
 - **Flutter 项不删**：TestFlight 还能退回 1.0.8。原生版退出登录时，Flutter 项会一起删掉，避免退回 1.0.8 后又出现一个已经吊销的会话。迁移代码保留两个版本（到 1.1.x），之后删掉。
 - **只有 token 没有地址，或者只有地址没有 token**：显示登录页，不删旧数据。
-- **测试**：单元测试（`FlutterMigrationTests`）用内存 Keychain 和独立的 UserDefaults 模拟 Flutter 版存的东西。**真机覆盖升级要在 N9 测**：先装 1.0.8 的 TestFlight 包并登录，再装 1.0.9，确认不用重新登录、同步锚点能接上。
+- **测试**：单元测试（`FlutterMigrationTests`）用内存 Keychain 和独立的 UserDefaults 模拟 Flutter 版存的东西。**真机覆盖升级要在 N9 测**：先装 1.0.8 的 TestFlight 包并登录，再装原生版（2.0.0），确认不用重新登录、同步锚点能接上。
 - **模拟器验证（N8，2026-10-29，合成数据）**：装 `app-ios-v1.0.8` 的 Flutter 模拟器构建，邮箱登录、给权限、写测试数据，1.0.8 上传了 347 条；再覆盖装原生版（同 bundle ID，`FAKETEAMID` 签名，见 `apps/ios/README.md`）：
   - 不用重新登录（Keychain 里的账号 token、`flutter.w2w.config.v1` 的服务器都接上了）；
   - 引擎沿用 1.0.8 的 `w2w.sync.anchor.*` / `w2w.raw.anchor.*`：第一轮只把 1.0.8 已传过的样本里「最近 48 小时」那部分重发一次（拷贝来的引擎在 A1 → A2 时的 `recent` 阶段，348 条，服务器按 UUID 全部跳过），没有重传历史；之后的轮次只传新数据，没有新数据时不发请求；
@@ -394,12 +407,12 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 
 | 块 | 页面 | 主要数据 |
 |---|---|---|
-| **N3 今天** | 三环（睡眠分 / 恢复 / 昨天负荷）+ 恢复词 + 负荷状态 + 核心指标（HRV、静息心率、睡眠、需要、欠债、步数、能量、锻炼分钟）+ 健康监测 + 负荷目标 + 状态卡 + 提醒 + 训练卡 + 饮食卡；顶部日期 → 月历回看；睡眠详情（阶段图用 Swift Charts）；每个指标的讲解弹层 | `docs today:*`，之后改读 `daily_scores` / `daily_metrics` / `sleep_sessions`；讲解来自 `explain/*`，词条放静态包 |
+| **N3 今天** | 三环（睡眠分 / 恢复 / 昨天负荷）+ 恢复词 + 负荷状态 + 核心指标（HRV、静息心率、睡眠、需要、欠债、步数、能量、锻炼分钟）+ 健康监测 + 负荷目标 + 状态卡 + 提醒 + 睡眠教练卡 + 训练卡 + 肌肉负荷小卡 + 饮食卡；压力 / 身体年龄详情；顶部日期 → 月历回看（也可以用前一天 / 后一天按钮或左右滑动翻日期）；睡眠详情（阶段图用 Swift Charts）；每个指标的讲解弹层 | `docs today:*`，之后改读 `daily_scores` / `daily_metrics` / `sleep_sessions`；讲解来自 `explain/*`，词条放静态包 |
 | **N4 趋势** | 全部指标的序列（7 / 30 / 90 / 365 天、和上期比较）、状态卡（HRV 状态、训练状态、韧性……）、最近 14 晚、周报 / 月报 | `docs trends:*`；状态卡能在本机算的用算法包 `trend(...)`（第 9.3 节） |
 | **N5 记录** | 日记、喝水、体重（带测量情况标签）、饮食（今天吃了 / 快捷记餐 / 食谱 / 合并）、训练（计划 / 当天逐组 / 肌肉负荷）、补剂、化验 | `records` + 离线队列；饮食 tab 也归 N5 |
 | **N6 Jarvis** | 原生按键和菜单（拿 1.0.9 的 `NativeJarvis.swift`、`VoiceInput.swift` 来用）+ 对话（URLSession 字节流读 SSE，Markdown 用 `AttributedString`）+ 语音 / 拍照 / 快记 + 卡片 + 确认 | 只在线；会话列表可以缓存成文档 |
 | **N7 圈子** | 动态、点赞评论、排行、邀请、圈子管理、头像 | 只在线；`docs circles:*` 当缓存 |
-| **N8 我 / 设置 / 引导 / 同步中心** | 登录（设置二维码 / 链接、邮箱、Apple）、同意书、资料引导、同步中心（权限、补全历史、重新同步、状态面板）、设置、AI 设置、通知、更新记录、数据状态、「没提交」列表、退出登录；把同步引擎的 Dart 部分改写成 Swift，删掉 FlutterShim | `/v1/ingest/*`、`/sync/*`、`hk_*` 表 |
+| **N8 我 / 设置 / 引导 / 同步中心** | 登录（设置二维码 / 链接、邮箱、Apple）、同意书、资料引导、同步中心（权限、补全历史、重新同步、状态面板）、设置、AI 设置（含自己的 API key 和连接客户端，第 5.5 节）、通知（含夜间不推送的时段）、更新记录、数据状态、「没提交」列表、登录方式、邀请好友、长期记忆、反馈记录、消息中心（开关 `inbox`）、关于（使用手册、隐私政策、使用条款、开源许可）、共享给我的（只读，第 5.5 节）、退出登录、删除账号；今天页进同步中心的入口（`Features/Sync/SyncEntry.swift`，第 9.1 节）；把同步引擎的 Dart 部分改写成 Swift，删掉 FlutterShim | `/v1/ingest/*`、`/sync/*`、`hk_*` 表 |
 
 **新页面的做法**
 
@@ -428,6 +441,10 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 | `explain:<kind>:<键>:<日期>` | `/explain/metric/…`、`/explain/status/…` | 讲解弹层 |
 | `weight:recent` | `/weight/recent` | 记体重弹层 |
 | `trends:61` / `trends:61:<日期>`、`trends.local:<日期>` | `/trends?days=61[&end=]`、本机算（`TrendsLocal`） | 「需要注意」「今日核心」（#357）；和趋势页「今天」共用同一份文档 |
+| `today.sleepcoach:<日期>` | `/sleep-coach?date=`（`coach` 包 primary 时读 `coach.local:<日期>` 的 `sleep_coach`，不拉） | 睡眠教练卡（今晚入睡建议）及详情 |
+| `today.stress:<日期>` | `/stress?start=&end=&hours=true`（`stress` 包 primary 且本机有这天的行时读本机 `stress_daily`，不拉） | 压力详情 |
+| `healthspan:me` | `/healthspan?weeks=26`（`healthspan` 包 primary 且本机有周数据时读本机 `healthspan_weekly`，不拉） | 身体年龄详情 |
+| `training:muscle`（开关 `muscle_load`） | `/training/muscle-load` | 肌肉负荷小卡（和记录 → 训练共用一份） |
 
 **需要注意、今日核心、全部指标（#357）**
 
@@ -447,6 +464,20 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
   - 提醒的「已看 / 不再提醒」：先改本地的 `today:*` 文档，再排队 `PATCH /reminders/{id}`。
   - 记体重：先写 `records`（kind `weight`，`pending`），再排队 `POST /weight`（带 `client_id`）。409 时提示「用这次的覆盖」。
 - 「问 AI」：`DesignSystem/AskAI.swift` 的环境值 `\.askAI`，默认把问题复制到剪贴板；N6 在 `MainTabView` 上把它设成 `JarvisRouter.ask`（第 9.2 节）。
+
+**今天页的详情和入口（2.0.0 补齐）**
+
+- **压力、睡眠教练、身体年龄、恢复环下一步**（#405，`Features/Today/TodayDetails.swift`、`TodayDetailViews.swift`）：
+  - 压力详情：当天的得分和等级、按小时的曲线、各等级的小时数、峰值时刻、平静心率。
+  - 睡眠教练卡：今晚几点睡、睡多久、几点起、和入睡目标差多少，点开是详情。看过去的某一天时，如果建议来自「当前的入睡目标」就不显示，因为那天可能还没有这个目标。
+  - 身体年龄详情：26 周的曲线、各项贡献和数据不足的项。
+  - 空恢复环下面的「下一步」按钮（`recovery_empty.action`）。
+  - 每个详情都先读本地：对应的包是 primary 且本机有结果时用本机的，否则读缓存的服务器文档、联网时刷新（`DetailStore`，只在手机没有自己的结果时才请求服务器，规则见 `ios-native-2.0.md` 第 3.1 节）。
+- **前一天 / 后一天**：日期旁两个按钮，也可以在页面上左右滑动（最小滑动距离 40 pt）；今天不能再往后。
+- **睡眠详情的「规则要点」**（#405，`SleepDetailView`）：这一晚的几条发现（带色点）和一个「问 AI」按钮。
+- **训练卡和肌肉负荷小卡**（#402，`Features/Record/TodayTrainingCards.swift`）：训练卡读今天文档的 `training` 块（计划或已记录的内容），肌肉负荷小卡读 `training:muscle`（开关 `muscle_load`；看过去的日子时不显示）；两张卡只展示和链接，记录仍在记录 → 训练。
+- **饮食卡**（#400，`Features/Food/TodayFoodCard.swift`）：今天吃了多少对目标、三大营养素、今天还有快捷记餐；点开是这一天的明细，点一条和饮食 tab 是同一个弹层。它用 `FoodStore(cardOnly: true)`，只观察今天文档和快捷记餐模板（`food:templates`），不另外请求 `GET /today`，也不解析食谱库等别的文档，免得拖慢最先打开的 tab。
+- **同步入口**（#406，`Features/Sync/SyncEntry.swift`）：同步是 P0，今天页有这几处直接进同步中心：标题栏的同步按钮（按同步状态变色）、同步卡（点整行进同步中心，右边的按钮立即同步）；同步卡住时标题下面出现横幅（点它进同步中心，横幅上的按钮重试；先看手机自己的诊断，再看服务器 overview 的 `issue`）；没卡住时才可能出现「补全历史数据」的提醒卡，节奏由服务器定（首次同步后 1 / 3 / 7 天，之后每周），一个提醒日只算一次（`/sync/history/seen`）。横幅和提醒只出现在今天自己的页面，回看过去的日子时不出现。
 
 **本机算分**（N2b，`Sync/ScoringSync.swift`、`LocalScoring.swift`、`LocalRawStore.swift`、`DeltaRemote.swift`、`AlgoBundles.swift`）
 
@@ -568,7 +599,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 
 - 启动环境变量 `W2W_PERF=1` 时开帧计数器；`W2W_PERF_SCROLL=1` 时今天页自己上下滚三次，并报告掉帧。看结果：`xcrun simctl launch --console-pty … | grep W2W_PERF`。
 - 今天页用 `LazyVStack`，首帧只建屏幕上的部分。
-- Debug 版截图用的环境变量：`W2W_DEV_SHEET`、`W2W_DEV_SLEEP`、`W2W_DEV_DATE`、`W2W_DEV_SCROLL`（`TodayView.swift` 的 `DevShot`）。
+- Debug 版截图用的环境变量：`W2W_DEV_SHEET`、`W2W_DEV_SLEEP`、`W2W_DEV_DATE`、`W2W_DEV_SCROLL`（`TodayView.swift` 的 `DevShot`；滚动锚点 `n3.food` 到饮食卡）、`W2W_DEV_TODAYFOOD=day`（打开饮食卡的明细）。
 
 ### 9.2 N7 圈子：数据从哪来、写怎么走
 
@@ -577,7 +608,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 - **写**：点赞 / 取消、评论走离线队列（kind `circle.like` / `circle.comment`，每个帖子一个组）。点赞是「最后一次为准」：入队前 `OfflineQueue.supersede` 删掉同组还没发出的旧状态；界面上立刻变（缓存同时改），队列里还没发出的点赞和评论由 `FeedLogic.overlay` 叠在服务器的数据上（评论显示时钟，被拒的显示「没发出去 · 重试 / 删掉」）。评论带上队列条目的 `client_id`（N2b 给评论接口加上了），超时后重发不会多一条。其他写（建圈、加入、邀请、退出、共享范围、鼓励、头像）只在线（第 5.5 节）。
 - **队列的改动**（共享，N7 加的）：`drain` 先原子地「领取」一条（`UPDATE … WHERE state = 'pending'`），两个 drain 同时跑也不会重复发送；`sending` 带 120 秒租约，app 发送中被杀掉后会再发。
 - **隐私**：只显示接口给的内容，服务器每次读都按对方的共享范围判断；切到某个圈子时成员、动态、排行榜只含这个圈子里的人和他们在这里勾选的内容。
-- **通知**：`AppDelegate` 设 `UNUserNotificationCenter` 的 delegate（`App/NotificationTaps.swift`），点通知把 payload 的 `url`（`/app/?tab=friends&feed=<id>`）交给 `AppModel.handle(link:)` → `Route.circles(post:)` → `MainTabView` 的 `.circleRouting` 切到朋友 tab → 动态滚到这条、打开评论。app 在前台时 `circle.*` 通知也弹横幅。`watch2whoop://circle?code=…` 和今天页的邀请链接 `/app/?circle=…` 打开加入页。
+- **通知**：`AppDelegate` 设 `UNUserNotificationCenter` 的 delegate（`App/NotificationTaps.swift`），点通知把 payload 的 `url`（`/app/?tab=friends&feed=<id>`）交给 `AppModel.handle(link:)` → `Route.circles(post:)` → `MainTabView` 的 `.circleRouting` 切到朋友 tab → 动态滚到这条、打开评论。app 在前台时 `circle.*` 通知也弹横幅。`watch2whoop://circle?code=…` 和今天页的邀请链接 `/app/?circle=…` 打开加入页。分享出去的邀请链接是落地页 `/app/join.html#<码>`，链接怎么解析见第 3 节（`App/AppLinks.swift`）。
 - **给别的页面用**：`CircleSummaryCard()`（`Features/Circles/CircleSummaryCard.swift`）：头像、几位朋友、今天几人练了、最新一条动态、红点；点了默认切到朋友 tab，也可以传 `onOpen`。和朋友 tab 共用一个 store，`friends` 开关关着时不显示。
 - **开关**：`friends`（tab）、`circle_feed`（动态）、`circles_by_circle`（圈子切换条、排行榜只在选了圈子时有）、`circle_prefs`（置顶 / 静音 / 归档）、`avatars`（上传头像）、`member_remarks`（备注名）、`circle_join_trail`（圈主看到每人怎么进来的）。关着的接口回 404，那一块不显示。
 - **模拟器截图**（Debug 版）：`SIMCTL_CHILD_W2W_DEV_LINK=/app/?tab=friends&feed=<id>`（等于点了通知）、`SIMCTL_CHILD_W2W_DEV_CIRCLES=members|board|feed[:圈子 id]`、`SIMCTL_CHILD_W2W_DEV_SKIP_HEALTH=1`（跳过健康权限弹层）。
@@ -625,12 +656,14 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
   - 照片长边 ≤ 1600 px，JPEG 0.85。
   - 视频抽 ≤ 8 帧（长边 1024），给模型的消息前加 ［视频 n 帧，约 s 秒］。临时文件读完就删。
 - 拍照键：拍完连同「拍照记一餐」一起发。快记键：常用的 3 个快捷记餐、喝水（flag `water`）、训练按计划完成、体重，点一下就发一句话给 Jarvis。
+- **一键小票**（#400，`JarvisRouter.scanPrices`）：采购页的「拍小票 / 价签」一点就开相机，拍完照片带着预填的问题进对话，等用户发送；用户选的那个 AI 逐行读价格，用 `record_store_prices` 记下（用量记在那个 AI 上，别的什么都不离开手机）。按用户的 AI 分流（`ScanRoute`）：自己的 key 或托底（托底先弹条款）直接拍；AI 不能看图、托底暂停或额度用完时给提示；订阅类 / 管家链接只复制问题，照片留在用户手里；没有 AI 的提示去 AI 设置。
+- **体态分析**（开关 `posture_photos`，#401，`JarvisPosture.swift`，设计和实际差别见 `posture-photos-plan.md` 第 10 节）：照片菜单里的「体态分析」只在 `ai.posture`（`/v1/web/me` 和 `/ai-choice` 的 `ai`）不是 `off` 时出现。`photos`：引导拍正面 / 侧面 / 背面 3 张（拍照或相册，每张有站位提示），预填一个问题，发送时带 `purpose = "posture"`，照片只放在内存里，服务器回答完就把原图换成占位；每个账号、每个 AI 第一次用先显示一条「照片只发给你选的 AI」的提示。`guide`：只给拍照指南和「用文字描述」，不发照片（托底、不在 app 里对话的 AI、不能看图的 AI）。回答前服务器发 `notice` 事件，对话里显示固定的准确度提示。
 
-**卡片**（`JarvisCards.swift`，`show_card` 的类型）
+**卡片**（`JarvisCards.swift`、`JarvisBodyCards.swift`、`JarvisFoodCards.swift`，`show_card` 的类型）
 
-- 原生：`training`、`meal`（点一行出 ×0.5 / ×1.5 / ×2 / 删除）、`metric`（小折线图）、`sleep`、`actions`（快捷按钮）、`product`（商品卡）、`recovery`、`water`、`supplements`。
-- 其余类型（`muscle`、`goals`、`suggest`、`recipe`、`recipes`、`templates`、`shopping`、`strain`、`stress`、`healthspan`、`trend`、`weight`、`lab`、`journal`、`report`、`hr_zones`、`vo2max`、`monitor`、`data_status`）先用通用卡片：标题、日期、顶层的数字和短词，加上按钮。
-- 按钮：`send` 发 app 自己的一句话（`JarvisCards.send`，和 `ai.js SEND` 一致）；`open` 切到对应的 tab（`JarvisRouter.open(page:)`）。卡片里从不渲染模型写的标记。
+- 原生类型：服务器现在有的全部 28 种（`JarvisCards.nativeTypes`）：`training`、`meal`（点一行出 ×0.5 / ×1.5 / ×2 / 删除）、`metric`（小折线图）、`sleep`、`actions`（快捷按钮）、`muscle`、`goals`、`suggest`、`recipe`、`recipes`、`templates`、`shopping`、`recovery`、`strain`、`stress`、`healthspan`、`trend`、`weight`、`lab`、`supplements`、`water`、`journal`、`report`、`hr_zones`、`vo2max`、`monitor`、`data_status`、`product`（商品卡）。
+- `GenericCard` 只用于这个版本不认识的新类型（服务器会继续加）：通用标题、日期，只显示有翻译标签的顶层字段，加上按钮；从不显示原始字段名。
+- 按钮：`send` 发 app 自己的一句话（`JarvisCards.send`，和 `ai.js SEND` 一致）；`open` 按页面键走 `JarvisRouter.route(page:card:circles:)`：一部分盖在对话上面（`JarvisDetail`：`lab`、`supplements`、`data_status`、`profile`、`sleep`、`healthspan`，和卡片标题带的 `explain.<指标>`），其余切到对应的 tab 并打开子页（`JarvisPageLink`：`today`、`trends`、`trends.report`、`record.training`、`food`、`food.shopping`、`food.recipes`、`recipe`；别的页面键回记录 tab；饮食在朋友开关打开时并进记录 tab）。卡片里从不渲染模型写的标记。
 
 **测试和演示**
 
@@ -639,6 +672,8 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
   - `dial`：展开 / 收起各 5 次，再按住说话 3 次，打印帧率汇总；
   - `open`、`hold`、`chat`：停在对应的画面；
   - `script`：只用脚本化的识别器，给 UI 测试用。
+  - `cards`：对话里发一句「cards」，假服务器回每种 `show_card` 类型各一张（内容来自单元测试的 `jarvis_cards.json`）；再加 `SIMCTL_CHILD_W2W_JARVIS_OPEN=<页面键>`，4 秒后按下那个页面键的按钮，看落在哪。假服务器的环境变量 `W2W_FAKE_FLAGS=friends,…` 给 `/v1/web/me` 的 `flags` 再加开关（比如 `friends`：饮食并进记录）。
+  - `posture`：打开体态分析；`posture-filled`：里面放好 3 张纯色假照片；`posture-send`：直接把 3 张假照片和预填的问题发出去。
   - `W2W_JARVIS_MATERIAL=1`：在 iOS 26 上也画毛玻璃键，方便对比。
 - 帧率：`W2W_PERF=1` 时 `JarvisPerf` 用 CADisplayLink 统计每次展开 / 收起 / 开始说话，写日志 `W2W_PERF jarvis-open fps=… worst=…ms dropped=…`。看结果用 `log stream --predicate 'category == "perf"'`。
 - 2026-10-29 实测：iPhone 17 Pro Max 模拟器，iOS 26.2，60 Hz，Liquid Glass。
@@ -648,19 +683,21 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 
 ### 9.3 N5 饮食 / 记录 / 健康档案：数据从哪来、写怎么走
 
-- **页面**：`Features/Food/`（饮食 tab：今天吃了的四个进度环和按餐的每条记录、改份量 / 删除、喝水、快捷记餐、食谱列表和详情、采购清单）、`Features/Record/`（记录 tab：训练 · 日记，`friends` 开关打开时多一个「饮食」分段；训练里有肌肉负荷图、今天的计划和逐组记录、本周、动作限制、训练历史月历）、`Features/Health/`（「我」→ 补剂 / 化验 / 身体事件）。
-- **读**：每个页面一个 `LocalPageStore` 子类（`Sync/LocalPageStore.swift`）：订阅 `docs` 里自己的文档 + `records` 里还没被服务器视图包含的行（`LocalView`，`.immediate`，第一帧就有缓存），刷新时 `RecordsPuller` 并行拉、在**一个事务**里存文档并删掉「已经发出去、服务器视图里已经有了」的本地行，所以同一条不会同时出现两次。文档键：`today:<日期>`（N3 的今天文档，用它的 `nutrition` 块）、`water:<日期>`、`food:templates`、`food:recipes`、`food:recipe:<id>`、`grocery:list:<周一>`、`journal:items`、`journal:frequent`、`journal:<日期>`、`training:session:<日期>`、`training:week:<周一>`、`training:calendar:<年-月>`、`training:day:<日期>`、`training:muscle`、`exercise:rules`、`health:supplements`、`health:labs`、`health:lab:<化验项>`、`health:events`。
+- **页面**：`Features/Food/`（饮食 tab：今天吃了的四个进度环和按餐的每条记录、改份量 / 删除、选择后合并或存成模板〔`FoodCombine`，开关 `meal_merge`〕、喝水、快捷记餐、每餐推荐〔`MealPlan`〕、饮食档案〔`DietProfile`，只读，内容由用户的 AI 写〕、食谱列表和详情、采购〔清单、商品库、家里存货、价格记录、超市链接，`GroceryView` / `GroceryModels`；「拍小票 / 价签」是一键小票，第 9.2 节〕；今天 tab 的饮食卡 `TodayFoodCard`，第 9.1 节）、`Features/Record/`（记录 tab：训练 · 日记，`friends` 开关打开时多一个「饮食」分段；训练里有肌肉负荷图、今天的计划和逐组记录、本周、动作限制、训练历史月历，以及 #402 补齐的动作库和动作详情〔`ExerciseLibraryView`，含演示图〕、切换分化 / 移除 / 恢复动作 / 训练设置〔`TrainingSheets`〕、我的动作〔`CustomExercisesView`〕、肌肉详情的推荐动作和「让 Jarvis 分析」〔`MuscleDetailView`〕；今天 tab 的训练卡和肌肉负荷小卡 `TodayTrainingCards`，第 9.1 节）、`Features/Health/`（「我」→ 补剂 / 化验 / 身体事件）。
+- **读**：每个页面一个 `LocalPageStore` 子类（`Sync/LocalPageStore.swift`）：订阅 `docs` 里自己的文档 + `records` 里还没被服务器视图包含的行（`LocalView`，`.immediate`，第一帧就有缓存），刷新时 `RecordsPuller` 并行拉、在**一个事务**里存文档并删掉「已经发出去、服务器视图里已经有了」的本地行，所以同一条不会同时出现两次。文档键：`today:<日期>`（N3 的今天文档，用它的 `nutrition` 块）、`water:<日期>`、`food:templates`、`food:recipes`、`food:recipe:<id>`、`grocery:list:<周一>`、`journal:items`、`journal:frequent`、`journal:<日期>`、`training:session:<日期>`、`training:week:<周一>`、`training:calendar:<年-月>`、`training:day:<日期>`、`training:muscle`、`exercise:rules`、`health:supplements`、`health:labs`、`health:lab:<化验项>`、`health:events`；2.0.0 补齐时加的：`food:mealplan:<日>`、`food:diet`、`food:diet:brief`、`grocery:products`、`grocery:stores`、`grocery:store-products`、`grocery:store-product:<id>`、`grocery:pantry`、`grocery:pantry-auto`、`grocery:specials`（#400），`exercise:detail:<slug>`、`training:muscle:<肌群>`（肌肉详情）（#402）。
 - **写**（`Sync/LocalRecords.swift`）：一次写 = `records` 一行（`id = c:<client_id>`，`pending`，`payload` 是页面叠加要用的内容）+ 离线队列一条（同一个 `client_id`），同一个事务。页面把这些行叠在服务器文档上（`NutritionDay.applying`、`WaterDay.build`、`JournalDay.build`、`TrainingSession.build`、`GroceryList.build`、`Supplement.build`），钟表 = 等待提交，红色感叹号 = 被拒（在「我 → 没提交的修改」里重试 / 丢弃）。
   - 只追加：喝水 `POST /water`、快捷记餐 `POST /meal-templates/{id}/log`、食谱 `POST /recipes/{id}/log`（`client_id` 在 body）。当天已记过 = 409 → 冲突，页面提示「再记一份」（丢掉这条，带 `allow_duplicates` 重记）。
   - 后写的为准（`LocalRecords.supersede` 先删同组还没发出的旧状态）：日记一项 `PUT/DELETE /journal/{day}/{key}`（补剂打卡就是它）、改份量 `PATCH /nutrition/entries/{id}`、采购勾选 `PATCH /grocery/list/items/{id}`、当天训练草稿 `PUT /training/session/{day}`。草稿改了而「提交」还在队列里时，提交重新排到新草稿后面。
   - 删除一条饮食：`DELETE /nutrition/entries/{id}?date=`（排队，叠加时隐藏）。
+  - 「用完了」（家里存货，kind `grocery.pantry`，#400）：`PUT /grocery/pantry`，整行绝对值（`quantity`，0 = 用完了），不带 `client_id`，后写的为准。
   - 撤销（第 5.4 节）：还在队列里的直接删掉那一条和本地行（`LocalRecords.cancel`）；已经提交的要联网（`DELETE /water/{id}`、`DELETE /meal-logs/{id}`）。
-  - 只在线（第 5.5 节）：收藏 / 现在能做（`PATCH /recipes/{id}`）、记身体事件（`POST /events`，没有 `client_id`）；化验录入、补剂增改仍交给用户自己的 AI。
+  - 只在线（第 5.5 节）：收藏 / 现在能做（`PATCH /recipes/{id}`）、记身体事件（`POST /events`，没有 `client_id`）；饮食合并 `POST /nutrition/combine` 和撤销合并 `DELETE /nutrition/merges/{id}`、连接超市 `PUT /grocery/stores`（#400）；训练的计划编辑、我的动作、训练设置（#402）；化验录入、补剂增改仍交给用户自己的 AI。
 - **禁用 / 注意的动作**：今天的计划卡里禁用动作划掉、写「不要做」、不能记组，注意动作带标签；展开后显示用户自己的原因 / 要点。「动作限制」一节列出 `/exercises`（exercise_meta）里禁用 / 注意的动作，加上本周计划的 `cautions`。
 - **肌肉负荷图**（开关 `muscle_load`）：人体图是原生绘制的。`project.yml` 把今天页的 `web/static/muscle-body-data.js` 当资源打进 app（仓库里只有这一份），`MuscleBodies` 解析出 JSON，`SVGPath` 把 SVG path（M L H V C S Q T A Z，含相对坐标和弧线）转成 SwiftUI `Path`，`Canvas` 按区域着色（没练 / 偏少 / 合适 / 偏多，今天练的描边），点区域打开那块肌肉。区域归属和今天页一样（`MuscleLoad.bodyRegions` = muscle-map.js 的 `BODY_REGIONS`）。
 - **服务器改动**：新加 `PATCH /v1/users/{user}/nutrition/entries/{id}`（`assistant/memory_api.py`，`{date, quantity, client_id}`，只能改自己的，同一个份数再发不改，测试 `tests/test_ownstore.py::test_only_mode_change_portion_api`）。
-- **模拟器截图**（Debug 版，`Features/Record/RecordDevShot.swift`）：`SIMCTL_CHILD_W2W_DEV_TAB=food|record`、`W2W_DEV_RECORD=training|journal|food`、`W2W_DEV_HEALTH=supplements|labs|events[:化验项]`、`W2W_DEV_SCROLL=n5.today|n5.week|n5.limits|n5.calendar|n5.water|n5.templates`。模拟器里要写 Keychain，构建时用 `CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual W2W_TEAM_ID=FAKETEAMID`（`apps/ios/README.md`）。
-- **还没做的**（网页版有、这次没搬）：饮食多选合并 / 存成模板、每餐推荐、饮食档案弹层、采购的商品库 / 家里存货 / 超市链接；训练的切换分化、动作库、移除 / 恢复动作、动作指导图；肌肉详情里的推荐动作和「让 Jarvis 分析」；日记的「行为影响」（在趋势页，归 N4）。
+- **模拟器截图**（Debug 版，`Features/Record/RecordDevShot.swift`）：`SIMCTL_CHILD_W2W_DEV_TAB=food|record`、`W2W_DEV_RECORD=training|journal|food`、`W2W_DEV_HEALTH=supplements|labs|events[:化验项]`、`W2W_DEV_SCROLL=n5.today|n5.week|n5.limits|n5.calendar|n5.water|n5.templates|n5.mealplan|n5.pantry|n5.library|n5.stores`；#400：`W2W_DEV_FOOD=shopping|diet|pick|scan|products|prices|product|history|grams|allmeals|combine`（`scan` 在对话里放一张空白照片，演示一键小票）；#402：`W2W_DEV_TRAINING=library|custom|split|goals|log|exercise:<slug>|plan:<日期>|muscle:<肌群>`。模拟器里要写 Keychain，构建时用 `CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual W2W_TEAM_ID=FAKETEAMID`（`apps/ios/README.md`）。
+- **原来写「还没做」的，2.0.0 前已经补齐**：饮食的多选合并 / 存成模板、每餐推荐、饮食档案弹层、采购的商品库 / 家里存货 / 价格记录 / 超市链接（#400）；训练的切换分化、动作库和动作详情（含演示图）、移除 / 恢复动作、肌肉详情里的推荐动作和「让 Jarvis 分析」（#402）；日记的「行为影响」在趋势页的报告里（下面 N4 的 `journal.analysis:<结束日>`，M5）。
+- **仍然没有的**：本机还没有动作库目录（静态包以后再带），肌肉负荷图和训练页里动作的信息仍读服务器的文档（`Features/Record/TrainingLocal.swift` 的文件头）。网页版里其余的功能有没有没搬的，这次没有逐项对照；发现了在这里补一条。
 ### 9.3 N4 趋势和报告：哪些在本机算
 
 **文档键**（`Features/Trends/TrendsStore.swift` 的 `TrendsDocs`、`Features/Reports/ReportModel.swift` 的 `ReportDocs`；结束日期是今天时键里不带日期，所以第二天打开也先画缓存）
@@ -677,7 +714,8 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 
 **范围和口径（#357）**
 
-- 范围是「今天 / 7 天 / 30 天 / 90 天 / 365 天」，默认「今天」。这次运行里选过的范围会记住（`TrendsStore.sessionRange`，只在内存里），重新打开 app 回到「今天」。
+- 范围是「今天 / 7 天 / 30 天 / 90 天 / 180 天 / 365 天」（180 天是 #405 加的），默认「今天」。这次运行里选过的范围会记住（`TrendsStore.sessionRange`，只在内存里），重新打开 app 回到「今天」。
+- **类别折叠**（开关 `trends_v2`，#405，`Features/Trends/TrendsFold.swift`）：恢复 / 睡眠 / 负荷 / 压力 / 长期各类别的标题行可以折叠，收起后仍显示项数和该类别的一张状态卡（`TrendsFold.summaryKeys`：恢复 → HRV 状态，负荷 → 训练状态，压力 → 韧性，睡眠 → 生物钟）；哪些类别折叠着记在这台手机的 `UserDefaults`（`w2w.trends.folded`，用 `@AppStorage`），不上传。关着时每个指标一整行，和以前一样。
 - 「今天」= 结束日当天的全部指标清单（`Features/Trends/TrendsDay.swift`）：分组和范围视图一样（恢复 / 睡眠 / 负荷 / 压力 / 长期），每个指标一行：当天值和单位、相对个人基线的方向（箭头 + 颜色，按每个指标的 `better`；在 0.5 SD 以内算持平）、基线均值、7 天小走势线。不画单点趋势图；当天没值显示「—」，可选指标最近 7 天都没值就不显示；体重、VO₂max 这类只看最新的指标显示最近一次和它的日期。状态卡放在最上面。点一行打开当天的讲解弹层。
 - 7 天及以上：卡片标题旁写明大数字的口径（「7 天均」，体重 / VO₂max / 训练负荷是「最新」）；点开的弹层同时给「7 天均」和「10/29 当天」两个数（`RangeFigures`），不会再出现卡片 12、弹层 31 却看不出为什么的情况。
 
@@ -772,18 +810,18 @@ N4 的趋势页、一年范围的读数、状态卡和弹层、报告、最近 1
 
 **发布**（`apps.md` 第 4 节）
 
-- 版本号 1.0.9，构建号 10（`W2W_BUILD_NUMBER`；作废的 Flutter 1.0.9 是 9）。和 Flutter 版一样，改版本号走 PR，打包的人不改。
+- 版本号 2.0.0，构建号 11（`W2W_BUILD_NUMBER`）。原来准备发的 1.0.9（构建 10）从未发布，内容并入 2.0.0；作废的 Flutter 1.0.9 是构建 9。和 Flutter 版一样，改版本号走 PR，打包的人不改。
 - 签名值写在本地的 `Watch2Whoop.local.xcconfig`，和 Flutter 版一样。
 - Xcode → Archive → 上传到 App Store Connect 的**同一条 app 记录**。
 - 先给 TestFlight 内部组用一周，再给外部测试用户。
-- 发布当天先删掉旧的 1.0.9 tag 和 Release，再在新提交上打 `app-ios-v1.0.9`（步骤见第 12.1 节）。`tools/app_release.sh ios` 从 N9 起认原生工程：版本号读 `Config/Watch2Whoop.xcconfig`，更新记录读 `apps/ios/CHANGELOG.md`，源码 zip 带上 `project.yml` 从外面打进 app 的文件。
+- 发布当天在 `origin/main` 的提交上打 `app-ios-v2.0.0`（步骤见第 12.1 节；旧的 `app-ios-v1.0.9` 不用删）。`tools/app_release.sh ios` 从 N9 起认原生工程：版本号读 `Config/Watch2Whoop.xcconfig`，更新记录读 `apps/ios/CHANGELOG.md`，源码 zip 带上 `project.yml` 从外面打进 app 的文件。
 - 交接单模板：`ios-native-1.0.9-handover-template.md`；只能真机验证的清单：`ios-native-1.0.9-device-checklist.md`。
 
 **回退**：TestFlight 装回 1.0.8。Flutter 项还在，不用重新登录。
 
 ## 11. 还没定 / 风险
 
-1. ~~**OW SDK**~~：已定（#340 中控）：1.0.9 不带 Open Wearables SDK，发布前把所有用户切到 `app` 模式。顺序见第 12 节。
+1. ~~**OW SDK**~~：已定（#340 中控）：2.0.0 不带 Open Wearables SDK，发布前把所有用户切到 `app` 模式。顺序见第 12 节。
 2. **iOS 16 还是 17**（C1）。要看测试用户的系统版本；决定之后只改一行配置。
 3. **Swift 6 严格并发**（C9）：N8 改写完同步代码之后再评估。
 4. ~~算法包签名的私钥~~：已定（#340 中控），放在部署者本机，实现见第 6.3 节；两把公钥已填进 `AlgoSigningKeys.swift` 和 `signing-keys.json`。
@@ -792,44 +830,44 @@ N4 的趋势页、一年范围的读数、状态卡和弹层、报告、最近 1
 
 ## 12. 上线顺序（N9）
 
-前提：N9 的 PR 已合并、服务器已部署（抽查改成算到今天，第 9.1 节），全量回归见 `ios-native-1.0.9-regression.md`。命令都在部署机上跑；开关用 `body-engine flags set <开关> --state …`。
+前提：N9 的 PR 已合并、服务器已部署（抽查改成算到今天，第 9.1 节），全量回归见 `ios-native-1.0.9-regression.md`。这一节原来按 1.0.9 写，现在发的是 2.0.0（1.0.9 没有发布），步骤和含义没有变。命令都在部署机上跑；开关用 `body-engine flags set <开关> --state …`。
 
-**现在的状态**（10-29）：`apple_sync_engine` 全员（影子模式，1.0.8 的前台引擎在传），`apple_sync_primary`、`apple_sync_new_accounts`、`native_sync` 都关着；测试用户都在 TestFlight 1.0.8（Flutter，带 OW SDK）。1.0.9 **没有 OW SDK**：装了 1.0.9 还停在 `shadow` 模式的人，OW 那条链路断了，引擎传的数据又只用来对比，分数会停住。所以**先切 app 模式，再发 1.0.9**。
+**写下这一节时的状态**（10-29，原来按 1.0.9 写；发布当天先用 `flags list`、`sync-mode readiness` 看实际状态）：`apple_sync_engine` 全员（影子模式，1.0.8 的前台引擎在传），`apple_sync_primary`、`apple_sync_new_accounts`、`native_sync` 都关着；测试用户都在 TestFlight 1.0.8（Flutter，带 OW SDK）。2.0.0 **没有 OW SDK**：装了 2.0.0 还停在 `shadow` 模式的人，OW 那条链路断了，引擎传的数据又只用来对比，分数会停住。所以**先切 app 模式，再发 2.0.0**。
 
 | 步 | 什么时候 | 做什么 | 看什么 |
 |---|---|---|---|
-| 1 | N9 合并、部署后 | 作废旧 1.0.9 tag，打新 tag（第 12.1 节），朋友上传，先只给 TestFlight **内部组** | Release 的 zip 和 sha256；TestFlight 显示 1.0.9 (10) |
-| 2 | 同一天 | 负责人自己：`sync-mode switch --user-id <自己>`（过门槛）→ `flags set native_sync --state cohort --cohort inner`（内测组 `inner`：负责人和最活跃的几位；1.0.8 不调这些接口，组里还没升级的人不受影响）→ 手机从 1.0.8 升级到 1.0.9，按真机清单 A、C7 验 | `app-scores status --user-id <自己>`：`active`、`trusted`、计划 `{"mode": "app", "days": []}`；今天页「本机计算」 |
+| 1 | N9 合并、部署后 | 打 `app-ios-v2.0.0` tag（第 12.1 节；旧的 1.0.9 tag 不用动），朋友上传，先只给 TestFlight **内部组** | Release 的 zip 和 sha256；TestFlight 显示 2.0.0 (11) |
+| 2 | 同一天 | 负责人自己：`sync-mode switch --user-id <自己>`（过门槛）→ `flags set native_sync --state cohort --cohort inner`（内测组 `inner`：负责人和最活跃的几位；1.0.8 不调这些接口，组里还没升级的人不受影响）→ 手机从 1.0.8 升级到 2.0.0，按真机清单 A、C7 验 | `app-scores status --user-id <自己>`：`active`、`trusted`、计划 `{"mode": "app", "days": []}`；今天页「本机计算」 |
 | 3 | 内部组用满 3–7 天、真机清单 A–D 没有阻塞问题 | **把所有人切到 app 模式**：`sync-mode readiness` 看每个人；能切的逐个 `sync-mode switch --user-id N`（也可以 `flags set apple_sync_primary --state cohort --cohort sync_app` + 每小时 `sync-mode apply`）。切的时候大家还在 1.0.8：app 模式下引擎的数据优先、1.0.8 的 OW SDK 照常在后台补缺，所以先切不会断数据 | `sync-mode readiness` 里没有「还不能切」；每人第一次重算后 `sync-mode apply` 的切换后检查（快照 vs 新分数）不超阈值。门槛不过的人（影子对比不一致、覆盖率不够）先看报告；确认只是 OW 的问题时用 `sync-mode switch --force --user-id N`（只跳过影子和分数门槛） |
-| 4 | 第 3 步做完当天 | 1.0.9 加到**外部组**（公开链接）；`flags set native_sync --state all`。1.0.8 不调这些接口，开着对它没有影响 | 一天内 `rawdata_uploads` 里大多数人的 `app_version` 变成 `1.0.9+10`；`app-scores status` 陆续变成 app 算分 |
-| 5 | TestFlight 上只剩 1.0.9 能装以后（1.0.8 的构建在 App Store Connect 里设为过期，或者 90 天自然过期） | `flags set apple_sync_new_accounts --state all`：新开户不再建 OW 用户，一开就是 app 模式 | 先开一个测试账号确认设置链接只有 `today` 和 `login`，1.0.9 扫码就能同步。**不能早开**：1.0.8 登录这种账号会显示「服务器出错（409）」，连不上同步（回归报告 O4） |
-| 6 | 所有有 OW 账号的人都已在 app 模式、都装了 1.0.9（`sync-mode readiness`、`rawdata_uploads.app_version`），1.0.9 外部组稳定一周 | **OW 停写**：每人 `ow-archive --user-id N` 补完存档、`ow-archive --check` 全部完整 → 定时任务里去掉 `import-ow` 和 OW 备份，OW 只读（#219 S7，`apple-sync-engine.md` 第 5.3 节） | 回退期 14 天（有本地存档）里分数不漂；之后 OW 下线（S8 删代码，`apple-sync-engine.md` 第 10 节） |
+| 4 | 第 3 步做完当天 | 2.0.0 加到**外部组**（公开链接）；`flags set native_sync --state all`。1.0.8 不调这些接口，开着对它没有影响 | 一天内 `rawdata_uploads` 里大多数人的 `app_version` 变成 `2.0.0+11`；`app-scores status` 陆续变成 app 算分 |
+| 5 | TestFlight 上只剩 2.0.0 能装以后（1.0.8 的构建在 App Store Connect 里设为过期，或者 90 天自然过期） | `flags set apple_sync_new_accounts --state all`：新开户不再建 OW 用户，一开就是 app 模式 | 先开一个测试账号确认设置链接只有 `today` 和 `login`，2.0.0 扫码就能同步。**不能早开**：1.0.8 登录这种账号会显示「服务器出错（409）」，连不上同步（回归报告 O4） |
+| 6 | 所有有 OW 账号的人都已在 app 模式、都装了 2.0.0（`sync-mode readiness`、`rawdata_uploads.app_version`），2.0.0 外部组稳定一周 | **OW 停写**：每人 `ow-archive --user-id N` 补完存档、`ow-archive --check` 全部完整 → 定时任务里去掉 `import-ow` 和 OW 备份，OW 只读（#219 S7，`apple-sync-engine.md` 第 5.3 节） | 回退期 14 天（有本地存档）里分数不漂；之后 OW 下线（S8 删代码，`apple-sync-engine.md` 第 10 节） |
 
 **回退**（从轻到重）
 
 - **一个人的分数不对**：`app-scores server --user-id N`，服务器重新给他算分（app 上传的照收，但不再用）；查清后 `app-scores app --user-id N`。抽查不一致时服务器本来就会自动接手。
-- **本机算分 / 增量同步整体有问题**：`flags set native_sync --state off`。接口全部 404，1.0.9 退回旧接口拉数据，服务器照常每小时算分；已经上传的 app 分数留在库里。
+- **本机算分 / 增量同步整体有问题**：`flags set native_sync --state off`。接口全部 404，2.0.0 退回旧接口拉数据，服务器照常每小时算分；已经上传的 app 分数留在库里。
 - **一个人的同步模式**：`sync-mode rollback --user-id N` 回到 `shadow`，用 OW 的数据（只在 OW 还在写的时候有用，所以第 6 步之前一直保留 OW）。没有 OW 账号的人不能回退（`no_ow`）。
-- **1.0.9 本身有问题**：TestFlight 里把 1.0.9 的构建设为过期，测试用户在 TestFlight app 里装回 1.0.8。Flutter 的钥匙串项一直留着，不用重新登录；在 app 模式下 1.0.8 用前台引擎 + OW SDK 照常同步（所以第 6 步 OW 停写之前，这条路一直可用）。
+- **2.0.0 本身有问题**：TestFlight 里把 2.0.0 的构建设为过期，测试用户在 TestFlight app 里装回 1.0.8。Flutter 的钥匙串项一直留着，不用重新登录；在 app 模式下 1.0.8 用前台引擎 + OW SDK 照常同步（所以第 6 步 OW 停写之前，这条路一直可用）。
 - **新开户出问题**：`flags set apple_sync_new_accounts --state off`，只影响之后的开户；已经按引擎开好的账号留在 app 模式。
 
-### 12.1 作废旧的 `app-ios-v1.0.9`
+### 12.1 打 `app-ios-v2.0.0`（旧的 `app-ios-v1.0.9` 不用删）
 
-旧 tag 指向 `8640be1`（#332，Flutter 1.0.9+9：只多了原生今天页 / Jarvis，开关关着），Release「iOS app 1.0.9」是 pre-release，从没发给测试用户。原生 1.0.9 的构建号是 10，比它和 1.0.8（8）都大，所以即使 build 9 曾经上传过 App Store Connect 也不冲突。**发布当天**由维护者在自己的 clone 里做（N9 没有删、没有打）：
+这个 app 的第一个版本号原来是 1.0.9（构建 10），后来改成 2.0.0（构建 11）一起发，1.0.9 从未发布。远端现在有一个 `app-ios-v1.0.9` tag，指向 `bb23e58f184c7426fd00dc9991d371c84770165d`（原生 1.0.9，构建 10）和对应的 GitHub pre-release「iOS app 1.0.9」。它们只是记录，不发给任何人。这一节原来写的旧 tag（指向 `8640be1`，Flutter 1.0.9+9）已经不存在了。
+
+`tools/app_release.sh ios` 不要求删它：脚本只检查「2.0.0 还没有 ios tag」和「构建号 11 比所有已有 ios tag 的构建号都大」（现有最大的是 1.0.9 的 10）。**发布当天**由维护者在自己的 clone 里做：
 
 ```bash
 git fetch --tags origin
-git rev-parse 'app-ios-v1.0.9^{commit}'            # 确认是 8640be1ea0099d22c814d6fab565587dea7aa62d，不是就停下
-gh release view app-ios-v1.0.9 --json name,isPrerelease,createdAt
-gh release delete app-ios-v1.0.9 --cleanup-tag --yes  # 删 Release 和远端 tag
-git tag -d app-ios-v1.0.9                            # 删本地 tag（每个 clone 都要）
-tools/app_release.sh ios                             # 预演：App apps/ios、1.0.9 build 10，全部 ✓
-tools/app_release.sh ios --push                      # 打新 tag 并推送，workflow「App release」发布 pre-release
+git rev-parse 'app-ios-v1.0.9^{commit}'            # 旧 tag，现在应该是 bb23e58f184c7426fd00dc9991d371c84770165d；只看一眼，不删、不动
+tools/app_release.sh ios                             # 预演：App apps/ios、2.0.0 build 11，全部 ✓
+tools/app_release.sh ios --push                      # 打 app-ios-v2.0.0 并推送，workflow「App release」发布 pre-release
 ```
 
-- 预演里还出现「version 1.0.9 has no ios tag yet (already: app-ios-v1.0.9)」，说明旧 tag 没删干净（本地或远端）。
-- 朋友手上如果有旧 1.0.9 的 zip，作废，只用新的 Release。私有的旧交接单 `dist/交接单-iOS-1.0.9.md` 换成按 `ios-native-1.0.9-handover-template.md` 填的新版。
-- Flutter 的 `CHANGELOG.md` 里旧的 1.0.9 一节已标「作废」，留作记录；iOS 的更新记录从 1.0.9 起在 `apps/ios/CHANGELOG.md`。
+- 预演默认读 `origin/main` 的最新提交（`--ref` 可以指定别的提交；不在 `origin/main` 上的提交要加 `--allow-unmerged`，给测试用户的构建不要用）。
+- 预演里「build 11 is higher than the last ios build (10)」是 ✗，说明 xcconfig 里的构建号没有合进 `origin/main`；「version 2.0.0 has no ios tag yet (already: …)」是 ✗，说明 2.0.0 已经打过 tag。
+- 朋友手上如果有 Release「iOS app 1.0.9」的 zip，作废，只用 2.0.0 的 Release。私有的旧交接单 `dist/交接单-iOS-1.0.9.md` 换成按 `ios-native-1.0.9-handover-template.md` 填的新版（版本 2.0.0，构建 11）。
+- Flutter 的 `CHANGELOG.md` 里旧的 1.0.9 一节已标「作废」，留作记录；iOS 的更新记录在 `apps/ios/CHANGELOG.md`（里面的 `## 1.0.9` 一节只是开发记录，没有发布）。
 
 ---
 
@@ -927,6 +965,13 @@ tools/app_release.sh ios --push                      # 打新 tag 并推送，wo
   - The sync host (`Features/Sync/`) drives the copied engine, backfill and RawSync. BGTasks and observers are registered at launch. No Open Wearables SDK.
   - A simulator upgrade from 1.0.8 kept the sign-in and the anchors. Only the engine's one-time "recent 48 hours" pass resent samples, and the server skipped them by UUID.
 
+**2.0.0 parity work (#399–#407, before release)**
+- Me and account (section 5.5): AI settings are a native page and the user's own API key lives only in the form's view state (cleared before the request leaves and when the form goes away, never stored or logged); sign-in methods, invites, long-term memory, feedback reports, the user guide under About. Message center (flag `inbox`, off by default): joining and ignoring an invite are online-only, read and hide change the cached `inbox:list` first and are sent later, outside the offline queue.
+- Food and Shopping (section 9.3): multi-select merge / save as template, meal ideas, diet profile, product library, pantry, price records, store links, "Used up" (`PUT /grocery/pantry`, absolute row, last write wins), a Today food card (`FoodStore(cardOnly: true)`), and one-tap receipt scan (the photo goes to the AI the user picked, which records the prices). Training: exercise library and details, split switching, remove / restore, own exercises, muscle details, Today training and muscle-load cards; plan edits are online-only.
+- Jarvis (section 9.2): all 28 server card types are native, `GenericCard` is only for new types and never shows raw field names, card buttons route through `JarvisRouter.route` (sheets over the chat or a tab and sub-page). Posture check (flag `posture_photos`, off by default): three guided photos sent with `purpose = "posture"` and replaced on the server when the answer ends (`docs/posture-photos-plan.md` section 10); `ai.posture` is `off`, `guide` or `photos`.
+- Today, sleep and Trends (sections 9.1, 9.3): stress, sleep coach and body-age details read the phone's own result when its package is primary, else the server's document; previous / next day and swipe; "Key points" in the sleep detail; Trends gets 180 days and foldable categories (flag `trends_v2`). A sync entry on Today (header button, sync card, stuck banner, history reminder).
+- Links and viewing others (sections 3, 4.2, 7.1): `AppLink` parses notification and in-app links and waits for `flowsSettled`; the invite landing page `/app/join.html#<code>` opens the app or shows the install guide; circle members' and family's shared data are viewed read-only from memory (`MemberViewStore`, GET-only path allow-list `MemberViewStore.readable`, `APIClient.uncached()`), nothing stored on the phone.
+
 **Testing and CI**
 - XCTest unit tests run on the simulator in the CI job "iOS native", which runs only when `apps/ios/**` changes.
 - Simulator demos use a throwaway database with synthetic data.
@@ -940,12 +985,13 @@ tools/app_release.sh ios --push                      # 打新 tag 并推送，wo
   the history fits its raw window; the server's spot check computes through today), and a setup link lost behind a
   sign-in step.
 - Rollout: switch every user to the `app` sync mode while they are still on 1.0.8 (OW keeps filling gaps), then ship
-  1.0.9 and turn `native_sync` on; `apple_sync_new_accounts` only once TestFlight offers nothing older than 1.0.9; OW
-  stops writing last. Each step has its rollback. The voided `app-ios-v1.0.9` tag is deleted and re-made on release day
-  (section 12.1); `tools/app_release.sh` now releases `apps/ios` (version from its xcconfig, build 10).
+  2.0.0 and turn `native_sync` on; `apple_sync_new_accounts` only once TestFlight offers nothing older than 2.0.0; OW
+  stops writing last. Each step has its rollback. The release was prepared as 1.0.9 (build 10), which was never
+  released; it ships as 2.0.0 (build 11) and the existing `app-ios-v1.0.9` tag (on `bb23e58`) stays as a record, no
+  deleting needed (section 12.1); `tools/app_release.sh` releases `apps/ios` (version from its xcconfig).
 
 **Open questions**
-- The OW SDK is not included: every user moves to engine `app` mode before 1.0.9 (decided; section 12).
+- The OW SDK is not included: every user moves to engine `app` mode before 2.0.0 (decided; section 12).
 - iOS 16 or 17.
 - Swift 6 strict concurrency.
 - The signing keys are generated and built into the app (current and next).
