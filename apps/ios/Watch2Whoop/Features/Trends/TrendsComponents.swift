@@ -236,33 +236,27 @@ struct StatusTileView: View {
   }
 }
 
-/// The 「问 Jarvis」 bar (flag `ui_ai_first`): the question goes to the AskAI hook (N6 opens Jarvis with it).
+/// The 「问 Jarvis」 bar (flag `ui_ai_first`): a typed question goes out at once, as from the Today page's field (`TodayHomeAI`).
 struct AskJarvisBar: View {
   let example: String
-  @Environment(\.askAI) private var askAI
   @State private var text = ""
-  @State private var copied = false
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 4) {
-      HStack(spacing: 8) {
-        Icon(.sparkles, size: 16).foregroundColor(Palette.text2)
-        TextField(tr("问 Jarvis：\(example)", "Ask Jarvis: \(example)"), text: $text)
-          .font(Typo.body)
-          .submitLabel(.send)
-          .onSubmit(send)
-      }
-      .padding(.horizontal, 14).frame(minHeight: 44)
-      .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Palette.surface))
-      if copied { Text(tr("问题已复制", "Question copied")).font(Typo.label).foregroundColor(Palette.text3).padding(.leading, 4) }
+    HStack(spacing: 8) {
+      Icon(.sparkles, size: 16).foregroundColor(Palette.text2)
+      TextField(tr("问 Jarvis：\(example)", "Ask Jarvis: \(example)"), text: $text)
+        .font(Typo.body)
+        .submitLabel(.send)
+        .onSubmit(send)
     }
+    .padding(.horizontal, 14).frame(minHeight: 44)
+    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Palette.surface))
   }
 
   private func send() {
     let q = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !q.isEmpty else { return }
-    askAI(q)
-    copied = !askAI.connected
+    TodayHomeAI.ask(q)
     text = ""
   }
 }
