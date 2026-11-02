@@ -81,7 +81,9 @@ final class JarvisPerf: NSObject {
 /// - `dial`: open / close the dial five times, then hold to talk three ways (slide to cancel, slide to lock + done,
 ///   release), then print the frame summary;
 /// - `script`: nothing but the scripted recogniser (UI tests drive the key with real touches);
-/// - `open`: open the dial and leave it open; `hold`: start holding and stay; `chat`: open the chat and ask a quick question.
+/// - `open`: open the dial and leave it open; `hold`: start holding and stay; `chat`: open the chat and ask a quick question;
+/// - `posture`: the chat with the posture sheet open; `posture-filled`: with three made-up photos in it;
+///   `posture-send`: send three made-up photos and the prefilled question (flat colours, no person in them).
 /// `W2W_JARVIS_MATERIAL=1` draws the pre-iOS 26 material keys on iOS 26 too (to compare).
 enum JarvisDemo {
   struct Hooks {
@@ -95,6 +97,18 @@ enum JarvisDemo {
   static var scriptedVoice: Bool { mode != nil }
   static var forceMaterial: Bool { ProcessInfo.processInfo.environment["W2W_JARVIS_MATERIAL"] != nil }
   private static var ran = false
+
+  static func postureFlow() -> PostureFlow {
+    var f = PostureFlow()
+    for (a, shade) in zip(PostureFlow.Angle.allCases, [0.35, 0.5, 0.65] as [CGFloat]) {
+      let img = UIGraphicsImageRenderer(size: CGSize(width: 90, height: 120)).image { c in
+        UIColor(white: shade, alpha: 1).setFill()
+        c.fill(CGRect(x: 0, y: 0, width: 90, height: 120))
+      }
+      f.photos[a] = JarvisMedia.photo(img)
+    }
+    return f
+  }
 
   @MainActor
   static func run(router: JarvisRouter, layer h: Hooks) {
@@ -112,6 +126,12 @@ enum JarvisDemo {
         router.present(.chat)
         await sec(1)
         router.chat?.send(JarvisRouter.quick(for: router.page).first?.text ?? "Hi")
+      case "posture", "posture-filled":
+        router.present(.chat)
+      case "posture-send":
+        router.present(.chat)
+        await sec(1)
+        router.chat?.send(PostureFlow.question, attachments: postureFlow().attachments, purpose: PostureFlow.purpose)
       case "hold":
         h.press(h.center())
         await sec(1.5)

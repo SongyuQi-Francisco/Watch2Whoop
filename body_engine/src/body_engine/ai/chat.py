@@ -53,10 +53,11 @@ from ..assistant.tools import _audit as run_audit
 from ..dl_app import APP
 from ..i18n import L, is_en
 from ..toolspec import fill_defaults
-from . import adapters, cards, catalog, choice, context, crypto, fallback, naming, parity, prompt, providers, scope_guard, web
+from . import adapters, cards, catalog, choice, context, crypto, fallback, naming, parity, posture, prompt, providers, scope_guard, web
 from .choice import owner_assistant_url  # noqa: F401  (web/api.py and older callers import it from here)
 from . import fallback_params as fp
 from . import params as ai_params
+from . import posture_params
 from .params import ALWAYS_CONFIRM  # only deleting / undoing asks first (tests patch it here)
 
 MAX_ROUNDS = 8                 # Max model calls chained for one user message (stops the tool loop from running forever); the last is a tools-off answer
@@ -176,20 +177,22 @@ def _conversation(conn, user_id: int, conv_id: int) -> dict:
     return row
 
 
-def _add_message(conn, conv_id: int, user_id: int, role: str, content: list, native=None, native_key=None) -> int:
-    mid = conn.execute("""INSERT INTO ai_messages (conversation_id, user_id, role, content, native, native_key)
-                          VALUES (%s,%s,%s,%s,%s,%s) RETURNING id""",
+def _add_message(conn, conv_id: int, user_id: int, role: str, content: list, native=None, native_key=None,
+                 redact_after: int | None = None) -> int:
+    """redact_after: minutes after which the hourly job replaces this message's pictures, if the turn's end did not (posture.py)."""
+    mid = conn.execute("""INSERT INTO ai_messages (conversation_id, user_id, role, content, native, native_key, redact_after)
+                          VALUES (%s,%s,%s,%s,%s,%s, now() + %s::int * interval '1 minute') RETURNING id""",
                        (conv_id, user_id, role, Jsonb(content), Jsonb(native) if native is not None else None,
-                        native_key)).fetchone()["id"]
+                        native_key, redact_after)).fetchone()["id"]
     conn.execute("UPDATE ai_conversations SET updated_at = now() WHERE id = %s", (conv_id,))
     return mid
 
 
 def _history(conn, conv_id: int, user_id: int, after: int | None = None) -> list[dict]:
-    """Messages after `after` (the summary's last message id), oldest first."""
-    return conn.execute("""SELECT id, role, content, native, native_key FROM ai_messages
-                           WHERE conversation_id = %s AND user_id = %s AND id > %s ORDER BY id""",
-                        (conv_id, user_id, after or 0)).fetchall()
+    """Messages after `after` (the summary's last message id), oldest first; a replaced picture is a line of text from here on."""
+    return context.show_redacted(conn.execute("""SELECT id, role, content, native, native_key FROM ai_messages
+                                                 WHERE conversation_id = %s AND user_id = %s AND id > %s ORDER BY id""",
+                                              (conv_id, user_id, after or 0)).fetchall())
 
 
 def _context(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adapter):
@@ -682,18 +685,22 @@ def _turns(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Ada
 
 
 def chat_events(conn: psycopg.Connection, viewer: dict, message: str, images: list[dict] | None,
-                conversation_id: int | None, allow_owner_fallback: bool = False, page: str | None = None) -> Iterator[dict]:
+                conversation_id: int | None, allow_owner_fallback: bool = False, page: str | None = None,
+                purpose: str | None = None) -> Iterator[dict]:
     """One user message. Pre-checks (provider, budget, parameters) are done by prepare_chat before the first next().
     allow_owner_fallback: only `body-engine ai-fallback try` (lets the deployer, who has the butler link, test the fallback).
     page: the Today page id the message is sent from (ai/params.PAGE_GROUPS); a page new to the conversation adds its groups
-    (unknown ids are ignored; over the budget the oldest pages' groups are dropped)."""
-    provider, adapter, conv, content = prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fallback, page)
+    (unknown ids are ignored; over the budget the oldest pages' groups are dropped).
+    purpose: what the pictures are for (posture_params.PURPOSES); posture photos do not stay on the server (posture.py)."""
+    provider, adapter, conv, content = prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fallback, page, purpose)
     return _run(conn, viewer, provider, adapter, conv, content, _scope_check(conn, viewer, provider, message, content))
 
 
-def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fallback=False, page=None):
+def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fallback=False, page=None, purpose=None):
+    if purpose is not None and purpose not in posture_params.PURPOSES:   # never an ordinary chat photo by mistake: those stay
+        raise ChatError("bad_purpose", L("不认识这个图片用途", "Unknown picture purpose"), status=422)
     message = (message or "").strip()
-    imgs = clean_images(images)
+    imgs = posture.tag(clean_images(images), purpose)
     if not message and not imgs:
         raise ChatError("empty", L("说点什么，或者发一张图", "Say something, or send a picture"), status=422)
     if len(message) > MAX_TEXT:
@@ -704,6 +711,9 @@ def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fal
     if imgs and vision is False:
         raise ChatError("no_vision", L("Jarvis 暂不支持图片，用文字描述一下", "Jarvis can't read images yet; describe it in words")
                         if fb else L("这个提供商的模型不支持图片", "This provider's model can't read images"), status=422)
+    if imgs and purpose and posture.mode(conn, viewer["id"], True, fb, vision) != posture.PHOTOS:
+        raise ChatError("posture_off", L("现在不能发体态照片，可以用文字描述", "Posture photos aren't available right now; describe it in words"),
+                        status=403)
     check_budget(conn, viewer["id"], provider)
     adapter = make_adapter(provider, viewer["id"])
     if conversation_id is None:
@@ -726,9 +736,9 @@ def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fal
 
 
 def start_chat(conn: psycopg.Connection, viewer: dict, message: str, images: list[dict] | None,
-               conversation_id: int | None, page: str | None = None) -> tuple[int, Iterator[dict]]:
+               conversation_id: int | None, page: str | None = None, purpose: str | None = None) -> tuple[int, Iterator[dict]]:
     """chat_events for the Today page: also returns the conversation id, which keys the background turn (runs.py, #114)."""
-    provider, adapter, conv, content = prepare_chat(conn, viewer, message, images, conversation_id, page=page)
+    provider, adapter, conv, content = prepare_chat(conn, viewer, message, images, conversation_id, page=page, purpose=purpose)
     return conv["id"], _run(conn, viewer, provider, adapter, conv, content, _scope_check(conn, viewer, provider, message, content))
 
 
@@ -756,12 +766,18 @@ def _run(conn, viewer, provider, adapter, conv, content, declined: str | None = 
              **({"quota": {k: v for k, v in fallback.summary(conn, viewer["id"]).items()
                            if k in ("spent_cny", "quota_cny", "remaining_cny", "reset_on")}} if fallback.is_fallback(provider) else {}))
     _close_open_calls(conn, conv, "用户没有确认就发了新消息，这次没有写入")
-    _add_message(conn, conv["id"], viewer["id"], "user", content)
+    _add_message(conn, conv["id"], viewer["id"], "user", content,
+                 redact_after=posture_params.REDACT_AFTER_MINUTES if posture.needs_redaction(content) else None)
     conn.commit()
-    if declined:
-        yield from _decline(conn, viewer, conv, declined)
-        return
-    yield from _loop(conn, viewer, provider, conv, adapter)
+    try:
+        if declined:
+            yield from _decline(conn, viewer, conv, declined)
+            return
+        if posture.is_posture(content):
+            yield ev("notice", code="posture", message=posture.notice())
+        yield from _loop(conn, viewer, provider, conv, adapter)
+    finally:   # however the turn ended: answered, failed, stopped for taking too long (gen.close)
+        posture.finish_turn(conn, conv["id"], viewer["id"])
 
 
 def prepare_confirm(conn, viewer: dict, call_id: int, approve: bool):
@@ -785,24 +801,27 @@ def confirm_events(conn, viewer, row, conv, provider, adapter, approve: bool) ->
 
 
 def _confirm_events(conn, viewer, row, conv, provider, adapter, approve: bool) -> Iterator[dict]:
-    if approve:
-        yield ev("tool", name=row["tool"], status="running")
-        status, text = _exec(conn, viewer, provider, row["id"], row["tool"], row["args"])
-        yield _tool_event(row["tool"], status, text, call_id=row["id"])
-    else:
-        conn.execute("""UPDATE ai_tool_calls SET status = 'rejected', result = '用户拒绝了这次写入，没有执行。',
-                        decided_at = now() WHERE id = %s AND user_id = %s""", (row["id"], viewer["id"]))
-        yield ev("tool", name=row["tool"], status="rejected", call_id=row["id"])
-    conn.commit()
-    left = _pending_payload(conn, viewer["id"], row["message_id"])
-    if left:  # Other write operations in the same reply are still waiting for confirmation
-        yield ev("confirm", conversation_id=conv["id"], calls=left)
-        return
-    msg = conn.execute("SELECT content FROM ai_messages WHERE id = %s AND user_id = %s",
-                       (row["message_id"], viewer["id"])).fetchone()
-    _finish_tool_message(conn, conv, row["message_id"], [b for b in msg["content"] if b["type"] == "tool_call"])
-    conn.commit()
-    yield from _turns(conn, viewer, provider, conv, adapter, parity.on(conn, viewer["id"]))
+    try:
+        if approve:
+            yield ev("tool", name=row["tool"], status="running")
+            status, text = _exec(conn, viewer, provider, row["id"], row["tool"], row["args"])
+            yield _tool_event(row["tool"], status, text, call_id=row["id"])
+        else:
+            conn.execute("""UPDATE ai_tool_calls SET status = 'rejected', result = '用户拒绝了这次写入，没有执行。',
+                            decided_at = now() WHERE id = %s AND user_id = %s""", (row["id"], viewer["id"]))
+            yield ev("tool", name=row["tool"], status="rejected", call_id=row["id"])
+        conn.commit()
+        left = _pending_payload(conn, viewer["id"], row["message_id"])
+        if left:  # Other write operations in the same reply are still waiting for confirmation
+            yield ev("confirm", conversation_id=conv["id"], calls=left)
+            return
+        msg = conn.execute("SELECT content FROM ai_messages WHERE id = %s AND user_id = %s",
+                           (row["message_id"], viewer["id"])).fetchone()
+        _finish_tool_message(conn, conv, row["message_id"], [b for b in msg["content"] if b["type"] == "tool_call"])
+        conn.commit()
+        yield from _turns(conn, viewer, provider, conv, adapter, parity.on(conn, viewer["id"]))
+    finally:
+        posture.finish_turn(conn, conv["id"], viewer["id"])
 
 
 # ---------------------------------------------------------------- list / read back
@@ -827,7 +846,8 @@ def conversation_view(conn, user_id: int, conv_id: int) -> dict:
         if m["role"] == "user" and text.startswith("[当前本地时间"):
             text = text.split("\n", 1)[1] if "\n" in text else ""
         msgs.append({"id": m["id"], "role": m["role"], "text": text, "created_at": m["created_at"],
-                     "images": sum(1 for b in m["content"] if b["type"] == "image"),
+                     "images": posture.image_count(m["content"]),
+                     **({"notice": posture.notice()} if m["role"] == "user" and posture.is_posture(m["content"]) else {}),
                      "tools": [b["name"] for b in m["content"] if b["type"] == "tool_call"],
                      "cards": cards_of.get(m["id"], [])})
     last_asst = conn.execute("""SELECT id FROM ai_messages WHERE conversation_id = %s AND user_id = %s AND role = 'assistant'
