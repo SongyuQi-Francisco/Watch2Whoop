@@ -302,6 +302,14 @@ final class TrainingPlanModelTests: XCTestCase {
     XCTAssertEqual(TrainingDaySheet.listed(s).count, 2, "the workout's own name without sets is not listed again")
   }
 
+  func testDevSwitchFindsTheMuscle() throws {
+    let m = try XCTUnwrap(MuscleLoad.parse(json(#"{"muscles": [{"key": "middle back", "name": "Mid back", "ranges": {}, "status": {}}]}"#)))
+    XCTAssertEqual(TrainingSheet.dev("muscle:middle back", muscle: m)?.id, "muscle:middle back")
+    XCTAssertNil(TrainingSheet.dev("muscle:nope", muscle: m))
+    XCTAssertEqual(TrainingSheet.dev("exercise:a:b", muscle: nil)?.id, "exercise:a:b")
+    XCTAssertNil(TrainingSheet.dev("nothing", muscle: nil))
+  }
+
   func testNoPlanStillOffersTheSplits() throws {
     let w = try XCTUnwrap(TrainingWeek.build(json(#"{"plan": null, "days": [], "available_splits": [{"split_type": "3_day_ppl", "name": "三天", "days": []}]}"#), calendar: [], monday: "2026-01-05"))
     XCTAssertFalse(w.hasPlan)
@@ -320,7 +328,7 @@ final class TodayTrainingCardTests: XCTestCase {
      "change": {"from": []}, "readiness": {"tier": "yellow", "label": "黄", "advice": "Steady"}, "sparky_error": "nope"}
     """)))
     XCTAssertEqual(t.title, tr("上肢 A", "Upper A"))
-    XCTAssertEqual(t.tags.map(\.text), [tr("3 动作", "3 ex."), tr("注意 2", "Caution 2"), tr("加重 1", "Heavier 1"), tr("已调整", "Changed"), tr("已练", "Trained")])
+    XCTAssertEqual(t.tags.map(\.text), [tr("3 动作", "3 exercises"), tr("注意 2", "Caution 2"), tr("加重 1", "Heavier 1"), tr("已调整", "Changed"), tr("已练", "Done")])
     XCTAssertEqual(t.logged.first?.setsText, "20×8")
     XCTAssertEqual(t.changedFrom, [])
     XCTAssertEqual(t.readiness?.tone, .mid)
@@ -331,7 +339,7 @@ final class TodayTrainingCardTests: XCTestCase {
   func testTrainedWithoutAPlanAndEmptyDays() throws {
     let trained = try XCTUnwrap(TodayTraining.parse(json(#"{"planned": [], "logged": [{"name": "午练", "exercises": [{"name": "丁"}, {"name": "戊"}]}]}"#)))
     XCTAssertEqual(trained.title, "午练")
-    XCTAssertEqual(trained.tags.map(\.text), [tr("2 动作", "2 ex."), tr("已练", "Trained")])
+    XCTAssertEqual(trained.tags.map(\.text), [tr("2 动作", "2 exercises"), tr("已练", "Done")])
     XCTAssertEqual(try XCTUnwrap(TodayTraining.parse(json(#"{"planned": [], "logged": [], "rest_day": true}"#))).title, tr("休息日", "Rest day"))
     XCTAssertEqual(try XCTUnwrap(TodayTraining.parse(json(#"{"planned": [], "logged": []}"#))).title, tr("无计划", "No plan"))
   }
@@ -349,7 +357,7 @@ final class TodayTrainingCardTests: XCTestCase {
                                    muscle: json(#"{"sex": "male", "unmatched": [], "muscles": [{"key": "chest", "name": "Chest", "status": {"week": "low"}, "target": {"low": 8, "high": 16}, "ranges": {"week": {"sets": 4, "volume_kg": 100}}, "trained_today": false}]}"#)))
     XCTAssertEqual(m.training?.title, tr("休息日", "Rest day"))
     XCTAssertEqual(m.muscle?.weekTotalSets, 4)
-    XCTAssertEqual(m.muscle?.todayCardLine, tr("1 块肌群偏少", "1 muscles low"))
+    XCTAssertEqual(m.muscle?.todayCardLine, tr("1 块肌群偏少", "1 muscle groups are low"))
     XCTAssertNil(TodayModel(TodayInputs(today: json(#"{"date": "2026-01-02"}"#))).training)
   }
 
@@ -359,7 +367,7 @@ final class TodayTrainingCardTests: XCTestCase {
       {"key": "chest", "name": "Chest", "trained_today": true, "ranges": {"week": {"sets": 4}}, "status": {"week": "low"}},
       {"key": "lats", "name": "Lats", "trained_today": true, "ranges": {"week": {"sets": 6}}, "status": {"week": "ok"}}]}
     """)))
-    XCTAssertEqual(trained.todayCardLine, tr("今天练了：Chest、Lats", "Today: Chest, Lats"))
+    XCTAssertEqual(trained.todayCardLine, tr("今天练了：Chest、Lats", "Trained today: Chest, Lats"))
     XCTAssertEqual(trained.weekTotalSets, 10)
     XCTAssertEqual(trained.weekSportMinutes, 45)
     XCTAssertTrue(trained.sexSet)

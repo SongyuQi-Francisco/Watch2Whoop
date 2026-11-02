@@ -38,24 +38,24 @@ struct TodayTraining: Equatable {
     } else if planned.isEmpty, !loggedRaw.isEmpty {   // no plan but trained that day: the title says what was done
       let names = loggedRaw.compactMap { $0["name"] as? String }.filter { !$0.isEmpty }
       if !names.isEmpty { title = names.joined(separator: " · ") }
-      tags.append(Tag(text: tr("\(logged.count) 动作", "\(logged.count) ex."), tone: .text))
+      tags.append(Tag(text: tr("\(logged.count) 动作", "\(logged.count) exercises"), tone: .text))
     } else if planned.isEmpty {
       title = rest ? tr("休息日", "Rest day") : tr("无计划", "No plan")
     } else {
       title = planned.map(\.name).joined(separator: " · ")
       let all = planned.flatMap(\.exercises)
-      tags.append(Tag(text: tr("\(all.count) 动作", "\(all.count) ex."), tone: .text))
+      tags.append(Tag(text: tr("\(all.count) 动作", "\(all.count) exercises"), tone: .text))
       let caution = all.filter { $0.status != "active" }.count, up = all.filter(\.hasSuggestion).count
       if caution > 0 { tags.append(Tag(text: tr("注意 \(caution)", "Caution \(caution)"), tone: .mid)) }
       if up > 0 { tags.append(Tag(text: tr("加重 \(up)", "Heavier \(up)"), tone: .good)) }
     }
     let change = t["change"] as? [String: Any]
     if change != nil { tags.append(Tag(text: tr("已调整", "Changed"), tone: .mid)) }
-    if !loggedRaw.isEmpty { tags.append(Tag(text: tr("已练", "Trained"), tone: .good)) }
+    if !loggedRaw.isEmpty { tags.append(Tag(text: tr("已练", "Done"), tone: .good)) }
     var readiness: Tag?
     let r = t["readiness"] as? [String: Any]
     if let tier = r?["tier"] as? String, tier != "unknown", let advice = r?["advice"] as? String, !advice.isEmpty {
-      readiness = Tag(text: (r?["label"] as? String) ?? tr("恢复自调节", "Autoregulation"), tone: tier == "green" ? .good : tier == "red" ? .bad : .mid)
+      readiness = Tag(text: (r?["label"] as? String) ?? tr("恢复自调节", "Recovery-based"), tone: tier == "green" ? .good : tier == "red" ? .bad : .mid)
     }
     return TodayTraining(title: title, tags: tags, failed: failed, restDay: rest, planned: planned, logged: logged,
                          changedFrom: change.map { ($0["from"] as? [String]) ?? [] }, readiness: readiness,
@@ -72,10 +72,10 @@ extension MuscleLoad {
     let trained = muscles.filter(\.trainedToday).map(\.name)
     if !trained.isEmpty {
       let names = trained.prefix(4).joined(separator: tr("、", ", "))
-      return "\(tr("今天练了", "Today"))\(tr("：", ": "))\(names)"
+      return "\(tr("今天练了", "Trained today"))\(tr("：", ": "))\(names)"
     }
     let low = muscles.filter { ($0.sets[.week] ?? 0) > 0 && $0.status[.week] == "low" }.count
-    return low > 0 ? tr("\(low) 块肌群偏少", "\(low) muscles low") : tr("本周还没有逐组记录", "No sets logged this week")
+    return low > 0 ? tr("\(low) 块肌群偏少", "\(low) muscle groups are low") : tr("本周还没有逐组记录", "No sets logged this week")
   }
 }
 
@@ -165,7 +165,7 @@ struct TodayMuscleCard: View {
               Text(muscle.todayCardLine).font(.system(size: 12)).foregroundColor(Palette.text2).lineLimit(2).multilineTextAlignment(.leading)
               if muscle.weekSportMinutes > 0 {
                 let minutes = RecordFormat.num(muscle.weekSportMinutes)
-                Text(tr("运动 \(minutes) 分钟", "Sports \(minutes) min")).font(.system(size: 12).monospacedDigit()).foregroundColor(Palette.text2)
+                Text(tr("运动 \(minutes) 分钟", "Activity \(minutes) min")).font(.system(size: 12).monospacedDigit()).foregroundColor(Palette.text2)
               }
             }
             Spacer(minLength: 0)
@@ -250,7 +250,7 @@ struct TodayTrainingSheet: View {
         }
       }
       if canLog, !training.planned.isEmpty {
-        PrimaryButton(title: tr("逐组记录", "Log set by set"), action: openLog)
+        PrimaryButton(title: tr("逐组记录", "Log sets"), action: openLog)
       }
     }
   }

@@ -8,6 +8,9 @@ struct TrainingSection: View {
   @Binding var toast: Toast?
   @State private var range: MuscleLoad.Range = .week
   @State private var sheet: TrainingSheet?
+  /// Asked from inside a sheet: goes to Jarvis when the sheet has gone.
+  @State private var askAfterClose: String?
+  @Environment(\.askAI) private var askAI
   @State private var removing: RemoveTarget?
   @State private var detailDay: String?
   @State private var open: Set<String> = []
@@ -31,10 +34,18 @@ struct TrainingSection: View {
     .task {
       await store.refresh()
       if open.isEmpty, let first = store.session?.loggable.first { open.insert(first.slug) }   // the first exercise opens by itself
-      if sheet == nil, let dev = RecordDevShot.value("W2W_DEV_TRAINING").flatMap(TrainingSheet.dev) { sheet = dev }
+      if sheet == nil, let dev = RecordDevShot.value("W2W_DEV_TRAINING") { sheet = TrainingSheet.dev(dev, muscle: store.muscle) }
     }
-    .sheet(item: $sheet) { s in
-      TrainingSheetHost(store: store, start: s) { message in
+    .sheet(item: $sheet, onDismiss: {
+      if let p = askAfterClose {
+        askAfterClose = nil
+        askAI(p)
+      }
+    }) { s in
+      TrainingSheetHost(store: store, start: s, ask: { prompt in
+        askAfterClose = prompt
+        sheet = nil
+      }) { message in
         sheet = nil
         if let message { toast = message }
       }
@@ -149,7 +160,7 @@ struct TrainingSection: View {
   /// 每周推荐 8–16 组 · 上周 6 组 · 较上周 +2 · 运动 30 分钟.
   private func rowDetail(_ r: MuscleLoad.Muscle) -> String {
     var parts: [String] = []
-    if let lo = r.low, let hi = r.high { parts.append(tr("每周推荐 \(RecordFormat.num(lo))–\(RecordFormat.num(hi)) 组", "Weekly range \(RecordFormat.num(lo))–\(RecordFormat.num(hi)) sets")) }
+    if let lo = r.low, let hi = r.high { parts.append(tr("每周推荐 \(RecordFormat.num(lo))–\(RecordFormat.num(hi)) 组", "Target \(RecordFormat.num(lo))–\(RecordFormat.num(hi)) sets a week")) }
     if range == .week, let p = r.prevWeek {
       parts.append(tr("上周 \(RecordFormat.num(p, 1)) 组", "Last week \(RecordFormat.num(p, 1)) sets"))
       if let d = r.delta, d != 0 {
@@ -157,7 +168,7 @@ struct TrainingSection: View {
         parts.append(tr("较上周 \(v)", "vs last week \(v)"))
       }
     }
-    if let s = r.sportMin[range], s > 0 { parts.append(tr("运动 \(RecordFormat.num(s)) 分钟", "Sports \(RecordFormat.num(s)) min")) }
+    if let s = r.sportMin[range], s > 0 { parts.append(tr("运动 \(RecordFormat.num(s)) 分钟", "Activity \(RecordFormat.num(s)) min")) }
     return parts.joined(separator: " · ")
   }
 
@@ -236,7 +247,7 @@ struct TrainingSection: View {
   /// 8 个动作 · 约 60 分钟 · 3/24 (training-day.js planSub).
   private func planLine(_ s: TrainingSession) -> String {
     var parts = [tr("\(s.exercises.count) 个动作", "\(s.exercises.count) exercises")]
-    if let m = s.minutes { parts.append(tr("约 \(m) 分钟", "About \(m) min")) }
+    if let m = s.minutes { parts.append(tr("约 \(m) 分钟", "about \(m) min")) }
     let sets = s.loggable.flatMap { store.rows[$0.slug] ?? [] }
     if !sets.isEmpty { parts.append("\(sets.filter(\.done).count)/\(sets.count)") }
     return parts.joined(separator: " · ")
@@ -513,39 +524,39 @@ struct ExerciseCard: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       HStack(spacing: 0) {
-      Button(action: toggle) {
-        HStack(spacing: 10) {
-          if let baseURL {
-            PlanExerciseThumb(thumb: e.thumb, primary: e.primaryMuscles, secondary: e.secondaryMuscles, base: baseURL, sex: sex)
-          }
-          VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-              Text(e.name).font(Typo.bodyStrong).foregroundColor(e.banned ? Palette.text2 : Palette.text)
-                .strikethrough(e.banned, color: Palette.text3).lineLimit(2).multilineTextAlignment(.leading)
-              if e.banned { Badge(label: tr("禁用", "Banned"), tone: .bad) } else if e.caution { Badge(label: tr("注意", "Caution"), tone: .mid) }
-              if e.unresolved { Badge(label: tr("认不出", "Not recognised"), tone: .mid) }
+        Button(action: toggle) {
+          HStack(spacing: 10) {
+            if let baseURL {
+              PlanExerciseThumb(thumb: e.thumb, primary: e.primaryMuscles, secondary: e.secondaryMuscles, base: baseURL, sex: sex)
             }
-            Text(e.banned ? tr("不要做", "Don't do it") : e.prescription).font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2)
+            VStack(alignment: .leading, spacing: 3) {
+              HStack(spacing: 6) {
+                Text(e.name).font(Typo.bodyStrong).foregroundColor(e.banned ? Palette.text2 : Palette.text)
+                  .strikethrough(e.banned, color: Palette.text3).lineLimit(2).multilineTextAlignment(.leading)
+                if e.banned { Badge(label: tr("禁用", "Banned"), tone: .bad) } else if e.caution { Badge(label: tr("注意", "Caution"), tone: .mid) }
+                if e.unresolved { Badge(label: tr("认不出", "Not recognised"), tone: .mid) }
+              }
+              Text(e.banned ? tr("不要做", "Don't do it") : e.prescription).font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2)
+            }
+            Spacer(minLength: 4)
+            if !e.banned, !rows.isEmpty {
+              let done = rows.filter(\.done).count
+              Text("\(done)/\(rows.count)").font(Typo.caption.monospacedDigit())
+                .foregroundColor(done >= rows.count ? Palette.good : Palette.text2)
+            }
+            Icon(open ? .chevronDown : .chevronRight, size: 14).foregroundColor(Palette.text3)
           }
-          Spacer(minLength: 4)
-          if !e.banned, !rows.isEmpty {
-            let done = rows.filter(\.done).count
-            Text("\(done)/\(rows.count)").font(Typo.caption.monospacedDigit())
-              .foregroundColor(done >= rows.count ? Palette.good : Palette.text2)
+          .padding(14)
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(PressScale())
+        if let remove {
+          Button(action: remove) {
+            Icon(.x, size: 16).foregroundColor(Palette.text3).frame(width: 40, height: 44)
           }
-          Icon(open ? .chevronDown : .chevronRight, size: 14).foregroundColor(Palette.text3)
+          .padding(.trailing, 4)
+          .accessibilityLabel(tr("移除这个动作", "Remove this exercise"))
         }
-        .padding(14)
-        .contentShape(Rectangle())
-      }
-      .buttonStyle(PressScale())
-      if let remove {
-        Button(action: remove) {
-          Icon(.x, size: 16).foregroundColor(Palette.text3).frame(width: 40, height: 44)
-        }
-        .padding(.trailing, 4)
-        .accessibilityLabel(tr("移除这个动作", "Remove this exercise"))
-      }
       }
       if e.unresolved, let swapTo, !e.candidates.isEmpty {
         HStack(spacing: 8) {

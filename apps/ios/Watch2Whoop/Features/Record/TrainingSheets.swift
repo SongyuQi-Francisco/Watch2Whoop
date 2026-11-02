@@ -22,8 +22,9 @@ enum TrainingSheet: Identifiable {
     }
   }
 
-  /// Debug screenshots (`W2W_DEV_TRAINING`, RecordDevShot): library, custom, split, goals, log, exercise:<slug>, plan:<date>.
-  static func dev(_ value: String) -> TrainingSheet? {
+  /// Debug screenshots (`W2W_DEV_TRAINING`, RecordDevShot): library, custom, split, goals, log, exercise:<slug>, plan:<date>,
+  /// muscle:<key>.
+  static func dev(_ value: String, muscle: MuscleLoad?) -> TrainingSheet? {
     let parts = value.split(separator: ":", maxSplits: 1).map(String.init)
     switch parts.first {
     case "library": return .library
@@ -33,6 +34,7 @@ enum TrainingSheet: Identifiable {
     case "log": return .log
     case "exercise": return parts.count > 1 ? .exercise(parts[1]) : nil
     case "plan": return parts.count > 1 ? .planDay(parts[1]) : nil
+    case "muscle": return muscle?.muscles.first { parts.count > 1 && $0.key == parts[1] }.map { TrainingSheet.muscle($0, .week) }
     default: return nil
     }
   }
@@ -45,16 +47,19 @@ struct TrainingNav {
   let finish: (Toast?) -> Void
   /// A message over the sheet.
   let say: (Toast) -> Void
+  /// A question for Jarvis: asked once the sheet has gone.
+  var ask: ((String) -> Void)? = nil
 }
 
 struct TrainingSheetHost: View {
   @ObservedObject var store: TrainingStore
   let start: TrainingSheet
+  var ask: ((String) -> Void)? = nil
   let finish: (Toast?) -> Void
   @State private var toast: Toast?
 
   var body: some View {
-    let nav = TrainingNav(store: store, finish: finish, say: { toast = $0 })
+    let nav = TrainingNav(store: store, finish: finish, say: { toast = $0 }, ask: ask)
     NavigationStack {
       switch start {
       case .library: ExerciseLibraryView(nav: nav)
@@ -155,7 +160,7 @@ struct ExerciseStatusBadge: View {
     switch status {
     case "banned": Badge(label: tr("禁用", "Banned"), tone: .bad)
     case "caution": Badge(label: tr("注意", "Caution"), tone: .mid)
-    default: if showActive { Badge(label: tr("正常", "OK"), tone: .good) }
+    default: if showActive { Badge(label: tr("正常", "Normal"), tone: .good) }
     }
   }
 }
@@ -165,13 +170,17 @@ struct AskJarvisButton: View {
   let title: String
   let prompt: String
   var background = Palette.inSheet
+  /// How to ask from inside a sheet; nil = directly.
+  var ask: ((String) -> Void)? = nil
   @Environment(\.askAI) private var askAI
 
   private var canAsk: Bool { JarvisRouter.current?.ai.mode != JarvisAI.Mode.none }
 
   var body: some View {
     if canAsk {
-      SecondaryButton(icon: .sparkles, title: title, background: background) { askAI(prompt) }
+      SecondaryButton(icon: .sparkles, title: title, background: background) {
+        if let ask { ask(prompt) } else { askAI(prompt) }
+      }
     }
   }
 }
@@ -259,7 +268,7 @@ struct SplitPickerView: View {
                 Text("\(ExerciseVocab.weekday(d.dayOfWeek)) · \(d.name)").font(Typo.body).foregroundColor(Palette.text)
                   .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 10)
-                Text(tr("\(d.exerciseCount) 动作", "\(d.exerciseCount) ex.")).font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2)
+                Text(tr("\(d.exerciseCount) 动作", "\(d.exerciseCount) exercises")).font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2)
               }
               .padding(.vertical, 11)
             }

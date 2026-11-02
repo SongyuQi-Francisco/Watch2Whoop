@@ -620,7 +620,7 @@ struct MuscleDetailView: View {
           sports(d)
           recommended(d)
         }
-        AskJarvisButton(title: tr("让 Jarvis 分析我的肌群训练", "Ask Jarvis to analyse my muscle training"), prompt: MusclePrompts.analyse)
+        AskJarvisButton(title: tr("让 Jarvis 分析我的肌群训练", "Ask Jarvis to analyse my muscle training"), prompt: MusclePrompts.analyse, ask: nav.ask)
           .padding(.top, 4)
       }
     }
