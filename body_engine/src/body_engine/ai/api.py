@@ -27,7 +27,8 @@ from starlette.concurrency import run_in_threadpool
 
 from ..i18n import L, lang
 from ..rollout import flags
-from . import asr, catalog, chat, choice, crypto, fallback, oauth, providers, quota_cards, runs, tokens, voice_fix
+from . import asr, catalog, chat, choice, crypto, fallback, oauth, posture, providers, quota_cards, runs, tokens, voice_fix
+from . import posture_params
 from . import quota_cards_params as qcp
 from .web import mcp as web_mcp
 from . import params as ai_params
@@ -111,7 +112,10 @@ def mcp_setup(request: Request, token_env: str = "BODY_ENGINE_MCP_TOKEN") -> dic
 
 def ai_status(conn, viewer: dict) -> dict:
     e = choice.effective(conn, viewer["id"])
-    return {**_ai_mode(conn, viewer, e), "choice": choice.key_of(e), "asr": asr.status(conn, viewer["id"])}
+    mode = _ai_mode(conn, viewer, e)
+    return {**mode, "choice": choice.key_of(e), "asr": asr.status(conn, viewer["id"]),
+            "posture": posture.mode(conn, viewer["id"], mode["mode"] in ("api", "fallback"), mode["mode"] == "fallback",
+                                    mode.get("vision"))}
 
 
 def _ai_mode(conn, viewer: dict, e: dict) -> dict:
@@ -356,6 +360,7 @@ class ChatIn(BaseModel):
     images: list[ImageIn] = Field(default_factory=list, max_length=chat.MAX_IMAGES)
     conversation_id: int | None = None
     page: str | None = Field(None, max_length=ai_params.PAGE_MAX_LEN)   # Today page id: picks extra tool groups (ai/params.PAGE_GROUPS)
+    purpose: Literal[tuple(posture_params.PURPOSES)] | None = None     # what the pictures are for; posture photos do not stay (ai/posture.py)
 
 
 class ConfirmIn(BaseModel):
@@ -396,7 +401,7 @@ def post_chat(body: ChatIn, viewer=Depends(stream_user)):
     # A read-only login can chat too (read tools work as usual), write tools are rejected (chat.py decides by token_scopes)
     return _start_run(viewer, lambda conn: chat.start_chat(conn, viewer, body.message,
                                                            [i.model_dump() for i in body.images], body.conversation_id,
-                                                           page=body.page))
+                                                           page=body.page, purpose=body.purpose))
 
 
 @router.post("/v1/assistant/chat/confirm")

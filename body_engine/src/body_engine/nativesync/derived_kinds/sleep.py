@@ -69,12 +69,26 @@ def recompute(conn: psycopg.Connection, uid: int, day: date, uploaded: dict[date
     return derive.session_rows(derive.nights(conn, uid, {day}, tz))
 
 
+def _choose_main(conn: psycopg.Connection, uid: int, d: date) -> None:
+    conn.execute(
+        """UPDATE sleep_sessions s SET is_main = (s.id = m.id)
+           FROM (SELECT DISTINCT ON (wake_date) wake_date, id FROM sleep_sessions
+                 WHERE user_id = %s AND wake_date = %s ORDER BY wake_date, asleep_min DESC, id) m
+           WHERE s.user_id = %s AND s.wake_date = m.wake_date""", (uid, d, uid))
+
+
 def write(conn: psycopg.Connection, uid: int, days: dict[date, list[dict]], bundle_version: str | None) -> int:
     app = common.APP_SOURCE
     lower = [s for s, p in common.SOURCE_PRIORITY.items() if p < common.SOURCE_PRIORITY[app]]
     n = 0
+    moved: set[date] = set()
     for d, rows in days.items():
         conn.execute("DELETE FROM sleep_sessions WHERE user_id = %s AND wake_date = %s AND source = %s", (uid, d, app))
+        # common.clear_moved_nights in the phone's seconds, converted as the INSERT below converts them
+        moved |= {r["wake_date"] for r in conn.execute(
+            """DELETE FROM sleep_sessions WHERE user_id = %s AND source = %s
+               AND start_at IN (SELECT to_timestamp(x) FROM unnest(%s::float8[]) AS x) RETURNING wake_date""",
+            (uid, app, [r["start"] for r in rows]))}
         if rows:
             conn.execute("DELETE FROM sleep_sessions WHERE user_id = %s AND wake_date = %s AND source = ANY(%s)",
                          (uid, d, lower))
@@ -86,10 +100,8 @@ def write(conn: psycopg.Connection, uid: int, days: dict[date, list[dict]], bund
                    VALUES (%s, %s, to_timestamp(%s), to_timestamp(%s), %s, %s, %s, %s, %s, %s, FALSE, %s, %s, 'app', %s, %s)""",
                 [(uid, d, r["start"], r["end"], r["asleep_min"], r["core_min"], r["deep_min"], r["rem_min"], r["awake_min"],
                   r["unspecified_min"], app, r["device"], bundle_version, Jsonb(r["segments"])) for r in rows])
-        conn.execute(
-            """UPDATE sleep_sessions s SET is_main = (s.id = m.id)
-               FROM (SELECT DISTINCT ON (wake_date) wake_date, id FROM sleep_sessions
-                     WHERE user_id = %s AND wake_date = %s ORDER BY wake_date, asleep_min DESC, id) m
-               WHERE s.user_id = %s AND s.wake_date = m.wake_date""", (uid, d, uid))
+        _choose_main(conn, uid, d)
         n += len(rows)
+    for d in moved:
+        _choose_main(conn, uid, d)
     return n
