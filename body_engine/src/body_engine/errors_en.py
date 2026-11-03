@@ -11,6 +11,7 @@ import re
 from .i18n import is_en
 
 EXACT: dict[str, str] = {
+    "这个 token 不能换登录码": "This token cannot get a login code",
     # ---- JS algorithm bundle (algo/api.py)
     "算法包不可用": "The algorithm bundle is not available",
     "没有这个版本的算法包": "No algorithm bundle of this version",
