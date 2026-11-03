@@ -148,9 +148,6 @@ struct AppearanceView: View {
       if let now = try? await session.api.send(.get(Endpoint.appearance), as: AppearanceChoice.self), now != session.appearance {
         session.setAppearance(now)
       }
-      #if DEBUG
-      await devFlip()
-      #endif
     }
   }
 
@@ -162,15 +159,6 @@ struct AppearanceView: View {
       message = e.userMessage
     } catch {}
   }
-
-  #if DEBUG
-  /// `SIMCTL_CHILD_W2W_DEV_THEME_FLIP=<seconds>` (Debug, simulator screenshots): switches the theme that long after opening.
-  private func devFlip() async {
-    guard let s = RecordDevShot.value("W2W_DEV_THEME_FLIP").flatMap(Double.init) else { return }
-    try? await Task.sleep(nanoseconds: UInt64(s * 1_000_000_000))
-    await save(AppearancePatch(theme: a.isSlim ? "default" : "slim"))
-  }
-  #endif
 }
 
 /// 没提交的修改: writes still in the offline queue; failed / conflicting ones block their group until retried or dropped

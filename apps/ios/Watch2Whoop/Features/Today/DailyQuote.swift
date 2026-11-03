@@ -137,7 +137,25 @@ struct DailyQuoteCard: View {
     .overlay(alignment: .leading) { Palette.accent.frame(width: 3) }
     .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
     .padding(.bottom, 12)
+    #if DEBUG
+    .onAppear(perform: devDrive)
+    #endif
   }
+
+  #if DEBUG
+  /// `SIMCTL_CHILD_W2W_DEV_QUOTE=next|open|close` (Debug, simulator screenshots): does that 3 seconds after the card appears.
+  private func devDrive() {
+    guard let what = RecordDevShot.value("W2W_DEV_QUOTE") else { return }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+      switch what {
+      case "next": tapped()
+      case "open": if let u = quote.url { open(u) }
+      case "close": close()
+      default: break
+      }
+    }
+  }
+  #endif
 
   private func tapped() {
     guard !reduceMotion else { return next() }
