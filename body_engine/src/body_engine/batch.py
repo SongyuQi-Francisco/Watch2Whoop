@@ -348,6 +348,12 @@ def main(args) -> int:
                 res["ai_images_redacted"] = posture.redact_overdue(conn)
         except Exception as e:  # noqa: BLE001  fails the run so the doctor sees it; the next run tries again
             res["errors"].append(f"posture-redact: {type(e).__name__}")
+        try:   # chat photos past their month: all users, idempotent
+            from .ai import image_retention
+            with db.connect() as conn:
+                res["ai_images_expired"] = image_retention.expire(conn)
+        except Exception as e:  # noqa: BLE001  fails the run so the doctor sees it; the next run tries again
+            res["errors"].append(f"image-retention: {type(e).__name__}")
     print(f"{len(users)} 个用户，{res['skipped_steps']} 步没变跳过，{len(res['errors'])} 项失败（{res['seconds']:.0f} 秒，{args.workers} 个进程）")
     print(RESULT_PREFIX + json.dumps(res, ensure_ascii=False), flush=True)
     return 1 if res["errors"] else 0

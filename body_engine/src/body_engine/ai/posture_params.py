@@ -17,6 +17,10 @@ REDACT_PURPOSES = frozenset({"posture"})
 REDACT_AFTER_MINUTES = 30
 assert REDACT_AFTER_MINUTES * 60 > rp.MAX_RUN_SECONDS
 
+# Every other chat photo (and video frame) stays this long, then ai/image_retention.py replaces it the same way. Owner, 2026-11-04:
+# periodic rather than at the end of the turn, which is too soon for an ordinary photo the person may still ask about.
+CHAT_IMAGE_KEEP_DAYS = 30
+
 # Decision D11 of the plan: a body photo only from a person the profile says is an adult. No birthday = not known to be one.
 MIN_AGE = 18
 

@@ -209,7 +209,7 @@
 4. **只对满 18 岁的人（决定 D11）**：`posture.mode` 要开关打开、资料里有生日且满 `MIN_AGE`（18），否则是 `off`，没有入口，带图片的请求也被拒。
 5. **固定提示按「没有模型通过评估」处理**：方案是没过门槛的模型才加提示、并在 `ai/catalog.py` 给模型记 `posture: "limited"`。现在没有任何模型评估过，所以**每一次**体态回答前都发一个 `notice` 事件（`code = "posture"`，「这个模型看体态的准确度有限，结论仅供参考」），重新打开对话时用户消息上也带这句；`catalog.py` 没有加 `posture` 字段。
 6. **之后的轮次**：`context.show_redacted` 把占位读成一行文字（「这里有 3 张体态照片，按设置没有保存」），模型靠自己上一轮的结论继续；中途换了 AI，新 AI 也拿不到那几张图。
-7. **只管体态照片（决定 D2 还没定）**：换占位只对 `purpose = posture` 的图生效，由 `REDACT_PURPOSES` 一个设置决定；普通聊天照片没有变，仍存到用户删除对话为止（测试 `test_known_gap_an_ordinary_photo_still_reaches_the_new_ai` 把这点记成已知缺口）。负责人定了 D2，要扩大到所有聊天照片时，只改 `REDACT_PURPOSES`（加 `None`）。
+7. **决定 D2（负责人 2026-11-04）**：普通聊天照片不在回答结束时删，保留 30 天后换占位（`ai/image_retention.py`）；体态照片仍是回答结束就换。下面是回答结束这一步的实现：换占位只对 `purpose = posture` 的图生效，由 `REDACT_PURPOSES` 一个设置决定；普通聊天照片没有变，仍存到用户删除对话为止（测试 `test_known_gap_an_ordinary_photo_still_reaches_the_new_ai` 把这点记成已知缺口）。负责人定了 D2，要扩大到所有聊天照片时，只改 `REDACT_PURPOSES`（加 `None`）。
 8. **入口只做在原生 app**：没有改网页版的 `web/static/ai-media.js`。
 
 **方案第 6.2 节里这次没做的**
