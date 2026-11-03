@@ -997,3 +997,11 @@ tools/app_release.sh ios --push                      # 打 app-ios-v2.0.0 并推
 - The signing keys are generated and built into the app (current and next).
 - Full-restore traffic is decided: pages of 500 changes or 20,000 raw rows; older history comes through `raw_history` (Wi-Fi + power, or cellular if allowed).
 - A long transaction delays what pulls can see until it ends. This is on purpose, so that no change is lost.
+
+
+<!-- 2.0.0 additions (2026-11-04) -->
+### 2.0.0 补充（2026-11-04）
+
+- 外观：`DesignSystem/Theme.swift`、`Palette.accent` / `onAccent` 按主题取色；语录 `GET /v1/users/me/appearance/quotes`（`Features/Today/DailyQuote.swift`，开关 `slim_mode`）。
+- 「我」页入口：`/v1/web/me` 的 `me_links`，`POST /v1/web/me-links/{key}/open` 返回要在系统浏览器打开的地址；没有插件时什么都不显示。Debug 开关 `W2W_DEV_MELINK`。
+- 聊天照片：服务器保留 30 天后换占位（`ai/image_retention.py`），app 仍显示张数。

@@ -17,6 +17,12 @@ tags it and the workflow publishes this section as the release notes. The Flutte
 
 The first native iOS version: the whole app is native iOS pages (Today, Trends, Log, Food, Friends, Me, Jarvis) that open faster and scroll more smoothly; they open on your last data, work offline, and send what you logged when you are back online; recovery, sleep and strain are computed on your iPhone. This version adds the main features the web version had and the app lacked: account and AI settings under Me, Food and Shopping, the exercise library, Jarvis cards, the details of Today and Sleep, and viewing what circle members and family share with you; and it adds a message center, a posture check, report / block in circles and the privacy notes the App Store needs. Update from TestFlight as usual; **you stay signed in**, and your settings and sync progress from 1.0.8 carry over. The first launch asks for Health access once (tap Turn On All, then Allow). Features whose server flag is off by default (message center `inbox`, posture check `posture_photos`, and the on-phone compute flags below) appear only once the server turns them on.
 
+- 薄肌模式（内测，开关 `slim_mode`）：我 → 外观可以换薄肌主题，今天页顶部每天一句。 / Slim mode (beta, flag `slim_mode`): Me → Appearance now has a slim theme, with a daily quote at the top of Today.
+
+- 「我」页可以显示服务器下发的入口，在系统浏览器里打开，默认没有。 / The Me page can show links sent by the server, opened in the system browser; none by default.
+
+- 回归修复：今天页滑动卡死、趋势页从图表上滑不动、冷启动点通知或邀请链接不跳转、饮食卡第一次不出现、克数超限后总量错误、动作库走不下去、屏蔽的邀请人无法恢复等。 / Regression fixes: Today freezing on scroll, Trends not scrolling from a chart, notifications and invite links on cold start, the food card missing on first open, wrong totals after an over-limit amount, a dead end in the exercise library, muted inviters that could not be restored, and more.
+
 - 今天页 AI 优先（内测，开关 `ui_ai_first`，目前只对内测组开）：搜索框也能问 Jarvis，示例问题来自你自己的数据，长按卡片问 Jarvis，首页模块按关注、发现和 AI 用过排列，全部功能随时能看。 / AI-first Today (beta, flag `ui_ai_first`, on for the inner test group only): the search field also asks Jarvis, example questions come from your own data, long-press a card to ask about it, modules follow your focus, findings and what your AI used, and all features are one tap away.
 - 现在可以在 app 里查看圈子成员和家人共享给你的数据（只读），他们的数据不会存在你的手机上。 / You can now view what circle members and family share with you in the app (read-only); their data is not stored on your phone.
 
