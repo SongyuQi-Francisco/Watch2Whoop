@@ -74,9 +74,9 @@ struct MemberScreen: View {
       }
       Spacer(minLength: 6)
       Button(action: exit) {
-        Text(tr("退出", "Exit")).font(Typo.bodyStrong).foregroundColor(Palette.bg)
+        Text(tr("退出", "Exit")).font(Typo.bodyStrong).foregroundColor(Palette.onAccent)
           .padding(.horizontal, 14).frame(minHeight: 36)
-          .background(Capsule().fill(Palette.text))
+          .background(Capsule().fill(Palette.accent))
       }
       .buttonStyle(PressScale())
     }

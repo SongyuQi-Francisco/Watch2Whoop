@@ -451,9 +451,9 @@ struct EventForm: View {
             ForEach(BodyEvent.categories, id: \.self) { c in
               Button { category = c } label: {
                 Text(BodyEvent.categoryTitle(c)).font(.system(size: 14, weight: .medium))
-                  .foregroundColor(category == c ? Palette.bg : Palette.text)
+                  .foregroundColor(category == c ? Palette.onAccent : Palette.text)
                   .padding(.vertical, 8).padding(.horizontal, 12)
-                  .background(Capsule().fill(category == c ? Palette.text : Palette.inSheet))
+                  .background(Capsule().fill(category == c ? Palette.accent : Palette.inSheet))
               }
               .buttonStyle(PressScale())
             }
@@ -467,9 +467,9 @@ struct EventForm: View {
           ForEach(1...5, id: \.self) { n in
             Button { severity = severity == n ? nil : n } label: {
               Text("\(n)").font(.system(size: 15, weight: .semibold))
-                .foregroundColor(severity == n ? Palette.bg : Palette.text)
+                .foregroundColor(severity == n ? Palette.onAccent : Palette.text)
                 .frame(maxWidth: .infinity, minHeight: 40)
-                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(severity == n ? Palette.text : Palette.inSheet))
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(severity == n ? Palette.accent : Palette.inSheet))
             }
             .buttonStyle(PressScale())
           }

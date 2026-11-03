@@ -234,8 +234,8 @@ private struct InviteInbox: View {
           }
           Spacer(minLength: 4)
           Button(tr("加入", "Join")) { accept(i) }
-            .font(.system(size: 14, weight: .semibold)).foregroundColor(Palette.bg)
-            .padding(.horizontal, 14).frame(minHeight: 34).background(Capsule().fill(Palette.text))
+            .font(.system(size: 14, weight: .semibold)).foregroundColor(Palette.onAccent)
+            .padding(.horizontal, 14).frame(minHeight: 34).background(Capsule().fill(Palette.accent))
             .buttonStyle(PressScale())
           Button(tr("忽略", "Ignore")) { Task { await store.decline(i.id) } }
             .font(.system(size: 14)).foregroundColor(Palette.text2)

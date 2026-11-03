@@ -197,8 +197,8 @@ struct AskAIButton: View {
           Text(copied ? tr("问题已复制", "Question copied") : tr("问 AI", "Ask AI")).font(Typo.bodyStrong)
         }
         .frame(maxWidth: .infinity, minHeight: 44)
-        .foregroundColor(Palette.bg)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.text))
+        .foregroundColor(Palette.onAccent)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.accent))
       }
       .buttonStyle(PressScale())
     }

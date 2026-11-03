@@ -269,9 +269,9 @@ struct GroceryView: View {
           ForEach(store.stores) { s in
             Button { toggle(s) } label: {
               Text(s.label).font(.system(size: 14, weight: .medium))
-                .foregroundColor(s.connected ? Palette.bg : Palette.text2)
+                .foregroundColor(s.connected ? Palette.onAccent : Palette.text2)
                 .padding(.vertical, 8).padding(.horizontal, 16)
-                .background(Capsule().fill(s.connected ? Palette.text : Palette.surface))
+                .background(Capsule().fill(s.connected ? Palette.accent : Palette.surface))
             }
             .buttonStyle(PressScale())
             .opacity(store.offline ? 0.5 : 1)

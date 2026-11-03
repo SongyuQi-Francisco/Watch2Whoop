@@ -49,7 +49,7 @@ struct MainTabView: View {
           .tag(tab)
       }
     }
-    .tint(Palette.text)
+    .tint(Palette.accent)
     .circleRouting(selection: $selection)                                                  // N7: notification / link → 朋友
     .inboxRouting(selection: $selection)                                                   // #359: push / link → 我 → 消息
     .overlay { JarvisLayer(tab: $selection) }                                             // N6
@@ -61,6 +61,7 @@ struct MainTabView: View {
     }
     .onChange(of: session.viewing) { p in if p == nil { Task { await session.refreshViewable() } } }
     .task { await openDevMember() }
+    .task { await devThemeFlip() }
     .onChange(of: session.circlesTab) { on in
       if selection == .circles && !on { selection = .today }
       if selection == .food && on { selection = .record }
@@ -74,6 +75,15 @@ struct MainTabView: View {
     guard let v = RecordDevShot.value("W2W_DEV_MEMBER"), let id = Int(v.split(separator: ":")[0]) else { return }
     await session.refreshViewable()
     session.viewing = session.viewable.first { $0.id == id }
+    #endif
+  }
+
+  /// `SIMCTL_CHILD_W2W_DEV_THEME_FLIP=<seconds>` (Debug, simulator screenshots): switches the theme that long after the tabs appear.
+  private func devThemeFlip() async {
+    #if DEBUG
+    guard let s = RecordDevShot.value("W2W_DEV_THEME_FLIP").flatMap(Double.init) else { return }
+    try? await Task.sleep(nanoseconds: UInt64(s * 1_000_000_000))
+    try? await session.saveAppearance(AppearancePatch(theme: session.appearance?.isSlim == true ? "default" : "slim"))
     #endif
   }
 

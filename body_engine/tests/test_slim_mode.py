@@ -18,7 +18,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from body_engine import api, auth
-from body_engine.appearance import store
+from body_engine.appearance import quotes, store
 from body_engine.config import Settings
 from body_engine.db import migrate
 from body_engine.rollout import flags, registry
@@ -180,6 +180,55 @@ def test_every_shown_quote_has_a_primary_source():
         assert q["verified"] is False and q["source_desc"] and q["person"] in accounts
     # no picture of anyone, in any field
     assert not re.search(r"\.(png|jpe?g|webp|gif)\b|avatar|photo|portrait", json.dumps(data), re.I)
+
+
+# ---------------------------------------------------------------- the quotes for the native app
+def test_quotes_endpoint_only_for_people_the_flag_is_on_for(client, users, dsn):
+    ids, tok = users
+    set_flag(dsn, "off")
+    assert client.get("/v1/users/me/appearance/quotes", headers=H(tok["owner"])).status_code == 404
+    set_flag(dsn, "cohort", cohort="owner", user_id=ids["owner"])
+    assert client.get("/v1/users/me/appearance/quotes", headers=H(tok["other"])).status_code == 404   # the flag is not on for them
+    assert client.get("/v1/users/me/appearance/quotes").status_code == 401
+    r = client.get("/v1/users/me/appearance/quotes", headers=H(tok["owner_ro"]))   # read-only is enough
+    assert r.status_code == 200 and r.json() == quotes.load()
+    assert client.get(f"/v1/users/{ids['owner']}/appearance/quotes", headers=H(tok["owner"])).status_code == 200
+    assert client.get(f"/v1/users/{ids['other']}/appearance/quotes", headers=H(tok["owner"])).status_code == 403
+    assert client.put("/v1/users/me/appearance/quotes", json={}, headers=H(tok["owner"])).status_code == 405   # read-only
+
+
+def test_quotes_file_parses_and_nothing_unverified_gets_out():
+    data = quotes.load()
+    assert data["version"] >= 1 and len(data["items"]) >= 10
+    assert all(set(q) == {"id", "person", "text", "lang", "source_url"} for q in data["items"])
+    src = QUOTES.read_text(encoding="utf-8")
+    for q in data["items"]:
+        # word for word: the text the server gives is the text in the file (JSON-escaped there)
+        assert json.dumps(q["text"], ensure_ascii=False) in src, q["id"]
+    served = json.dumps(data, ensure_ascii=False)
+    rumours = re.findall(r'"id": "([^"]+)"[^\n]*"verified": false', src)
+    assert rumours and not any(r in served for r in rumours)
+    assert "verified" not in served and "source_desc" not in served
+    bad = """items: [
+  {"id": "a", "person": "p", "text": "t", "lang": "en", "source_url": "https://x.com/a/status/1", "verified": false},
+  {"id": "b", "person": "p", "text": "", "lang": "en", "source_url": "https://x.com/a/status/2", "verified": true},
+  {"id": "c", "person": "p", "text": "t", "lang": "en", "source_url": "", "verified": true},
+  ],
+  unverified: [
+  {"id": "d", "person": "p", "text": "t", "lang": "en", "source_url": "https://x.com/a/status/3", "verified": true},
+  ],"""
+    assert quotes.parse(bad)["items"] == []
+
+
+@needs_node
+def test_quotes_are_exactly_what_the_page_shows_in_the_same_order():
+    """The page's own ordered() over the page's own data gives the server's list, so the app and the page agree on each day."""
+    out = run_js("""
+      const S = require(process.argv[2]);
+      eval(fs.readFileSync(process.argv[1], "utf8"));
+      console.log(JSON.stringify(S.ordered(window.BodySlimQuotes.items)));""")
+    assert [q["id"] for q in quotes.load()["items"]] == [q["id"] for q in out]
+    assert [q["text"] for q in quotes.load()["items"]] == [q["text"] for q in out]
 
 
 # ---------------------------------------------------------------- slim.js in node with a fake page

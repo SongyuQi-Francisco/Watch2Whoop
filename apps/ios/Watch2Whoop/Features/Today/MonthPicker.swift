@@ -118,11 +118,11 @@ struct MonthPicker: View {
     return Button { pick(d.date) } label: {
       VStack(spacing: 3) {
         Text(String(Int(d.date.suffix(2)) ?? 0)).font(.system(size: 15, weight: isToday ? .bold : .medium).monospacedDigit())
-          .foregroundColor(d.future ? Palette.text3 : (isSel ? Palette.bg : Palette.text))
+          .foregroundColor(d.future ? Palette.text3 : (isSel ? Palette.onAccent : Palette.text))
         Circle().fill(d.recovery != nil ? d.tone.color : (d.hasData ? Palette.text3 : Color.clear)).frame(width: 5, height: 5)
       }
       .frame(maxWidth: .infinity, minHeight: 40)
-      .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(isSel ? Palette.text : Color.clear))
+      .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(isSel ? Palette.accent : Color.clear))
     }
     .buttonStyle(PressScale())
     .disabled(d.future)

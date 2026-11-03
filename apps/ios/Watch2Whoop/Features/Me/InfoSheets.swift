@@ -120,41 +120,40 @@ struct DataStatusView: View {
   }
 }
 
-/// 外观 (testers, flag `slim_mode`, #126): the theme and the daily quote, saved on the server (`/v1/users/me/appearance`).
+/// 外观 (flag `slim_mode`, #126): the theme and the daily quote. A change shows at once (`AccountSession.saveAppearance`), is
+/// saved on the server (`/v1/users/me/appearance`) and kept on this device for the next start.
 struct AppearanceView: View {
   @EnvironmentObject private var session: AccountSession
-  @State private var a: AppearanceChoice?
   @State private var message: String?
+
+  private var a: AppearanceChoice { session.appearance ?? AppearanceChoice() }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 18) {
-      if let a {
-        RowGroup(title: tr("主题", "Theme")) {
-          Picker("", selection: Binding(get: { a.theme }, set: { v in Task { await save(AppearanceChoice(theme: v, quotes: a.quotes)) } })) {
-            Text(tr("默认", "Default")).tag("default")
-            Text(tr("薄肌模式", "Slim mode")).tag("slim")
-          }
-          .pickerStyle(.segmented)
-          .padding(.vertical, 12)
+      RowGroup(title: tr("主题", "Theme")) {
+        Picker("", selection: Binding(get: { a.theme }, set: { v in Task { await save(AppearancePatch(theme: v)) } })) {
+          Text(tr("默认", "Default")).tag("default")
+          Text(tr("薄肌模式", "Slim mode")).tag("slim")
         }
-        RowGroup {
-          ToggleRow(title: tr("每日一句", "Daily quote"),
-                    isOn: Binding(get: { a.quotes }, set: { v in Task { await save(AppearanceChoice(theme: a.theme, quotes: v)) } }))
-        }
-      } else if let message {
-        Banner(text: message, tone: .bad)
-      } else {
-        ProgressView().tint(Palette.text2).frame(maxWidth: .infinity)
+        .pickerStyle(.segmented)
+        .padding(.vertical, 12)
       }
+      RowGroup {
+        ToggleRow(title: tr("每日一句", "Daily quote"),
+                  isOn: Binding(get: { a.quotes }, set: { v in Task { await save(AppearancePatch(quotes: v)) } }))
+      }
+      if let message { Banner(text: message, tone: .bad) }
     }
     .task {
-      do { a = try await session.api.send(.get(Endpoint.appearance), as: AppearanceChoice.self) } catch let e as APIError { message = e.userMessage } catch {}
+      if let now = try? await session.api.send(.get(Endpoint.appearance), as: AppearanceChoice.self), now != session.appearance {
+        session.setAppearance(now)
+      }
     }
   }
 
-  private func save(_ v: AppearanceChoice) async {
+  private func save(_ patch: AppearancePatch) async {
     do {
-      a = try await session.api.send(try .json(.put, Endpoint.appearance, v), as: AppearanceChoice.self)
+      try await session.saveAppearance(patch)
       message = nil
     } catch let e as APIError {
       message = e.userMessage

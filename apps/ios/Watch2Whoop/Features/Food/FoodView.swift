@@ -304,9 +304,9 @@ struct FoodContent: View {
 
   private func pickButton(_ title: String, filled: Bool, enabled: Bool, action: @escaping () -> Void) -> some View {
     Button(action: action) {
-      Text(title).font(.system(size: 13, weight: .medium)).foregroundColor(filled ? Palette.bg : Palette.text).lineLimit(1)
+      Text(title).font(.system(size: 13, weight: .medium)).foregroundColor(filled ? Palette.onAccent : Palette.text).lineLimit(1)
         .padding(.vertical, 8).padding(.horizontal, 12)
-        .background(Capsule().fill(filled ? Palette.text : Palette.bg))
+        .background(Capsule().fill(filled ? Palette.accent : Palette.bg))
     }
     .buttonStyle(PressScale())
     .disabled(!enabled)

@@ -503,9 +503,9 @@ struct TodayHomeFocusPicker: View {
           let on = picked.contains(k)
           Button { if on { picked.remove(k) } else { picked.insert(k) } } label: {
             Text(TodayHome.focusName(k)).font(.system(size: 14, weight: .medium))
-              .foregroundColor(on ? Palette.bg : Palette.text)
+              .foregroundColor(on ? Palette.onAccent : Palette.text)
               .padding(.vertical, 8).padding(.horizontal, 12)
-              .background(Capsule().fill(on ? Palette.text : Palette.inSheet))
+              .background(Capsule().fill(on ? Palette.accent : Palette.inSheet))
           }
           .buttonStyle(PressScale())
           .accessibilityAddTraits(on ? .isSelected : [])

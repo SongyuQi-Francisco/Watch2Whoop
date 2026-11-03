@@ -81,6 +81,7 @@ struct Icon: View {
     case messagesSquare = "messages-square"
     case video
     case externalLink = "external-link"
+    case quote
     case check
     case audioLines = "audio-lines"
     // N5: food, log, health record

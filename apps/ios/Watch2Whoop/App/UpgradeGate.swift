@@ -127,9 +127,9 @@ struct UpgradeNoticeBanner: View {
       HStack(spacing: 10) {
         if let url = info.url {
           Button(tr("去升级", "Update")) { openURL(url) }
-            .font(.system(size: 13, weight: .semibold)).foregroundColor(Palette.bg)
+            .font(.system(size: 13, weight: .semibold)).foregroundColor(Palette.onAccent)
             .padding(.vertical, 7).padding(.horizontal, 14)
-            .background(Capsule().fill(Palette.text))
+            .background(Capsule().fill(Palette.accent))
             .buttonStyle(PressScale())
         }
         Button(tr("稍后", "Later"), action: close)

@@ -24,6 +24,8 @@ final class AccountSession: ObservableObject {
   @Published var viewable: [ViewablePerson] = []
   /// Whose read-only view is open (`MemberScreen`, over the whole app); nil = my own pages.
   @Published var viewing: ViewablePerson?
+  /// Theme and daily quote (flag `slim_mode`, #126): nil while the flag is off. First the local copy, then `/v1/web/me`.
+  @Published private(set) var appearance: AppearanceChoice?
   /// Rows the server adds to 我 (`/v1/web/me` → `me_links`). In memory only; none unless the server sends them.
   @Published var meLinks: [MeLink] = []
   /// N2's sync (`POST /v1/sync/pull`, `PUT /scores/app`) is on for this user: the phone scores itself (#340 N2b).
@@ -35,6 +37,7 @@ final class AccountSession: ObservableObject {
     self.db = db
     self.flags = flags
     self.displayName = config.displayName
+    self.appearance = flags.contains(AppearanceChoice.flag) ? AppearanceChoice.saved : nil
     // the long jobs (scoring, history download) are the runtime's, shared with the background task (local history)
     self.sync = SyncCoordinator(db: db, api: api, scoring: runtime?.scoring, history: runtime?.history)
     sync.deltaAvailable = flags.contains(Self.nativeSyncFlag)
@@ -47,6 +50,25 @@ final class AccountSession: ObservableObject {
     if list != viewable { viewable = list }
     let links = MeLink.parse(me["me_links"], server: api.baseURL)
     if links != meLinks { meLinks = links }
+  }
+
+  /// What the server says (nil = the flag is off): shown and remembered for the next start.
+  func setAppearance(_ choice: AppearanceChoice?) {
+    appearance = choice
+    Theme.apply(choice)
+  }
+
+  /// Changes the look at once, then saves it. A refused save puts the old look back and throws.
+  func saveAppearance(_ patch: AppearancePatch) async throws {
+    let was = appearance
+    let base = was ?? AppearanceChoice()
+    setAppearance(AppearanceChoice(theme: patch.theme ?? base.theme, quotes: patch.quotes ?? base.quotes))
+    do {
+      setAppearance(try await api.send(try .json(.put, Endpoint.appearance, patch), as: AppearanceChoice.self))
+    } catch {
+      setAppearance(was)
+      throw error
+    }
   }
 
   /// Circles replace 饮食 in the tab bar while the `friends` flag is on (same rule as the Today page's applyTabs()).
@@ -162,6 +184,8 @@ final class AppModel: ObservableObject {
     store.signOut()
     if let server { UserDefaults.standard.set(server, forKey: Self.lastServerKey) }
     UserDefaults.standard.removeObject(forKey: flagsKey)
+    Theme.apply(nil)
+    DailyQuoteStore.forget()
     Lang.override = nil   // the next person starts in the system language
     langRevision += 1
     session = nil
@@ -315,6 +339,7 @@ final class AppModel: ObservableObject {
       UserDefaults.standard.set(flags, forKey: flagsKey)
       try open(cfg, userId: uid, api: api)
       session?.flags = Set(flags)
+      session?.setAppearance(flags.contains(AppearanceChoice.flag) ? AppearanceChoice(json: me["appearance"]) ?? AppearanceChoice() : nil)
       session?.displayName = cfg.displayName
       session?.viewable = ViewablePerson.parse(me["viewable"])
       session?.meLinks = MeLink.parse(me["me_links"], server: api.baseURL)

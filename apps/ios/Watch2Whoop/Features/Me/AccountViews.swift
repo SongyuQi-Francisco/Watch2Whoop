@@ -236,9 +236,9 @@ struct InviteFriendsView: View {
             Icon(.share, size: 18)
             Text(tr("分享", "Share")).font(Typo.bodyStrong)
           }
-          .foregroundColor(Palette.bg)
+          .foregroundColor(Palette.onAccent)
           .frame(maxWidth: .infinity, minHeight: 48)
-          .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.text))
+          .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.accent))
         }
       } else if let message {
         Banner(text: message, tone: .bad)

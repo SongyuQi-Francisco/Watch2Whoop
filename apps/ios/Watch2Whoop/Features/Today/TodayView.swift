@@ -26,8 +26,12 @@ struct TodayView: View {
   @StateObject private var home = TodayHomeStore()
   @State private var homeSheet: TodayHomeSheet?
   @State private var afterHomeSheet: TodayHomeDest?
+  // Flag `slim_mode` (#126, DailyQuote.swift). Off, or with the normal look, nothing of it is drawn.
+  @StateObject private var quotes = DailyQuoteStore()
+  @State private var quoteLink: QuoteLink?
 
   private var aiFirst: Bool { TodayHome.isOn(session.flags) }
+  private var showsQuote: Bool { session.appearance?.showsQuote == true }
 
   init(session: AccountSession) {
     _store = StateObject(wrappedValue: TodayStore(session: session))
@@ -75,6 +79,8 @@ struct TodayView: View {
       if !required { Task { await store.refresh() } }
     }
     .task(id: aiFirst) { await runHome() }
+    .task(id: showsQuote) { if showsQuote { await quotes.refresh(session.api) } }
+    .sheet(item: $quoteLink) { SafariView(url: $0.url) { quoteLink = nil }.ignoresSafeArea() }
     .onChange(of: home.home) { _ in maybeOverview() }
     .onChange(of: store.hasData) { _ in maybeOverview() }
     .onChange(of: sheet) { _ in maybeOverview() }
@@ -95,6 +101,7 @@ struct TodayView: View {
           if !store.model.isPast {
             SyncNudges(card: store.model.sync, coverage: store.model.coverage) { await store.refresh() }
           }
+          if showsQuote { dailyQuote }
           if aiFirst { homePage } else { content }
           Color.clear.frame(height: 1).id("bottom")
         }
@@ -119,6 +126,23 @@ struct TodayView: View {
         #endif
       }
       .onChange(of: store.hasData) { has in if has && PerfProbe.autoScroll { autoScroll(proxy) } }
+    }
+  }
+
+  // MARK: - daily quote (flag slim_mode): the same quote on any day looked at, the user's today decides which
+
+  @ViewBuilder private var dailyQuote: some View {
+    let day = store.userToday ?? store.model.date ?? ""
+    if let q = quotes.quote(on: day) {
+      DailyQuoteCard(quote: q, next: { quotes.next(on: day) }, open: { quoteLink = QuoteLink(url: $0) }, close: {
+        Task {
+          do {
+            try await session.saveAppearance(AppearancePatch(quotes: false))
+          } catch let e as APIError {
+            toast = Toast(e.userMessage)
+          } catch {}
+        }
+      })
     }
   }
 

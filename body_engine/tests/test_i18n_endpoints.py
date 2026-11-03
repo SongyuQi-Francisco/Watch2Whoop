@@ -55,6 +55,7 @@ ALLOWED: list[tuple[str, str, str]] = [
     (r"/journal/(?:items|frequent|analysis)$", r"\.(label_zh|description|label|method|message)$|\.outcomes\.", "journal item names are " + USER_DATA +
         "; the analysis texts are " + AI_ONLY),
     (r"/(?:cardio|hr-zones|vo2max|stress|strain-coach|sleep/details|scores|reports|diet-constraints|grocery/context|health-monitor|sleep-coach)$", r".*", AI_ONLY),
+    (r"/appearance/quotes$", r"\.items\[\]\.(person|text)$", "a real person's name and own post, shown word for word in every language, never translated (docs/slim-mode.md)"),
     (r"/training/(?:plan|week|splits)$", r"\.(name|summary|weekday_zh)$", "built-in plan names are translated by the page (tr(), i18n-en.js)"),
     (r"/training/(?:calendar|day/[^/]+)$", r"\.(weekday|sparky_error)$", "the page builds its own weekday names; sparky_error is only a flag"),
 ]

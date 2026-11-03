@@ -69,6 +69,7 @@ enum Endpoint {
   static let whatsNew = "/v1/whats-new"
   static let dataStatus = "/v1/users/me/data-status"
   static let appearance = "/v1/users/me/appearance"
+  static let appearanceQuotes = "/v1/users/me/appearance/quotes"
   static let feedback = "/v1/users/me/feedback"
   static let feedbackMode = "/v1/users/me/feedback-mode"
   static func feedbackReport(_ ref: String) -> String { "/v1/users/me/feedback/\(ref)" }
