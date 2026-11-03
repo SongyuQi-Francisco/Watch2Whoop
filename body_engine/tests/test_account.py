@@ -23,7 +23,7 @@ from body_engine import api, auth, sparky_client
 from body_engine.account import api as account_api, delete as account_delete, invites, mailer, provision, signin
 from body_engine.config import Settings
 from body_engine.db import migrate
-from body_engine.web import activation, login_limit
+from body_engine.web import activation, login_codes, login_limit
 
 TEST_DB = "body_test_account"
 AUD = "com.example.watch2whoop"
@@ -635,6 +635,18 @@ def test_web_login_code_for_app_webview(client):
     client.cookies.clear()
     assert client.post("/v1/web/login-code", json={"code": r.json()["code"]}).status_code == 200
     assert client.get("/v1/web/me").json()["me"]["id"] == s["me"]["id"]
+    client.cookies.clear()
+
+
+def test_web_login_code_never_gets_more_than_the_caller_has(client, dsn):
+    """A read-only token mints a read-only code: the browser it signs in cannot write."""
+    s = _email_login(client, "readonly-code@example.com", "app")
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        token = auth.create_token(conn, s["me"]["id"], "read-only", ["read"])
+    code = client.post("/v1/account/web-login-code", headers={"Authorization": f"Bearer {token}"}).json()["code"]
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        row = conn.execute("SELECT scopes FROM web_login_codes WHERE code_sha256 = %s", (login_codes._sha(code),)).fetchone()
+    assert row["scopes"] == ["read"]
     client.cookies.clear()
 
 
