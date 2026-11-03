@@ -51,7 +51,7 @@ nothing has been checked on them.
 | Sleep need / debt | design choices | sensitivity | one person: sensitivity | none |
 | HRV from beat times | Task Force 1996 definitions | artifact filter checked against known artifacts (one weakness found, section 3) | SDNN recomputed vs Apple's SDNN r ≈ 0.9 (one person); SDNN vs RMSSD (two people) | no ECG |
 | Recovery | method from the literature, parameters design choices | stability, construct validity (correlations; regression version partly passes), sensitivity, single-reading noise, synthetic population | one person: stability, sensitivity | no WHOOP |
-| Strain / training load | Edwards, Tanaka, Banister; **K personal calibration** | sensitivity; synthetic population (per-person K varies more than 4-fold) | one person: sensitivity | none |
+| Strain / training load | Edwards, Tanaka, Banister; **K a design choice anchored on a reference session** | sensitivity; synthetic population (per-person K varies more than 4-fold) | one person: sensitivity | none |
 | Muscle load | design choice + Foster | none | none | none |
 | Stress | design choices | none | none | none |
 | Body age | literature curves | analytic sensitivity, worked examples | v1.1 vs v1.2 comparison (one person) | none |
@@ -247,7 +247,7 @@ and breathing, sampled the way an Apple Watch samples)
 | HRmax = max(formula, observed 99.5th percentile) | 365 days | Design choice |
 | CTL / ATL / TSB | 42 / 7 days | Literature (Banister's fitness-fatigue model, Morton 1990; 42 / 7 are the conventional time constants of training software) |
 | Saturating 0–21 curve | 1 − e^(−x/K) | Design choice (WHOOP describes strain as a non-linear 0–21 scale without publishing a formula) |
-| **K** | **170** | **Personal calibration**: one person's median TRIMP on 20 training days mapped to 12. To be replaced (section 11) |
+| **K** | **170** | **Design choice anchored on a reference session**: 60 minutes entirely at 70–80% HRmax (Edwards TRIMP 180) maps to strain 13.7. The value first came from one person's training days; it passed the checks of `docs/scoring-calibration.md` section 5.4 (n = 1, no outside reference) and is no longer calibrated on anyone |
 | Heart-rate hold cap | 5 min | Design choice |
 | Coverage rules | 12 h, TRIMP ≥ 40 | Design choice |
 | CTL / ATL seed | first 14 days with data | Design choice |
@@ -258,7 +258,7 @@ and breathing, sampled the way an Apple Watch samples)
 - Readings are mostly at rest, so the observed 99.5th percentile is usually below the formula, which therefore nearly always
   wins; Tanaka's formula has an individual error of about ±10 bpm, shifting all five zones.
 - Sensitivity (synthetic): K ± 20% → strain changes by about 1 point on average; the zone bounds ± 5% change it by 0.7–1.0.
-- K comes from one person. In the synthetic population, calibrating K on each person's own training days gives values from 85
+- K's value first came from one person. In the synthetic population, calibrating K on each person's own training days gives values from 85
   to 370. Strain is meant to be an absolute scale (the same cardiovascular load gives comparable strain for different people),
   so **K should not be calibrated per person**; the options are a multi-user value or a reference-session definition that
   depends on nobody's data (for example: 60 minutes entirely at 70–80% HRmax = Edwards TRIMP 180, which K = 170 maps to 13.7).
@@ -415,7 +415,7 @@ uptake. Apple's exercise minutes are not a fix: the ring starts at about 30% VO�
 |---|---|---|---|
 | HRV metric | HealthKit `heartRateVariabilitySDNN` (SDNN, ms), 1-minute background readings, 1–4 a night | RMSSD (developer API field `hrv_rmssd_milli`), from continuous optical heart rate during sleep (windowing and weighting not formally documented) | Apple's SDNN by default; RMSSD from beat times (`hrv.py`) |
 | Recovery / readiness | not in HealthKit | 0–100%, inputs HRV, resting HR, sleep, respiratory rate; three colours | section 4: same inputs, our own weights |
-| Strain | none (activity rings, workload estimates) | 0–21, non-linear, cardiovascular load, formula not published | Edwards TRIMP → saturating 0–21 curve, K to be recalibrated |
+| Strain | none (activity rings, workload estimates) | 0–21, non-linear, cardiovascular load, formula not published | Edwards TRIMP → saturating 0–21 curve, K anchored on a reference session |
 | Sleep | not in HealthKit | sleep performance = actual / need; need adjusts to strain and debt | Open Wearables sleep score + WHOOP-style need / performance |
 | Body age | none | WHOOP Age (approach described, weights not published) | literature curves + Gompertz conversion (section 8) |
 
@@ -424,7 +424,7 @@ uptake. Apple's exercise minutes are not a fix: the ring starts at about 30% VO�
 ## 10. Known limits, summarised
 1. Real-data checks exist for one person over a little more than a year (two people for the HRV-kind comparison); **no
    multi-user validation, no comparison with WHOOP, Oura, ECG or polysomnography**.
-2. Recovery weights, the logistic and the sleep-need baseline are not fitted; strain's K is one person's calibration.
+2. Recovery weights, the logistic and the sleep-need baseline are not fitted; strain's K is a design choice anchored on a reference session, not validated on many people.
 3. HRV readings are sparse (Apple decides); single-reading noise is the largest error source in recovery.
 4. Strain and stress have no accelerometer data; steps and workout records stand in.
 5. Body-age curves are cohort associations, not individual causal effects.

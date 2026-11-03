@@ -73,6 +73,6 @@ VISION = True                             # deepseek-flash reads images (https:/
 IMAGE_TOKENS = 1024                       # DeepSeek bills at most 1024 tokens per image: used for the pre-call worst case
 
 BALANCE_STOP_CNY = 2.0                    # account balance below this: fallback pauses for everyone (doctor ✗)
-BALANCE_WARN_CNY = 10.0                   # below this, or below what the users may still spend this month: doctor ⚠ "top up"
+BALANCE_WARN_CNY = 3.0                    # below this and only then: doctor ⚠ "top up" (owner 2026-11-04; one yuan above the stop line)
 BALANCE_MAX_AGE_S = 600                   # re-check the balance at most every 10 minutes (on chat or doctor)
 TOPUP_URL = "https://platform.deepseek.com/top_up"
