@@ -49,7 +49,7 @@ struct MainTabView: View {
           .tag(tab)
       }
     }
-    .tint(Palette.text)
+    .tint(Palette.accent)
     .circleRouting(selection: $selection)                                                  // N7: notification / link → 朋友
     .inboxRouting(selection: $selection)                                                   // #359: push / link → 我 → 消息
     .overlay { JarvisLayer(tab: $selection) }                                             // N6

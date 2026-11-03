@@ -498,9 +498,9 @@ struct CommentsSheet: View {
         .onChange(of: text) { t in if t.count > max { text = String(t.prefix(max)) } }
         .onSubmit(send)
       Button(action: send) {
-        Icon(.send, size: 20).foregroundColor(canSend ? Palette.bg : Palette.text3)
+        Icon(.send, size: 20).foregroundColor(canSend ? Palette.onAccent : Palette.text3)
           .frame(width: 44, height: 44)
-          .background(Circle().fill(canSend ? Palette.text : Palette.inSheet))
+          .background(Circle().fill(canSend ? Palette.accent : Palette.inSheet))
       }
       .buttonStyle(PressScale())
       .disabled(!canSend)

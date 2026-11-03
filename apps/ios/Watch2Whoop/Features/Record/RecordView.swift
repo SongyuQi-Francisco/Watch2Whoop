@@ -171,9 +171,9 @@ struct TagCloud: View {
             if !it.isBool, let v { Text("\(RecordFormat.num(v, 1))\(it.unit ?? "")").font(.system(size: 13).monospacedDigit()).opacity(0.8) }
             if let p = journal.pending[it.key] { PendingMark(needsAttention: p.needsAttention) }
           }
-          .foregroundColor(on ? Palette.bg : Palette.text)
+          .foregroundColor(on ? Palette.onAccent : Palette.text)
           .padding(.vertical, 8).padding(.horizontal, 12)
-          .background(Capsule().fill(on ? Palette.text : Palette.surface))
+          .background(Capsule().fill(on ? Palette.accent : Palette.surface))
         }
         .buttonStyle(PressScale())
         .accessibilityAddTraits(on ? .isSelected : [])

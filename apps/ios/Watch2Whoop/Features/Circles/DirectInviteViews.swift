@@ -159,11 +159,11 @@ struct DirectInviteSheet: View {
           Task { await send(c) }
         } label: {
           Group {
-            if sending == c.id { ProgressView().tint(Palette.bg) } else { Text(tr("邀请", "Invite")).font(Typo.bodyStrong) }
+            if sending == c.id { ProgressView().tint(Palette.onAccent) } else { Text(tr("邀请", "Invite")).font(Typo.bodyStrong) }
           }
-          .foregroundColor(Palette.bg)
+          .foregroundColor(Palette.onAccent)
           .frame(minWidth: 64, minHeight: 34)
-          .background(Capsule().fill(canSend ? Palette.text : Palette.text3))
+          .background(Capsule().fill(canSend ? Palette.accent : Palette.text3))
         }
         .buttonStyle(PressScale())
         .disabled(!canSend || sending != nil)

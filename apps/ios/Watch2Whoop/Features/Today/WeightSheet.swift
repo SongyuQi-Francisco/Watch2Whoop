@@ -202,9 +202,9 @@ struct FlowChips: View {
         let key = item.0, label = item.1, on = chosen.contains(item.0)
         Button { toggle(key) } label: {
           Text(label).font(.system(size: 14, weight: .medium))
-            .foregroundColor(on ? Palette.bg : Palette.text)
+            .foregroundColor(on ? Palette.onAccent : Palette.text)
             .padding(.vertical, 8).padding(.horizontal, 12)
-            .background(Capsule().fill(on ? Palette.text : Palette.inSheet))
+            .background(Capsule().fill(on ? Palette.accent : Palette.inSheet))
         }
         .buttonStyle(PressScale())
         .accessibilityAddTraits(on ? .isSelected : [])

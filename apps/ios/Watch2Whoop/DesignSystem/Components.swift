@@ -110,12 +110,12 @@ struct PrimaryButton: View {
   var body: some View {
     Button(action: action) {
       HStack {
-        if busy { ProgressView().tint(Palette.bg) }
+        if busy { ProgressView().tint(Palette.onAccent) }
         Text(title).font(Typo.bodyStrong)
       }
       .frame(maxWidth: .infinity, minHeight: 48)
-      .foregroundColor(Palette.bg)
-      .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.text))
+      .foregroundColor(Palette.onAccent)
+      .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.accent))
     }
     .buttonStyle(PressScale())
     .disabled(busy)

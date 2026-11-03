@@ -40,3 +40,12 @@ body-engine flags set slim_mode --state cohort --cohort owner --by 管理员
 ```
 
 回退：`flags set slim_mode --state off`，下一次打开页面就回到默认外观；表里的选择保留。
+
+## 5. 原生 app（2.0.0）
+
+和网页同一个开关、同一份数据，只改颜色，不改布局。
+
+| 部分 | 内容 |
+|---|---|
+| 主题 | `DesignSystem/Palette.swift` 每个 token 带 `.slim(...)`（`scripts/check_sources.py` 在 CI 里和 `slim.js` 逐个比对，含透明度），颜色解析时读 `Theme.isSlim`。新增 `accent` / `onAccent`：按钮、选中的标签和日期、选中的 tab（网页的 `--accent` 规则）；默认外观下它们就是 `--text` / `--bg`，所以开关关或主题 default 时没有变化。切换立刻生效（`Theme.apply`），打开的弹层和页面状态都留着；本地存一份（`w2w.appearance.v1`），下次启动第一帧就是对的。开关关掉后，收到 `/v1/web/me` 就回到默认外观并清掉本地这份。退出登录也清。 |
+| 语录 | `Features/Today/DailyQuote.swift`。内容从 `GET /v1/users/me/appearance/quotes` 取（`appearance/quotes.py` 读 `slim-quotes.js` 的 `items`，顺序和 `slim.js` 的 `ordered()` 一样，`unverified` 不出去；开关关时 404），改语录不用发 app；本机留一份最后的列表，离线和第一帧用。选哪条的算法和网页相同（用户今天的日期 + 点击次数，对列表长度取模）。只在薄肌主题下显示，放在今天页顶部，经典今天页和 AI 优先首页（`ui_ai_first`）都有；只读看别人（`MemberScreen`）没有这张卡。 |

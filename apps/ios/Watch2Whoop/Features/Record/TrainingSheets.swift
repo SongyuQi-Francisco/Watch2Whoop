@@ -124,9 +124,9 @@ struct ToggleChip: View {
   var body: some View {
     Button(action: action) {
       Text(title).font(.system(size: 14, weight: .medium)).lineLimit(1)
-        .foregroundColor(on ? Palette.bg : Palette.text)
+        .foregroundColor(on ? Palette.onAccent : Palette.text)
         .padding(.vertical, 8).padding(.horizontal, 12)
-        .background(Capsule().fill(on ? Palette.text : background))
+        .background(Capsule().fill(on ? Palette.accent : background))
     }
     .buttonStyle(PressScale())
     .accessibilityAddTraits(on ? .isSelected : [])

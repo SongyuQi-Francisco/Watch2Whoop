@@ -90,7 +90,7 @@ private struct MeScreen: View {
             ListRow(icon: .bell, title: tr("通知", "Notifications")) { sheet = .notifications }
             RowDivider()
             languageRow
-            if session.flags.contains("slim_mode") {
+            if session.flags.contains(AppearanceChoice.flag) {
               RowDivider()
               ListRow(icon: .palette, title: tr("外观", "Appearance")) { sheet = .appearance }
             }
@@ -125,6 +125,9 @@ private struct MeScreen: View {
     }
     .badge(inbox.unread)
     .onAppear { take(app.route) }
+    #if DEBUG
+    .onAppear { if RecordDevShot.value("W2W_DEV_ME_SHEET") == "appearance" { sheet = .appearance } }   // simulator screenshots
+    #endif
     .onChange(of: app.route) { take($0) }
     .task {
       await countUnsent()

@@ -96,6 +96,7 @@ ICONS = {
     "messages-square": "Jarvis: conversations",
     "video": "Jarvis: video",
     "external-link": "Jarvis: open your AI",
+    "quote": "Today: daily quote (flag slim_mode)",
     "check": "Jarvis: current AI / confirmed",
     "audio-lines": "Jarvis: voice message tag",
     # N5: food, log, health record

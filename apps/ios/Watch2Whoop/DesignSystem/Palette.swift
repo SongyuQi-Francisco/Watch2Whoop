@@ -4,36 +4,63 @@ import UIKit
 /// Colour tokens of the Today page (body_engine/src/body_engine/web/static/app.css `:root` and its dark twin), so the
 /// native app looks the same: neutral greys + one low-saturation colour per state, cards without borders, pure black in
 /// dark mode. Change a colour in app.css and here together (`scripts/check_sources.py` compares them in CI).
+/// `.slim(...)` is the slim look (flag `slim_mode`, #126; `html[data-theme="slim"]` in slim.js, compared the same way): the
+/// colours follow `Theme.isSlim` when they are resolved, and without it they are exactly the normal ones.
 enum Palette {
-  static let bg = dynamic(0xFFFFFF, 0x000000)
-  static let surface = dynamic(0xF4F4F6, 0x121214)
-  static let surface2 = dynamic(0xE9E9ED, 0x1D1D20)
-  static let text = dynamic(0x111113, 0xF4F4F6)
-  static let text2 = dynamic(0x6C6C73, 0x8D8D94)
-  static let text3 = dynamic(0xA3A3AA, 0x55555B)
-  static let hair = dynamic(0x000000, 0xFFFFFF, lightAlpha: 0.06, darkAlpha: 0.07)
-  static let good = dynamic(0x4E9A6B, 0x72BF8E)
-  static let mid = dynamic(0xB58A34, 0xD3AE63)
-  static let bad = dynamic(0xBE5A44, 0xDE7F69)
-  static let sleep = dynamic(0x6870C4, 0x8D93E4)
+  static let bg = dynamic(0xFFFFFF, 0x000000).slim(0xFBFAF7, 0x0A0A0B)
+  static let surface = dynamic(0xF4F4F6, 0x121214).slim(0xF1EFE9, 0x151517)
+  static let surface2 = dynamic(0xE9E9ED, 0x1D1D20).slim(0xE5E2DA, 0x212125)
+  static let text = dynamic(0x111113, 0xF4F4F6).slim(0x15140F, 0xF6F4EE)
+  static let text2 = dynamic(0x6C6C73, 0x8D8D94).slim(0x625F55, 0x9A978C)
+  static let text3 = dynamic(0xA3A3AA, 0x55555B).slim(0x9D998D, 0x5D5B53)
+  static let hair = dynamic(0x000000, 0xFFFFFF, lightAlpha: 0.06, darkAlpha: 0.07).slim(0x15140F, 0xFFFFFF, lightAlpha: 0.09, darkAlpha: 0.08)
+  static let good = dynamic(0x4E9A6B, 0x72BF8E).slim(0x2F8A2F, 0xB8F23D)
+  static let mid = dynamic(0xB58A34, 0xD3AE63).slim(0xC27C00, 0xFFB224)
+  static let bad = dynamic(0xBE5A44, 0xDE7F69).slim(0xD23A2A, 0xFF5A4D)
+  static let sleep = dynamic(0x6870C4, 0x8D93E4).slim(0x5560D0, 0x8F9BFF)
   /// Strain ring / training (the page's --train, used by the native Today of 1.0.9).
-  static let train = dynamic(0x3F8F9A, 0x5FB3BD)
-  static let goodSoft = dynamic(0x4E9A6B, 0x72BF8E, lightAlpha: 0.12, darkAlpha: 0.14)
-  static let midSoft = dynamic(0xB58A34, 0xD3AE63, lightAlpha: 0.13, darkAlpha: 0.14)
-  static let badSoft = dynamic(0xBE5A44, 0xDE7F69, lightAlpha: 0.12, darkAlpha: 0.14)
-  static let scrim = dynamic(0x000000, 0x000000, lightAlpha: 0.28, darkAlpha: 0.6)
-  static let sheet = dynamic(0xFFFFFF, 0x161618)
+  static let train = dynamic(0x3F8F9A, 0x5FB3BD).slim(0xD93F0B, 0xFF5A1F)
+  static let goodSoft = dynamic(0x4E9A6B, 0x72BF8E, lightAlpha: 0.12, darkAlpha: 0.14).slim(0x2F8A2F, 0xB8F23D, lightAlpha: 0.13, darkAlpha: 0.14)
+  static let midSoft = dynamic(0xB58A34, 0xD3AE63, lightAlpha: 0.13, darkAlpha: 0.14).slim(0xC27C00, 0xFFB224, lightAlpha: 0.14, darkAlpha: 0.15)
+  static let badSoft = dynamic(0xBE5A44, 0xDE7F69, lightAlpha: 0.12, darkAlpha: 0.14).slim(0xD23A2A, 0xFF5A4D, lightAlpha: 0.13, darkAlpha: 0.15)
+  static let scrim = dynamic(0x000000, 0x000000, lightAlpha: 0.28, darkAlpha: 0.6).slim(0x15140F, 0x000000, lightAlpha: 0.32, darkAlpha: 0.62)
+  static let sheet = dynamic(0xFFFFFF, 0x161618).slim(0xFFFEFB, 0x131315)
   /// Inputs, buttons and cards inside sheets.
-  static let inSheet = dynamic(0xF4F4F6, 0x232326)
-  static let chrome = dynamic(0xFFFFFF, 0x000000, lightAlpha: 0.86, darkAlpha: 0.82)
+  static let inSheet = dynamic(0xF4F4F6, 0x232326).slim(0xF1EFE9, 0x212125)
+  /// Primary buttons, selected chips and days, the selected tab (slim.js `--accent` / `--on-accent`). In the normal look they
+  /// are just --text and --bg, the page's `.btn-primary`.
+  static let accent = dynamic(0x111113, 0xF4F4F6).slim(0xD93F0B, 0xFF5A1F)
+  static let onAccent = dynamic(0xFFFFFF, 0x000000).slim(0xFFFFFF, 0x0A0A0B)
+  static let chrome = dynamic(0xFFFFFF, 0x000000, lightAlpha: 0.86, darkAlpha: 0.82).slim(0xFBFAF7, 0x0A0A0B, lightAlpha: 0.86, darkAlpha: 0.82)
 
   /// The raw values, for tests and for UIKit appearance proxies.
-  static func uiColor(_ light: UInt32, _ dark: UInt32, lightAlpha: CGFloat = 1, darkAlpha: CGFloat = 1) -> UIColor {
-    UIColor { $0.userInterfaceStyle == .dark ? rgb(dark, darkAlpha) : rgb(light, lightAlpha) }
+  static func uiColor(_ light: UInt32, _ dark: UInt32, lightAlpha: CGFloat = 1, darkAlpha: CGFloat = 1, slim: Slim? = nil) -> UIColor {
+    UIColor { t in
+      let isDark = t.userInterfaceStyle == .dark
+      if let slim, Theme.isSlim { return isDark ? rgb(slim.dark, slim.darkAlpha) : rgb(slim.light, slim.lightAlpha) }
+      return isDark ? rgb(dark, darkAlpha) : rgb(light, lightAlpha)
+    }
   }
 
-  private static func dynamic(_ light: UInt32, _ dark: UInt32, lightAlpha: CGFloat = 1, darkAlpha: CGFloat = 1) -> Color {
-    Color(uiColor(light, dark, lightAlpha: lightAlpha, darkAlpha: darkAlpha))
+  /// A token's values in the slim look.
+  struct Slim {
+    let light, dark: UInt32
+    var lightAlpha: CGFloat = 1
+    var darkAlpha: CGFloat = 1
+  }
+
+  /// A token's normal values, waiting for its `.slim(...)`.
+  private struct Normal {
+    let light, dark: UInt32
+    let lightAlpha, darkAlpha: CGFloat
+
+    func slim(_ l: UInt32, _ d: UInt32, lightAlpha la: CGFloat = 1, darkAlpha da: CGFloat = 1) -> Color {
+      Color(uiColor(light, dark, lightAlpha: lightAlpha, darkAlpha: darkAlpha, slim: Slim(light: l, dark: d, lightAlpha: la, darkAlpha: da)))
+    }
+  }
+
+  private static func dynamic(_ light: UInt32, _ dark: UInt32, lightAlpha: CGFloat = 1, darkAlpha: CGFloat = 1) -> Normal {
+    Normal(light: light, dark: dark, lightAlpha: lightAlpha, darkAlpha: darkAlpha)
   }
 
   static func rgb(_ hex: UInt32, _ alpha: CGFloat = 1) -> UIColor {

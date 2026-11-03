@@ -287,7 +287,7 @@ struct JarvisChatView: View {
         .accessibilityLabel(tr("说话", "Talk"))
       } else {
         Button { chat.sendDraft() } label: {
-          Icon(.arrowUp, size: 20).foregroundColor(Palette.bg).frame(width: 40, height: 40).background(Circle().fill(Palette.text))
+          Icon(.arrowUp, size: 20).foregroundColor(Palette.onAccent).frame(width: 40, height: 40).background(Circle().fill(Palette.accent))
         }
         .buttonStyle(PressScale())
         .disabled(chat.busy)
@@ -310,8 +310,8 @@ struct JarvisChatView: View {
             .overlay(Capsule().strokeBorder(Palette.text.opacity(0.4), lineWidth: 1))
         }
         Button { Task { await stopRecording() } } label: {
-          Text(tr("完成", "Done")).font(Typo.bodyStrong).foregroundColor(Palette.bg).frame(maxWidth: .infinity, minHeight: 42)
-            .background(Capsule().fill(Palette.text))
+          Text(tr("完成", "Done")).font(Typo.bodyStrong).foregroundColor(Palette.onAccent).frame(maxWidth: .infinity, minHeight: 42)
+            .background(Capsule().fill(Palette.accent))
         }
       }
       .buttonStyle(PressScale())
@@ -377,8 +377,8 @@ struct ConfirmCard: View {
               .overlay(Capsule().strokeBorder(Palette.text.opacity(0.4), lineWidth: 1))
           }
           Button { decide(true) } label: {
-            Text(tr("确认", "Confirm")).font(Typo.bodyStrong).foregroundColor(Palette.bg).frame(maxWidth: .infinity, minHeight: 42)
-              .background(Capsule().fill(Palette.text))
+            Text(tr("确认", "Confirm")).font(Typo.bodyStrong).foregroundColor(Palette.onAccent).frame(maxWidth: .infinity, minHeight: 42)
+              .background(Capsule().fill(Palette.accent))
           }
         }
         .buttonStyle(PressScale())
@@ -452,7 +452,7 @@ private struct ConsentSheet: View {
         Button { agreed.toggle() } label: {
           HStack(spacing: 10) {
             Group {
-              if agreed { Icon(.check, size: 14).foregroundColor(Palette.bg).frame(width: 20, height: 20).background(RoundedRectangle(cornerRadius: 5).fill(Palette.text)) }
+              if agreed { Icon(.check, size: 14).foregroundColor(Palette.onAccent).frame(width: 20, height: 20).background(RoundedRectangle(cornerRadius: 5).fill(Palette.accent)) }
               else { RoundedRectangle(cornerRadius: 5).strokeBorder(Palette.text.opacity(0.5), lineWidth: 1).frame(width: 20, height: 20) }
             }
             Text(tr("我已阅读并同意", "I have read and agree")).font(Typo.body).foregroundColor(Palette.text)
@@ -517,7 +517,7 @@ struct QuickLogSheet: View {
             .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Palette.inSheet))
             .onSubmit { send(text) }
           Button { send(text) } label: {
-            Icon(.arrowUp, size: 20).foregroundColor(Palette.bg).frame(width: 40, height: 40).background(Circle().fill(Palette.text))
+            Icon(.arrowUp, size: 20).foregroundColor(Palette.onAccent).frame(width: 40, height: 40).background(Circle().fill(Palette.accent))
           }
           .buttonStyle(PressScale())
           .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)

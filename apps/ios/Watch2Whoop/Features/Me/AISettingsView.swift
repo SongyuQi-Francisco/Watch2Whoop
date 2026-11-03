@@ -209,8 +209,8 @@ struct AIFallbackConsentView: View {
         HStack(spacing: 10) {
           Group {
             if agreed {
-              Icon(.check, size: 14).foregroundColor(Palette.bg).frame(width: 20, height: 20)
-                .background(RoundedRectangle(cornerRadius: 5).fill(Palette.text))
+              Icon(.check, size: 14).foregroundColor(Palette.onAccent).frame(width: 20, height: 20)
+                .background(RoundedRectangle(cornerRadius: 5).fill(Palette.accent))
             } else {
               RoundedRectangle(cornerRadius: 5).strokeBorder(Palette.text.opacity(0.5), lineWidth: 1).frame(width: 20, height: 20)
             }

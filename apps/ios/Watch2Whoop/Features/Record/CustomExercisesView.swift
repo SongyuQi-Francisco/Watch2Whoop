@@ -24,9 +24,9 @@ struct CustomExercisesView: View {
             }
           }
           NavigationLink { CustomExerciseFormView(nav: nav, exercise: nil, options: d, saved: reload) } label: {
-            Text(tr("添加动作", "Add exercise")).font(Typo.bodyStrong).foregroundColor(Palette.bg)
+            Text(tr("添加动作", "Add exercise")).font(Typo.bodyStrong).foregroundColor(Palette.onAccent)
               .frame(maxWidth: .infinity, minHeight: 48)
-              .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.text))
+              .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.accent))
           }
           .buttonStyle(PressScale())
         }

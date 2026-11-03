@@ -374,9 +374,9 @@ struct PillButton: View {
         Text(title).font(.system(size: 14, weight: .medium)).lineLimit(1)
         if badge { Circle().fill(Palette.bad).frame(width: 7, height: 7) }
       }
-      .foregroundColor(on ? Palette.bg : Palette.text2)
+      .foregroundColor(on ? Palette.onAccent : Palette.text2)
       .padding(.vertical, 8).padding(.horizontal, avatar == nil ? 14 : 10)
-      .background(Capsule().fill(on ? Palette.text : Palette.surface))
+      .background(Capsule().fill(on ? Palette.accent : Palette.surface))
     }
     .buttonStyle(PressScale())
     .accessibilityAddTraits(on ? .isSelected : [])

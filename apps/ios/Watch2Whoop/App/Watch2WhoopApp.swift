@@ -71,8 +71,8 @@ enum Appearance {
   static func apply() {
     let tab = UITabBarAppearance()
     tab.configureWithDefaultBackground()
-    let normal = Palette.uiColor(0xA3A3AA, 0x55555B)          // --text-3
-    let selected = Palette.uiColor(0x111113, 0xF4F4F6)        // --text
+    let normal = Palette.uiColor(0xA3A3AA, 0x55555B, slim: .init(light: 0x9D998D, dark: 0x5D5B53))     // --text-3
+    let selected = Palette.uiColor(0x111113, 0xF4F4F6, slim: .init(light: 0xD93F0B, dark: 0xFF5A1F))   // --text, --accent in slim
     for layout in [tab.stackedLayoutAppearance, tab.inlineLayoutAppearance, tab.compactInlineLayoutAppearance] {
       layout.normal.iconColor = normal
       layout.normal.titleTextAttributes = [.foregroundColor: normal, .font: UIFont.systemFont(ofSize: 10.5, weight: .medium)]
