@@ -7,7 +7,8 @@ not ended, so the pictures wait with it. What no turn end reached (the server st
 answered) is replaced by redact_overdue, from the hourly job. Later turns see a line of text instead (context.show_redacted),
 so the pictures never go out again, also not to another AI the user switches to.
 
-Which pictures this applies to is decided by posture_params.redacts alone. Ordinary chat photos are not touched.
+Which pictures this applies to is decided by posture_params.redacts alone. Ordinary chat photos are not touched here; they go
+after a month (image_retention.py).
 """
 import logging
 from datetime import date

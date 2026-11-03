@@ -1,6 +1,6 @@
 # {{app_name}} Privacy Policy
 
-Version: 2026-10-31
+Version: 2026-11-04
 
 This policy explains what information {{app_name}} (the iOS app and the server it connects to, "the service") collects, how it is used, where it is stored, who processes it and what your rights are. The service is operated by **{{entity}}** ("we").
 
@@ -82,6 +82,7 @@ Apart from the above, we do not give your data to anyone.
 
 - While your account exists.
 - When you delete your account, the live data on the server is deleted at once; old copies in backups disappear within **6 months** as the backups rotate.
+- Photos and video frames you send to the AI are removed from the conversation after **30 days**; the text stays.
 - Voice is deleted as soon as it has been turned into text; sign-in codes are cleared within a day; accounts that are never activated are deleted after 7 days.
 
 ## 6. Your rights
