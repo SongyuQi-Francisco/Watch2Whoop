@@ -440,9 +440,13 @@ def ow_invitation(conn=Depends(get_conn), viewer=Depends(current_user)):
 
 @router.post("/v1/account/web-login-code")
 def web_login_code(conn=Depends(get_conn), viewer=Depends(current_user)):
-    """A one-time login code (10 minutes) so the app can sign its embedded Today page in: open /app/#login=<code>."""
+    """A one-time login code (10 minutes) so the app can sign its embedded Today page in: open /app/#login=<code>.
+    The code never gets more than the caller has: a read-only token mints a read-only code."""
     hours = 1
-    code = login_codes.create(conn, viewer["id"], "signin-webview", hours=hours)
+    scopes = [s for s in (viewer.get("token_scopes") or []) if s in login_codes.ALLOWED_SCOPES]
+    if not scopes:
+        raise HTTPException(403, "这个 token 不能换登录码")
+    code = login_codes.create(conn, viewer["id"], "signin-webview", hours=hours, scopes=scopes)
     conn.execute("UPDATE web_login_codes SET expires_at = created_at + make_interval(mins => %s) WHERE code_sha256 = %s",
                  (WEB_LOGIN_CODE_MINUTES, login_codes._sha(code)))
     return {"code": code, "expires_in": WEB_LOGIN_CODE_MINUTES * 60}
