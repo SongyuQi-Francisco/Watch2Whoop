@@ -31,19 +31,21 @@ def _sha(code: str) -> str:
 
 
 def create(conn: psycopg.Connection, user_id: int, label: str | None = None, hours: int = DEFAULT_HOURS,
-           scopes: list[str] | None = None) -> str:
-    """Issue a one-time login code and return the plaintext (shown only this once)."""
+           scopes: list[str] | None = None, minutes: int | None = None) -> str:
+    """Issue a one-time login code and return the plaintext (shown only this once). `minutes` replaces `hours` for a short-lived code."""
     scopes = scopes or ["read", "write"]
     if not set(scopes) <= ALLOWED_SCOPES:
         raise ValueError(f"scopes 只能是 {sorted(ALLOWED_SCOPES)}")
-    if not 1 <= hours <= MAX_HOURS:
+    if minutes is None and not 1 <= hours <= MAX_HOURS:
+        raise ValueError(f"有效期 1–{MAX_HOURS} 小时")
+    if minutes is not None and not 1 <= minutes <= MAX_HOURS * 60:
         raise ValueError(f"有效期 1–{MAX_HOURS} 小时")
     if conn.execute("SELECT 1 FROM users WHERE id = %s", (user_id,)).fetchone() is None:
         raise ValueError(f"没有用户 {user_id}")
     code = "".join(secrets.choice(ALPHABET) for _ in range(LENGTH))
     conn.execute("""INSERT INTO web_login_codes (user_id, code_sha256, scopes, label, expires_at)
-                    VALUES (%s, %s, %s, %s, now() + make_interval(hours => %s))""",
-                 (user_id, _sha(code), scopes, (label or "")[:60] or None, hours))
+                    VALUES (%s, %s, %s, %s, now() + make_interval(mins => %s))""",
+                 (user_id, _sha(code), scopes, (label or "")[:60] or None, hours * 60 if minutes is None else minutes))
     return code
 
 

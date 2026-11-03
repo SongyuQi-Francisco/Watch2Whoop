@@ -403,3 +403,39 @@ struct AppearanceChoice: Codable, Equatable {
   var theme = "default"
   var quotes = true
 }
+
+/// A row the server adds to 我 (`/v1/web/me` → `me_links`, server `web/me_links.py`): the words and the address are the
+/// server's, so a deployment can add or withdraw a row without an app release. It always opens in the system browser, never in
+/// a web view inside the app. No `me_links` from the server: no rows.
+struct MeLink: Equatable, Identifiable {
+  let key: String
+  let title: String
+  var id: String { key }
+
+  static func parse(_ raw: Any?, server: URL) -> [MeLink] {
+    guard let rows = raw as? [[String: Any]] else { return [] }
+    return rows.compactMap { r in
+      guard let key = r["key"] as? String, !key.isEmpty, key.range(of: "^[a-z0-9_-]+$", options: .regularExpression) != nil,
+            let title = r["title"] as? String, !title.isEmpty,
+            let url = r["url"] as? String, target(url, server: server) != nil else { return nil }
+      return MeLink(key: key, title: title)
+    }
+  }
+
+  /// Where an address from the server may go: https, or this server's own origin (a local development server is http).
+  /// Anything else (other schemes, `http` elsewhere) is not opened.
+  static func target(_ raw: String, server: URL) -> URL? {
+    guard let url = URL(string: raw, relativeTo: server)?.absoluteURL, let scheme = url.scheme?.lowercased(), url.host != nil else { return nil }
+    if scheme == "https" { return url }
+    return scheme == server.scheme?.lowercased() && url.host == server.host && url.port == server.port ? url : nil
+  }
+
+  /// The address to open right now: the server may add a one-time sign-in code for the browser, so it is asked at every tap.
+  func address(api: APIClient) async throws -> URL {
+    let answer = try await api.json(APIRequest(method: .post, path: Endpoint.meLinkOpen(key)))
+    guard let raw = answer["url"] as? String, let url = Self.target(raw, server: api.baseURL) else {
+      throw APIError.decoding("me link url")
+    }
+    return url
+  }
+}
