@@ -47,6 +47,9 @@ server: 19 users = 275 s, about 14.5 s per user, so 300 users ≈ 72 minutes —
     answered) are replaced by a text placeholder once `ai_messages.redact_after` has passed (`ai/posture.py redact_overdue`; `redact_after`
     is set to 30 minutes after the message, `ai/posture_params.REDACT_AFTER_MINUTES`). The number is how many messages were rewritten;
     every other message has no `redact_after` and is not touched. Idempotent (docs/posture-photos-plan.md section 10).
+  - `ai_images_expired`: chat photos and video frames older than 30 days are replaced the same way (`ai/image_retention.py`,
+    `ai/posture_params.CHAT_IMAGE_KEEP_DAYS`). Only pictures in the person's own chat messages; the text stays. The number is how many
+    messages were rewritten. Idempotent.
 - **Nightly** = `hourly-batch --full` (full `compute-scores`, nothing skipped), then the backup as before.
 
 Not in the batch (a handful of global commands, each one container per run): `provision-run`, `oauth-cleanup`, `ai-cards periodic`,
