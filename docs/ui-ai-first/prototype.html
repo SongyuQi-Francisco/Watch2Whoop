@@ -1,0 +1,1221 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 优先 UI 原型</title>
+<!-- Clickable prototype for docs/ui-ai-first-redesign.md (issue #279). Synthetic data only; nothing here talks to a server.
+     Icons: Lucide (ISC), SVG paths inlined from github.com/lucide-icons/lucide main. -->
+<style>
+:root {
+  --bg: #ffffff; --surface: #f4f4f6; --surface-2: #e9e9ed; --text: #111113; --text-2: #6c6c73; --text-3: #a3a3aa;
+  --hair: rgba(0,0,0,.06); --good: #4e9a6b; --mid: #b58a34; --bad: #be5a44; --sleep: #6870c4; --strain: #3d7fd1;
+  --ai: #6f6cf0; --ai-soft: rgba(111,108,240,.10); --good-soft: rgba(78,154,107,.12); --mid-soft: rgba(181,138,52,.13);
+  --bad-soft: rgba(190,90,68,.12); --sheet: #ffffff; --scrim: rgba(0,0,0,.28); --chrome: rgba(255,255,255,.88);
+  --page: #e8e8ec; --radius: 18px; --ease: cubic-bezier(.2,.8,.2,1);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #000; --surface: #121214; --surface-2: #1d1d20; --text: #f4f4f6; --text-2: #8d8d94; --text-3: #55555b; --hair: rgba(255,255,255,.07);
+  --good: #72bf8e; --mid: #d3ae63; --bad: #de7f69; --sleep: #8d93e4; --strain: #6aa7ee; --ai: #a3a6ff; --ai-soft: rgba(163,166,255,.13);
+  --good-soft: rgba(114,191,142,.14); --mid-soft: rgba(211,174,99,.14); --bad-soft: rgba(222,127,105,.14); --sheet: #161618;
+  --scrim: rgba(0,0,0,.6); --chrome: rgba(0,0,0,.84); --page: #0c0c0e; } }
+:root[data-theme="dark"] {
+  --bg: #000; --surface: #121214; --surface-2: #1d1d20; --text: #f4f4f6; --text-2: #8d8d94; --text-3: #55555b; --hair: rgba(255,255,255,.07);
+  --good: #72bf8e; --mid: #d3ae63; --bad: #de7f69; --sleep: #8d93e4; --strain: #6aa7ee; --ai: #a3a6ff; --ai-soft: rgba(163,166,255,.13);
+  --good-soft: rgba(114,191,142,.14); --mid-soft: rgba(211,174,99,.14); --bad-soft: rgba(222,127,105,.14); --sheet: #161618;
+  --scrim: rgba(0,0,0,.6); --chrome: rgba(0,0,0,.84); --page: #0c0c0e; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--text); font: 15px/1.4 -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: inherit; }
+svg.i { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* ---- page around the phone */
+.stage { display: flex; gap: 32px; justify-content: center; align-items: flex-start; padding: 28px 16px; flex-wrap: wrap; }
+.ctl { width: 300px; max-width: 100%; }
+.ctl h1 { font-size: 20px; margin: 0 0 6px; }
+.ctl p { color: var(--text-2); font-size: 13px; margin: 0 0 14px; }
+.ctl h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-2); margin: 18px 0 8px; }
+.ctl .opts { display: flex; flex-direction: column; gap: 6px; }
+.ctl .opt { background: var(--surface); border-radius: 12px; padding: 10px 12px; font-size: 14px; }
+.ctl .opt small { display: block; color: var(--text-2); font-size: 12px; }
+.ctl .opt[aria-pressed="true"] { outline: 2px solid var(--ai); }
+.ctl .row { display: flex; gap: 6px; flex-wrap: wrap; }
+.ctl .row .opt { flex: 1; text-align: center; }
+
+.phone { width: 390px; height: 844px; border-radius: 54px; padding: 0; background: var(--bg); position: relative; overflow: hidden;
+  box-shadow: 0 0 0 10px #1b1b1e, 0 0 0 11px #3a3a3f, 0 30px 80px rgba(0,0,0,.35); flex: none; }
+.screen { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--bg); }
+.statusbar { height: 50px; flex: none; display: flex; align-items: flex-end; justify-content: space-between; padding: 0 30px 6px 34px; font-weight: 600; font-size: 15px; }
+.statusbar .isl { position: absolute; left: 50%; top: 11px; width: 120px; height: 34px; margin-left: -60px; background: #000; border-radius: 20px; }
+.statusbar .bat { width: 25px; height: 12px; border: 1.5px solid currentColor; border-radius: 4px; opacity: .8; position: relative; }
+.statusbar .bat::after { content: ""; position: absolute; inset: 1.5px 6px 1.5px 1.5px; background: currentColor; border-radius: 1.5px; }
+.view { flex: 1; overflow-y: auto; padding: 4px 16px 120px; scrollbar-width: none; scroll-behavior: smooth; }
+.view::-webkit-scrollbar { display: none; }
+
+/* ---- header */
+.top { display: flex; align-items: flex-end; justify-content: space-between; margin: 6px 0 12px; }
+.top .date { color: var(--text-2); font-size: 13px; }
+.top h1 { font-size: 30px; margin: 0; letter-spacing: -.01em; }
+.avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--surface-2); display: grid; place-items: center; color: var(--text-2); }
+
+/* ---- AI brief line */
+.brief { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 12px; border-radius: 14px; background: var(--ai-soft); color: var(--text); margin-bottom: 14px; }
+.brief .i { color: var(--ai); }
+.brief span { flex: 1; font-weight: 600; font-size: 15px; }
+.brief .chev { color: var(--text-3); width: 16px; height: 16px; }
+
+/* ---- the three core dials */
+.core { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 18px; }
+.dial { background: var(--surface); border-radius: var(--radius); padding: 12px 6px 10px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.dial svg { width: 86px; height: 86px; }
+.dial .track { stroke: var(--surface-2); }
+.dial text.v { font-size: 25px; font-weight: 700; fill: var(--text); font-variant-numeric: tabular-nums; }
+.dial text.u { font-size: 11px; fill: var(--text-2); }
+.dial .cap { font-size: 13px; color: var(--text-2); }
+.dial .cap b { color: var(--text); font-weight: 600; }
+
+/* ---- sections */
+.sh { display: flex; align-items: baseline; justify-content: space-between; margin: 20px 2px 8px; }
+.sh h2 { font-size: 17px; margin: 0; }
+.sh small { color: var(--text-2); font-size: 13px; }
+
+/* focus: today's 1–3 things */
+.focus { background: var(--surface); border-radius: var(--radius); overflow: hidden; }
+.fi { display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 14px; }
+.fi + .fi { border-top: 1px solid var(--hair); }
+.fi .ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--surface-2); flex: none; }
+.fi .ic .i { width: 18px; height: 18px; }
+.fi .t { flex: 1; min-width: 0; }
+.fi .t b { display: block; font-weight: 600; font-size: 15px; }
+.fi .t small { color: var(--text-2); font-size: 12px; }
+.fi .v { font-weight: 600; font-variant-numeric: tabular-nums; }
+.fi .chev { color: var(--text-3); width: 16px; height: 16px; }
+.fi.done .t b { color: var(--text-2); text-decoration: line-through; }
+.tone-good { color: var(--good); } .tone-mid { color: var(--mid); } .tone-bad { color: var(--bad); } .tone-sleep { color: var(--sleep); } .tone-ai { color: var(--ai); } .tone-strain { color: var(--strain); }
+.bg-good { background: var(--good-soft) !important; } .bg-mid { background: var(--mid-soft) !important; } .bg-bad { background: var(--bad-soft) !important; } .bg-ai { background: var(--ai-soft) !important; }
+
+/* module cards */
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mod { background: var(--surface); border-radius: var(--radius); padding: 12px; min-height: 108px; display: flex; flex-direction: column; gap: 6px; position: relative; text-align: left; }
+.mod .mh { display: flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 13px; }
+.mod .mh .i { width: 15px; height: 15px; }
+.mod .big { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.mod .big small { font-size: 13px; color: var(--text-2); font-weight: 500; margin-left: 2px; }
+.mod .sub { font-size: 12px; color: var(--text-2); margin-top: auto; }
+.mod .chip { position: absolute; top: 10px; right: 10px; font-size: 11px; padding: 2px 7px; border-radius: 99px; background: var(--ai-soft); color: var(--ai); font-weight: 600; }
+.mod.ghost { background: transparent; border: 1.5px dashed var(--text-3); justify-content: center; align-items: center; text-align: center; color: var(--text-2); }
+.mod.ghost .i { color: var(--ai); width: 22px; height: 22px; }
+.mod.ghost b { color: var(--text); font-size: 14px; }
+.mod.wide { grid-column: span 2; min-height: 0; }
+.mod.temp { outline: 1.5px solid var(--mid); }
+.mod.grow { animation: grow .9s var(--ease) both, glow 2.4s ease-out .5s 1; }
+@keyframes grow { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes glow { 0% { box-shadow: 0 0 0 0 var(--ai); } 40% { box-shadow: 0 0 0 6px var(--ai-soft); } 100% { box-shadow: 0 0 0 0 transparent; } }
+.spark { width: 100%; height: 30px; overflow: visible; }
+.spark path { fill: none; stroke: currentColor; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
+.spark .area { fill: currentColor; opacity: .12; stroke: none; }
+.meter { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+.meter i { display: block; height: 100%; border-radius: 3px; background: currentColor; }
+.dots { display: flex; gap: 4px; }
+.dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--surface-2); }
+.dots i.on { background: currentColor; }
+.foot { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 16px 0 0; color: var(--text-2); font-size: 13px; width: 100%; }
+.foot .i { width: 15px; height: 15px; }
+
+/* ---- tab bar + Jarvis key */
+.tabbar { position: absolute; left: 0; right: 0; bottom: 0; height: 84px; padding: 0 12px 26px; display: flex; align-items: center; justify-content: space-around;
+  background: var(--chrome); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--hair); }
+.tab { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10.5px; color: var(--text-3); width: 62px; }
+.tab[aria-current="page"] { color: var(--text); }
+.tab .i { width: 23px; height: 23px; }
+.tab.grow { animation: grow .8s var(--ease) both; }
+.jkey { width: 60px; height: 60px; border-radius: 50%; display: grid; place-items: center; margin-top: -26px; color: #fff;
+  background: radial-gradient(circle at 50% 40%, #8a87ff, #4b47d6 70%); box-shadow: 0 0 0 4px var(--bg), 0 0 0 5.5px var(--ai-soft), 0 8px 24px rgba(80,76,220,.45); }
+.jkey .i { width: 27px; height: 27px; stroke-width: 1.9; }
+
+/* ---- sheet (Jarvis half sheet, detail sheets) */
+.scrim { position: absolute; inset: 0; background: var(--scrim); opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 5; }
+.scrim.on { opacity: 1; pointer-events: auto; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; max-height: 86%; min-height: 56%; background: var(--sheet); border-radius: 22px 22px 0 0; z-index: 6;
+  transform: translateY(105%); transition: transform .35s var(--ease); display: flex; flex-direction: column; }
+.sheet.on { transform: none; }
+.sheet .grab { width: 38px; height: 5px; border-radius: 3px; background: var(--surface-2); margin: 8px auto 4px; flex: none; }
+.sheet .shd { display: flex; align-items: center; justify-content: space-between; padding: 4px 16px 8px; flex: none; }
+.sheet .shd h3 { margin: 0; font-size: 17px; display: flex; align-items: center; gap: 8px; }
+.sheet .shd h3 .i { color: var(--ai); }
+.sheet .x { width: 30px; height: 30px; border-radius: 50%; background: var(--surface); display: grid; place-items: center; }
+.sheet .x .i { width: 16px; height: 16px; }
+.sheet .sb { flex: 1; overflow-y: auto; padding: 0 16px 16px; scrollbar-width: none; }
+
+/* chat */
+.msgs { display: flex; flex-direction: column; gap: 10px; }
+.bub { max-width: 84%; padding: 9px 12px; border-radius: 16px; font-size: 15px; }
+.bub.me { align-self: flex-end; background: var(--ai); color: #fff; border-bottom-right-radius: 5px; }
+.bub.me .vt { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; opacity: .8; margin-bottom: 2px; }
+.bub.me .vt .i { width: 12px; height: 12px; }
+.bub.ai { align-self: flex-start; background: var(--surface); border-bottom-left-radius: 5px; }
+.ccard { align-self: stretch; background: var(--surface); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.ccard .ch { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
+.ccard .ch .i { width: 15px; height: 15px; }
+.ccard .ch .ok { margin-left: auto; color: var(--good); display: flex; align-items: center; gap: 3px; font-weight: 600; }
+.ccard .ch .ok .i { width: 14px; height: 14px; }
+.ccard .row2 { display: flex; align-items: baseline; gap: 14px; }
+.ccard .row2 div { display: flex; flex-direction: column; }
+.ccard .row2 b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.ccard .row2 small { color: var(--text-2); font-size: 12px; }
+.acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 99px; background: var(--surface-2); font-size: 13px; font-weight: 600; }
+.pill .i { width: 15px; height: 15px; }
+.pill.pri { background: var(--ai); color: #fff; }
+.pill.on { background: var(--good-soft); color: var(--good); }
+.typing { display: flex; gap: 4px; padding: 12px; }
+.typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); animation: blink 1s infinite; }
+.typing i:nth-child(2) { animation-delay: .15s; } .typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes blink { 50% { opacity: .3; } }
+.compose { display: flex; align-items: center; gap: 8px; padding: 8px 12px 30px; border-top: 1px solid var(--hair); flex: none; }
+.compose .in { flex: 1; background: var(--surface); border-radius: 20px; padding: 9px 14px; color: var(--text-3); font-size: 15px; }
+.compose .mic { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--ai); color: #fff; }
+.sugg { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+.sugg button { padding: 7px 11px; border-radius: 99px; border: 1px solid var(--hair); background: var(--surface); font-size: 13px; }
+
+/* detail sheet layers */
+.layer { margin-top: 14px; }
+.layer h4 { margin: 0 0 6px; font-size: 12px; color: var(--text-2); font-weight: 600; letter-spacing: .04em; display: flex; align-items: center; gap: 6px; }
+.layer h4 .lv { font-size: 10px; padding: 1px 6px; border-radius: 6px; background: var(--surface-2); color: var(--text-2); }
+.glance { display: flex; align-items: baseline; gap: 10px; }
+.glance .big { font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.badge { font-size: 12px; padding: 2px 8px; border-radius: 99px; font-weight: 600; }
+.chart { width: 100%; height: 120px; }
+.chart .band { fill: currentColor; opacity: .09; }
+.chart .ln { fill: none; stroke: currentColor; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.chart .base { stroke: var(--text-3); stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.chart text { font-size: 9px; fill: var(--text-3); }
+table.raw { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.raw th { text-align: left; color: var(--text-2); font-weight: 500; font-size: 12px; padding: 4px 0; }
+table.raw td { padding: 6px 0; border-top: 1px solid var(--hair); font-variant-numeric: tabular-nums; }
+table.raw td:last-child, table.raw th:last-child { text-align: right; color: var(--text-2); }
+
+/* segmented control, lists */
+.seg { display: flex; background: var(--surface); border-radius: 10px; padding: 2px; margin: 0 0 12px; }
+.seg button { flex: 1; text-align: center; padding: 6px 0; border-radius: 8px; font-size: 13px; color: var(--text-2); }
+.seg button[aria-pressed="true"] { background: var(--bg); color: var(--text); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.tcard { background: var(--surface); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 8px; display: block; width: 100%; }
+.tcard .th { display: flex; justify-content: space-between; align-items: baseline; }
+.tcard .th b { font-size: 15px; }
+.tcard .th span { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tcard .th span small { font-size: 12px; color: var(--text-2); font-weight: 500; margin-left: 2px; }
+.tcard .delta { font-size: 12px; color: var(--text-2); }
+.mini3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.mini3 .mod { min-height: 84px; }
+.locked { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: var(--radius); border: 1.5px dashed var(--surface-2); color: var(--text-2); width: 100%; }
+.locked .i { color: var(--text-3); }
+.locked b { color: var(--text); display: block; font-size: 14px; }
+.locked small { font-size: 12px; }
+.prog { height: 4px; border-radius: 2px; background: var(--surface-2); margin-top: 6px; overflow: hidden; }
+.prog i { display: block; height: 100%; background: var(--ai); border-radius: 2px; }
+.list { background: var(--surface); border-radius: var(--radius); overflow: hidden; }
+.li { display: flex; align-items: center; gap: 12px; padding: 12px 14px; width: 100%; }
+.li + .li { border-top: 1px solid var(--hair); }
+.li .i.lead { width: 18px; height: 18px; color: var(--text-2); }
+.li .t { flex: 1; min-width: 0; }
+.li .t b { display: block; font-weight: 500; }
+.li .t small { color: var(--text-2); font-size: 12px; }
+.li .v { color: var(--text-2); font-size: 14px; }
+.li .chev { color: var(--text-3); width: 16px; height: 16px; }
+.st { font-size: 11px; padding: 2px 7px; border-radius: 99px; font-weight: 600; white-space: nowrap; }
+.st.pinned { background: var(--ai-soft); color: var(--ai); }
+.st.open { background: var(--good-soft); color: var(--good); }
+.st.ready { background: var(--mid-soft); color: var(--mid); }
+.st.locked { background: var(--surface-2); color: var(--text-2); }
+.switch { width: 46px; height: 28px; border-radius: 14px; background: var(--surface-2); position: relative; flex: none; }
+.switch::after { content: ""; position: absolute; left: 3px; top: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: left .2s; }
+.switch.on { background: var(--good); }
+.switch.on::after { left: 21px; }
+.me-head { display: flex; align-items: center; gap: 12px; margin: 8px 0 16px; }
+.me-head .avatar { width: 54px; height: 54px; }
+.me-head b { font-size: 20px; display: block; }
+.me-head small { color: var(--text-2); }
+/* timeline */
+.tl { position: relative; padding-left: 16px; }
+.tl::before { content: ""; position: absolute; left: 5px; top: 6px; bottom: 6px; width: 1.5px; background: var(--surface-2); }
+.te { position: relative; margin-bottom: 8px; }
+.te::before { content: ""; position: absolute; left: -15px; top: 18px; width: 9px; height: 9px; border-radius: 50%; background: var(--surface-2); border: 2px solid var(--bg); }
+.te .tcard { margin: 0; display: flex; gap: 10px; align-items: center; }
+.te .tm { font-size: 12px; color: var(--text-2); width: 40px; flex: none; font-variant-numeric: tabular-nums; }
+.te .src { font-size: 11px; color: var(--text-3); display: flex; align-items: center; gap: 3px; }
+.te .src .i { width: 11px; height: 11px; }
+.chips { display: flex; gap: 6px; margin-bottom: 12px; overflow-x: auto; scrollbar-width: none; }
+.chips button { padding: 6px 12px; border-radius: 99px; background: var(--surface); font-size: 13px; white-space: nowrap; }
+.chips button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+.toast { position: absolute; left: 16px; right: 16px; bottom: 100px; background: var(--text); color: var(--bg); border-radius: 14px; padding: 11px 14px; font-size: 14px;
+  opacity: 0; transform: translateY(10px); transition: all .3s var(--ease); z-index: 9; display: flex; align-items: center; gap: 8px; pointer-events: none; }
+.toast.on { opacity: 1; transform: none; }
+.toast .i { color: var(--ai); width: 18px; height: 18px; }
+.why { position: absolute; top: 10px; right: 10px; font-size: 10.5px; padding: 1px 6px; border-radius: 99px; background: var(--surface-2); color: var(--text-2); }
+.goalchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.goalchips button { padding: 8px 13px; border-radius: 99px; border: 1.5px solid var(--surface-2); font-size: 14px; }
+.goalchips button[aria-pressed="true"] { border-color: var(--ai); background: var(--ai-soft); color: var(--ai); font-weight: 600; }
+.ccard.find .ft { font-size: 15px; }
+.ccard.find .row2 { align-items: center; }
+.sheet.tall { min-height: 88%; max-height: 92%; }
+.mod.circ { gap: 8px; min-height: 0; }
+.crow { display: flex; align-items: center; gap: 10px; }
+.avs { display: flex; }
+.avs i, .av { width: 26px; height: 26px; border-radius: 50%; display: inline-grid; place-items: center; color: #fff; font-size: 12px; font-style: normal; font-weight: 600; border: 2px solid var(--surface); flex: none; }
+.avs i + i { margin-left: -8px; }
+.rk { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--text-2); }
+.rk .i { width: 15px; height: 15px; color: var(--mid); }
+.rk b { color: var(--text); }
+.post1 { font-size: 13px; color: var(--text-2); }
+.post1 b { color: var(--text); font-weight: 600; }
+.post .ph { display: flex; align-items: center; gap: 8px; }
+.post .ph span { display: flex; flex-direction: column; }
+.post .ph small { color: var(--text-2); font-size: 12px; }
+.post .pb { margin: 8px 0 6px; font-size: 15px; }
+.post .pb b { font-size: 18px; }
+.post .pf { display: flex; gap: 14px; color: var(--text-2); font-size: 13px; }
+.post .pf span { display: flex; align-items: center; gap: 4px; }
+.post .pf .i { width: 15px; height: 15px; }
+.tab { position: relative; }
+.badge-dot { position: absolute; top: 0; right: 18px; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); }
+.search { display: flex; align-items: center; gap: 8px; background: var(--surface); border-radius: 12px; padding: 9px 12px; color: var(--text-3); margin-bottom: 12px; }
+.search .i { width: 17px; height: 17px; }
+.muted { color: var(--text-2); font-weight: 400; font-size: 13px; }
+.top .pill { margin-bottom: 6px; }
+/* ---- hero: the three core scores as rings, always the first thing on Today */
+.hero3 { display: grid; grid-template-columns: 1fr 1.55fr 1fr; align-items: end; gap: 4px; margin: 2px 0 10px; }
+.hr { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.hr svg { width: 100%; height: auto; overflow: visible; }
+.hr.sm svg { max-width: 104px; } .hr.lg svg { max-width: 176px; }
+.ring .track { fill: none; stroke: var(--surface-2); }
+.ring .ticks { fill: none; stroke: var(--text-3); stroke-width: 1; opacity: 0; }
+.ring .arc { fill: none; stroke-linecap: round; }
+.ring.lg .track, .ring.lg .arc { stroke-width: 12; } .ring.sm .track, .ring.sm .arc { stroke-width: 13; }
+.ring text { fill: var(--text); font-variant-numeric: tabular-nums; }
+.ring .rv { font-weight: 700; } .ring.lg .rv { font-size: 52px; } .ring.sm .rv { font-size: 40px; }
+.ring .ru { font-size: 15px; fill: var(--text-2); }
+.hr .hl { font-size: 13px; color: var(--text-2); }
+.hr .hs { font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.vitals { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 14px; }
+.vitals span { background: var(--surface); border-radius: 12px; padding: 7px 8px; display: flex; flex-direction: column; }
+.vitals i { font-style: normal; font-size: 10.5px; color: var(--text-2); }
+.vitals b { font-size: 17px; font-variant-numeric: tabular-nums; }
+.vitals b small { font-size: 10.5px; color: var(--text-2); font-weight: 500; margin-left: 2px; }
+
+/* ---- Jarvis ring menu (same four keys as jarvis-entry.js, #53 / #258) */
+.orbit { position: absolute; left: 0; right: 0; bottom: 0; height: 330px; z-index: 4; pointer-events: none; }
+.orbit .ob { position: absolute; width: 62px; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; color: var(--text);
+  opacity: 0; transform: translate(var(--fx), var(--fy)) scale(.3); transition: transform .45s var(--ease), opacity .3s; pointer-events: auto; }
+.orbit .ob span.k { width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--hair); }
+.orbit .ob .i { width: 22px; height: 22px; }
+.orbit.on .ob { opacity: 1; transform: none; }
+.orbit .ob:nth-of-type(1) { left: 34px; bottom: 112px; --fx: 130px; --fy: 80px; }
+.orbit .ob:nth-of-type(2) { left: 104px; bottom: 182px; --fx: 60px; --fy: 150px; }
+.orbit .ob:nth-of-type(3) { right: 104px; bottom: 182px; --fx: -60px; --fy: 150px; }
+.orbit .ob:nth-of-type(4) { right: 34px; bottom: 112px; --fx: -130px; --fy: 80px; }
+.orbit-scrim { position: absolute; inset: 0; z-index: 3; background: rgba(0,0,0,.6); opacity: 0; pointer-events: none; transition: opacity .3s; }
+.orbit-scrim.on { opacity: 1; pointer-events: auto; }
+.jkey .i.cd { display: none; } .jkey.open .i.cd { display: block; } .jkey.open .i.ob1 { display: none; }
+.jkey { position: relative; z-index: 5; }
+
+/* =====================================================================
+   Look A · 全息 HUD: holographic heads-up display. Cyan-blue light with a little amber, hairlines, concentric arcs and
+   tick bezels, scan lines and a sweep when data appears, floating translucent panels, Lucide line icons drawn with a
+   gradient stroke and a glow inside HUD frames. Same language as the Jarvis ring menu (#53 / #258).
+   Motion: transform and opacity only; prefers-reduced-motion = no motion; .lite (low-end devices) = no blur, no glow,
+   no continuous rotation.
+   ===================================================================== */
+:root[data-look="a"] {
+  --bg: #02060a; --surface: rgba(64,220,255,.05); --surface-2: rgba(64,220,255,.13); --text: #e6fbff; --text-2: #79a6b5; --text-3: #35525e;
+  --hair: rgba(80,225,255,.22); --good: #46f0d2; --mid: #ffb547; --bad: #ff6b5a; --sleep: #7fd8ff; --strain: #ffb547; --ai: #5ff3ff; --amber: #ffb547;
+  --ai-soft: rgba(95,243,255,.10); --good-soft: rgba(70,240,210,.10); --mid-soft: rgba(255,181,71,.12); --bad-soft: rgba(255,107,90,.12);
+  --sheet: rgba(3,14,22,.94); --chrome: rgba(3,12,20,.80); --page: #010307; --radius: 14px; --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --g-rec-1: #5ff3ff; --g-rec-2: #46f0d2; --g-sl-1: #7fd8ff; --g-sl-2: #b5ccff; --g-st-1: #ffd27a; --g-st-2: #ff9a2e;
+}
+[data-look="a"] .screen { background:
+  radial-gradient(110% 55% at 50% -8%, rgba(40,190,255,.20), transparent 62%),
+  linear-gradient(rgba(80,225,255,.035) 1px, transparent 1px) 0 0 / 100% 28px,
+  linear-gradient(90deg, rgba(80,225,255,.03) 1px, transparent 1px) 0 0 / 28px 100%, var(--bg); }
+[data-look="a"] .screen::after { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 9;
+  background: repeating-linear-gradient(0deg, rgba(120,235,255,.035) 0 1px, transparent 1px 3px); }
+[data-look="a"] .screen::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 120px; z-index: 4; pointer-events: none;
+  background: linear-gradient(180deg, transparent, rgba(2,6,10,.94) 55%); }
+.sweep { position: absolute; left: 0; right: 0; top: 0; height: 120px; pointer-events: none; z-index: 8; opacity: 0; display: none;
+  background: linear-gradient(180deg, transparent, rgba(95,243,255,.10) 70%, rgba(95,243,255,.45) 99%, transparent); }
+[data-look="a"] .sweep { display: block; }
+[data-look="a"] .sweep.go { animation: sweep 1.3s var(--ease) 1; }
+@keyframes sweep { 0% { opacity: 0; transform: translateY(-120px); } 15% { opacity: 1; } 100% { opacity: 0; transform: translateY(844px); } }
+
+/* floating translucent panels */
+[data-look="a"] :is(.mod, .focus, .tcard, .list, .vitals span, .brief, .ccard, .bub.ai, .search, .seg) {
+  background: linear-gradient(180deg, rgba(64,220,255,.075), rgba(64,220,255,.02)); border: 1px solid var(--hair);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: inset 0 1px 0 rgba(140,240,255,.14), 0 10px 26px rgba(0,0,0,.45); }
+[data-look="a"] .mod::before, [data-look="a"] .mod::after { content: ""; position: absolute; width: 10px; height: 10px; border-color: var(--ai); border-style: solid; pointer-events: none; opacity: .85; }
+[data-look="a"] .mod::before { top: -1px; left: -1px; border-width: 1.5px 0 0 1.5px; border-top-left-radius: 5px; }
+[data-look="a"] .mod::after { bottom: -1px; right: -1px; border-width: 0 1.5px 1.5px 0; border-bottom-right-radius: 5px; }
+[data-look="a"] .mod.ghost { background: transparent; border: 1px dashed rgba(255,181,71,.55); }
+[data-look="a"] .mod.ghost::before, [data-look="a"] .mod.ghost::after { border-color: var(--amber); }
+[data-look="a"] .mod.temp { outline: 1px solid var(--amber); box-shadow: 0 0 18px rgba(255,181,71,.25); }
+
+/* type: monospace HUD labels, big tabular numbers */
+[data-look="a"] :is(.hr .hl, .hr .hs, .vitals i, .sh small, .date, .mod .mh, .tab > span:not(.tf), .why, .chip, .pill, .seg button, .chips button, .st, .fi .t small, .tm, .src, .delta) {
+  font-family: var(--mono); letter-spacing: .08em; }
+[data-look="a"] :is(.big, .vitals b, .fi .v, .num, .ring text, .glance .big, .tcard .th span) { font-family: var(--mono); letter-spacing: -.03em; }
+[data-look="a"] .ring .rv, [data-look="a"] .hero-x .rv { text-shadow: 0 0 14px rgba(95,243,255,.55); }
+[data-look="a"] .top h1 { font-weight: 600; letter-spacing: .04em; }
+[data-look="a"] .top .date::before { content: "◤ "; color: var(--ai); font-size: 9px; }
+[data-look="a"] .sh { background: linear-gradient(90deg, var(--hair), transparent 80%) left bottom / 100% 1px no-repeat; padding-bottom: 6px; }
+[data-look="a"] .sh h2 { font-family: var(--mono); font-size: 12px; letter-spacing: .22em; color: var(--ai); font-weight: 600; }
+[data-look="a"] .sh h2::before { content: "▸ "; }
+[data-look="a"] .hr .hl::before { content: "◢ "; color: var(--ai); font-size: 8px; }
+
+/* light-line icons: Lucide strokes painted with a gradient, a glow, framed by a HUD box with a passing light */
+[data-look="a"] svg.i { stroke: url(#gIcon); filter: drop-shadow(0 0 3px rgba(95,243,255,.6)); }
+[data-look="a"] :is(.tone-mid, .tone-strain, .bg-mid) svg.i, [data-look="a"] .mod.ghost svg.i { stroke: url(#gAmber); filter: drop-shadow(0 0 3px rgba(255,181,71,.6)); }
+[data-look="a"] .fi .ic { position: relative; overflow: hidden; background: rgba(64,220,255,.06); border: 1px solid var(--hair); border-radius: 9px; }
+[data-look="a"] .fi .ic::after { content: ""; position: absolute; top: -20%; bottom: -20%; width: 40%; left: 0; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(160,245,255,.35), transparent); transform: translateX(-150%) skewX(-18deg); }
+[data-look="a"] .view.enter .fi .ic::after { animation: glint 1.1s .45s var(--ease) 1; }
+@keyframes glint { to { transform: translateX(320%) skewX(-18deg); } }
+[data-look="a"] .fi .v.tone-mid, [data-look="a"] .fi .v.tone-strain { color: var(--amber); text-shadow: 0 0 10px rgba(255,181,71,.45); }
+[data-look="a"] .fi .v { color: var(--ai); text-shadow: 0 0 10px rgba(95,243,255,.4); }
+
+/* rings: tick bezel, a slow counter-rotating dashed inner ring, glowing gradient arc */
+[data-look="a"] .ring .ticks { opacity: .7; stroke: rgba(95,243,255,.5); }
+[data-look="a"] .ring .inner, [data-look="a"] .ring .outer { display: inline; }
+[data-look="a"] .ring .arc, [data-look="a"] .cring .arc, [data-look="a"] .cells .lit { filter: drop-shadow(0 0 6px var(--glow, rgba(95,243,255,.6))); }
+[data-look="a"] .ring .track, [data-look="a"] .cring .track { stroke: rgba(95,243,255,.10); }
+[data-look="a"] .ring.lg .track, [data-look="a"] .ring.lg .arc { stroke-width: 9; } [data-look="a"] .ring.sm .track, [data-look="a"] .ring.sm .arc { stroke-width: 10; }
+.ring .inner, .ring .outer { display: none; fill: none; stroke: rgba(95,243,255,.35); stroke-width: 1; }
+.spin { transform-box: fill-box; transform-origin: center; animation: spin 40s linear infinite; }
+.spin.rev { animation-direction: reverse; animation-duration: 28s; }
+@keyframes spin { to { transform: rotate(360deg); } }
+[data-look="a"] .view.enter :is(.ring, .cring, .cells, .hero-bars) { animation: ringIn .9s var(--ease) both; }
+@keyframes ringIn { from { opacity: 0; transform: rotate(-40deg) scale(.86); } }
+[data-look="a"] .view.enter .hero-bars { animation-name: rise; }
+[data-look="a"] .view.enter > * { animation: rise .55s var(--ease) both; }
+[data-look="a"] .view.enter > *:nth-child(2) { animation-delay: .05s; } [data-look="a"] .view.enter > *:nth-child(3) { animation-delay: .1s; }
+[data-look="a"] .view.enter > *:nth-child(4) { animation-delay: .15s; } [data-look="a"] .view.enter > *:nth-child(5) { animation-delay: .2s; }
+[data-look="a"] .view.enter > *:nth-child(6) { animation-delay: .25s; } [data-look="a"] .view.enter > *:nth-child(7) { animation-delay: .3s; }
+[data-look="a"] .view.enter > *:nth-child(n+8) { animation-delay: .35s; }
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+[data-look="a"] .view.enter .spark { animation: wipe .8s .35s var(--ease) both; transform-origin: left center; }
+@keyframes wipe { from { opacity: .2; transform: scaleX(0); } }
+[data-look="a"] .spark path { stroke-width: 1.4; filter: drop-shadow(0 0 3px currentColor); }
+[data-look="a"] .meter { background: rgba(95,243,255,.10); height: 4px; }
+[data-look="a"] .meter i { box-shadow: 0 0 8px currentColor; }
+[data-look="a"] .brief { background: linear-gradient(90deg, rgba(40,190,255,.16), rgba(40,190,255,.03)); border-left: 2px solid var(--ai); }
+[data-look="a"] .pill { background: rgba(64,220,255,.06); border: 1px solid var(--hair); border-radius: 8px; color: var(--text); }
+[data-look="a"] .pill.pri, [data-look="a"] .compose .mic { background: linear-gradient(90deg, rgba(95,243,255,.28), rgba(40,150,255,.22)); border: 1px solid var(--ai); color: #e9fdff;
+  box-shadow: 0 0 14px rgba(95,243,255,.35), inset 0 0 10px rgba(95,243,255,.2); }
+[data-look="a"] .chip { background: rgba(255,181,71,.16); color: var(--amber); border: 1px solid rgba(255,181,71,.5); }
+[data-look="a"] .why { background: transparent; border: 1px solid var(--hair); color: var(--ai); }
+[data-look="a"] .seg button[aria-pressed="true"], [data-look="a"] .chips button[aria-pressed="true"] { background: rgba(95,243,255,.16); color: #fff; box-shadow: inset 0 0 0 1px var(--ai), 0 0 12px rgba(95,243,255,.3); }
+[data-look="a"] .chips button { background: transparent; border: 1px solid var(--hair); border-radius: 8px; }
+[data-look="a"] .bub.me { background: linear-gradient(90deg, rgba(95,243,255,.30), rgba(40,150,255,.30)); border: 1px solid var(--ai); }
+[data-look="a"] .sheet { background: var(--sheet); border-top: 1px solid var(--ai); box-shadow: 0 -12px 40px rgba(40,190,255,.22); backdrop-filter: blur(16px); }
+[data-look="a"] .sheet .grab { background: var(--ai); opacity: .6; }
+[data-look="a"] .scrim { background: rgba(0,6,10,.6); }
+[data-look="a"] .toast { background: rgba(3,14,22,.95); color: var(--text); border: 1px solid var(--ai); }
+[data-look="a"] .st.pinned { color: var(--ai); background: rgba(95,243,255,.12); } [data-look="a"] .st.ready { color: var(--amber); }
+[data-look="a"] .switch.on { background: rgba(95,243,255,.5); box-shadow: 0 0 10px rgba(95,243,255,.5); }
+[data-look="a"] .avs i, [data-look="a"] .av { border-color: rgba(95,243,255,.6); box-shadow: 0 0 8px rgba(95,243,255,.35); }
+[data-look="a"] .badge-dot { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+
+/* tab bar: a floating HUD strip; the current tab sits in a rotating reticle */
+[data-look="a"] .tabbar { left: 12px; right: 12px; bottom: 14px; height: 66px; padding: 0 4px; border-radius: 22px; border: 1px solid var(--hair);
+  background: linear-gradient(180deg, rgba(10,40,55,.72), rgba(3,12,20,.86)); box-shadow: inset 0 1px 0 rgba(140,240,255,.18), 0 0 24px rgba(40,190,255,.12); }
+.tf { position: relative; display: grid; place-items: center; width: 34px; height: 30px; }
+[data-look="a"] .tf { overflow: visible; }
+[data-look="a"] .tf::before { content: ""; position: absolute; width: 34px; height: 34px; border-radius: 50%; border: 1px dashed rgba(95,243,255,.6); opacity: 0; transform: scale(.6); transition: opacity .3s, transform .4s var(--ease); }
+[data-look="a"] .tab[aria-current="page"] .tf::before { opacity: 1; transform: none; animation: spin 12s linear infinite; }
+[data-look="a"] .tab[aria-current="page"] { color: var(--ai); text-shadow: 0 0 10px rgba(95,243,255,.8); }
+[data-look="a"] .tab:not([aria-current]) svg.i { filter: none; opacity: .55; }
+[data-look="a"] .tab > span:not(.tf) { font-size: 9.5px; }
+
+/* the Jarvis key: concentric dashed rings turning in opposite directions around a glowing core */
+.jkey .jr { display: none; }
+[data-look="a"] .jkey { width: 64px; height: 64px; margin-top: -34px; color: var(--ai);
+  background: radial-gradient(circle at 50% 45%, rgba(95,243,255,.35), rgba(3,20,30,.95) 62%); border: 1px solid var(--ai);
+  box-shadow: 0 0 0 5px var(--bg), 0 0 22px rgba(95,243,255,.55), inset 0 0 16px rgba(95,243,255,.35); }
+[data-look="a"] .jkey .jr { display: block; position: absolute; inset: -12px; width: 88px; height: 88px; pointer-events: none; }
+.jr circle, .jr path { fill: none; stroke: rgba(95,243,255,.7); stroke-width: 1; }
+.jr .r2 { stroke: rgba(255,181,71,.7); }
+[data-look="a"] .jkey .i { width: 28px; height: 28px; position: relative; }
+
+/* the ring menu: a fan of concentric arcs opens with the four keys */
+.orbit .fan { position: absolute; left: 0; bottom: 0; width: 390px; height: 330px; opacity: 0; transform: scale(.55); transform-origin: 195px 266px; transition: transform .5s var(--ease), opacity .35s; display: none; }
+[data-look="a"] .orbit .fan { display: block; }
+.orbit.on .fan { opacity: 1; transform: none; }
+.fan path { fill: none; stroke: rgba(95,243,255,.35); stroke-width: 1; }
+.fan .tk { stroke: rgba(95,243,255,.6); stroke-dasharray: 1 7; stroke-width: 6; }
+.fan .am { stroke: rgba(255,181,71,.55); stroke-dasharray: 22 260; stroke-width: 2; }
+[data-look="a"] .orbit .ob span.k { position: relative; background: radial-gradient(circle, rgba(95,243,255,.22), rgba(3,18,28,.92) 70%); border: 1px solid var(--ai);
+  box-shadow: 0 0 16px rgba(95,243,255,.45), inset 0 0 12px rgba(95,243,255,.3); }
+[data-look="a"] .orbit .ob span.k::before { content: ""; position: absolute; inset: -7px; border-radius: 50%; border: 1px dashed rgba(95,243,255,.55); animation: spin 14s linear infinite; }
+[data-look="a"] .orbit .ob { font-family: var(--mono); letter-spacing: .12em; color: var(--ai); text-shadow: 0 0 8px rgba(95,243,255,.8); }
+[data-look="a"] .orbit-scrim { background: radial-gradient(circle at 50% 92%, rgba(20,110,150,.35), rgba(0,4,8,.88) 60%); }
+
+/* low-end devices (.lite): keep the look, drop the expensive parts */
+:root.lite [data-look="a"] *, :root.lite[data-look="a"] * { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; filter: none !important; }
+:root.lite[data-look="a"] .spin, :root.lite[data-look="a"] .tf::before, :root.lite[data-look="a"] .orbit .ob span.k::before { animation: none !important; }
+:root.lite[data-look="a"] .sweep { display: none; }
+
+/* ---- core-score layouts (D13): single ring / concentric / three rings / cell ring / horizontal batteries */
+.hero-x { display: flex; flex-direction: column; align-items: center; margin: 2px 0 10px; }
+.hero-x svg { width: 210px; height: 210px; overflow: visible; }
+.hero-x .rv { font-size: 54px; font-weight: 700; fill: var(--text); font-variant-numeric: tabular-nums; }
+.hero-x .ru { font-size: 13px; fill: var(--text-2); }
+.minis { display: flex; justify-content: center; gap: 22px; margin-top: 2px; }
+.minis span { display: flex; flex-direction: column; align-items: center; font-size: 11px; color: var(--text-2); }
+.minis b { font-size: 20px; color: var(--text); font-variant-numeric: tabular-nums; }
+.minis .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+.cring .track { fill: none; stroke: var(--surface-2); } .cring .arc { fill: none; stroke-linecap: round; }
+.cells path { fill: none; stroke-width: 14; stroke: var(--surface-2); }
+.cells .lit { stroke: var(--cell, var(--good)); }
+.view.enter .cells .lit { animation: cellOn .4s both; }
+@keyframes cellOn { from { opacity: 0; } }
+.hero-bars { display: grid; grid-template-columns: 0.9fr 1.4fr; gap: 12px; align-items: center; margin: 4px 0 12px; }
+.hb-l { display: flex; flex-direction: column; }
+.hb-l .bn { font-size: 64px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.hb-l .bn small { font-size: 18px; color: var(--text-2); }
+.hb-l .bs { font-size: 13px; color: var(--good); margin-top: 6px; }
+.hb-l .bt { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+.hb-r { display: flex; flex-direction: column; gap: 9px; }
+.bat .bl { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-2); margin-bottom: 3px; }
+.bat .bl b { color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums; }
+.bat .bc { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; position: relative; padding-right: 6px; }
+.bat .bc::after { content: ""; position: absolute; right: 0; top: 3px; bottom: 3px; width: 3px; border-radius: 1px; background: var(--surface-2); }
+.bat .bc i { height: 12px; border-radius: 2px; background: var(--surface-2); }
+.bat .bc i.on { background: var(--cell, var(--good)); }
+.view.enter .bat .bc i.on { animation: cellOn .35s both; }
+.bat .bc i.pulse { animation: charge 1.6s ease-in-out infinite; }
+@keyframes charge { 50% { opacity: .25; } }
+.bat .bl .i { width: 12px; height: 12px; vertical-align: -2px; }
+[data-look="a"] .bat .bc i.on { box-shadow: 0 0 6px var(--cell); }
+[data-look="a"] .hb-l .bn { font-family: var(--mono); text-shadow: 0 0 18px rgba(95,243,255,.5); }
+[data-look="a"] .hb-l .bs, [data-look="a"] .hb-l .bt, [data-look="a"] .bat .bl, [data-look="a"] .minis span { font-family: var(--mono); letter-spacing: .06em; }
+
+/* ---- 饮食 (a second-level page) */
+.macros { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.macro .bl { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-2); margin-bottom: 3px; }
+.macro .bl b { color: var(--text); font-variant-numeric: tabular-nums; }
+.food-hero { display: flex; gap: 14px; align-items: center; padding: 12px; }
+.food-hero svg { width: 120px; height: 120px; flex: none; }
+
+/* =====================================================================
+   Look B · 石墨精工: a precision instrument. Matte graphite, no glow, hairlines, thin large numerals, monochrome rings
+   on a tick bezel with only recovery in colour, monospace caps labels, one signal-orange accent for the AI and actions.
+   ===================================================================== */
+:root[data-look="b"] {
+  --bg: #0b0b0c; --surface: #141415; --surface-2: #232325; --text: #f2f2f0; --text-2: #8a8a8e; --text-3: #4a4a4e; --hair: #222224;
+  --good: #b6f24a; --mid: #ffb02e; --bad: #ff4d2e; --sleep: #e7e7e4; --strain: #e7e7e4; --ai: #ff5a1f; --ai-soft: rgba(255,90,31,.12);
+  --good-soft: rgba(182,242,74,.1); --mid-soft: rgba(255,176,46,.12); --bad-soft: rgba(255,77,46,.12); --sheet: #111112; --chrome: rgba(11,11,12,.97); --page: #050505; --radius: 6px;
+  --g-rec-1: #b6f24a; --g-rec-2: #e6ff7a; --g-sl-1: #f2f2f0; --g-sl-2: #9a9a9e; --g-st-1: #f2f2f0; --g-st-2: #9a9a9e;
+}
+[data-look="b"] .mod, [data-look="b"] .focus, [data-look="b"] .tcard, [data-look="b"] .list, [data-look="b"] .vitals span, [data-look="b"] .ccard, [data-look="b"] .bub.ai {
+  border: 1px solid var(--hair); border-radius: 6px; }
+[data-look="b"] .focus, [data-look="b"] .list { border-radius: 6px; }
+[data-look="b"] .ring .ticks { opacity: .9; stroke: #3a3a3d; }
+[data-look="b"] .ring.lg .track, [data-look="b"] .ring.lg .arc { stroke-width: 5; } [data-look="b"] .ring.sm .track, [data-look="b"] .ring.sm .arc { stroke-width: 6; }
+[data-look="b"] .ring .arc { stroke-linecap: butt; }
+[data-look="b"] .ring .rv { font-weight: 200; letter-spacing: -.04em; } [data-look="b"] .ring.lg .rv { font-size: 64px; } [data-look="b"] .ring.sm .rv { font-size: 46px; }
+[data-look="b"] .big { font-weight: 300; letter-spacing: -.03em; } [data-look="b"] .vitals b { font-weight: 300; font-size: 20px; }
+[data-look="b"] .hr .hl, [data-look="b"] .vitals i, [data-look="b"] .sh small, [data-look="b"] .date, [data-look="b"] .mod .mh, [data-look="b"] .tab span, [data-look="b"] .why, [data-look="b"] .hr .hs {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; text-transform: uppercase; letter-spacing: .14em; font-size: 10.5px; }
+[data-look="b"] .sh h2 { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; letter-spacing: .2em; color: var(--text-2); font-weight: 500; }
+[data-look="b"] .sh { border-bottom: 1px solid var(--hair); padding-bottom: 6px; }
+[data-look="b"] .sh h2::before { content: "■ "; color: var(--ai); font-size: 8px; vertical-align: 2px; }
+[data-look="b"] .top h1 { font-weight: 300; letter-spacing: -.02em; }
+[data-look="b"] .brief { background: transparent; border: 1px solid var(--hair); border-left: 2px solid var(--ai); border-radius: 4px; }
+[data-look="b"] .brief span { font-weight: 400; }
+[data-look="b"] .fi .ic, [data-look="b"] .avatar { border-radius: 4px; }
+[data-look="b"] .pill { border-radius: 4px; background: transparent; border: 1px solid #3a3a3d; font-family: ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .06em; font-weight: 500; }
+[data-look="b"] .pill.pri, [data-look="b"] .compose .mic { background: var(--ai); border-color: var(--ai); color: #0b0b0c; }
+[data-look="b"] .meter, [data-look="b"] .meter i { border-radius: 0; height: 4px; }
+[data-look="b"] .dots i { border-radius: 1px; }
+[data-look="b"] .chip { background: var(--ai); color: #0b0b0c; border-radius: 3px; }
+[data-look="b"] .why { background: transparent; border: 1px solid #3a3a3d; border-radius: 3px; }
+[data-look="b"] .tab[aria-current="page"] { color: var(--text); }
+[data-look="b"] .tab[aria-current="page"]::after { content: ""; position: absolute; top: -9px; width: 18px; height: 2px; background: var(--ai); }
+[data-look="b"] .badge-dot { background: var(--ai); border-radius: 0; width: 6px; height: 6px; }
+[data-look="b"] .jkey { background: #0b0b0c; color: var(--text); box-shadow: 0 0 0 4px var(--bg), 0 0 0 5px #3a3a3d, inset 0 0 0 1px #3a3a3d; }
+[data-look="b"] .jkey::after { content: ""; position: absolute; top: 9px; right: 13px; width: 6px; height: 6px; border-radius: 50%; background: var(--ai); }
+[data-look="b"] .orbit .ob span.k { background: #0b0b0c; border: 1px solid #4a4a4e; border-radius: 50%; box-shadow: 0 0 0 4px #0b0b0c, 0 0 0 5px #222224; }
+[data-look="b"] .orbit .ob { font-family: ui-monospace, "SF Mono", Menlo, monospace; text-transform: uppercase; letter-spacing: .14em; font-size: 10.5px; }
+[data-look="b"] .orbit-scrim { background: rgba(5,5,5,.88); }
+[data-look="b"] .seg { border: 1px solid var(--hair); border-radius: 4px; } [data-look="b"] .seg button { border-radius: 2px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; letter-spacing: .1em; }
+[data-look="b"] .seg button[aria-pressed="true"] { background: var(--text); color: var(--bg); box-shadow: none; }
+[data-look="b"] .chips button { border-radius: 3px; border: 1px solid var(--hair); background: transparent; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
+[data-look="b"] .chips button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+[data-look="b"] .avs i, [data-look="b"] .av { border-color: var(--surface); }
+[data-look="b"] .sheet { border-radius: 10px 10px 0 0; border-top: 1px solid #2a2a2c; }
+.tabbar { z-index: 5; }
+/* =====================================================================
+   Tab bar concepts (D14), interaction ideas taken from concept-car instrument clusters (no names, logos or assets):
+   1 dials · a row of small round gauges; the selected one grows into the main dial, its needle sweeps, the others step back
+   2 arc   · an upward-curved glass strip; a light and a needle turn about one pivot to the selected tab
+   3 depth · layers with parallax (pointer / gyroscope); the selected tab floats forward; pages open as a ring from the centre
+   The centre Jarvis key keeps its four-key ring menu in all three. Transform / opacity only.
+   ===================================================================== */
+.tabbar[data-bar="dials"], .tabbar[data-bar="arc"], .tabbar[data-bar="depth"] { --gz: var(--ai, #5ff3ff); }
+.tabbar[data-bar="dials"] { height: 104px; padding: 0 10px 22px; align-items: flex-end; }
+[data-look="a"] .tabbar[data-bar="dials"] { left: 8px; right: 8px; bottom: 10px; height: 96px; padding-bottom: 12px; }
+.dt { width: 64px; gap: 0; }
+.dt .g { position: relative; width: 50px; height: 50px; display: grid; place-items: center; transform: translateY(6px) scale(.78); opacity: .5;
+  transition: transform .55s var(--ease), opacity .35s; }
+.dt[aria-current] .g { transform: translateY(-10px) scale(1.3); opacity: 1; }
+.dt .gz { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.dt .ga { fill: none; stroke: var(--gz); stroke-opacity: .25; stroke-width: 2; }
+.dt .gt { fill: none; stroke: var(--gz); stroke-opacity: .6; stroke-width: 3; stroke-dasharray: 1 6.2; }
+.dt .gp { fill: none; stroke: var(--gz); stroke-width: 2.5; stroke-linecap: round; opacity: 0; transition: opacity .5s .25s; }
+.dt[aria-current] .gp { opacity: 1; }
+.dt .nd { position: absolute; left: 50%; top: 7px; width: 2px; height: 18px; margin-left: -1px; border-radius: 1px; background: var(--amber, #ffb547);
+  transform-origin: 50% 100%; transform: rotate(-135deg); transition: transform .8s cubic-bezier(.3, 1.35, .45, 1); }
+.dt[aria-current] .nd { transform: rotate(var(--deg)); }
+.dt .tf { width: 22px; height: 22px; } .dt .tf .i { width: 16px; height: 16px; }
+.dt .lb { font-size: 10px; margin-top: 2px; transition: transform .55s var(--ease), opacity .35s; opacity: .55; }
+.dt[aria-current] .lb { opacity: 1; transform: translateY(-2px); }
+[data-look] .tabbar .dt .tf::before, [data-look] .tabbar .at .tf::before, [data-look] .tabbar .dp .tf::before { display: none; }
+[data-look="a"] .dt[aria-current] .g { filter: drop-shadow(0 0 8px rgba(95,243,255,.55)); }
+[data-look="a"] .dt[aria-current] .nd { box-shadow: 0 0 8px var(--amber); }
+/* neighbours of the selected dial step back a little further */
+.tabbar[data-bar="dials"] .dt[data-near] .g { transform: translateY(4px) scale(.86); opacity: .7; }
+
+.tabbar[data-bar="arc"] { height: 124px; padding: 0; background: none !important; border: 0 !important; box-shadow: none !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+  border-radius: 0 !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; display: block; }
+.arcbar { position: absolute; left: 0; bottom: 0; width: 390px; height: 124px; overflow: visible; }
+.arcbar .band { fill: rgba(3,14,22,.88); stroke: rgba(95,243,255,.35); stroke-width: 1; }
+.arcbar .edge { fill: none; stroke: var(--gz); stroke-width: 1.5; opacity: .8; }
+.arcbar .tk { fill: none; stroke: var(--gz); stroke-opacity: .45; stroke-width: 5; stroke-dasharray: 1 9; }
+[data-look="a"] .arcbar .edge { filter: drop-shadow(0 0 6px rgba(95,243,255,.8)); }
+.at { position: absolute; width: 60px; display: flex; flex-direction: column; align-items: center; gap: 1px; font-size: 10px; opacity: .55;
+  transition: opacity .35s; }
+.at .tf { transition: transform .5s var(--ease); }
+.at[aria-current] { opacity: 1; color: var(--ai); }
+.at[aria-current] .tf { transform: scale(1.25) translateY(-2px); }
+.arcsel { position: absolute; left: 195px; top: 560px; width: 0; height: 0; transform: rotate(var(--th, 0deg)); transition: transform .75s cubic-bezier(.3, 1.3, .45, 1); }
+.arcsel .hl { position: absolute; left: -46px; top: -520px; width: 92px; height: 48px; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(95,243,255,.45), rgba(95,243,255,.12) 60%, transparent); }
+.arcsel .needle { position: absolute; left: -1px; top: -526px; width: 2px; height: 14px; background: var(--amber, #ffb547); border-radius: 1px; box-shadow: 0 0 8px var(--amber, #ffb547); }
+.tabbar[data-bar="arc"] .jkey { position: absolute; left: 50%; top: 4px; margin: 0 0 0 -32px; }
+[data-look="a"] .tabbar[data-bar="arc"] .jkey { margin-top: 0; }
+
+.tabbar[data-bar="depth"] { perspective: 600px; }
+.tabbar[data-bar="depth"] .plate { position: absolute; inset: 6px 10px; border-radius: 18px; border: 1px solid rgba(95,243,255,.12); pointer-events: none;
+  transform: translate(calc(var(--px, 0) * 2px), calc(var(--py, 0) * 2px)); transition: transform .3s ease-out; }
+.dp { position: relative; transform: translate(calc(var(--px, 0) * 4px), calc(var(--py, 0) * 3px)) scale(.88); opacity: .55;
+  transition: transform .5s var(--ease), opacity .3s; }
+.dp[aria-current] { transform: translate(calc(var(--px, 0) * 10px), calc(-12px + var(--py, 0) * 7px)) scale(1.2); opacity: 1; z-index: 1; }
+.dp .glow { position: absolute; left: 50%; top: 50%; width: 70px; height: 70px; margin: -42px 0 0 -35px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(95,243,255,.38), transparent); opacity: 0; transition: opacity .4s; }
+.dp[aria-current] .glow { opacity: 1; }
+.dp .shadow { position: absolute; left: 50%; bottom: -12px; width: 34px; height: 8px; margin-left: -17px; border-radius: 50%; background: rgba(0,0,0,.7);
+  opacity: 0; transform: scale(.5); transition: opacity .4s, transform .5s var(--ease); }
+.dp[aria-current] .shadow { opacity: .8; transform: none; }
+/* page change in the depth concept: content opens from the centre like an instrument cluster changing mode */
+.ripple { position: absolute; left: 50%; top: 42%; width: 240px; height: 240px; margin: -120px 0 0 -120px; border-radius: 50%; pointer-events: none; z-index: 7;
+  border: 1.5px solid var(--ai, #5ff3ff); opacity: 0; display: none; }
+.ripple.r2 { width: 160px; height: 160px; margin: -80px 0 0 -80px; border-style: dashed; }
+.ripple.go { display: block; animation: ripple .75s var(--ease) both; }
+.ripple.r2.go { animation-delay: .08s; }
+@keyframes ripple { 0% { opacity: .9; transform: scale(.15); } 100% { opacity: 0; transform: scale(2.4); } }
+.view.ringin > * { animation: ringin .6s var(--ease) both; }
+.view.ringin > *:nth-child(2) { animation-delay: .04s; } .view.ringin > *:nth-child(3) { animation-delay: .08s; } .view.ringin > *:nth-child(n+4) { animation-delay: .12s; }
+@keyframes ringin { from { opacity: 0; transform: scale(.82); } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+@media (max-width: 440px) { .stage { padding: 12px 0; } .phone { transform: scale(.92); transform-origin: top center; } .ctl { padding: 0 16px; } }
+</style>
+</head>
+<body>
+<div class="stage">
+  <aside class="ctl">
+    <h1>AI 优先 · 渐进解锁</h1>
+    <p>交互流程原型（合成数据），只看流程；样式是早期草图，最终视觉 = 线上现有样式，见 docs/ui-ai-first-redesign.md 第 13.1 节。点手机里的卡片、tab 和中间的 Jarvis 键。没有任何功能被锁住：底部「全部功能」随时能看全部。</p>
+    <h2>用户状态（都已导入完整历史）</h2>
+    <div class="opts" id="personas">
+      <button class="opt" data-p="day1">新用户 · 第 1 天<small>选了「睡得更好、训练和恢复」，首页 3 个模块</small></button>
+      <button class="opt" data-p="week2">使用 2 周<small>Jarvis 用过的、发现的模块上了首页</small></button>
+      <button class="opt" data-p="veteran">老用户<small>首页只放常用的 6 个；异常时临时出现</small></button>
+    </div>
+    <h2>演示</h2>
+    <div class="opts">
+      <button class="opt" id="demo-onboard">第 1 天：身体概况 → 选关注 → 摆首页<small>导入历史后的第一次对话</small></button>
+      <button class="opt" id="demo-grow">Jarvis 记了喝水 → 「喝水」上首页<small>互动：AI 用过的模块</small></button>
+      <button class="opt" id="demo-find">Jarvis 发现 → 带出「体重」<small>数据里值得说的事</small></button>
+    </div>
+  </aside>
+  <div class="phone" id="phone"><div class="screen">
+    <div class="statusbar"><span class="num">9:41</span><span class="isl"></span><span class="bat"></span></div>
+    <main class="view" id="view"></main>
+    <nav class="tabbar" id="tabbar"></nav>
+    <div class="scrim" id="scrim"></div>
+    <section class="sheet" id="sheet" aria-modal="true" role="dialog"><div class="grab"></div>
+      <div class="shd"><h3 id="sh-t"></h3><button class="x" id="sh-x" aria-label="关闭"></button></div>
+      <div class="sb" id="sh-b"></div><div id="sh-f"></div></section>
+    <div class="toast" id="toast"></div>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+      <linearGradient id="gRec" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--g-rec-1, var(--good))"/><stop offset="1" style="stop-color:var(--g-rec-2, var(--good))"/></linearGradient>
+      <linearGradient id="gSl" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--g-sl-1, var(--sleep))"/><stop offset="1" style="stop-color:var(--g-sl-2, var(--sleep))"/></linearGradient>
+      <linearGradient id="gIcon" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e6fdff"/><stop offset=".45" stop-color="#5ff3ff"/><stop offset="1" stop-color="#2b8cff"/></linearGradient>
+      <linearGradient id="gAmber" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe2a8"/><stop offset="1" stop-color="#ff9a2e"/></linearGradient>
+      <linearGradient id="gSt" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--g-st-1, var(--strain))"/><stop offset="1" style="stop-color:var(--g-st-2, var(--strain))"/></linearGradient>
+    </defs></svg>
+    <i class="sweep" id="sweep"></i><i class="ripple" id="rip1"></i><i class="ripple r2" id="rip2"></i>
+    <div class="orbit-scrim" id="oscrim"></div>
+    <div class="orbit" id="orbit"></div>
+  </div></div>
+</div>
+<script>
+"use strict";
+const ICONS = {"activity": "<path d=\"M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2\"/>", "audio-waveform": "<path d=\"M2 13a2 2 0 0 0 2-2V7a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0V4a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0v-4a2 2 0 0 1 2-2\"/>", "bed": "<path d=\"M2 4v16\"/> <path d=\"M2 8h18a2 2 0 0 1 2 2v10\"/> <path d=\"M2 17h20\"/> <path d=\"M6 8v9\"/>", "bell": "<path d=\"M10.268 21a2 2 0 0 0 3.464 0\"/> <path d=\"M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326\"/>", "bot-message-square": "<path d=\"M12 6V2H8\"/> <path d=\"M15 11v2\"/> <path d=\"M2 12h2\"/> <path d=\"M20 12h2\"/> <path d=\"M20 16a2 2 0 0 1-2 2H8.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 4 20.286V8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z\"/> <path d=\"M9 11v2\"/>", "brain-circuit": "<path d=\"M12 13h4\"/> <path d=\"M12 18h6a2 2 0 012 2v1\"/> <path d=\"M12 8h8\"/> <path d=\"M12 9a4.17 4.17 0 01-3 4\"/> <path d=\"M16 8V5a2 2 0 012-2\"/> <path d=\"M6 18a4 4 0 01-2-7.465\"/> <path d=\"M6.004 5.125a4 4 0 00-2.526 5.77\"/> <path d=\"M6.294 6.294A3 3 0 1112 5v13a4 4 0 11-7.967-.518\"/> <circle cx=\"16\" cy=\"13\" r=\"0.5\" fill=\"currentColor\"/> <circle cx=\"18\" cy=\"3\" r=\"0.5\" fill=\"currentColor\"/> <circle cx=\"20\" cy=\"21\" r=\"0.5\" fill=\"currentColor\"/> <circle cx=\"20\" cy=\"8\" r=\"0.5\" fill=\"currentColor\"/>", "chart-line": "<path d=\"M3 3v16a2 2 0 0 0 2 2h16\"/> <path d=\"m19 9-5 5-4-4-3 3\"/>", "check": "<path d=\"M20 6 9 17l-5-5\"/>", "chevron-down": "<path d=\"m6 9 6 6 6-6\"/>", "chevron-right": "<path d=\"m9 18 6-6-6-6\"/>", "clipboard-list": "<rect width=\"8\" height=\"4\" x=\"8\" y=\"2\" rx=\"1\" ry=\"1\"/> <path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\"/> <path d=\"M12 11h4\"/> <path d=\"M12 16h4\"/> <path d=\"M8 11h.01\"/> <path d=\"M8 16h.01\"/>", "droplet": "<path d=\"M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z\"/>", "dumbbell": "<path d=\"M17.596 12.768a2 2 0 1 0 2.829-2.829l-1.768-1.767a2 2 0 0 0 2.828-2.829l-2.828-2.828a2 2 0 0 0-2.829 2.828l-1.767-1.768a2 2 0 1 0-2.829 2.829z\"/> <path d=\"m2.5 21.5 1.4-1.4\"/> <path d=\"m20.1 3.9 1.4-1.4\"/> <path d=\"M5.343 21.485a2 2 0 1 0 2.829-2.828l1.767 1.768a2 2 0 1 0 2.829-2.829l-6.364-6.364a2 2 0 1 0-2.829 2.829l1.768 1.767a2 2 0 0 0-2.828 2.829z\"/> <path d=\"m9.6 14.4 4.8-4.8\"/>", "flame": "<path d=\"M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4\"/>", "flask-conical": "<path d=\"M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2\"/> <path d=\"M6.453 15h11.094\"/> <path d=\"M8.5 2h7\"/>", "footprints": "<path d=\"M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z\"/> <path d=\"M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z\"/> <path d=\"M16 17h4\"/> <path d=\"M4 13h4\"/>", "heart": "<path d=\"M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5\"/>", "heart-pulse": "<path d=\"M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5\"/> <path d=\"M3.22 13H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27\"/>", "house": "<path d=\"M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8\"/> <path d=\"M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\"/>", "layout-grid": "<rect width=\"7\" height=\"7\" x=\"3\" y=\"3\" rx=\"1\"/> <rect width=\"7\" height=\"7\" x=\"14\" y=\"3\" rx=\"1\"/> <rect width=\"7\" height=\"7\" x=\"14\" y=\"14\" rx=\"1\"/> <rect width=\"7\" height=\"7\" x=\"3\" y=\"14\" rx=\"1\"/>", "message-circle": "<path d=\"M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719\"/>", "mic": "<path d=\"M12 19v3\"/> <path d=\"M19 10v2a7 7 0 0 1-14 0v-2\"/> <rect x=\"9\" y=\"2\" width=\"6\" height=\"13\" rx=\"3\"/>", "moon": "<path d=\"M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401\"/>", "notebook-pen": "<path d=\"M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4\"/> <path d=\"M2 6h4\"/> <path d=\"M2 10h4\"/> <path d=\"M2 14h4\"/> <path d=\"M2 18h4\"/> <path d=\"M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z\"/>", "orbit": "<path d=\"M20.341 6.484A10 10 0 0 1 10.266 21.85\"/> <path d=\"M3.659 17.516A10 10 0 0 1 13.74 2.152\"/> <circle cx=\"12\" cy=\"12\" r=\"3\"/> <circle cx=\"19\" cy=\"5\" r=\"2\"/> <circle cx=\"5\" cy=\"19\" r=\"2\"/>", "pill": "<path d=\"m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z\"/> <path d=\"m8.5 8.5 7 7\"/>", "pin": "<path d=\"M12 17v5\"/> <path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"/>", "scale": "<path d=\"M12 3v18\"/> <path d=\"m19 8 3 8a5 5 0 0 1-6 0zV7\"/> <path d=\"M3 7h1a17 17 0 0 0 8-2 17 17 0 0 0 8 2h1\"/> <path d=\"m5 8 3 8a5 5 0 0 1-6 0zV7\"/> <path d=\"M7 21h10\"/>", "scan-eye": "<path d=\"M3 7V5a2 2 0 0 1 2-2h2\"/> <path d=\"M17 3h2a2 2 0 0 1 2 2v2\"/> <path d=\"M21 17v2a2 2 0 0 1-2 2h-2\"/> <path d=\"M7 21H5a2 2 0 0 1-2-2v-2\"/> <circle cx=\"12\" cy=\"12\" r=\"1\"/> <path d=\"M18.944 12.33a1 1 0 0 0 0-.66 7.5 7.5 0 0 0-13.888 0 1 1 0 0 0 0 .66 7.5 7.5 0 0 0 13.888 0\"/>", "search": "<path d=\"m21 21-4.34-4.34\"/> <circle cx=\"11\" cy=\"11\" r=\"8\"/>", "sliders-horizontal": "<path d=\"M10 5H3\"/> <path d=\"M12 19H3\"/> <path d=\"M14 3v4\"/> <path d=\"M16 17v4\"/> <path d=\"M21 12h-9\"/> <path d=\"M21 19h-5\"/> <path d=\"M21 5h-7\"/> <path d=\"M8 10v4\"/> <path d=\"M8 12H3\"/>", "sparkles": "<path d=\"M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z\"/> <path d=\"M20 2v4\"/> <path d=\"M22 4h-4\"/> <circle cx=\"4\" cy=\"20\" r=\"2\"/>", "sun": "<circle cx=\"12\" cy=\"12\" r=\"4\"/> <path d=\"M12 2v2\"/> <path d=\"M12 20v2\"/> <path d=\"m4.93 4.93 1.41 1.41\"/> <path d=\"m17.66 17.66 1.41 1.41\"/> <path d=\"M2 12h2\"/> <path d=\"M20 12h2\"/> <path d=\"m6.34 17.66-1.41 1.41\"/> <path d=\"m19.07 4.93-1.41 1.41\"/>", "target": "<circle cx=\"12\" cy=\"12\" r=\"10\"/> <circle cx=\"12\" cy=\"12\" r=\"6\"/> <circle cx=\"12\" cy=\"12\" r=\"2\"/>", "trending-up": "<path d=\"M16 7h6v6\"/> <path d=\"m22 7-8.5 8.5-5-5L2 17\"/>", "trophy": "<path d=\"M10 14.66V17a1 1 0 0 1-1 1 2 2 0 0 0-2 2v2\"/> <path d=\"M14 14.66V17a1 1 0 0 0 1 1 2 2 0 0 1 2 2v2\"/> <path d=\"M17.916 10H19.5A2.5 2.5 0 0 0 22 7.5V5a1 1 0 0 0-1-1h-3\"/> <path d=\"M4 22h16\"/> <path d=\"M6 9a6 6 0 0 0 12 0V3a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1z\"/> <path d=\"M6.084 10H4.5A2.5 2.5 0 0 1 2 7.5V5a1 1 0 0 1 1-1h3\"/>", "user": "<path d=\"M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2\"/> <circle cx=\"12\" cy=\"7\" r=\"4\"/>", "user-plus": "<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\"/> <circle cx=\"9\" cy=\"7\" r=\"4\"/> <line x1=\"19\" x2=\"19\" y1=\"8\" y2=\"14\"/> <line x1=\"22\" x2=\"16\" y1=\"11\" y2=\"11\"/>", "users": "<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\"/> <path d=\"M16 3.128a4 4 0 0 1 0 7.744\"/> <path d=\"M22 21v-2a4 4 0 0 0-3-3.87\"/> <circle cx=\"9\" cy=\"7\" r=\"4\"/>", "utensils": "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/> <path d=\"M7 2v20\"/> <path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>", "x": "<path d=\"M18 6 6 18\"/> <path d=\"m6 6 12 12\"/>", "zap": "<path d=\"M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z\"/>"};
+const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ""}</svg>`;
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ---------------------------------------------------------------- synthetic data (seeded, the same every load). Every persona has the full history:
+// the app imports Apple Health history on day 1, so trends and baselines exist from the start; personas differ only in what is shown.
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const R = rng(279);
+const series = (n, base, amp, lo, hi) => Array.from({ length: n }, (_, i) => Math.max(lo, Math.min(hi, Math.round(base + Math.sin(i / 2.3) * amp * .5 + (R() - .5) * amp))));
+const D = {
+  recovery: series(30, 62, 34, 18, 96), hrv: series(30, 58, 14, 38, 82), rhr: series(30, 56, 5, 49, 63),
+  sleepMin: series(30, 420, 70, 300, 520), strain: series(30, 11, 7, 3, 19), weight: [73.0, 72.8, 72.9, 72.7, 72.9, 72.8, 72.6, 72.9, 72.7, 72.8, 72.6, 72.8, 72.7, 72.6],
+  stress: series(14, 12, 8, 3, 25).map((v) => v / 10), resp: series(30, 150, 8, 140, 162).map((v) => v / 10),
+  hrvDrop: [61, 60, 62, 59, 60, 58, 57, 58, 56, 55, 56, 54, 53, 52],
+};
+D.recovery[29] = 72; D.sleepMin[29] = 432; D.strain[29] = 6;
+const hm = (m) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
+
+// ---------------------------------------------------------------- module catalogue (same keys as the design doc, section 4.3). Nothing is locked:
+// every module is in 全部功能 from day 1. "bring" says when Jarvis brings it to Today.
+const CATALOG = [
+  { k: "hrv", n: "HRV · 静息心率", icon: "heart-pulse", area: "恢复", bring: "关注恢复 / 发现 HRV 拐点" },
+  { k: "coach", n: "负荷目标", icon: "target", area: "恢复", bring: "关注训练 / 今天有训练" },
+  { k: "load", n: "训练负荷", icon: "trending-up", area: "恢复", bring: "关注训练 / 发现负荷过高" },
+  { k: "monitor", n: "健康监测", icon: "bell", area: "恢复", bring: "异常时临时上首页" },
+  { k: "stress", n: "压力", icon: "brain-circuit", area: "恢复", bring: "问过压力 / 发现连续高压" },
+  { k: "sleepgoal", n: "入睡目标", icon: "moon", area: "睡眠", bring: "关注睡眠 / 设了目标" },
+  { k: "regularity", n: "睡眠规律", icon: "bed", area: "睡眠", bring: "关注睡眠 / 发现作息乱" },
+  { k: "training", n: "训练", icon: "dumbbell", area: "训练", bring: "关注增肌 / 记过训练" },
+  { k: "muscle", n: "肌肉负荷", icon: "dumbbell", area: "训练", bring: "关注增肌 / 记过力量训练" },
+  { k: "activity", n: "活动", icon: "footprints", area: "训练", bring: "关注减脂" },
+  { k: "vo2", n: "VO₂max", icon: "flame", area: "训练", bring: "发现变化 / 问过" },
+  { k: "food", n: "饮食", icon: "utensils", area: "饮食", bring: "Jarvis 记过饭" },
+  { k: "water", n: "喝水", icon: "droplet", area: "饮食", bring: "记过喝水" },
+  { k: "recipes", n: "食谱", icon: "clipboard-list", area: "饮食", bring: "存过食谱" },
+  { k: "grocery", n: "采购", icon: "layout-grid", area: "饮食", bring: "列过采购清单" },
+  { k: "weight", n: "体重", icon: "scale", area: "身体", bring: "关注减脂 / 记过体重 / 发现平台期" },
+  { k: "healthspan", n: "身体年龄", icon: "sun", area: "身体", bring: "关注健康指标 / 里程碑" },
+  { k: "report", n: "周报", icon: "clipboard-list", area: "身体", bring: "每周一" },
+  { k: "behavior", n: "行为影响", icon: "trending-up", area: "身体", bring: "记过日记 / 问过原因" },
+  { k: "advanced", n: "深入指标", icon: "layout-grid", area: "身体", bring: "随时在「身体」里" },
+  { k: "labs", n: "化验", icon: "flask-conical", area: "健康档案", bring: "录过化验单" },
+  { k: "supps", n: "补剂", icon: "pill", area: "健康档案", bring: "记过补剂" },
+  { k: "journal", n: "日记", icon: "notebook-pen", area: "健康档案", bring: "记过日记" },
+  { k: "circles", n: "圈子", icon: "users", area: "圈子", bring: "一级入口 · 首页常驻" },
+];
+const GOALS = [["fat", "减脂"], ["muscle", "增肌"], ["sleep", "睡得更好"], ["recover", "训练和恢复"], ["markers", "健康指标"]];
+
+// ---------------------------------------------------------------- three personas: all with full history; they differ in what is on Today and how much has been introduced
+// pinned: [key, why]  why = 关注 (the user's goal) / 发现 (Jarvis found something in the data) / 用过 (the AI used it, or the user asked) / 固定 (pinned by hand)
+const PERSONAS = {
+  day1: {
+    day: 1, goals: ["sleep", "recover"], brief: "HRV 连续 2 周下降 · 今天轻松点",
+    focus: [
+      { icon: "heart-pulse", t: "HRV 连续 2 周下降", s: "今天练 Z2，别上大重量", v: "−12%", tone: "mid" },
+      { icon: "moon", t: "01:30 前上床", s: "过去 90 天平均 01:24 入睡", v: "01:30", tone: "sleep" },
+      { icon: "mic", t: "说说你今天吃了什么", s: "按住 Jarvis 键说话", tone: "ai" },
+    ],
+    pinned: [["hrv", "发现"], ["regularity", "关注"], ["sleepgoal", "关注"]], seen: [], circles: false,
+  },
+  week2: {
+    day: 15, goals: ["sleep", "recover"], brief: "恢复 72 · 适合练腿",
+    focus: [
+      { icon: "dumbbell", t: "练腿 · 45 分钟", s: "负荷目标 10–14", v: "0/10", tone: "strain" },
+      { icon: "moon", t: "00:30 前上床", s: "近 7 晚 4 次达成", v: "00:30", tone: "sleep" },
+      { icon: "utensils", t: "蛋白质还差", s: "午饭后", v: "46 g", tone: "mid" },
+    ],
+    pinned: [["food", "用过"], ["training", "用过"], ["sleepgoal", "关注"], ["hrv", "发现"], ["regularity", "关注"]],
+    seen: ["coach", "activity", "stress", "report"], finding: "weight", circles: true,
+  },
+  veteran: {
+    day: 120, goals: ["fat", "markers"], brief: "呼吸率偏高 · 今天轻松点", temp: "monitor",
+    focus: [
+      { icon: "bell", t: "健康监测 · 1 项偏高", s: "呼吸率 +1.2 次/分", v: "注意", tone: "mid", temp: true },
+      { icon: "dumbbell", t: "改成 30 分钟爬坡", s: "原计划：上肢力量", v: "Z2", tone: "strain" },
+      { icon: "moon", t: "00:00 前上床", s: "睡眠债 1:40", v: "00:00", tone: "sleep" },
+    ],
+    pinned: [["food", "用过"], ["weight", "关注"], ["training", "用过"], ["water", "固定"], ["labs", "关注"], ["stress", "发现"]],
+    seen: CATALOG.map((m) => m.k), circles: true,
+  },
+};
+
+// ---------------------------------------------------------------- app state
+const S = { bar: "hud", hero: "three", p: "week2", tab: "today", pinned: [], why: {}, seen: new Set(), grown: new Set(), sub: "", circMode: "feed", goals: [] };
+function setPersona(p) {
+  S.p = p; S.tab = "today"; S.sub = ""; S.grown = new Set();
+  const P = PERSONAS[p];
+  S.pinned = P.pinned.map(([k]) => k); S.why = Object.fromEntries(P.pinned); S.seen = new Set([...P.seen, ...S.pinned]);
+  S.finding = P.finding || null; S.goals = [...P.goals];
+  for (const b of $$("#personas .opt")) b.setAttribute("aria-pressed", b.dataset.p === p);
+  closeSheet(); render();
+}
+const P = () => PERSONAS[S.p];
+const mstate = (k) => (S.pinned.includes(k) ? "pinned" : S.seen.has(k) ? "seen" : "new");
+
+// ---------------------------------------------------------------- small charts
+function spark(vals, opt = {}) {
+  const w = 100, h = 30, lo = Math.min(...vals), hi = Math.max(...vals), x = (i) => (i / (vals.length - 1)) * w, y = (v) => h - 3 - ((v - lo) / (hi - lo || 1)) * (h - 6);
+  const d = vals.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  return `<svg class="spark ${opt.cls || ""}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">${opt.area ? `<path class="area" d="${d}L${w},${h}L0,${h}Z"/>` : ""}<path d="${d}"/></svg>`;
+}
+function bars(vals, max, cls, h = 30) {
+  const w = 100, bw = w / vals.length;
+  return `<svg class="spark ${cls}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">${vals.map((v, i) => `<rect x="${(i * bw + bw * .18).toFixed(1)}" width="${(bw * .64).toFixed(1)}" y="${(h - (v / max) * h).toFixed(1)}" height="${((v / max) * h).toFixed(1)}" rx="1" fill="currentColor" opacity="${i === vals.length - 1 ? 1 : .45}"/>`).join("")}</svg>`;
+}
+function dial(frac, color, value, unit) {
+  const r = 38, c = 2 * Math.PI * r, f = Math.max(0, Math.min(1, frac));
+  return `<svg viewBox="0 0 100 100" aria-hidden="true"><circle class="track" cx="50" cy="50" r="${r}" fill="none" stroke-width="8"/>
+    <circle cx="50" cy="50" r="${r}" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 50 50)"/>
+    <text class="v" x="50" y="${unit ? 53 : 58}" text-anchor="middle">${value}</text>${unit ? `<text class="u" x="50" y="69" text-anchor="middle">${unit}</text>` : ""}</svg>`;
+}
+// The three core scores: gradient arc on a track, a tick bezel (shown by the looks), value and unit inside
+function ring(size, frac, grad, value, unit, glow) {
+  const r = size === "lg" ? 80 : 74, c = 2 * Math.PI * r, f = Math.max(0, Math.min(1, frac));
+  return `<svg class="ring ${size}" viewBox="0 0 200 200" aria-hidden="true"><circle class="ticks" cx="100" cy="100" r="96" stroke-dasharray="1.2 4.83"/>
+    <circle class="outer spin" cx="100" cy="100" r="104" stroke-dasharray="40 14 4 14"/><circle class="inner spin rev" cx="100" cy="100" r="${r - 16}" stroke-dasharray="2 7"/>
+    <circle class="track" cx="100" cy="100" r="${r}"/><circle class="arc" cx="100" cy="100" r="${r}" stroke="url(#${grad})" style="--glow:${glow}"
+      stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 100 100)"/>
+    <text class="rv" x="100" y="${unit ? 108 : 116}" text-anchor="middle">${value}</text>${unit ? `<text class="ru" x="100" y="136" text-anchor="middle">${unit}</text>` : ""}</svg>`;
+}
+// Core-score layouts to compare (D13). Zones follow the recovery zones (0–33 / 34–66 / 67–100), strain 0–21, sleep vs need.
+const zoneColor = (v) => (v >= 67 ? "var(--good)" : v >= 34 ? "var(--mid)" : "var(--bad)");
+function heroHtml(kind) {
+  const minis = `<div class="minis"><span><b class="num">7:12</b><i style="font-style:normal">睡眠</i></span><span><b class="num">6.0</b><i style="font-style:normal">负荷 / 21</i></span><span><b class="num">64</b><i style="font-style:normal">身体电量</i></span></div>`;
+  if (kind === "single") {
+    return `<button class="hero-x" data-detail="recovery">${ring("lg", .72, "gRec", "72", "%", "rgba(95,243,255,.6)").replace('class="ring lg"', 'class="ring lg" style="width:220px;height:220px"')}<span class="hr"><span class="hl">恢复 · 基线 68</span></span></button>${minis}`;
+  }
+  if (kind === "concentric") {
+    const arc = (r, f, g, glow) => { const c = 2 * Math.PI * r; return `<circle class="track" cx="100" cy="100" r="${r}" stroke-width="11"/><circle class="arc" cx="100" cy="100" r="${r}" stroke-width="11" stroke="url(#${g})" style="--glow:${glow}" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 100 100)"/>`; };
+    return `<button class="hero-x" data-detail="recovery"><svg class="cring" viewBox="0 0 200 200" aria-hidden="true">
+      <circle class="ring-tk" cx="100" cy="100" r="98" fill="none" stroke="rgba(95,243,255,.4)" stroke-dasharray="1.2 4.9"/>
+      ${arc(86, .72, "gRec", "rgba(95,243,255,.6)")}${arc(70, 6 / 21, "gSt", "rgba(255,181,71,.6)")}${arc(54, .9, "gSl", "rgba(127,216,255,.6)")}
+      <text class="rv" x="100" y="112" text-anchor="middle" style="font-size:40px">72</text><text class="ru" x="100" y="130" text-anchor="middle">恢复 %</text></svg></button>
+      <div class="minis"><span><b class="num" style="color:var(--g-rec-1, var(--good))">72%</b><i style="font-style:normal"><span class="dot" style="background:var(--g-rec-1, var(--good))"></span>恢复 · 外</i></span><span><b class="num" style="color:var(--g-st-1, var(--strain))">6.0</b><i style="font-style:normal"><span class="dot" style="background:var(--g-st-1, var(--strain))"></span>负荷 · 中</i></span><span><b class="num" style="color:var(--g-sl-1, var(--sleep))">7:12</b><i style="font-style:normal"><span class="dot" style="background:var(--g-sl-1, var(--sleep))"></span>睡眠 · 内</i></span></div>`;
+  }
+  if (kind === "cells") {
+    const n = 20, lit = Math.round(72 / 100 * n), r = 84, pt = (deg) => [100 + r * Math.cos(deg * Math.PI / 180), 100 + r * Math.sin(deg * Math.PI / 180)];
+    const segs = Array.from({ length: n }, (_, i) => { const a0 = -90 + i * 18 + 2, a1 = a0 + 14; const [x0, y0] = pt(a0), [x1, y1] = pt(a1);
+      return `<path class="${i < lit ? "lit" : ""}" style="--cell:${zoneColor(72)};animation-delay:${i * 35}ms" d="M${x0.toFixed(1)} ${y0.toFixed(1)}A${r} ${r} 0 0 1 ${x1.toFixed(1)} ${y1.toFixed(1)}"/>`; }).join("");
+    return `<button class="hero-x" data-detail="recovery"><svg class="cells" viewBox="0 0 200 200" aria-hidden="true">${segs}
+      <circle cx="100" cy="100" r="64" fill="none" stroke="rgba(95,243,255,.25)" stroke-dasharray="1 5"/>
+      <text class="rv" x="100" y="110" text-anchor="middle">72</text><text class="ru" x="100" y="130" text-anchor="middle">恢复 · ${lit}/${n} 格</text></svg></button>${minis}`;
+  }
+  if (kind === "bars") {
+    const bat = (label, val, shown, frac, color, pulse, icon = "") => {
+      const on = Math.round(frac * 10);
+      return `<div class="bat" style="--cell:${color}"><div class="bl"><span>${icon}${label}</span><b class="num">${shown}</b></div><div class="bc">${Array.from({ length: 10 }, (_, i) =>
+        `<i class="${i < on ? "on" : ""}${pulse && i === on - 1 ? " pulse" : ""}" style="animation-delay:${i * 45}ms"></i>`).join("")}</div></div>`;
+    };
+    return `<div class="hero-bars"><button class="hb-l" data-detail="recovery"><span class="bn">72<small>%</small></span><span class="bs">状态良好</span><span class="bt">恢复 · 基线 68</span></button>
+      <div class="hb-r">${bat("恢复", 72, "72%", .72, zoneColor(72))}${bat("负荷", 6, "6.0 / 21", 6 / 21, "var(--strain)", false)}${bat("睡眠", 432, "7:12 / 7:45", 432 / 465, "var(--sleep)")}${bat("身体电量", 64, "64", .64, "var(--good)", true, ic("zap"))}</div></div>`;
+  }
+  return "";
+}
+function lineChart(vals, color) {
+  const w = 300, h = 110, pad = 14, lo = Math.min(...vals) * .92, hi = Math.max(...vals) * 1.04;
+  const x = (i) => pad + (i / (vals.length - 1)) * (w - pad * 2), y = (v) => h - 16 - ((v - lo) / (hi - lo)) * (h - 26);
+  const mean = vals.reduce((a, b) => a + b, 0) / vals.length, sd = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length);
+  const d = vals.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  return `<svg class="chart" viewBox="0 0 ${w} ${h}" style="color:${color}" aria-hidden="true">
+    <rect class="band" x="${pad}" width="${w - pad * 2}" y="${y(mean + sd).toFixed(1)}" height="${(y(mean - sd) - y(mean + sd)).toFixed(1)}"/>
+    <line class="base" x1="${pad}" x2="${w - pad}" y1="${y(mean).toFixed(1)}" y2="${y(mean).toFixed(1)}"/>
+    <path class="ln" d="${d}"/><circle cx="${x(vals.length - 1)}" cy="${y(vals[vals.length - 1])}" r="3.5" fill="currentColor"/>
+    <text x="${pad}" y="${h - 2}">30 天前</text><text x="${w - pad}" y="${h - 2}" text-anchor="end">今天</text>
+    <text x="${w - pad}" y="${(y(mean + sd) - 3).toFixed(1)}" text-anchor="end">你的基线</text></svg>`;
+}
+const dots = (arr, tone) => `<div class="dots tone-${tone}">${arr.map((x) => `<i class="${x ? "on" : ""}"></i>`).join("")}</div>`;
+
+// ---------------------------------------------------------------- module cards (one big number, one small chart, at most one short line)
+const MOD = {
+  food: () => `<div class="big num">1,240<small>/ 2,100 kcal</small></div><div class="meter tone-good"><i style="width:59%"></i></div><div class="sub">蛋白 84 g · 午餐已记</div>`,
+  water: () => `<div class="big num">500<small>/ 2,500 ml</small></div><div class="meter tone-strain"><i style="width:20%"></i></div><div class="sub">刚刚 +500 ml</div>`,
+  training: () => `<div class="big num">3<small>次 · 本周</small></div>${dots([1, 0, 1, 0, 1, 0, 0], "strain")}<div class="sub">今天：练腿</div>`,
+  weight: () => `<div class="big num">72.6<small>kg</small></div><span class="tone-mid">${spark(D.weight)}</span><div class="sub">3 周 ±0.2</div>`,
+  sleepgoal: () => `<div class="big num">${S.p === "day1" ? "01:30" : "00:30"}</div>${dots([1, 1, 0, 1, 0, 1, 0], "sleep")}<div class="sub">${S.p === "day1" ? "先比平时早 15 分钟" : "近 7 晚 4 次"}</div>`,
+  monitor: () => `<div class="big num tone-mid">1<small>项偏高</small></div><span class="tone-mid">${spark(D.resp.slice(-14))}</span><div class="sub">呼吸率 · 其他 4 项正常</div>`,
+  stress: () => `<div class="big num">1.2<small>/ 3 低</small></div><span class="tone-good">${spark(D.stress, { area: true })}</span>`,
+  labs: () => `<div class="big num">12<small>项</small></div><div class="sub">2 项偏高 · 3 个月前</div>`,
+  regularity: () => `<div class="big num">78<small>%</small></div><span class="tone-sleep">${bars([6, 7, 5, 7, 4, 6, 7], 7, "tone-sleep")}</span><div class="sub">周末晚 1:10</div>`,
+  hrv: () => `<div class="big num">52<small>ms · 基线 59</small></div><span class="tone-mid">${spark(D.hrvDrop)}</span><div class="sub">2 周 −12%</div>`,
+};
+const catalog = (k) => CATALOG.find((m) => m.k === k);
+function modCard(k, cls = "") {
+  const m = catalog(k), grown = S.grown.has(k);
+  const chip = grown ? `<span class="chip">新</span>` : S.why[k] ? `<span class="why">${S.why[k]}</span>` : "";
+  return `<button class="mod ${cls} ${grown ? "grow" : ""}" data-mod="${k}"><div class="mh">${ic(m.icon)}<span>${m.n}</span></div>${chip}${(MOD[k] || (() => ""))()}</button>`;
+}
+
+// ---------------------------------------------------------------- circles: a first-level tab, and always on Today (feed / ranking or an invite)
+const PEOPLE = [["鹿", "#d98a5f"], ["木", "#5f9bd9"], ["K", "#7cb36b"], ["禾", "#b07cd9"]];
+const avs = (n = 4) => `<span class="avs">${PEOPLE.slice(0, n).map(([t, c]) => `<i style="background:${c}">${t}</i>`).join("")}</span>`;
+function circleCard() {
+  if (!P().circles) {
+    return `<div class="mod wide circ"><div class="mh">${ic("users")}<span>圈子</span></div>
+      <div class="crow"><b style="font-size:16px">和朋友一起看恢复和排行</b></div>
+      <div class="acts"><button class="pill pri" data-invite>${ic("user-plus")}邀请好友</button><button class="pill" data-go="circles">输入邀请码</button></div></div>`;
+  }
+  return `<div class="mod wide circ" data-go="circles"><div class="mh">${ic("users")}<span>圈子 · 跑步搭子</span><span class="chip" style="position:static;margin-left:auto">3 条新</span></div>
+    <div class="crow">${avs()}<span class="rk">${ic("trophy")}本周恢复排行 <b class="num">第 2</b> / 8</span></div>
+    <div class="post1"><b>小鹿</b> 跑了 10 km · 12 分钟前</div>
+    <div class="acts"><button class="pill pri" data-invite>${ic("user-plus")}邀请好友</button><button class="pill" data-go="circles">看动态</button></div></div>`;
+}
+
+// ---------------------------------------------------------------- pages
+function header(title) { return `<div class="top"><div><div class="date">10月25日 周日</div><h1>${title}</h1></div></div>`; }
+const back = (label, to, sub = "") => `<button class="date" data-go="${to}" data-sub="${sub}" style="color:var(--ai)">‹ ${label}</button>`;
+function todayHtml() {
+  const p = P();
+  const hero = heroHtml(S.hero) + `<!--three-->`;
+  const heroThree = `<div class="hero3">
+    <button class="hr sm" data-detail="sleep">${ring("sm", 432 / 480, "gSl", "7:12", "", "rgba(154,140,255,.6)")}<span class="hl">睡眠</span><span class="hs num">需求 7:45</span></button>
+    <button class="hr lg" data-detail="recovery">${ring("lg", .72, "gRec", "72", "%", "rgba(52,245,176,.6)")}<span class="hl">恢复</span><span class="hs num">基线 68 · +4</span></button>
+    <button class="hr sm" data-detail="strain">${ring("sm", 6 / 21, "gSt", "6.0", "/ 21", "rgba(56,184,255,.6)")}<span class="hl">负荷</span><span class="hs num">目标 10–14</span></button></div>
+  `;
+  const vitals = `<div class="vitals"><span><i>HRV</i><b>52<small>ms</small></b></span><span><i>静息心率</i><b>56<small>bpm</small></b></span><span><i>呼吸</i><b>15.0</b></span><span><i>血氧</i><b>97<small>%</small></b></span></div>`;
+  const focus = `<div class="sh"><h2>重点</h2><small>${p.focus.length} 件</small></div><div class="focus">${p.focus.map((f, i) => `
+    <button class="fi" data-focus="${i}"><span class="ic ${f.temp ? "bg-mid" : f.tone === "ai" ? "bg-ai" : ""} tone-${f.tone}">${ic(f.icon)}</span>
+      <span class="t"><b>${f.t}</b><small>${f.s}</small></span>${f.v ? `<span class="v num tone-${f.tone}">${f.v}</span>` : ""}${ic("chevron-right", "chev")}</button>`).join("")}</div>`;
+  const temp = p.temp ? modCard(p.temp, "temp") : "";
+  const find = S.finding ? `<button class="mod ghost" data-intro="${S.finding}">${ic("sparkles")}<b>Jarvis 发现</b><span class="sub">体重 3 周没变 · 看看</span></button>` : "";
+  const mods = S.onboarding ? "" : `<div class="sh"><h2>我的首页</h2><small>${S.pinned.length + (temp ? 1 : 0)}</small></div><div class="grid">${temp}${S.pinned.map((k) => modCard(k)).join("")}${find}</div>`;
+  return header("今天") + (S.hero === "three" ? heroThree : hero) + vitals + `<button class="brief" data-ask="brief">${ic("sparkles")}<span>${p.brief}</span>${ic("chevron-right", "chev")}</button>`
+    + focus + `<div class="sh"><h2>圈子</h2></div>${circleCard()}` + mods + logHtml()
+    + `<button class="foot" data-go="all">${ic("layout-grid")}全部功能 · ${CATALOG.length} 个，随时能看</button>`;
+}
+
+const viaJ = () => `${ic("sparkles")}Jarvis · 语音`;
+function entry(tm, icon, title, val, src, tone) {
+  return `<div class="te"><div class="tcard"><span class="tm">${tm}</span><span class="tone-${tone}">${ic(icon)}</span><span style="flex:1;min-width:0"><b style="display:block;font-weight:500">${title}</b><span class="src">${src}</span></span><b class="num">${val}</b></div></div>`;
+}
+function todayEntries() {
+  if (S.p === "day1") return [];
+  return [S.grown.has("water") ? entry("12:41", "droplet", "喝水", "500 ml", viaJ(), "strain") : "",
+    entry("12:40", "utensils", "牛肉面", "620 kcal", viaJ(), "good"),
+    entry("08:10", "utensils", "燕麦 + 鸡蛋 ×2", "620 kcal", `${ic("sparkles")}Jarvis · 快捷记餐`, "good"),
+    entry("07:32", "scale", "体重", "72.6 kg", `${ic("sparkles")}Jarvis · 拍照`, "plain")].filter(Boolean);
+}
+// Today's log: only when something was logged (no empty cards); the full history is the 记录 page
+function logHtml() {
+  const es = todayEntries();
+  if (!es.length) return "";
+  return `<div class="sh"><h2>今天的记录</h2><button data-go="record" style="color:var(--ai);font-size:13px">全部 ›</button></div><div class="tl">${es.slice(0, 3).join("")}</div>`;
+}
+
+// 身体: everything is open from day 1 (full history); goals decide what is expanded, the rest is folded with a one-line summary
+function bodyHtml() {
+  const t = (title, val, unit, delta, chart, key) => `<button class="tcard" data-detail="${key}"><div class="th"><b>${title}</b><span class="num">${val}<small>${unit}</small></span></div>${chart}<div class="delta">${delta}</div></button>`;
+  const mine = [["hrv", "HRV", "52", "ms", D.hrvDrop, "var(--mid)"], ["rhr", "静息心率", "56", "bpm", D.rhr, "var(--good)"], ["sleep", "睡眠规律", "78", "%", D.sleepMin, "var(--sleep)"]]
+    .map(([k, n, v, u, s, c]) => `<button class="mod" data-detail="${k}"><div class="mh"><span>${n}</span></div><div class="big num">${v}<small>${u}</small></div><span style="color:${c}">${spark(s.slice(-14))}</span></button>`).join("");
+  const groups = [["恢复", 8, "HRV 下降 · 其他正常", "mid"], ["睡眠", 10, "规律 78%"], ["负荷", 12, "TSB −18 · 偏累", "mid"], ["压力", 2, "低"], ["长期", 3, "VO₂max 46 · 身体年龄 −1.8"], ["行为影响", 1, "睡前看手机 → 恢复 −6"]];
+  return header("身体") + `<div class="seg"><button aria-pressed="false">7 天</button><button aria-pressed="true">30 天</button><button aria-pressed="false">90 天</button><button aria-pressed="false">1 年</button></div>
+    <div class="sh" style="margin-top:4px"><h2>核心</h2><small>3 项</small></div>
+    ${t("恢复", "64", "% 均值", "vs 上 30 天 −5", `<span style="color:var(--good)">${spark(D.recovery, { area: true })}</span>`, "recovery")}
+    ${t("睡眠", "7:04", " 均值", "vs 上 30 天 +0:12", `<span class="tone-sleep">${bars(D.sleepMin.slice(-14), 540, "tone-sleep")}</span>`, "sleep")}
+    ${t("负荷", "10.8", " 均值", "vs 上 30 天 +1.4", `<span class="tone-strain">${bars(D.strain.slice(-14), 21, "tone-strain")}</span>`, "strain")}
+    <div class="sh"><h2>你关注的</h2><small>睡眠 · 恢复</small></div><div class="mini3">${mine}</div>
+    <div class="sh"><h2>全部指标</h2><small>36 项 · 都已打开</small></div><div class="list">${groups.map(([n, c, s, tone]) => `<div class="li"><span class="t"><b>${n} <span class="muted">${c} 项</span></b><small class="${tone ? `tone-${tone}` : ""}">${s}</small></span>${ic("chevron-right", "chev")}</div>`).join("")}</div>`;
+}
+
+function recordHtml() {
+  return `<div class="top"><div>${back("今天", "today")}<h1>记录</h1></div></div><div class="chips"><button aria-pressed="true">全部</button><button>训练</button><button>饮食</button><button>身体</button><button>日记</button></div>
+    <div class="sh" style="margin-top:4px"><h2>今天</h2><small>1,240 kcal</small></div><div class="tl">${todayEntries().join("")}</div>
+    <div class="sh"><h2>昨天</h2><small>2,050 kcal · 1 次训练</small></div><div class="tl">
+    ${entry("19:05", "dumbbell", "上肢力量 · 14 组", "52 分钟", `${ic("activity")}手表`, "strain")}
+    ${entry("13:10", "utensils", "鸡胸饭", "710 kcal", viaJ(), "good")}
+    ${entry("01:50", "notebook-pen", "日记 · 睡前看手机", "是", `${ic("sparkles")}Jarvis`, "sleep")}</div>`;
+}
+
+// 饮食 (module page): today's intake, meals, quick log, next-meal suggestions, recipes / shopping
+function foodHtml() {
+  const c = 2 * Math.PI * 80, f = 1240 / 2100;
+  const kring = `<svg viewBox="0 0 200 200" class="ring sm" aria-hidden="true"><circle class="ticks" cx="100" cy="100" r="96" stroke-dasharray="1.2 4.83"/><circle class="track" cx="100" cy="100" r="80"/>
+    <circle class="arc" cx="100" cy="100" r="80" stroke="url(#gRec)" style="--glow:rgba(95,243,255,.6)" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 100 100)"/>
+    <text class="rv" x="100" y="106" text-anchor="middle" style="font-size:38px">1,240</text><text class="ru" x="100" y="132" text-anchor="middle">/ 2,100 kcal</text></svg>`;
+  const mac = (n, v, t, col) => `<div class="macro"><div class="bl"><span>${n}</span><b class="num">${v} / ${t} g</b></div><div class="meter" style="color:${col}"><i style="width:${Math.round(v / t * 100)}%"></i></div></div>`;
+  const meal = (tm, n, kc, src) => `<div class="li"><span class="tm num" style="width:42px;font-size:12px;color:var(--text-2)">${tm}</span><span class="t"><b>${n}</b><small>${src}</small></span><b class="num">${kc}</b></div>`;
+  const sug = (n, kc, pr) => `<button class="mod"><div class="mh">${ic("utensils")}<span>推荐</span></div><b style="font-size:15px">${n}</b><div class="sub num">${kc} kcal · 蛋白 ${pr} g</div></button>`;
+  return `<div class="top"><div>${back("今天", "today")}<h1>饮食</h1></div></div>
+    <div class="tcard food-hero">${kring}<div class="macros">${mac("蛋白", 84, 150, "var(--good)")}${mac("碳水", 132, 220, "var(--sleep)")}${mac("脂肪", 38, 60, "var(--mid)")}</div></div>
+    <div class="sh"><h2>今天吃的</h2><small>2 餐</small></div><div class="list">${meal("08:10", "燕麦 + 鸡蛋 ×2", "620", "Jarvis · 快捷记餐")}${meal("12:40", "牛肉面", "620", "Jarvis · 语音")}</div>
+    <div class="sh"><h2>快捷记录</h2><small>常吃的</small></div><div class="acts">${["燕麦鸡蛋", "鸡胸饭", "蛋白奶昔", "希腊酸奶"].map((x) => `<button class="pill">${ic("zap")}${x}</button>`).join("")}</div>
+    <div class="sh"><h2>下一餐推荐</h2><small>补蛋白 46 g</small></div><div class="grid">${sug("三文鱼藜麦沙拉", 520, 38)}${sug("豆腐鸡蛋羹", 360, 26)}</div>
+    <div style="height:10px"></div><div class="list"><button class="li">${ic("clipboard-list", "lead")}<span class="t"><b>食谱</b></span><span class="v">12</span>${ic("chevron-right", "chev")}</button><button class="li">${ic("layout-grid", "lead")}<span class="t"><b>采购</b></span><span class="v">5 项</span>${ic("chevron-right", "chev")}</button></div>`;
+}
+
+// 圈子 tab: entry and layout only; inside it follows docs/circles-redesign.md (circle strip, 成员 | 动态 | 排行榜), same APIs
+function circlesHtml() {
+  const top = `<div class="top"><div><div class="date">2 个圈子</div><h1>圈子</h1></div><button class="pill pri" data-invite>${ic("user-plus")}邀请</button></div>`;
+  if (!P().circles) {
+    return top.replace("2 个圈子", "还没有圈子") + `<div class="mod wide circ" style="align-items:center;text-align:center;padding:26px 16px">${ic("users")}
+      <b style="font-size:17px">和朋友一起看恢复、训练和排行</b><span class="sub">每个圈子单独选分享什么，心电图永远不分享</span>
+      <div class="acts" style="justify-content:center"><button class="pill pri" data-invite>${ic("user-plus")}邀请好友</button><button class="pill">建圈子</button><button class="pill">输入邀请码</button></div></div>`;
+  }
+  const strip = `<div class="chips"><button aria-pressed="false">全部</button><button aria-pressed="true">跑步搭子</button><button aria-pressed="false">家人</button><button aria-pressed="false">▾</button></div>`;
+  const seg = `<div class="seg">${[["members", "成员"], ["feed", "动态"], ["board", "排行榜"]].map(([k, t]) => `<button data-cmode="${k}" aria-pressed="${S.circMode === k}">${t}</button>`).join("")}</div>`;
+  const post = (who, c, what, val, ago, likes, cm) => `<div class="tcard post"><div class="ph"><i class="av" style="background:${c}">${who[0]}</i><span><b>${who}</b><small>${ago}</small></span></div>
+    <div class="pb">${what}<b class="num">${val}</b></div><div class="pf"><span>${ic("heart")}${likes}</span><span>${ic("message-circle")}${cm}</span></div></div>`;
+  const board = `<div class="list">${[["阿木", "#5f9bd9", 84], ["你", "var(--ai)", 72], ["小鹿", "#d98a5f", 69], ["Kai", "#7cb36b", 61]].map(([n, c, v], i) => `<div class="li"><span class="num" style="width:18px;color:var(--text-2)">${i + 1}</span><i class="av" style="background:${c}">${n[0]}</i><span class="t"><b>${n}</b></span><b class="num">${v}%</b></div>`).join("")}</div>`;
+  const body = S.circMode === "board" ? `<div class="sh" style="margin-top:4px"><h2>本周恢复</h2><small>相对自己的基线</small></div>${board}`
+    : S.circMode === "members" ? board
+    : post("小鹿", "#d98a5f", "跑步 · ", "10.2 km", "12 分钟前", 5, 2) + post("阿木", "#5f9bd9", "恢复 ", "84%", "今天 07:10", 3, 0) + post("Kai", "#7cb36b", "力量训练 · ", "16 组", "昨天", 4, 1);
+  return top + strip + seg + body;
+}
+
+function meHtml() {
+  const li = (icon, t, v, attr = "") => `<button class="li" ${attr}>${ic(icon, "lead")}<span class="t"><b>${t}</b></span>${v ? `<span class="v">${v}</span>` : ""}${ic("chevron-right", "chev")}</button>`;
+  return header("我") + `<div class="me-head"><span class="avatar" style="position:relative">${ic("user")}<svg class="jr" viewBox="0 0 88 88" style="display:block;position:absolute;inset:-10px;width:74px;height:74px" aria-hidden="true"><circle class="r1 spin" cx="44" cy="44" r="42" stroke-dasharray="3 5"/><circle class="r2 spin rev" cx="44" cy="44" r="37" stroke-dasharray="30 14 6 14"/></svg></span><div><b>示例用户</b><small>使用第 ${P().day} 天</small></div></div>
+    <div class="list">${li("sparkles", "AI 设置", "Jarvis")}${li("layout-grid", "全部功能", `${CATALOG.length}`, 'data-go="all"')}${li("clipboard-list", "健康档案", S.p === "veteran" ? "化验 12 · 补剂 3" : "")}${li("notebook-pen", "全部记录", "", 'data-go="record"')}</div><div style="height:12px"></div>
+    <div class="list">${li("activity", "手机同步", "刚刚")}${li("notebook-pen", "使用手册")}${li("sliders-horizontal", "设置")}</div>`;
+}
+
+// 全部功能: nothing locked; grouped by area, each with its state on this account; search; Jarvis may tidy Today automatically
+function allHtml() {
+  const tag = { pinned: ["首页", "pinned"], seen: ["看过", "open"], new: ["新", "ready"] };
+  const row = (m) => { const [lab, cls] = tag[mstate(m.k)]; return `<div class="li">${ic(m.icon, "lead")}<span class="t"><b>${m.n}</b><small>${m.bring}</small></span><span class="st ${cls}">${lab}</span></div>`; };
+  const areas = [...new Set(CATALOG.map((m) => m.area))];
+  return `<div class="top"><div>${back("我", "me")}<h1>全部功能</h1></div></div>
+    <div class="search">${ic("search")}<span>搜功能，或直接问 Jarvis</span></div>
+    <div class="list"><div class="li"><span class="t"><b>Jarvis 自动整理首页</b><small>按你的关注和最近用过的</small></span><span class="switch on"></span></div></div>
+    ${areas.map((a) => { const ms = CATALOG.filter((m) => m.area === a); return `<div class="sh"><h2>${a}</h2><small>${ms.length}</small></div><div class="list">${ms.map(row).join("")}</div>`; }).join("")}`;
+}
+
+// ---------------------------------------------------------------- tab bar: 今天 · 身体 · Jarvis · 圈子 · 我
+const TABS = { today: ["house", "今天"], body: ["chart-line", "身体"], circles: ["users", "圈子"], me: ["user", "我"] };
+const TAB_ORDER = ["today", "body", "circles", "me"];
+const TAB_VAL = { today: 72, body: 64, circles: 75, me: 50 };   // what each small gauge's needle points at (decorative)
+const ARC_ANG = { today: -16, body: -8, circles: 8, me: 16 };    // where each tab sits on the arc strip (degrees about the pivot)
+const jkeyHtml = () => `<button class="jkey" id="jkey" aria-label="Jarvis"><svg class="jr" viewBox="0 0 88 88" aria-hidden="true"><circle class="r1 spin" cx="44" cy="44" r="42" stroke-dasharray="3 5"/><circle class="r2 spin rev" cx="44" cy="44" r="37" stroke-dasharray="30 14 6 14"/></svg>${ic("orbit", "ob1")}${ic("chevron-down", "cd")}</button>`;
+const badge = (t) => (t === "circles" && P().circles ? '<i class="badge-dot"></i>' : "");
+function arcPath(cx, cy, r, a0, a1) {   // SVG angles in degrees, 0 = +x, clockwise
+  const pt = (a) => [cx + r * Math.cos(a * Math.PI / 180), cy + r * Math.sin(a * Math.PI / 180)];
+  const [x0, y0] = pt(a0), [x1, y1] = pt(a1);
+  return `M${x0.toFixed(2)} ${y0.toFixed(2)}A${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+}
+const BAR = {
+  hud: () => {
+    const b = (t) => `<button class="tab" data-tab="${t}"><span class="tf">${ic(TABS[t][0])}</span><span>${TABS[t][1]}</span>${badge(t)}</button>`;
+    return b("today") + b("body") + jkeyHtml() + b("circles") + b("me");
+  },
+  dials: () => {
+    const deg = (v) => -135 + v / 100 * 270;
+    const b = (t) => `<button class="tab dt" data-tab="${t}" style="--deg:${deg(TAB_VAL[t])}deg"><span class="g"><svg class="gz" viewBox="0 0 60 60" aria-hidden="true">
+      <path class="ga" d="${arcPath(30, 30, 25, 135, 405)}"/><path class="gt" d="${arcPath(30, 30, 29, 135, 405)}"/><path class="gp" d="${arcPath(30, 30, 25, 135, 135 + TAB_VAL[t] / 100 * 270)}"/></svg>
+      <i class="nd"></i><span class="tf">${ic(TABS[t][0])}</span></span><span class="lb">${TABS[t][1]}</span>${badge(t)}</button>`;
+    return b("today") + b("body") + jkeyHtml() + b("circles") + b("me");
+  },
+  arc: () => {
+    const C = [195, 560], P2 = (r, a) => [C[0] + r * Math.sin(a * Math.PI / 180), C[1] - r * Math.cos(a * Math.PI / 180)];
+    const band = (() => { const [a, b2] = [P2(520, -21), P2(520, 21)], [c, d] = [P2(472, 21), P2(472, -21)];
+      return `M${a[0]} ${a[1]}A520 520 0 0 1 ${b2[0]} ${b2[1]}L${c[0]} ${c[1]}A472 472 0 0 0 ${d[0]} ${d[1]}Z`; })();
+    const arcAt = (r) => { const [a, b2] = [P2(r, -21), P2(r, 21)]; return `M${a[0]} ${a[1]}A${r} ${r} 0 0 1 ${b2[0]} ${b2[1]}`; };
+    const b = (t) => { const [x, y] = P2(496, ARC_ANG[t]);
+      return `<button class="tab at" data-tab="${t}" style="left:${x.toFixed(1)}px;top:${y.toFixed(1)}px;transform:translate(-50%,-50%) rotate(${ARC_ANG[t]}deg)"><span class="tf">${ic(TABS[t][0])}</span><span>${TABS[t][1]}</span>${badge(t)}</button>`; };
+    return `<svg class="arcbar" viewBox="0 0 390 124" aria-hidden="true"><path class="band" d="${band}"/><path class="tk" d="${arcAt(508)}"/><path class="edge" d="${arcAt(520)}"/></svg>
+      <div class="arcsel"><i class="hl"></i><i class="needle"></i></div>` + b("today") + b("body") + b("circles") + b("me") + jkeyHtml();
+  },
+  depth: () => {
+    const b = (t) => `<button class="tab dp" data-tab="${t}"><span class="glow"></span><span class="shadow"></span><span class="tf">${ic(TABS[t][0])}</span><span>${TABS[t][1]}</span>${badge(t)}</button>`;
+    return `<i class="plate"></i>` + b("today") + b("body") + jkeyHtml() + b("circles") + b("me");
+  },
+};
+function tabbar() {
+  const cur = SUB.has(S.tab) ? (S.from || "me") : S.tab, el = $("#tabbar");
+  const key = `${S.bar}|${P().circles}`;
+  if (el.dataset.key !== key) { el.dataset.key = key; el.dataset.bar = S.bar; el.innerHTML = BAR[S.bar](); }
+  const i = TAB_ORDER.indexOf(cur);
+  for (const t of $$(".tab", el)) {
+    const j = TAB_ORDER.indexOf(t.dataset.tab);
+    if (j === i) t.setAttribute("aria-current", "page"); else t.removeAttribute("aria-current");
+    if (Math.abs(j - i) === 1) t.dataset.near = "1"; else delete t.dataset.near;
+  }
+  el.style.setProperty("--th", `${ARC_ANG[cur] ?? 0}deg`);
+  $("#jkey").classList.toggle("open", !!S.orbit);
+}
+const SUB = new Set(["all", "record", "food"]);   // second-level pages: the tab bar keeps the tab they were opened from
+function render() {
+  const v = $("#view");
+  v.innerHTML = { today: todayHtml, body: bodyHtml, circles: circlesHtml, me: meHtml, all: allHtml, record: recordHtml, food: foodHtml }[S.tab]();
+  tabbar(); bind();
+  const cls = S.bar === "depth" ? "ringin" : "enter";
+  v.classList.remove("enter", "ringin"); void v.offsetWidth; v.classList.add(cls);
+  if (S.bar === "depth") for (const r of [$("#rip1"), $("#rip2")]) { r.classList.remove("go"); void r.offsetWidth; r.classList.add("go"); }
+  clearTimeout(S.enterT); if (!window.__freeze) S.enterT = setTimeout(() => v.classList.remove("enter", "ringin"), 1500);
+  const sw = $("#sweep"); sw.classList.remove("go"); void sw.offsetWidth; sw.classList.add("go");
+}
+function go(tab) { if (SUB.has(tab)) S.from = SUB.has(S.tab) ? S.from : S.tab; S.tab = tab; $("#view").scrollTop = 0; render(); }
+
+// ---------------------------------------------------------------- sheets
+function openSheet(title, body, foot = "") { $("#sh-t").innerHTML = title; $("#sh-b").innerHTML = body; $("#sh-f").innerHTML = foot; $("#sheet").classList.add("on"); $("#scrim").classList.add("on"); }
+function closeSheet() { $("#sheet").classList.remove("on"); $("#scrim").classList.remove("on"); }
+function toast(html) { const t = $("#toast"); t.innerHTML = html; t.classList.add("on"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("on"), 2600); }
+
+// layered detail: glance -> trend -> raw
+const DETAIL = {
+  recovery: { n: "恢复", v: "72", u: "%", tone: "good", badge: "好", vals: D.recovery, color: "var(--good)", raw: (i) => `${D.recovery[29 - i]}%`, src: "手表 HRV + 静息心率" },
+  sleep: { n: "睡眠", v: "7:12", u: "", tone: "good", badge: "够", vals: D.sleepMin, color: "var(--sleep)", raw: (i) => hm(D.sleepMin[29 - i]), src: "手表 · 睡眠阶段" },
+  strain: { n: "负荷", v: "6.0", u: "/ 21", tone: "mid", badge: "偏低", vals: D.strain, color: "var(--strain)", raw: (i) => `${D.strain[29 - i]}`, src: "手表心率" },
+  hrv: { n: "HRV", v: "52", u: "ms", tone: "mid", badge: "下降", vals: D.hrv.slice(0, 16).concat(D.hrvDrop), color: "var(--mid)", raw: (i) => `${D.hrvDrop[13 - i] ?? D.hrv[29 - i]} ms`, src: "手表 · 睡眠中" },
+  rhr: { n: "静息心率", v: "56", u: "bpm", tone: "good", badge: "正常", vals: D.rhr, color: "var(--good)", raw: (i) => `${D.rhr[29 - i]}`, src: "手表 · 睡眠中" },
+};
+function detailSheet(k) {
+  const d = DETAIL[k]; if (!d) return;
+  const rows = Array.from({ length: 7 }, (_, i) => `<tr><td>10/${25 - i}</td><td>${d.raw(i)}</td><td>${d.src}</td></tr>`).join("");
+  openSheet(d.n, `<div class="layer"><h4><span class="lv">L1</span>一眼</h4><div class="glance"><span class="big num">${d.v}<small style="font-size:16px;color:var(--text-2)"> ${d.u}</small></span><span class="badge bg-${d.tone} tone-${d.tone}">${d.badge}</span></div></div>
+    <div class="layer"><h4><span class="lv">L2</span>趋势 · 30 天</h4>${lineChart(d.vals, d.color)}</div>
+    <div class="layer"><h4><span class="lv">L3</span>原始数据</h4><table class="raw"><tr><th>日期</th><th>值</th><th>来源</th></tr>${rows}</table></div>
+    <div class="acts" style="margin-top:14px"><button class="pill pri" data-ask="explain">${ic("sparkles")}问 Jarvis 为什么</button><button class="pill">${ic("pin")}固定到首页</button></div>`);
+}
+
+// Jarvis half sheet (simplified: the real one is the existing ai.js chat)
+function jarvisSheet(msgs = "", sugg = true) {
+  const s = ["今天该练什么", "记一顿饭", "我睡得怎么样"];
+  openSheet(`${ic("orbit")}Jarvis`, `<div class="msgs" id="msgs">${msgs}</div>${sugg && !msgs ? `<div class="sugg">${s.map((x) => `<button>${x}</button>`).join("")}</div>` : ""}`,
+    `<div class="compose"><span class="in">说点什么，或按住说话</span><span class="mic">${ic("mic")}</span></div>`);
+}
+function addMsg(html) { const m = $("#msgs"); if (!m) return; m.insertAdjacentHTML("beforeend", html); $("#sh-b").scrollTop = 1e4; }
+async function typing(ms) { addMsg(`<div class="bub ai typing" id="typing"><i></i><i></i><i></i></div>`); await sleep(ms); $("#typing")?.remove(); }
+const findCard = (icon, area, title, big, unit, chart, tone) => `<div class="ccard find"><div class="ch">${ic(icon)}${area}</div><b class="ft">${title}</b><div class="row2"><div><b class="num tone-${tone}">${big}</b><small>${unit}</small></div><div style="flex:1">${chart}</div></div></div>`;
+
+// ---------------------------------------------------------------- demo 0: day 1. History is imported -> "your body at a glance" (3 findings) -> what do you care about -> Today is laid out
+let demoRun = 0;
+async function demoOnboard(auto = true) {
+  const run = ++demoRun;
+  setPersona("day1");
+  S.onboarding = true; S.pinned = []; render();
+  jarvisSheet("", false);
+  $("#sheet").classList.add("tall");
+  addMsg(`<div class="ccard"><div class="ch">${ic("check")}Apple 健康历史已导入</div><div class="row2"><div><b class="num">3.2 年</b><small>数据</small></div><div><b class="num">1,140</b><small>晚睡眠</small></div><div><b class="num">412</b><small>次训练</small></div></div></div>`);
+  await typing(auto ? 900 : 300); if (run !== demoRun) return;
+  addMsg(`<div class="bub ai">先给你看 3 个最重要的发现：</div>`);
+  addMsg(findCard("heart-pulse", "恢复", "HRV 近 2 周下降 12%", "52", "ms · 基线 59", `<span class="tone-mid">${spark(D.hrvDrop)}</span>`, "mid"));
+  addMsg(findCard("moon", "睡眠", "平均 01:24 入睡，周末再晚 1 小时", "01:24", "平均入睡", `<span class="tone-sleep">${bars([6, 7, 5, 7, 4, 3, 2], 7, "tone-sleep")}</span>`, "sleep"));
+  addMsg(findCard("dumbbell", "训练", "每周 4 次，力量为主，最近偏累", "−18", "TSB", `<span class="tone-strain">${bars([9, 12, 14, 13, 15, 16, 17], 18, "tone-strain")}</span>`, "strain"));
+  $("#sh-b").scrollTop = 0;
+  await sleep(auto ? 2200 : 600); if (run !== demoRun) return;
+  addMsg(`<div class="bub ai">你最关心哪些？可以多选，以后随时能改。</div><div class="goalchips" id="goals">${GOALS.map(([k, t]) => `<button data-goal="${k}" aria-pressed="false">${t}</button>`).join("")}</div>
+    <div class="acts"><button class="pill pri" id="goal-ok">好了</button><button class="pill">先跳过</button></div>`);
+  const picked = new Set();
+  for (const b of $$("[data-goal]")) b.onclick = () => { picked.has(b.dataset.goal) ? picked.delete(b.dataset.goal) : picked.add(b.dataset.goal); b.setAttribute("aria-pressed", picked.has(b.dataset.goal)); };
+  await sleep(600);
+  for (const k of ["sleep", "recover"]) { $(`[data-goal="${k}"]`).click(); await sleep(300); }
+  const ok = $("#goal-ok");
+  await new Promise((res) => { ok.onclick = res; if (auto) setTimeout(res, 1600); }); if (run !== demoRun) return;
+  ok.parentElement.remove();
+  addMsg(`<div class="bub me">睡得更好、训练和恢复</div>`);
+  await typing(800); if (run !== demoRun) return;
+  addMsg(`<div class="bub ai">好。首页先放 3 个：HRV（它在下降）、睡眠规律、入睡目标。其他功能都在「全部功能」里，随时能看。</div>`);
+  await sleep(auto ? 1800 : 400); if (run !== demoRun) return;
+  closeSheet(); $("#sheet").classList.remove("tall");
+  S.onboarding = false; S.pinned = ["hrv", "regularity", "sleepgoal"]; S.grown = new Set(S.pinned); render();
+  await sleep(300); $(".mod.grow")?.scrollIntoView({ block: "center" });
+}
+
+// ---------------------------------------------------------------- demo 1: Jarvis logs water for the first time -> 喝水 goes to Today
+async function demoGrow(auto = true) {
+  const run = ++demoRun;
+  setPersona("week2");
+  await sleep(auto ? 700 : 0);
+  jarvisSheet("", false);
+  await sleep(500); if (run !== demoRun) return;
+  addMsg(`<div class="bub me"><div class="vt">${ic("audio-waveform")}语音 · 0:04</div>中午吃了一碗牛肉面，喝了一瓶水</div>`);
+  await typing(1100); if (run !== demoRun) return;
+  addMsg(`<div class="ccard"><div class="ch">${ic("utensils")}午餐<span class="ok">${ic("check")}已记</span></div><div class="row2"><div><b class="num">620</b><small>kcal</small></div><div><b class="num">28 g</b><small>蛋白</small></div><div><b class="num">1,240</b><small>今天</small></div></div></div>`);
+  await sleep(500);
+  addMsg(`<div class="ccard"><div class="ch">${ic("droplet")}喝水<span class="ok">${ic("check")}已记</span></div><div class="row2"><div><b class="num">500 ml</b><small>今天 / 2,500</small></div></div>
+    <div class="acts"><button class="pill pri" id="pin-water">${ic("pin")}放到首页</button><button class="pill">不用</button></div></div>`);
+  await sleep(300);
+  addMsg(`<div class="bub ai">记好了。第一次记喝水，要把「喝水」放到首页吗？以后说一句「喝了一杯」就行。</div>`);
+  const pin = $("#pin-water");
+  await new Promise((res) => { pin.onclick = res; if (auto) setTimeout(res, 2200); }); if (run !== demoRun) return;
+  pin.classList.add("on"); pin.classList.remove("pri"); pin.innerHTML = `${ic("check")}已放到首页`;
+  await sleep(700);
+  closeSheet();
+  S.pinned.unshift("water"); S.why.water = "用过"; S.seen.add("water"); S.grown = new Set(["water"]); render();
+  await sleep(350);
+  $(".mod.grow")?.scrollIntoView({ block: "center" });
+  toast(`${ic("sparkles")}「喝水」已放到首页 · 长按可移走`);
+}
+
+// ---------------------------------------------------------------- demo 2: Jarvis finds something in the data and brings the module out
+async function demoFind(k = "weight") {
+  if (S.p !== "week2") setPersona("week2");
+  jarvisSheet("", false);
+  await sleep(250);
+  addMsg(`<div class="ccard"><div class="ch">${ic("scale")}体重 · 3 周</div><div class="row2"><div><b class="num">72.6</b><small>kg</small></div><div><b class="num">±0.2</b><small>3 周波动</small></div></div><span class="tone-mid">${spark(D.weight)}</span>
+    <div class="acts"><button class="pill pri" id="pin-f">${ic("pin")}放到首页</button><button class="pill" id="later">先不用</button></div></div>`);
+  addMsg(`<div class="bub ai">我注意到你的体重 3 周没怎么变，而这 3 周平均每天比目标多吃 180 kcal。要把「体重」放到首页一起盯着吗？</div>`);
+  $("#pin-f").onclick = async () => { closeSheet(); S.finding = null; S.pinned.push(k); S.why[k] = "发现"; S.seen.add(k); S.grown = new Set([k]); render(); await sleep(300); $(".mod.grow")?.scrollIntoView({ block: "center" }); toast(`${ic("sparkles")}「体重」已放到首页`); };
+  $("#later").onclick = () => { closeSheet(); S.finding = null; S.seen.add(k); render(); toast(`${ic("layout-grid")}在「全部功能」和「身体」里随时能看`); };
+}
+
+// ---------------------------------------------------------------- Jarvis ring menu
+const ORBIT = [["bot-message-square", "对话"], ["audio-waveform", "语音"], ["scan-eye", "拍照"], ["zap", "快记"]];
+function setOrbit(on) {
+  S.orbit = on;
+  const arcP = (r) => `M${195 - r} 266A${r} ${r} 0 0 1 ${195 + r} 266`;
+  $("#orbit").innerHTML = `<svg class="fan" viewBox="0 0 390 330" aria-hidden="true"><path d="${arcP(96)}"/><path class="tk" d="${arcP(118)}"/><path d="${arcP(162)}"/><path class="am" d="${arcP(176)}"/><path d="${arcP(186)}" stroke-dasharray="2 6"/></svg>` + ORBIT.map(([i, t]) => `<button class="ob"><span class="k">${ic(i)}</span>${t}</button>`).join("");
+  requestAnimationFrame(() => { $("#orbit").classList.toggle("on", on); $("#oscrim").classList.toggle("on", on); });
+  $("#jkey").classList.toggle("open", on);
+  for (const b of $$("#orbit .ob")) b.onclick = () => { setOrbit(false); jarvisSheet(); };
+}
+
+// ---------------------------------------------------------------- events
+function bind() {
+  for (const b of $$("[data-tab]")) b.onclick = () => go(b.dataset.tab);
+  for (const b of $$("[data-go]")) b.onclick = (e) => { e.stopPropagation(); go(b.dataset.go); };
+  for (const b of $$("[data-detail]")) b.onclick = () => detailSheet(b.dataset.detail);
+  for (const b of $$("[data-intro]")) b.onclick = () => demoFind(b.dataset.intro);
+  for (const b of $$("[data-cmode]")) b.onclick = () => { S.circMode = b.dataset.cmode; render(); };
+  for (const b of $$("[data-invite]")) b.onclick = (e) => { e.stopPropagation(); toast(`${ic("user-plus")}邀请链接已复制 · 7 天内有效`); };
+  for (const b of $$("[data-focus], [data-ask], [data-mod]")) b.onclick = () => (b.dataset.mod === "food" ? go("food") : jarvisSheet());
+  $("#jkey").onclick = () => setOrbit(!S.orbit);
+}
+$("#sh-x").innerHTML = ic("x");
+$("#sh-x").onclick = () => closeSheet();
+$("#scrim").onclick = () => closeSheet();
+for (const b of $$("#personas .opt")) b.onclick = () => { demoRun++; setPersona(b.dataset.p); };
+$("#demo-onboard").onclick = () => demoOnboard(true);
+$("#demo-grow").onclick = () => demoGrow(true);
+$("#demo-find").onclick = () => { demoRun++; demoFind(); };
+function setLook(l) { document.documentElement.dataset.look = l; for (const b of $$("#looks .opt")) b.setAttribute("aria-pressed", b.dataset.lookSet === l); }
+for (const b of $$("[data-look-set]")) b.onclick = () => setLook(b.dataset.lookSet);
+$("#oscrim").onclick = () => setOrbit(false);
+window.Proto = { setPersona, setLook, setHero, setBar, parallax, setOrbit, go, demoOnboard, demoGrow, demoFind, detailSheet, jarvisSheet, closeSheet, S };
+const q = new URLSearchParams(location.search);
+if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
+setLook(q.get("look") ?? "");   // the HUD / graphite looks (v0.3) were dropped in v0.4; the visual is the production one
+function setBar(b) { S.bar = b; for (const x of $$("#bars .opt")) x.setAttribute("aria-pressed", x.dataset.barSet === b); render(); }
+for (const x of $$("[data-bar-set]")) x.onclick = () => setBar(x.dataset.barSet);
+let parallaxRaf = 0;
+function parallax(px, py) {
+  if (S.bar !== "depth" || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+  cancelAnimationFrame(parallaxRaf);
+  parallaxRaf = requestAnimationFrame(() => { const t = $("#tabbar"); t.style.setProperty("--px", px.toFixed(2)); t.style.setProperty("--py", py.toFixed(2)); });
+}
+$("#phone").addEventListener("pointermove", (e) => { const r = e.currentTarget.getBoundingClientRect(); parallax(((e.clientX - r.left) / r.width) * 2 - 1, ((e.clientY - r.top) / r.height) * 2 - 1); });
+window.addEventListener("deviceorientation", (e) => { if (e.gamma != null) parallax(Math.max(-1, Math.min(1, e.gamma / 30)), Math.max(-1, Math.min(1, (e.beta - 45) / 30))); });
+function setHero(h) { S.hero = h; for (const b of $$("#heroes .opt")) b.setAttribute("aria-pressed", b.dataset.heroSet === h); if (S.tab === "today") render(); }
+for (const b of $$("[data-hero-set]")) b.onclick = () => setHero(b.dataset.heroSet);
+setHero(q.get("hero") || "three");
+if (q.get("bar")) setBar(q.get("bar")); else for (const x of $$("#bars .opt")) x.setAttribute("aria-pressed", x.dataset.barSet === "hud");
+// Low-end devices keep the look but drop blur, glow and continuous rotation (the real app would use the device class it reports)
+if (q.get("lite") === "1" || (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 3) document.documentElement.classList.add("lite");
+setPersona(q.get("p") || "week2");
+</script>
+</body>
+</html>
