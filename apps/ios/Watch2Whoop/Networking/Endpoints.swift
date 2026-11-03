@@ -5,6 +5,7 @@ import Foundation
 enum Endpoint {
   // account / session
   static let webMe = "/v1/web/me"                       // me + feature flags + the user's local today
+  static func meLinkOpen(_ key: String) -> String { "/v1/web/me-links/\(key)/open" }   // the address of a server-driven Me row
   static let accountLogout = "/v1/account/logout"
   static let bindEmail = "/v1/account/identities/email"
   static let bindApple = "/v1/account/identities/apple"

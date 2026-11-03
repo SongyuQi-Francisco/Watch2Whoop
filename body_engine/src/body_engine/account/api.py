@@ -41,7 +41,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .. import auth
 from ..friends import codes as circle_codes, store as friends_store
-from ..web import activation, login_codes, login_limit, session
+from ..web import activation, login_codes, login_limit, me_links, session
 from . import apple_tokens, delete as account_delete, identities, invites, mailer, open_signup, params, provision, signin
 
 log = logging.getLogger(__name__)
@@ -454,6 +454,7 @@ def app_logout(request: Request, conn=Depends(get_conn), viewer=Depends(current_
     if authz.startswith("Bearer "):
         conn.execute("UPDATE api_tokens SET revoked_at = now() WHERE token_sha256 = %s AND revoked_at IS NULL",
                      (auth.hash_token(authz.removeprefix("Bearer ").strip()),))
+        me_links.end_logins(conn, viewer["id"])   # browser logins this app opened (web/me_links.py)
     if viewer.get("token_id") is not None:   # this phone stops getting pushes for the account (notify/, #175)
         conn.execute("DELETE FROM push_devices WHERE api_token_id = %s", (viewer["token_id"],))
     return Response(status_code=204)

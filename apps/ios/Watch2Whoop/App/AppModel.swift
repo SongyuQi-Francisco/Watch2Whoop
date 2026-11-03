@@ -26,6 +26,8 @@ final class AccountSession: ObservableObject {
   @Published var viewing: ViewablePerson?
   /// Theme and daily quote (flag `slim_mode`, #126): nil while the flag is off. First the local copy, then `/v1/web/me`.
   @Published private(set) var appearance: AppearanceChoice?
+  /// Rows the server adds to 我 (`/v1/web/me` → `me_links`). In memory only; none unless the server sends them.
+  @Published var meLinks: [MeLink] = []
   /// N2's sync (`POST /v1/sync/pull`, `PUT /scores/app`) is on for this user: the phone scores itself (#340 N2b).
   static let nativeSyncFlag = "native_sync"
 
@@ -46,6 +48,8 @@ final class AccountSession: ObservableObject {
     guard let me = try? await api.json(.get(Endpoint.webMe)) else { return }
     let list = ViewablePerson.parse(me["viewable"])
     if list != viewable { viewable = list }
+    let links = MeLink.parse(me["me_links"], server: api.baseURL)
+    if links != meLinks { meLinks = links }
   }
 
   /// What the server says (nil = the flag is off): shown and remembered for the next start.
@@ -338,6 +342,7 @@ final class AppModel: ObservableObject {
       session?.setAppearance(flags.contains(AppearanceChoice.flag) ? AppearanceChoice(json: me["appearance"]) ?? AppearanceChoice() : nil)
       session?.displayName = cfg.displayName
       session?.viewable = ViewablePerson.parse(me["viewable"])
+      session?.meLinks = MeLink.parse(me["me_links"], server: api.baseURL)
     } catch APIError.unauthorized {
       // handled by onUnauthorized
     } catch let e as APIError {
