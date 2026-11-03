@@ -8,7 +8,8 @@
   token for POST /v1/ingest/healthkit (rawdata/ingest.py); setup-link users have no account token of their own.
 - GET /v1/web/me: current user + family members that can be switched to (shares), the "Ask the butler" (「问管家」) link, versions,
   feature flags on for this user and their A/B variants (rollout/), `upgrade` (R2 forced upgrade: state none / notice / block,
-  client/policy.py); also extends the cookie's lifetime.
+  client/policy.py), `me_links` when a plugin adds rows to the native Me page (me_links.py); also extends the cookie's lifetime.
+- POST /v1/web/me-links/{key}/open: the address to open in the system browser for one of those rows (me_links.py).
 - POST /v1/web/boot {"paths"}: the page's start-up GETs answered in one round trip (boot.py, flag boot_api).
 - GET /v1/users/{user}/today, /sleep/nights, /trends, /days: aggregate endpoints (views.py), shares checked per block.
 - /app/: PWA static files (static/, no build step); / redirects to /app/. The page itself (/app/, /app/index.html) links
@@ -32,7 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .. import auth
 from ..avatars import urls as avatar_urls
 from ..training import catalog as tr_catalog
-from . import activation, boot, login_codes, login_limit, session, views
+from . import activation, boot, login_codes, login_limit, me_links, session, views
 from ..records.defaults import with_label
 from ..rollout import api as rollout_api, flags as rollout_flags
 from ..appearance import store as appearance
@@ -269,6 +270,9 @@ def web_me(request: Request, response: Response, conn=Depends(get_conn), viewer=
     if rollout_flags.enabled(conn, viewer["id"], "native_sync"):   # the native app pulls when this differs from its own (#340 N2)
         from ..nativesync import store as sync_store
         look["data_version"] = sync_store.data_version(conn, viewer["id"])
+    links = me_links.for_me(conn, viewer)
+    if links:   # rows a plugin adds to the native Me page; no key at all otherwise
+        look["me_links"] = links
     return {"me": me, "viewable": views.viewable(conn, viewer),
             "assistant_url": ai.get("assistant_url"), "ai": ai,
             "today": views.local_today(conn, viewer["id"]),
@@ -276,6 +280,15 @@ def web_me(request: Request, response: Response, conn=Depends(get_conn), viewer=
             **look,
             "upgrade": upgrade_policy.for_request(conn, request, viewer),   # R2: none / notice / block (client/policy.py)
             "version": {"web": WEB_VERSION, "api": api.app.version}}
+
+
+@router.post("/v1/web/me-links/{key}/open")
+def open_me_link(key: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """The address to open in the system browser for a row of `me_links` (with a one-time login code in its fragment when the row asks for one)."""
+    url = me_links.open_url(conn, viewer, key)
+    if url is None:
+        raise HTTPException(404, "Not Found")
+    return {"url": url}
 
 
 @router.get("/v1/users/{user}/today")

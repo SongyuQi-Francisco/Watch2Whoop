@@ -24,6 +24,8 @@ final class AccountSession: ObservableObject {
   @Published var viewable: [ViewablePerson] = []
   /// Whose read-only view is open (`MemberScreen`, over the whole app); nil = my own pages.
   @Published var viewing: ViewablePerson?
+  /// Rows the server adds to 我 (`/v1/web/me` → `me_links`). In memory only; none unless the server sends them.
+  @Published var meLinks: [MeLink] = []
   /// N2's sync (`POST /v1/sync/pull`, `PUT /scores/app`) is on for this user: the phone scores itself (#340 N2b).
   static let nativeSyncFlag = "native_sync"
 
@@ -43,6 +45,8 @@ final class AccountSession: ObservableObject {
     guard let me = try? await api.json(.get(Endpoint.webMe)) else { return }
     let list = ViewablePerson.parse(me["viewable"])
     if list != viewable { viewable = list }
+    let links = MeLink.parse(me["me_links"], server: api.baseURL)
+    if links != meLinks { meLinks = links }
   }
 
   /// Circles replace 饮食 in the tab bar while the `friends` flag is on (same rule as the Today page's applyTabs()).
@@ -313,6 +317,7 @@ final class AppModel: ObservableObject {
       session?.flags = Set(flags)
       session?.displayName = cfg.displayName
       session?.viewable = ViewablePerson.parse(me["viewable"])
+      session?.meLinks = MeLink.parse(me["me_links"], server: api.baseURL)
     } catch APIError.unauthorized {
       // handled by onUnauthorized
     } catch let e as APIError {

@@ -9,8 +9,14 @@ A plugin is a Python package directory <BODY_PLUGIN_DIR>/<name>/ (name: lower-ca
 - `page_scripts(conn, user) -> list[str]` and `page_styles(conn, user) -> list[str]`: files under <name>/static/ that the
   Today page loads for this signed-in user (user = the users row, or None when not signed in). Only listed files are
   served, at /app/plugins/<name>/<file>; /app/plugins/manifest.json lists them for the current user;
+- `me_links(conn, user) -> list[dict]`: rows the native app shows on its Me page for this user, each opened in the system
+  browser (web/me_links.py): {"key": "[a-z][a-z0-9_-]*", "title": text in the request's language (i18n.L), "url": a same-origin
+  path or an https:// address, "login": True to sign the browser in with a one-time code (same-origin paths only)}. A plugin
+  error or an invalid row drops only that row;
 - migrations/*.sql: applied by `body-engine migrate` after the core migrations, in file-name order, recorded in
   schema_migrations as "<name>/<file>" (so their numbering never collides with the core migrations).
+A page that has to keep working after a forced upgrade block (outside the Today page) puts its endpoints under
+/v1/web/plugins/<name>/: /v1/web/ is exempt from the block (client/params.py), the rest of /v1/ is not.
 Plugins are trusted code installed by the deployer. `body-engine plugins list | run <plugin> <job>` for admins.
 """
 from __future__ import annotations
@@ -39,6 +45,9 @@ log = logging.getLogger(__name__)
 NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 TICK_S = 30
 MIME = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
+LINK_KEY_RE = re.compile(r"^[a-z][a-z0-9_-]{0,39}$")
+LINK_TITLE_MAX = 40
+LINK_URL_RE = re.compile(r"^(/(?!/)|https://)[^\s<>\"'#\\]*$")   # a same-origin path or https; no fragment (the login code goes there)
 
 
 @dataclass
@@ -162,6 +171,38 @@ def install(app: FastAPI) -> None:
         if file not in allowed or not path.is_file() or (p.path / "static").resolve() not in path.parents:
             raise HTTPException(404)
         return FileResponse(path, media_type=MIME.get(path.suffix, "application/octet-stream"))
+
+
+# ---------------------------------------------------------------- rows of the native app's Me page
+def _clean_link(link) -> dict | None:
+    if not isinstance(link, dict):
+        return None
+    key, title, url = link.get("key"), link.get("title"), link.get("url")
+    if not (isinstance(key, str) and LINK_KEY_RE.match(key) and isinstance(title, str) and 0 < len(title.strip()) <= LINK_TITLE_MAX
+            and isinstance(url, str) and len(url) <= 500 and LINK_URL_RE.match(url)):
+        return None
+    return {"key": key, "title": title.strip(), "url": url, "login": link.get("login") is True and url.startswith("/")}
+
+
+def me_links(conn: psycopg.Connection, user: dict) -> list[dict]:
+    """Every plugin's rows for this user (web/me_links.py). A failing plugin loses its rows, never the request."""
+    out: dict[str, dict] = {}
+    for p in load():
+        fn = getattr(p.module, "me_links", None)
+        if fn is None:
+            continue
+        try:
+            with conn.transaction():   # a savepoint: a failed query in the plugin does not poison the request's transaction
+                rows = list(fn(conn, user) or [])
+        except Exception:
+            log.exception("plugin %s: me_links failed", p.name)
+            continue
+        for link in map(_clean_link, rows):
+            if link:
+                out.setdefault(link["key"], link)
+            else:
+                log.warning("plugin %s: invalid me_links row dropped", p.name)
+    return list(out.values())
 
 
 # ---------------------------------------------------------------- jobs

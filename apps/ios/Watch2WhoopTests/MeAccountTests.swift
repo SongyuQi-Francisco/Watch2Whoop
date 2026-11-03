@@ -16,6 +16,56 @@ final class MeAccountTests: XCTestCase {
     super.tearDown()
   }
 
+  // MARK: - rows from the server
+
+  private let server = URL(string: "https://server.example.com")!
+
+  func testNoMeLinksFromTheServerMeansNoRows() {
+    XCTAssertEqual(MeLink.parse(nil, server: server), [])
+    XCTAssertEqual(MeLink.parse("nope", server: server), [])
+    XCTAssertEqual(MeLink.parse([[String: Any]](), server: server), [])
+  }
+
+  func testMeLinksKeepTheServersWordsAndDropBadRows() {
+    let rows: [[String: Any]] = [
+      ["key": "extra", "title": "Row one", "url": "/app/plugins/extra/"],
+      ["key": "other", "title": "Row two", "url": "https://elsewhere.example.com/page"],
+      ["key": "bad-scheme", "title": "No", "url": "javascript:alert(1)"],
+      ["key": "custom-scheme", "title": "No", "url": "watch2whoop://sync"],
+      ["key": "plain-http", "title": "No", "url": "http://elsewhere.example.com/"],
+      ["key": "Bad Key", "title": "No", "url": "/app/"],
+      ["key": "no-title", "title": "", "url": "/app/"],
+      ["key": "no-url", "title": "No"],
+    ]
+    XCTAssertEqual(MeLink.parse(rows, server: server), [MeLink(key: "extra", title: "Row one"), MeLink(key: "other", title: "Row two")])
+  }
+
+  func testMeLinkTargetResolvesAgainstTheServerAndAllowsHttpOnlyOnItsOwnOrigin() {
+    XCTAssertEqual(MeLink.target("/app/plugins/x/#login=ABC&lang=zh", server: server)?.absoluteString,
+                   "https://server.example.com/app/plugins/x/#login=ABC&lang=zh")
+    let dev = URL(string: "http://127.0.0.1:18100")!
+    XCTAssertEqual(MeLink.target("/app/x/", server: dev)?.absoluteString, "http://127.0.0.1:18100/app/x/")
+    XCTAssertNil(MeLink.target("http://127.0.0.1:9999/app/x/", server: dev))
+    XCTAssertNil(MeLink.target("http://elsewhere.example.com/", server: dev))
+    XCTAssertNil(MeLink.target("tel:123", server: server))
+  }
+
+  func testMeLinkAsksTheServerForTheAddressAtEveryTap() async throws {
+    StubProtocol.reset([.init(status: 200, body: #"{"url": "/app/plugins/x/#login=ABC&lang=zh"}"#), .init(status: 200, body: #"{"url": "javascript:alert(1)"}"#)])
+    let c = URLSessionConfiguration.ephemeral
+    c.protocolClasses = [StubProtocol.self]
+    let api = APIClient(baseURL: server, token: { "fake-token" }, session: URLSession(configuration: c))
+    let link = MeLink(key: "x", title: "Row")
+    let url = try await link.address(api: api)
+    XCTAssertEqual(url.absoluteString, "https://server.example.com/app/plugins/x/#login=ABC&lang=zh")
+    XCTAssertEqual(StubProtocol.requests.first?.httpMethod, "POST")
+    XCTAssertEqual(StubProtocol.requests.first?.url?.path, "/v1/web/me-links/x/open")
+    do {
+      _ = try await link.address(api: api)
+      XCTFail("a bad address is not opened")
+    } catch {}
+  }
+
   private func kind(_ json: String) throws -> AIKind { try JSONDecoder().decode(AIKind.self, from: Data(json.utf8)) }
   private var anthropic: AIKind {
     get throws { try kind(#"{"kind": "anthropic_api", "label": "Anthropic API", "category": "api", "default_model": "model-a", "models": ["model-a", "model-b"], "key_hint": "sk-…"}"#) }

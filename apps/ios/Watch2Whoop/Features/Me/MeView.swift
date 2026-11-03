@@ -13,6 +13,7 @@ struct MeTab: View {
 private struct MeScreen: View {
   @EnvironmentObject private var app: AppModel
   @EnvironmentObject private var session: AccountSession
+  @Environment(\.openURL) private var openURL
   @ObservedObject var inbox: InboxStore
   let circles: CirclesStore
   @ObservedObject private var sync = HealthSyncService.shared
@@ -27,9 +28,12 @@ private struct MeScreen: View {
   /// Rows that depend on the server: friends can be invited, a code can still be entered (AccountViews.swift).
   @State private var referrals = false
   @State private var inviteOptional = false
+  @State private var openingLink = false
+  @State private var linkError: String?
 
   var body: some View {
     NavigationStack {
+      ScrollViewReader { proxy in
       PageScaffold(title: tr("我", "Me")) {
         VStack(alignment: .leading, spacing: 18) {
           header
@@ -108,6 +112,15 @@ private struct MeScreen: View {
               ListRow(icon: .keyRound, title: tr("填写邀请码", "Enter an invite code")) { sheet = .lateInvite }
             }
           }
+          if !session.meLinks.isEmpty {
+            RowGroup {
+              ForEach(Array(session.meLinks.enumerated()), id: \.element.id) { n, link in
+                if n > 0 { RowDivider() }
+                ListRow(icon: .externalLink, title: link.title) { open(link) }
+              }
+            }
+            .id("me-links")
+          }
           RowGroup(title: tr("帮助", "Help")) {
             ListRow(icon: .messageCircle, title: tr("反馈记录", "Feedback")) { sheet = .feedback }
           }
@@ -119,6 +132,8 @@ private struct MeScreen: View {
           }
         }
         .padding(.top, 8)
+      }
+      .task { await devShot(proxy) }
       }
       .toolbar(.hidden, for: .navigationBar)
       .navigationDestination(isPresented: $openInbox) { InboxView(store: inbox, circles: circles) }
@@ -155,6 +170,36 @@ private struct MeScreen: View {
     }
     .alert(deleteError ?? "", isPresented: Binding(get: { deleteError != nil && !confirmDelete }, set: { if !$0 { deleteError = nil } })) {
       Button(tr("好", "OK"), role: .cancel) {}
+    }
+    .alert(linkError ?? "", isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })) {
+      Button(tr("好", "OK"), role: .cancel) {}
+    }
+  }
+
+  /// Debug screenshots (RecordDevShot): `W2W_DEV_SCROLL=me-links` brings the server's rows on screen, `W2W_DEV_MELINK=<key>`
+  /// then does what a tap on that row does.
+  private func devShot(_ proxy: ScrollViewProxy) async {
+    guard RecordDevShot.value("W2W_DEV_SCROLL") != nil || RecordDevShot.value("W2W_DEV_MELINK") != nil else { return }
+    try? await Task.sleep(nanoseconds: 2_500_000_000)
+    if let anchor = RecordDevShot.value("W2W_DEV_SCROLL") { proxy.scrollTo(anchor, anchor: .center) }
+    guard let key = RecordDevShot.value("W2W_DEV_MELINK"), let link = session.meLinks.first(where: { $0.key == key }) else { return }
+    try? await Task.sleep(nanoseconds: 5_000_000_000)
+    open(link)
+  }
+
+  /// A row from the server: its address opens in the system browser (never in a web view inside the app).
+  private func open(_ link: MeLink) {
+    guard !openingLink else { return }
+    openingLink = true
+    Task {
+      defer { openingLink = false }
+      do {
+        openURL(try await link.address(api: session.api))
+      } catch let e as APIError {
+        linkError = e.userMessage
+      } catch {
+        linkError = tr("出错了", "Something went wrong")
+      }
     }
   }
 
