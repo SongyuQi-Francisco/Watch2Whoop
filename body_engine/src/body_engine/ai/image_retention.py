@@ -1,6 +1,6 @@
 """Chat photos do not stay for ever (owner's decision, 2026-11-04): what a person sent to Jarvis in a chat (photos, frames from a
 video) is replaced by a line of text once it is CHAT_IMAGE_KEEP_DAYS old. The app never showed them again anyway, only how many
-there were; the only use left was going back to the model in the kept turns of that conversation.
+there were; the only use left was going back to the same AI in the kept turns of that conversation (never to another: posture.for_model).
 
 Only pictures inside the person's own chat messages. The words of the conversation, the AI's answers, avatars and circle pictures
 (table images), exercise pictures and health data are not touched. Copies in backups go when the backups rotate (privacy policy).

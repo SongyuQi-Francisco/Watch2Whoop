@@ -21,7 +21,7 @@ TEST_DB = "body_test_ai_image_retention"
 PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
 IMAGE = {"type": "image", "media_type": "image/png", "data": PNG}
 TEXT = {"type": "text", "text": "这顿饭怎么样"}
-LINE = "（这里有 2 张照片，按设置没有保存）"
+LINE = "（这里有 2 张照片，现在看不到了）"
 
 
 @pytest.fixture(scope="module")

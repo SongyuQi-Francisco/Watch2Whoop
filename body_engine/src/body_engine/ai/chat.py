@@ -188,11 +188,22 @@ def _add_message(conn, conv_id: int, user_id: int, role: str, content: list, nat
     return mid
 
 
-def _history(conn, conv_id: int, user_id: int, after: int | None = None) -> list[dict]:
+def _history(conn, conv_id: int, user_id: int, after: int | None = None, images_upto: int | None = None) -> list[dict]:
     """Messages after `after` (the summary's last message id), oldest first; a replaced picture is a line of text from here on."""
-    return context.show_redacted(conn.execute("""SELECT id, role, content, native, native_key FROM ai_messages
-                                                 WHERE conversation_id = %s AND user_id = %s AND id > %s ORDER BY id""",
-                                              (conv_id, user_id, after or 0)).fetchall())
+    rows = conn.execute("""SELECT id, role, content, native, native_key FROM ai_messages
+                             WHERE conversation_id = %s AND user_id = %s AND id > %s ORDER BY id""",
+                        (conv_id, user_id, after or 0)).fetchall()
+    return context.show_redacted(posture.for_model(rows, images_upto))
+
+
+def _use_ai(conn, conv: dict, provider: dict) -> None:
+    """This conversation goes on with this AI. If it is another one, the pictures so far stay with the AI they went to (posture.for_model)."""
+    key = posture.ai_key(provider)
+    if conv["images_for"] != key:
+        conn.execute("""UPDATE ai_conversations SET provider_id = %s, images_for = %s,
+                          images_upto = (SELECT max(id) FROM ai_messages WHERE conversation_id = %s AND user_id = %s)
+                        WHERE id = %s AND user_id = %s""",
+                     (provider["id"], key, conv["id"], conv["user_id"], conv["id"], conv["user_id"]))
 
 
 def _context(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adapter):
@@ -200,10 +211,10 @@ def _context(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.A
     Over the budget, the older turns are folded into the summary first (one tools-less call, billed like any other: usage
     event + ai_usage purpose 'compact'). Generator: yields that usage event, returns (system, history)."""
     fb = fallback.is_fallback(provider)
-    state = conn.execute("SELECT summary, summary_upto FROM ai_conversations WHERE id = %s AND user_id = %s",
+    state = conn.execute("SELECT summary, summary_upto, images_upto FROM ai_conversations WHERE id = %s AND user_id = %s",
                          (conv["id"], viewer["id"])).fetchone()
     summary = state["summary"]
-    history = _history(conn, conv["id"], viewer["id"], state["summary_upto"])
+    history = _history(conn, conv["id"], viewer["id"], state["summary_upto"], state["images_upto"])
     cut = context.fold_point(history, fb)
     if cut is not None:
         request = context.fold_request(summary, history[:cut])
@@ -717,15 +728,15 @@ def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fal
     check_budget(conn, viewer["id"], provider)
     adapter = make_adapter(provider, viewer["id"])
     if conversation_id is None:
-        conv = conn.execute("""INSERT INTO ai_conversations (user_id, provider_id, title, system_prompt, pages, own_only)
-                               VALUES (%s,%s,%s,%s,%s,%s) RETURNING *""",
-                            (viewer["id"], provider["id"], (message or "图片")[:40],
+        conv = conn.execute("""INSERT INTO ai_conversations (user_id, provider_id, images_for, title, system_prompt, pages, own_only)
+                               VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
+                            (viewer["id"], provider["id"], posture.ai_key(provider), (message or "图片")[:40],
                              prompt.build_system_prompt(conn, viewer["id"], lite=fb),
                              [page] if toolsets.known_page(page) else [],
                              not _shared_with(conn, viewer["id"]))).fetchone()
     else:
         conv = _conversation(conn, viewer["id"], conversation_id)
-        conn.execute("UPDATE ai_conversations SET provider_id = %s WHERE id = %s", (provider["id"], conv["id"]))
+        _use_ai(conn, conv, provider)
         allowed, _ = _tool_sets(conn, viewer["id"], provider, bool(conv.get("own_only")))
         pages = toolsets.visit_page(allowed, conv["pages"], page, *_page_cut(conn, viewer["id"], provider))
         if pages != conv["pages"]:   # a new page adds its groups; over the cap the oldest pages' groups are dropped
@@ -792,7 +803,9 @@ def prepare_confirm(conn, viewer: dict, call_id: int, approve: bool):
     conv = _conversation(conn, viewer["id"], row["conversation_id"])
     # An approved write still runs when the fallback quota ran out meanwhile (the loop then stops before the next model call)
     provider = resolve_provider(conn, viewer["id"], need_quota=False)
-    return row, conv, provider, make_adapter(provider, viewer["id"])
+    adapter = make_adapter(provider, viewer["id"])
+    _use_ai(conn, conv, provider)
+    return row, conv, provider, adapter
 
 
 def confirm_events(conn, viewer, row, conv, provider, adapter, approve: bool) -> Iterator[dict]:

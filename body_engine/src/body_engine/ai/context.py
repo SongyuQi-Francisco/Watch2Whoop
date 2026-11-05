@@ -12,7 +12,8 @@ so every later call reuses it. The tail kept after a fold fits in TAIL_SHARE of 
 That call is recorded in ai_usage (purpose 'compact') and counts against the same monthly budget / fallback quota.
 If it fails, the call goes on with the old summary + the recent turns only (nothing stored; the next call tries again).
 Images in folded turns are not resent (the summary says they were there); images in the kept turns are.
-A picture replaced when its turn ended (posture.py) is a line of text wherever history is read from (show_redacted).
+A picture replaced when its turn ended (posture.py), expired (image_retention.py) or left with the AI it was sent to
+(posture.for_model) is a line of text wherever history is read from (show_redacted).
 """
 import json
 
@@ -52,7 +53,7 @@ def redacted_text(block: dict) -> str:
     n = block.get("n", 1)
     if block.get("purpose") == "posture":
         return f"（这里有 {n} 张体态照片，按设置没有保存）"
-    return f"（这里有 {n} 张照片，按设置没有保存）"
+    return f"（这里有 {n} 张照片，现在看不到了）"
 
 
 def show_redacted(messages: list[dict]) -> list[dict]:
