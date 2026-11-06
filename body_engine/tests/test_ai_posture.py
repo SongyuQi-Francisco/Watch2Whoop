@@ -28,6 +28,8 @@ PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA6
 IMG = {"media_type": "image/png", "data": PNG}
 PLACEHOLDER = {"type": "image_redacted", "purpose": "posture", "n": 3}
 LINE = "（这里有 3 张体态照片，按设置没有保存）"
+ORDINARY_LINE = "（这里有 {n} 张照片，现在看不到了）"
+REDACTED_TYPE = "image_redacted"
 ADD_EVENT = {"occurred_at": "2026-10-16T18:00", "title": "测试", "category": "pain", "body_part": "肩", "severity": 1, "note": None}
 
 
@@ -176,7 +178,7 @@ def test_later_turns_get_the_line_of_text_not_the_photos(client, person, dsn):
 def test_the_placeholder_in_the_text_of_a_fold():
     h = context.show_redacted([{"role": "user", "content": [{"type": "text", "text": "问"}, PLACEHOLDER]}])
     assert LINE in context.transcript(h) and h[0]["content"][1]["type"] == "text"
-    assert context.redacted_text({"n": 2}) == "（这里有 2 张照片，按设置没有保存）"
+    assert context.redacted_text({"n": 2}) == ORDINARY_LINE.format(n=2)
 
 
 # ---------------------------------------------------------------- switching AI
@@ -200,17 +202,130 @@ def test_after_switching_ai_the_old_posture_photos_do_not_go_to_the_new_ai(clien
     assert any(b.get("text") == LINE for m in call["history"] for b in m["content"])
 
 
-def test_known_gap_an_ordinary_photo_still_reaches_the_new_ai(client, person):
-    """Not changed here, on purpose: decision D2 of the plan. When it is decided, this test changes with REDACT_PURPOSES."""
-    _, token = person
+def _photo_then_switch(client, token) -> tuple[int, str]:
     FakeAdapter.script = [{"text": "答"}]
     conv = sse(send(client, token, purpose=None).text)[0][1]["id"]
     first_key = FakeAdapter.calls[-1]["api_key"]
     _switch(client, token)
+    return conv, first_key
+
+
+def _go_on(client, token, conv, *images) -> dict:
     FakeAdapter.script = [{"text": "好"}]
-    assert send(client, token, "继续", images=(), purpose=None, conversation_id=conv).status_code == 200
-    call = FakeAdapter.calls[-1]
-    assert call["api_key"] != first_key and len(sent_images(call)) == 3
+    assert send(client, token, "继续", images=images, purpose=None, conversation_id=conv).status_code == 200
+    return FakeAdapter.calls[-1]
+
+
+def test_an_ordinary_photo_stays_with_the_ai_it_was_sent_to(client, person, dsn):
+    """Not sent to the next AI, and not deleted either: that happens after 30 days (image_retention.py)."""
+    uid, token = person
+    conv, first_key = _photo_then_switch(client, token)
+    call = _go_on(client, token, conv)
+    assert call["api_key"] != first_key and sent_images(call) == []
+    assert any(b.get("text") == ORDINARY_LINE.format(n=3) for m in call["history"] for b in m["content"])
+    assert PNG in stored_user_message(dsn, uid)["raw"]
+
+
+def test_the_same_ai_can_still_look_at_it_in_the_next_turn(client, person):
+    _, token = person
+    FakeAdapter.script = [{"text": "答"}]
+    conv = sse(send(client, token, purpose=None).text)[0][1]["id"]
+    assert len(sent_images(_go_on(client, token, conv))) == 3
+
+
+def test_a_photo_sent_after_the_switch_goes_to_the_new_ai_and_stays_with_it(client, person):
+    _, token = person
+    conv, _ = _photo_then_switch(client, token)
+    assert len(sent_images(_go_on(client, token, conv, IMG))) == 1
+    assert len(sent_images(_go_on(client, token, conv))) == 1
+
+
+def test_switching_back_does_not_send_them_again(client, person, dsn):
+    uid, token = person
+    conv, first_key = _photo_then_switch(client, token)
+    _go_on(client, token, conv)
+    with db(dsn) as conn:
+        conn.execute("UPDATE ai_providers SET is_default = false WHERE user_id = %s", (uid,))
+        conn.execute("UPDATE ai_providers SET is_default = true WHERE user_id = %s AND secret_last4 = '1111'", (uid,))
+    call = _go_on(client, token, conv)
+    assert call["api_key"] == first_key and sent_images(call) == []
+
+
+def test_another_model_on_the_same_provider_counts_as_another_ai(client, person, dsn):
+    uid, token = person
+    FakeAdapter.script = [{"text": "答"}]
+    conv = sse(send(client, token, purpose=None).text)[0][1]["id"]
+    with db(dsn) as conn:
+        conn.execute("UPDATE ai_providers SET model = 'claude-other' WHERE user_id = %s", (uid,))
+    assert sent_images(_go_on(client, token, conv)) == []
+
+
+def test_another_address_counts_as_another_ai():
+    p = {"id": 5, "kind": "openai_compatible", "model": "m", "base_url": "https://a.example/v1"}
+    assert posture.ai_key(p) != posture.ai_key({**p, "base_url": "https://b.example/v1"})
+    assert posture.ai_key(p) != posture.ai_key(fallback.provider())
+
+
+def test_a_deleted_ais_photos_do_not_reach_the_fallback(client, person, dsn):
+    """Deleting a provider empties provider_id, and an empty provider_id is also what the fallback's conversations hold."""
+    uid, token = person
+    FakeAdapter.script = [{"text": "答"}]
+    conv = sse(send(client, token, purpose=None).text)[0][1]["id"]
+    with db(dsn) as conn:
+        conn.execute("DELETE FROM ai_providers WHERE user_id = %s", (uid,))
+        row = chat_mod._conversation(conn, uid, conv)
+        assert row["provider_id"] is None
+        chat_mod._use_ai(conn, row, fallback.provider())
+        upto = chat_mod._conversation(conn, uid, conv)["images_upto"]
+        history = chat_mod._history(conn, conv, uid, None, upto)
+    assert not any(b["type"] == "image" for m in history for b in m["content"])
+
+
+def test_a_conversation_from_before_this_counts_as_a_move(client, person, dsn):
+    uid, token = person
+    FakeAdapter.script = [{"text": "答"}]
+    conv = sse(send(client, token, purpose=None).text)[0][1]["id"]
+    with db(dsn) as conn:
+        conn.execute("UPDATE ai_conversations SET images_for = NULL WHERE id = %s", (conv,))
+    assert sent_images(_go_on(client, token, conv)) == []
+
+
+@pytest.mark.parametrize("purpose", ["posture", None], ids=["posture", "ordinary"])
+def test_switching_while_a_write_waits_for_confirmation_keeps_them_back(client, person, monkeypatch, purpose):
+    _, token = person
+    monkeypatch.setattr(chat_mod, "ALWAYS_CONFIRM", chat_mod.ALWAYS_CONFIRM | {"add_event"})
+    FakeAdapter.script = [{"text": "我来记", "tool_calls": [{"id": "w1", "name": "add_event", "args": ADD_EVENT}]}]
+    evs = sse(send(client, token, purpose=purpose).text)
+    assert evs[-1][0] == "confirm"
+    first_key = FakeAdapter.calls[-1]["api_key"]
+    _switch(client, token)
+    FakeAdapter.script = [{"text": "好了"}]
+    done = sse(client.post("/v1/assistant/chat/confirm", headers=H(token),
+                           json={"call_id": evs[-1][1]["calls"][0]["call_id"], "approve": True}).text)
+    assert done[-1][0] == "done"
+    assert FakeAdapter.calls[-1]["api_key"] != first_key and sent_images(FakeAdapter.calls[-1]) == []
+
+
+def _msg(mid: int, role: str, *blocks, native=None) -> dict:
+    return {"id": mid, "role": role, "content": list(blocks), "native": native, "native_key": "k" if native else None}
+
+
+def test_once_a_picture_is_gone_earlier_reasoning_goes_out_as_plain_content():
+    """Reasoning a vendor tied to the exact history no longer fits it. The turn under way keeps its own, written after the change."""
+    text = {"type": "text", "text": "x"}
+    gone = _msg(1, "user", text, {"type": REDACTED_TYPE, "purpose": None, "n": 1})
+    rows = [gone, _msg(2, "assistant", text, native="a"), _msg(3, "user", text), _msg(4, "assistant", text, native="b")]
+    assert [r["native"] for r in posture.for_model(rows, None)] == [None, None, None, "b"]
+    plain = [_msg(1, "user", text), _msg(2, "assistant", text, native="a"), _msg(3, "user", text)]
+    assert posture.for_model(plain, 2) == plain   # no picture: a conversation that moved stays as it was
+
+
+def test_moving_mid_turn_also_clears_that_turns_reasoning():
+    text, image = {"type": "text", "text": "x"}, {"type": "image", "media_type": "image/png", "data": PNG}
+    rows = [_msg(1, "user", text, image), _msg(2, "assistant", text, native="a")]
+    out = posture.for_model(rows, 2)
+    assert out[0]["content"][1]["type"] == REDACTED_TYPE and out[1]["native"] is None
+    assert rows[0]["content"][1] == image   # what was read from the database is not changed
 
 
 # ---------------------------------------------------------------- how a turn can end

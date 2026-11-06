@@ -8,7 +8,7 @@ answered) is replaced by redact_overdue, from the hourly job. Later turns see a 
 so the pictures never go out again, also not to another AI the user switches to.
 
 Which pictures this applies to is decided by posture_params.redacts alone. Ordinary chat photos are not touched here; they go
-after a month (image_retention.py).
+after a month (image_retention.py). Until then they stay with the AI they were sent to: for_model keeps them from any other.
 """
 import logging
 from datetime import date
@@ -81,6 +81,27 @@ def without_images(content: list[dict]) -> list[dict]:
         elif not placed:
             out.append({"type": REDACTED, "purpose": images[0].get("purpose"), "n": len(images)})
             placed = True
+    return out
+
+
+def ai_key(provider: dict) -> str:
+    """The AI a picture goes to. Another provider, model or address counts as another AI (behind one address, a model can be another
+    vendor's), and so does a provider deleted and added again."""
+    return f"{provider['id'] or 'fallback'}|{provider['kind']}:{provider['model'] or ''}|{provider['base_url'] or ''}"
+
+
+def for_model(rows: list[dict], images_upto: int | None) -> list[dict]:
+    """The stored messages as the AI in use may read them. Pictures from before the conversation moved to this AI stay behind; nothing
+    stored changes. Once a picture is gone from an earlier message, reasoning a vendor tied to the exact history (native) no longer
+    fits: earlier turns go out as plain content, as they do after a switch. The turn under way keeps its own, written after the change."""
+    upto = images_upto or 0
+    current = max((i for i, r in enumerate(rows) if r["role"] == "user"), default=0)
+    out, changed = [], False
+    for i, r in enumerate(rows):
+        if r["id"] <= upto:
+            r = {**r, "content": without_images(r["content"])}
+        changed = changed or any(b.get("type") == REDACTED for b in r["content"])
+        out.append({**r, "native": None} if changed and (i < current or r["id"] <= upto) else r)
     return out
 
 
