@@ -843,6 +843,8 @@ N4 的趋势页、一年范围的读数、状态卡和弹层、报告、最近 1
 | 5 | TestFlight 上只剩 2.0.0 能装以后（1.0.8 的构建在 App Store Connect 里设为过期，或者 90 天自然过期） | `flags set apple_sync_new_accounts --state all`：新开户不再建 OW 用户，一开就是 app 模式 | 先开一个测试账号确认设置链接只有 `today` 和 `login`，2.0.0 扫码就能同步。**不能早开**：1.0.8 登录这种账号会显示「服务器出错（409）」，连不上同步（回归报告 O4） |
 | 6 | 所有有 OW 账号的人都已在 app 模式、都装了 2.0.0（`sync-mode readiness`、`rawdata_uploads.app_version`），2.0.0 外部组稳定一周 | **OW 停写**：每人 `ow-archive --user-id N` 补完存档、`ow-archive --check` 全部完整 → 定时任务里去掉 `import-ow` 和 OW 备份，OW 只读（#219 S7，`apple-sync-engine.md` 第 5.3 节） | 回退期 14 天（有本地存档）里分数不漂；之后 OW 下线（S8 删代码，`apple-sync-engine.md` 第 10 节） |
 
+**2.0.0 实际的发布方式（2026-11-08 负责人决定）**：不分批，内部组和外部组同时上，第 2、3 步不再提前切人。原生 app 没有 OW SDK，还在影子模式的人升级后数字会停更，所以服务器每小时的 `sync-mode apply` 看到手机已经从 2.0.0 上传（`CUTOVER_NATIVE_APP_VERSION`），就跳过影子和分数门槛，把这个人切到 app 模式。`pin` 过的人不动，`apple_sync_primary` 关掉就全停。发布前 `flags set apple_sync_primary --state cohort --cohort sync_app`，外部审核通过当天 `flags set native_sync --state all`。
+
 **回退**（从轻到重）
 
 - **一个人的分数不对**：`app-scores server --user-id N`，服务器重新给他算分（app 上传的照收，但不再用）；查清后 `app-scores app --user-id N`。抽查不一致时服务器本来就会自动接手。

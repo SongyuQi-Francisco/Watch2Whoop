@@ -20,7 +20,8 @@ module does the switch user by user:
   those dates again, re-chooses the daily values without the app's, queues the score recompute. Nothing is deleted
   from the engine's raw data or from OW, so switching again later works. unpin() lets the flags decide again.
 - apply(): reconcile everyone (hourly, idempotent): a switched user the flags no longer want is rolled back the same way
-  (flag turned off = rollback for everyone); a user the flags want and who passes the gates is switched; after the first
+  (flag turned off = rollback for everyone); a user the flags want and who passes the gates is switched, and so is a user
+  whose phone now uploads from the native app, without the shadow and score gates (on_native_app), unless pinned; after the first
   recompute in the app mode the post-switch check compares the new scores with the snapshot (post_check).
 The app learns the mode from GET /v1/ingest/healthkit (engine.mode): with `app` it stops the OW SDK (keeps its
 credentials and anchors), with `shadow` it starts it again (OW resumes from its anchors).
@@ -141,6 +142,13 @@ def app_version_gate(conn: psycopg.Connection, user_id: int) -> dict:
     seen = r["app_version"] if r else None
     return {"ok": r is not None and _version(seen) >= _version(P.CUTOVER_MIN_APP_VERSION), "app_version": seen,
             "min": P.CUTOVER_MIN_APP_VERSION, "seen_at": r["received_at"] if r else None}
+
+
+def on_native_app(conn: psycopg.Connection, user_id: int) -> bool:
+    """The phone's latest engine batch came from the native app. It has no OW SDK, so OW gets nothing more from this phone: there
+    is nothing left to compare, and the shadow mode would only hide what the app delivers."""
+    g = app_version_gate(conn, user_id)
+    return g["ok"] and _version(g["app_version"]) >= _version(P.CUTOVER_NATIVE_APP_VERSION)
 
 
 def score_check(conn: psycopg.Connection, client, user_id: int, start: date, end: date,
@@ -347,13 +355,14 @@ def apply(conn: psycopg.Connection, user_id: int | None = None, client=None, che
             st = state(conn, uid)
             want = desired(conn, uid)
             applied = st["mode"] if st else "shadow"
+            native = applied != "app" and not (st and st["pin"]) and on_native_app(conn, uid)
             if applied == "app" and want != "app":
                 _set_state(conn, uid, mode="shadow", rolled_back_at=datetime.now(timezone.utc),
                            note="rolled back: the flags no longer want app")
                 conn.commit()
                 out.append({"user_id": uid, "action": "rollback", **_to_shadow(conn, uid, client)})
-            elif applied != "app" and want == "app":
-                res = switch(conn, uid, client, check_scores=check_scores)
+            elif applied != "app" and (want == "app" or native):
+                res = switch(conn, uid, client, force=native, check_scores=check_scores, actor="native-app" if native else None)
                 out.append({"user_id": uid, "action": "switch" if res["switched"] else "blocked",
                             **({"reason": res.get("reason")} if not res["switched"] else {})})
             elif applied == "app" and st["post_check"] is None and _recomputed_since_switch(conn, uid, st["switched_at"]):

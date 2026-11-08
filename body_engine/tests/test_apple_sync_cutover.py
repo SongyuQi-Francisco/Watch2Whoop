@@ -147,13 +147,13 @@ def rows(dsn, sql, *params):
         return c.execute(sql, params).fetchall()
 
 
-ENGINE_USERS = ("S", "M", "W", "V", "H", "F")
+ENGINE_USERS = ("S", "M", "W", "V", "H", "F", "N")
 
 
 @pytest.fixture(scope="module")
 def world(dsn):
     """S: shadow (the comparison); M: shadow with an injected difference; W: switched / rolled back; V: an old app;
-    H: OW only, put in the app mode and archived; F: failures and the status panel; X: engine off."""
+    H: OW only, put in the app mode and archived; F: failures and the status panel; N: moves to the native app; X: engine off."""
     fake = S2.FakeOW()
     mp = pytest.MonkeyPatch()
     mp.setattr(RP, "CUTOVER_CLEAN_DAYS", 2)       # the data set has two days
@@ -174,7 +174,7 @@ def world(dsn):
     with conn_of(dsn) as conn:
         for n in (*ENGINE_USERS, "X"):
             ow.run(conn, fake, ids[n], D1, D2)
-    for n in ("S", "M", "W", "V"):
+    for n in ("S", "M", "W", "V", "N"):
         for b in S2.app_batches():
             if n == "V":
                 b["app_version"] = "1.0.7"
@@ -242,6 +242,45 @@ def test_old_app_is_never_switched(world, dsn):
         res = CO.switch(conn, ids["V"], fake, force=True)
         assert res["switched"] is False and res["gates"]["app_version"]["app_version"] == "1.0.7"
         assert EN.mode(conn, ids["V"]) == "shadow"
+
+
+def test_a_phone_on_the_native_app_is_switched_without_the_gates(world, dsn):
+    """2.0.0 has no OW SDK: the next apply moves its user to the app mode, even with nothing compared. A pin and the kill switch hold."""
+    ids, fake = world["ids"], world["fake"]
+    uid = ids["N"]
+    with conn_of(dsn) as conn:
+        assert CO.gates(conn, fake, uid, check_scores=False)["shadow"]["ok"] is False   # never compared
+        assert [r["action"] for r in CO.apply(conn, uid, fake)] == ["none"]             # 1.0.8: still the normal way
+        conn.execute("UPDATE rawdata_uploads SET app_version = '2.0.0+11' WHERE user_id = %s", (uid,))
+
+        CO._set_state(conn, uid, pin="ow")
+        assert [r["action"] for r in CO.apply(conn, uid, fake)] == ["none"]
+        CO.unpin(conn, uid)
+
+        flags.set_flag(conn, EN.PRIMARY_FLAG, "off", actor="test")
+        assert [(r["action"], r["reason"]) for r in CO.apply(conn, uid, fake)] == [("blocked", "primary_off")]
+        assert EN.mode(conn, uid) == "shadow"
+        flags.set_flag(conn, EN.PRIMARY_FLAG, "cohort", cohort=CO.PRIMARY_COHORT, actor="test")
+
+        assert [r["action"] for r in CO.apply(conn, uid, fake)] == ["switch"]
+        assert EN.mode(conn, uid) == "app"
+        assert CO.state(conn, uid)["checks"]["forced"] is True
+        assert [r["action"] for r in CO.apply(conn, uid, fake)] != ["switch"]
+
+        CO.rollback(conn, uid, fake)                                                    # a rollback is a decision: it stays
+        assert [r["action"] for r in CO.apply(conn, uid, fake)] == ["none"]
+        assert EN.mode(conn, uid) == "shadow"
+
+
+def test_a_phone_back_on_the_old_app_is_not_on_the_native_app(world, dsn):
+    ids = world["ids"]
+    with conn_of(dsn) as conn:
+        conn.execute("UPDATE rawdata_uploads SET app_version = '2.0.0+11' WHERE user_id = %s", (ids["N"],))
+        assert CO.on_native_app(conn, ids["N"]) is True
+        conn.execute("""UPDATE rawdata_uploads SET app_version = '1.0.8+8' WHERE ctid =
+                          (SELECT ctid FROM rawdata_uploads WHERE user_id = %s AND phase IS NOT NULL ORDER BY received_at DESC LIMIT 1)""",
+                     (ids["N"],))
+        assert CO.on_native_app(conn, ids["N"]) is False
 
 
 def test_new_account_without_ow_needs_only_the_app_version(world, dsn):
