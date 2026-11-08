@@ -62,6 +62,7 @@ SHADOW_REASONS = ("method", "ow_same_ts", "source_priority", "late_sample", "act
 CUTOVER_CLEAN_DAYS = 7                      # consecutive closed days without mismatch / missing_app
 CUTOVER_COVERAGE = 0.95                     # share of OW's daily items (metric-days) the app also delivered
 CUTOVER_MIN_APP_VERSION = "1.0.8"           # the first app with the engine (A1); older apps keep OW
+CUTOVER_NATIVE_APP_VERSION = "2.0.0"        # the native app has no OW SDK: a phone on it no longer feeds OW
 CUTOVER_APP_SEEN = timedelta(days=7)        # ... and it uploaded engine batches within this many days
 CUTOVER_REDERIVE_DAYS = 90                  # days re-derived in the app mode at the switch (the first sync's range)
 CUTOVER_CHECK_DAYS = 14                     # score consistency window before / after the switch
