@@ -256,10 +256,14 @@ final class JarvisRouter: ObservableObject {
   #endif
 
   /// A recognised voice message: sent, or put in the box for checking (flag `jarvis_voice_direct`).
-  func deliverVoice(_ text: String, seconds: Double) {
+  /// The words of a hold on the key, at once: sent (flag jarvis_voice_direct) or put in the box, each with its correction
+  /// (`correction` nil = the usual one; the key passes an empty one when the words already are the server's).
+  func deliverVoice(_ take: JarvisVoice.Take, correction given: Task<String?, Never>? = nil) {
     guard let chat else { return }
     present(.chat)
-    if voiceDirect { chat.send(text, voiceSeconds: seconds) } else { chat.draft = text }
+    let correction = given ?? chat.voiceCorrection(take)
+    if voiceDirect { chat.sendVoice(take.text, seconds: take.seconds, correction: correction) }
+    else { chat.insertVoice(take.text, correction: correction) }
   }
 
   /// Where a card's button goes: the sheets over the chat, or a tab and what that tab should show.

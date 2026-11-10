@@ -598,7 +598,9 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 **性能**：`PerfProbe` 打 `W2W_PERF` 日志和 signpost（`today data`、`today rings`）。
 
 - 启动环境变量 `W2W_PERF=1` 时开帧计数器；`W2W_PERF_SCROLL=1` 时今天页自己上下滚三次，并报告掉帧。看结果：`xcrun simctl launch --console-pty … | grep W2W_PERF`。
+- `W2W_PERF_SCRIPT=tabs`（Debug，`App/PerfScript.swift`）：自动把每个 tab 切两遍（第一次 / 再次），再在今天页开关一个弹层、推入和退出睡眠页，有 app 内 AI 时再开关一次对话；每一步记 `first`（从这一步到下一帧，即主线程被它占了多久）、`worst`、`dropped`。改性能前后用同一套步骤比较。
 - 今天页用 `LazyVStack`，首帧只建屏幕上的部分。
+- 2.0.1：今天页的数据模型（解析本地文档的 JSON、算整页的数）在数据库观察的后台队列里建，只有首帧那一份同步建；卡片区 `TodayDayCards`（还有 `TodayHomePage`、趋势页的 `TrendsMetricsContent`）按模型做 `Equatable`，不比较闭包：开弹层、推入子页面、切 tab 只改页面自己的状态，不再把整页卡片重建、重排一遍。
 - Debug 版截图用的环境变量：`W2W_DEV_SHEET`、`W2W_DEV_SLEEP`、`W2W_DEV_DATE`、`W2W_DEV_SCROLL`（`TodayView.swift` 的 `DevShot`；滚动锚点 `n3.food` 到饮食卡）、`W2W_DEV_TODAYFOOD=day`（打开饮食卡的明细）。
 
 ### 9.2 N7 圈子：数据从哪来、写怎么走
@@ -628,14 +630,17 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 
 **Jarvis 键**（`JarvisLayer.swift`）
 
-- 点一下（AI 在 app 内对话时）：菜单像 Mission 仪表盘那样展开。四个键（对话 / 语音 / 拍照 / 快记）先向两边滑出，再升到弧上、放大到略小于 Jarvis 键（58 / 50 pt）。弧的圆心在键中心下方 22 pt。没有刻度线和连接线。
+- 点一下（AI 在 app 内对话时）：菜单像 Mission 仪表盘那样展开。四个键（对话 / 语音 / 拍照 / 快记）在 Jarvis 键边缘外出现，先向两边滑出，再升到弧上、放大到略小于 Jarvis 键（58 / 50 pt）。弧的圆心在键中心下方 22 pt。没有刻度线和连接线。
+- 收起（2.0.1）：四个键同时往 Jarvis 键方向收三分之一、缩小并在 0.16 秒内淡出，然后移出视图树。2.0.0 是把它们全部滑进 Jarvis 键，玻璃融合在一起，中途会有一瞬间全挤在一起。每一步、每一步之间，子键都不碰 Jarvis 键、也不互相重叠（`JarvisLayer.pose`，`JarvisTests.testDialKeysNeverOverlap`）。
 - 颜色只用一种墨色（`Palette.text`），动画只改 transform 和 opacity，弹簧曲线；系统打开「减弱动态效果」时直接出现。
-- iOS 26：键是系统 Liquid Glass，放在一个 `GlassEffectContainer` 里，四个键从 Jarvis 键的玻璃里流出来。iOS 16–25：`.ultraThinMaterial` 圆片加一条细描边。
-  - 菜单收起时，四个键不在视图树里。停在中心的玻璃键也会参与合成，会把面板上的文字折射到键边上。
-  - 录音时 Jarvis 键是实心墨色，不用着色玻璃，原因同上。
-  - 遮罩是纯色，不用全屏模糊：玻璃键移动时，全屏模糊会掉帧。
+- 玻璃（2.0.1）：只有 Jarvis 键是系统 Liquid Glass（iOS 26，不用 `.interactive()`：按下反馈只有键自己的缩放，一次、干脆）；iOS 16–25 是 `.ultraThinMaterial` 圆片加一条细描边。四个菜单键是页面底色的实心圆片加细描边，不再是玻璃，也没有 `GlassEffectContainer`：遮罩下面没有东西需要模糊，移动时也不用每帧重算玻璃。
+  - 菜单收起时，四个键不在视图树里。
+  - 录音时 Jarvis 键是实心墨色，不用着色玻璃：着色玻璃会把面板上的文字折射到键边上。
+  - 遮罩是纯色，不用全屏模糊：键移动时，全屏模糊会掉帧。
+  - 系统自己的玻璃：底部 tab 栏在 iOS 26 上一直是系统 Liquid Glass，没有不改样子的替换办法（`UIDesignRequiresCompatibility` 会把整个 app 退回旧样式，Apple 也说以后会去掉），保持不变；各页面的导航栏本来就隐藏；弹层的背景用 `.presentationBackground` 换成页面的弹层色（`sheetSurface()`，内容本来就铺满这个颜色，看起来不变），不再在后面多算一层玻璃。
 - 按住 0.35 秒：开始说话。往左上滑是取消，往右上滑是锁定（之后可以松手，点「完成」或「发送」）。直接松开就是结束。
   - 识别：`JarvisVoice` 用系统的本机识别（`requiresOnDeviceRecognition`，声音不发给 Apple）。中文另外在内存里留一份 16 kHz 录音，交给服务器的 `/transcribe?fix=1` 定稿；英文用手机自己的文字，再经 `/voice-fix` 按用户自己的词纠正。录音不落盘。
+  - 点「完成」/ 松开之后（2.0.1，`JarvisVoice.finish` → `JarvisChat.insertVoice` / `sendVoice`）：本机已经识别出的文字立刻进输入框（或立刻作为消息出现），不等任何东西；同时开始服务器的转写 / 纠错（中文的录音这时已经完整，不用等本机识别的最终结果）。本机识别的最终结果最多再等 1 秒（文字 0.4 秒没变就算最终）。纠错回来时，只有那段文字还原样在输入框里才原地替换，用户改过就不动；纠错进行中输入框右边有一个小转圈，4 秒没回来就保留本机文字，不报错。直接发送（`jarvis_voice_direct`）时消息立刻出现在对话里，最多等 2.5 秒用服务器的版本发出，超时就用本机文字发，气泡显示的就是发出去的文字。2.0.0 是先等最终结果（最多 2.5 秒）再等服务器（2–3 秒），约 5 秒后文字才出现。
   - 发出去：flag `jarvis_voice_direct` 打开时直接发（消息带 ［语音］ 标记）；没打开时放进输入框，用户确认后再发（同意书的约定）。
   - 音频会话和 AVAudioEngine 在专用串行队列上启停。第一次碰麦克风输入要几百毫秒，放在主线程会卡住动画。
 - AI 不在 app 内（管家链接 / 订阅 / 没设置）：点一下和今天页的键一样（`JarvisRouter.tapKey`），没有菜单，也不能按住说话。
@@ -676,6 +681,8 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
   - `posture`：打开体态分析；`posture-filled`：里面放好 3 张纯色假照片；`posture-send`：直接把 3 张假照片和预填的问题发出去。
   - `W2W_JARVIS_MATERIAL=1`：在 iOS 26 上也画毛玻璃键，方便对比。
 - 帧率：`W2W_PERF=1` 时 `JarvisPerf` 用 CADisplayLink 统计每次展开 / 收起 / 开始说话，写日志 `W2W_PERF jarvis-open fps=… worst=…ms dropped=…`。看结果用 `log stream --predicate 'category == "perf"'`。
+- 语音时间（2.0.1）：`W2W_JARVIS_DEMO=voice` 用 Jarvis 键说三次（按住、松开）、再用对话里的麦克风说三次（「完成」），记 `voice-key-done-to-text` / `voice-chat-done-to-text`（点完成到文字出现）。脚本化的识别器这时和手机上的一样：不给最终结果，中文给一段录音去 `/transcribe`；假服务器的 `W2W_FAKE_ASR_DELAY=2.5` 模拟服务器识别的时间。
+- 假服务器的 `W2W_FAKE_ECHO=1`：每个回答都带上它的问题，并且先有几轮工具调用（`report_feedback`、`show_card`），连续两问能分清是哪一问的回答；`W2W_FAKE_CUT=<n>`：下一条对话的流发到第 n 个事件就断开（不发最后一个事件），app 用 `GET /chat/{id}/events?after=` 续读，假服务器和真服务器一样只保留每个会话最新一轮的事件。
 - 2026-10-29 实测：iPhone 17 Pro Max 模拟器，iOS 26.2，60 Hz，Liquid Glass。
   - 展开 / 收起：稳定后都是 60 fps，0 掉帧。冷启动后第一次展开 55–57 fps，掉 2–3 帧。
   - 按住说话：开始的那一下 51–60 fps，最差 66 ms。
@@ -954,7 +961,7 @@ tools/app_release.sh ios --push                      # 打 app-ios-v2.0.0 并推
 - N6: Jarvis.
 - N7: Circles (section 9.2). Feed, likes and comments, member cards, leaderboards, invites (code, link, picture card), circle management, avatars. Server answers are cached in `docs` (`circles:*`) and the feed's first page is merged on refresh; likes and comments go through the offline queue and are laid over the cached posts. The queue now claims an entry atomically (two drains never send it twice) with a 120 s lease. Notification taps open the post (`App/NotificationTaps.swift`). `CircleSummaryCard` is there for other pages.
 - N6: Jarvis (section 9.2).
-  - `JarvisLayer` sits over the tabs (one line in MainTabView). Its key opens a Mission-style dial: the keys slide out to both sides, then rise onto an arc centred below the key. The keys are Liquid Glass on iOS 26 and material discs before that.
+  - `JarvisLayer` sits over the tabs (one line in MainTabView). Its key opens a Mission-style dial: the keys slide out to both sides, then rise onto an arc centred below the key. Only the Jarvis key itself is Liquid Glass on iOS 26 (a material disc before); the four menu keys are plain discs with a hairline, and closing folds them a third of the way back while they fade, never into the key (2.0.1).
   - Holding the key starts on-device speech recognition: slide up-left to cancel, up-right to lock.
   - `JarvisChat` streams `POST /v1/assistant/chat` as SSE through `APIClient.eventStream`. It resumes dropped turns from `/events?after=`, waits for confirmation on deletes, keeps conversations, switches the AI and asks for the fallback consent.
   - Cards are native views by `show_card` type, with a generic fallback.

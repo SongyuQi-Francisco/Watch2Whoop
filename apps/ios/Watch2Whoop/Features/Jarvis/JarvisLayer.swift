@@ -104,7 +104,9 @@ struct JarvisLayer: View {
       router.voiceRequested = false
       beginVoice(locked: true)
     }
-    .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+    // didBecomeActive, not willEnterForeground: a stream that drops while the app is only inactive (Control Center, a call
+    // banner, the moment between background and active) is then picked up too, instead of waiting for the next return
+    .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
       Task { await router.chat?.resume() }
     }
     .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
@@ -445,28 +447,33 @@ struct JarvisLayer: View {
     withAnimation(.easeOut(duration: 0.15)) { mode = .final }
     let t0 = CACurrentMediaTime()
     Task {
-      let out = await voice.stop()
-      guard mode == .final else { return }
-      var text = out?.text ?? ""
-      if let chat = router.chat {
-        if let wav = out?.wav, let t = await chat.transcribe(wav: wav) { text = t }
-        else if !text.isEmpty { text = await chat.voiceFix(text) }
-      }
-      guard mode == .final else { return }
-      text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-      if text.isEmpty {
-        endVoice(message: tr("没听清，按住说话，说完再松开", "Didn't catch that; hold to talk, release when done"))
+      // 2.0.1: the phone's words go on at once (sent or in the box); the server's version follows (JarvisChat.sendVoice /
+      // insertVoice). Only when the phone recognised nothing does the panel wait for the server's words.
+      guard let take = await voice.finish(), mode == .final else {
+        if mode == .final { endVoice(message: tr("没听清，按住说话，说完再松开", "Didn't catch that; hold to talk, release when done")) }
         return
       }
-      endVoice(message: nil)
+      var said = take, correction: Task<String?, Never>?
+      if take.text.isEmpty, let chat = router.chat {
+        let t = await chat.first(chat.voiceCorrection(take), within: JarvisChat.voiceBoxWait)
+        guard mode == .final else { return }
+        guard let t, !t.isEmpty else {
+          endVoice(message: tr("没听清，按住说话，说完再松开", "Didn't catch that; hold to talk, release when done"))
+          return
+        }
+        said = JarvisVoice.Take(text: t, seconds: take.seconds, wav: nil, final: Task { t })
+        correction = Task { nil }   // these words are the server's already
+      }
+      endVoice(message: nil, finished: true)
       JarvisHaptics.notice.notificationOccurred(.success)
-      router.deliverVoice(text, seconds: out?.seconds ?? 0)
+      router.deliverVoice(said, correction: correction)
       JarvisPerf.shared.mark("voice-key-done-to-text", since: t0)
     }
   }
 
-  private func endVoice(message: String?) {
-    voice.cancel()
+  /// `finished`: the words were taken (`finish`); the recogniser then winds down by itself after its final word.
+  private func endVoice(message: String?, finished: Bool = false) {
+    if !finished { voice.cancel() }
     held = false
     withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { mode = .off; zone = nil }
     if let message {

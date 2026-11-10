@@ -14,6 +14,7 @@ final class JarvisTests: XCTestCase {
                         session: StubProtocol.session(), sleep: { _ in })
     let c = JarvisChat(api: api)
     c.sleep = { _ in }
+    c.isActive = { true }   // the test host may not be the active app
     return c
   }
 
@@ -170,6 +171,176 @@ final class JarvisTests: XCTestCase {
     let r = StubProtocol.requests[1]
     XCTAssertEqual(r.url?.path, "/v1/assistant/chat/7/events")
     XCTAssertEqual(URLComponents(url: r.url!, resolvingAgainstBaseURL: false)?.queryItems?.first?.value, "2")
+  }
+
+  // MARK: - a reply shown twice (2.0.0): the server resumes only a conversation's LATEST turn
+
+  /// Q2's turn, as the server streams it, and the rest of it after event 2 (what GET …/events?after=2 gives once Q2 is the
+  /// latest turn).
+  private let turn2 = [("conversation", #"{"id":7}"#), ("tool", #"{"name":"report_feedback","status":"running"}"#),
+                       ("tool", #"{"name":"report_feedback","status":"done"}"#), ("card", #"{"card":{"type":"water","total_ml":900}}"#),
+                       ("text", #"{"delta":"Answer two"}"#), ("done", #"{"conversation_id":7}"#)]
+  private var turn2After2: String {
+    sse(turn2).components(separatedBy: "\n\n").filter { !$0.isEmpty }.dropFirst(2).map { $0 + "\n\n" }.joined()
+  }
+  /// The conversation as stored: Q1's answer complete, then Q2 and its answer.
+  private let stored7 = #"""
+    {"id":7,"messages":[{"id":1,"role":"user","text":"Q1","images":0},{"id":2,"role":"assistant","text":"Answer one","cards":[]},
+     {"id":3,"role":"user","text":"Q2","images":0},{"id":4,"role":"assistant","text":"","tools":["report_feedback"],"cards":[]},
+     {"id":5,"role":"assistant","text":"Answer two","cards":[{"type":"water","total_ml":900}]}],"pending":[]}
+    """#
+
+  private func routeConversation7() {
+    let tail = turn2After2, stored = stored7
+    StubProtocol.route = { r in
+      switch r.url?.path {
+      case "/v1/assistant/chat/7/events": return .init(status: 200, body: tail)
+      case "/v1/assistant/conversations/7": return .init(status: 200, body: stored)
+      default: return nil
+      }
+    }
+  }
+
+  private func count(_ c: JarvisChat, _ k: JarvisChat.Item.Kind) -> Int { c.items.filter { $0.kind == k }.count }
+  private func cards(_ c: JarvisChat) -> Int { c.items.filter { if case .card = $0.kind { return true } else { return false } }.count }
+
+  /// Q1's stream drops while the app is not active (no resume then); Q2 is asked and answered; when the app is active
+  /// again, the left-over resume of Q1 must not run (on 2.0.0 it fetched Q2's reply a second time). Q1's reply is read back
+  /// from the server instead, complete.
+  func testACutTurnLeftWhileInactiveNeverRepeatsTheNextReply() async {
+    StubProtocol.reset([
+      .init(status: 200, body: sse([("conversation", #"{"id":7}"#), ("tool", #"{"name":"get_sleep","status":"running"}"#)])),   // Q1, cut
+      .init(status: 200, body: sse(turn2)),                                                                                      // Q2
+    ])
+    routeConversation7()
+    let c = chat()
+    c.isActive = { false }
+    c.send("Q1")
+    await wait(!c.busy && StubProtocol.requests.count == 1)
+    c.send("Q2")
+    await wait(!c.busy && count(c, .assistant("Answer two")) >= 1)
+    try? await Task.sleep(nanoseconds: 300_000_000)
+    c.isActive = { true }
+    await c.resume()   // JarvisLayer: the app became active
+    await wait(!c.busy)
+    try? await Task.sleep(nanoseconds: 200_000_000)
+    XCTAssertEqual(count(c, .assistant("Answer two")), 1, "\(c.items.map(\.kind))")
+    XCTAssertEqual(cards(c), 1, "\(c.items.map(\.kind))")
+    XCTAssertFalse(StubProtocol.requests.contains { $0.url?.path == "/v1/assistant/chat/7/events" })
+    XCTAssertEqual(c.items.map(\.kind).prefix(2), [.user("Q1", images: 0, voiceSeconds: nil), .assistant("Answer one")])
+  }
+
+  /// The same while active: the second try to resume Q1 waits a moment (1.5 s); a message sent meanwhile ends that try.
+  func testAResumeLeftFromAnEarlierTurnNeverRepeatsTheNextReply() async {
+    let gate = Gate()
+    StubProtocol.reset([
+      .init(status: 200, body: sse([("conversation", #"{"id":7}"#), ("tool", #"{"name":"get_sleep","status":"running"}"#)])),   // Q1, cut
+      .init(status: 0, error: .networkConnectionLost),                                                                             // its resume fails too
+      .init(status: 200, body: sse(turn2)),                                                                                        // Q2
+    ])
+    let c = chat()
+    c.sleep = { _ in await gate.wait() }   // the pause before the second try, held open
+    c.send("Q1")
+    await wait(StubProtocol.requests.count == 2 && !c.busy && gate.waiting)
+    routeConversation7()
+    c.send("Q2")
+    await wait(!c.busy && count(c, .assistant("Answer two")) >= 1)
+    gate.open()
+    try? await Task.sleep(nanoseconds: 300_000_000)
+    await wait(!c.busy)
+    XCTAssertEqual(count(c, .assistant("Answer two")), 1, "\(c.items.map(\.kind))")
+    XCTAssertEqual(cards(c), 1, "\(c.items.map(\.kind))")
+    XCTAssertFalse(StubProtocol.requests.dropFirst(2).contains { $0.url?.path == "/v1/assistant/chat/7/events" })
+    XCTAssertEqual(c.items.map(\.kind).prefix(2), [.user("Q1", images: 0, voiceSeconds: nil), .assistant("Answer one")])
+  }
+
+  /// A resume answered `resync` (the turn is only in the database now): what the server stored replaces what had been
+  /// shown of that reply, instead of being added under it.
+  func testAResyncReplacesTheShownPartOfTheReply() async {
+    StubProtocol.reset([
+      .init(status: 200, body: sse([("conversation", #"{"id":9}"#), ("text", #"{"delta":"Par"}"#)])),   // cut
+      .init(status: 200, body: "event: resync\ndata: {\"conversation_id\":9}\n\n"),
+      .init(status: 200, body: #"""
+        {"id":9,"messages":[{"id":1,"role":"user","text":"Q","images":0},{"id":2,"role":"assistant","text":"","tools":["get_sleep"],"cards":[]},
+         {"id":3,"role":"assistant","text":"Partial answer, all of it","cards":[{"type":"water","total_ml":1200}]}],"pending":[]}
+        """#),
+    ])
+    let c = chat()
+    c.send("Q")
+    await wait(!c.busy && StubProtocol.requests.count == 3 && c.items.count >= 3)
+    try? await Task.sleep(nanoseconds: 200_000_000)
+    XCTAssertEqual(c.items.map(\.kind).dropFirst().first, .assistant("Partial answer, all of it"), "\(c.items.map(\.kind))")
+    XCTAssertEqual(c.items.count, 3, "\(c.items.map(\.kind))")
+    guard case .card = c.items[2].kind else { return XCTFail("\(c.items[2])") }
+  }
+
+  // MARK: - voice (2.0.1: the words at once, the correction after)
+
+  func testVoiceWordsAreInTheBoxAtOnceAndTheCorrectionReplacesThem() async {
+    let c = chat()
+    c.sleep = { _ in try? await Task.sleep(nanoseconds: 30_000_000_000) }   // no timeout in this test
+    let gate = Gate()
+    c.draft = "Note"
+    c.insertVoice("legs fourty minutes", correction: Task { await gate.wait(); return "legs forty minutes" })
+    XCTAssertEqual(c.draft, "Note\nlegs fourty minutes")   // before anything comes back
+    XCTAssertEqual(c.correcting, 1)
+    c.draft += " then stretch"   // typing after the spoken words does not stop the correction
+    gate.open()
+    await wait(c.correcting == 0)
+    XCTAssertEqual(c.draft, "Note\nlegs forty minutes then stretch")
+  }
+
+  func testAnEditedVoiceTextIsNeverOverwritten() async {
+    let c = chat()
+    c.sleep = { _ in try? await Task.sleep(nanoseconds: 30_000_000_000) }
+    let gate = Gate()
+    c.insertVoice("legs fourty minutes", correction: Task { await gate.wait(); return "legs forty minutes" })
+    c.draft = "legs 40 minutes"   // the user fixed it already
+    gate.open()
+    await wait(c.correcting == 0)
+    XCTAssertEqual(c.draft, "legs 40 minutes")
+  }
+
+  func testALateCorrectionKeepsThePhonesWords() async {
+    let c = chat()   // sleep returns at once: every wait for a correction times out
+    c.insertVoice("legs fourty minutes", correction: Task { try? await Task.sleep(nanoseconds: 5_000_000_000); return "legs forty minutes" })
+    await wait(c.correcting == 0)
+    XCTAssertEqual(c.draft, "legs fourty minutes")
+    XCTAssertEqual(JarvisChat.replacing(in: "早上 跑步3公里 晚上", at: 3, old: "跑步3公里", new: "跑步 3 公里"), "早上 跑步 3 公里 晚上")
+    XCTAssertNil(JarvisChat.replacing(in: "早上 跑步", at: 3, old: "跑步3公里", new: "x"))
+  }
+
+  func testADirectVoiceMessageShowsAtOnceAndGoesOutCorrected() async {
+    StubProtocol.reset([.init(status: 200, body: sse([("conversation", #"{"id":3}"#), ("text", #"{"delta":"ok"}"#), ("done", "{}")]))])
+    let c = chat()
+    c.sleep = { _ in try? await Task.sleep(nanoseconds: 30_000_000_000) }
+    let gate = Gate()
+    c.sendVoice("legs fourty minutes", seconds: 3, correction: Task { await gate.wait(); return "legs forty minutes" })
+    XCTAssertEqual(c.items.first?.kind, .user("legs fourty minutes", images: 0, voiceSeconds: 3))   // on screen at once
+    XCTAssertTrue(c.busy)
+    XCTAssertTrue(StubProtocol.requests.isEmpty)
+    gate.open()
+    await wait(!c.busy && c.items.count == 2)
+    XCTAssertEqual(c.items.first?.kind, .user("legs forty minutes", images: 0, voiceSeconds: 3))
+    XCTAssertEqual(body(StubProtocol.requests[0])["message"] as? String, tr("［语音］", "[voice] ") + "legs forty minutes")
+  }
+
+  func testAVoiceCorrectionFallsBackToThePhone() async {
+    // Chinese: the server's recogniser; when it fails, the phone's own final word
+    StubProtocol.reset([.init(status: 200, body: #"{"text":"练腿四十分钟"}"#), .init(status: 500)])
+    let c = chat()
+    let zh = JarvisVoice.Take(text: "练腿四十", seconds: 2, wav: Data(count: 64), final: Task { "练腿四十分" })
+    let a = await c.voiceCorrection(zh).value
+    XCTAssertEqual(a, "练腿四十分钟")
+    XCTAssertEqual(StubProtocol.requests.first?.url?.path, "/v1/assistant/transcribe")
+    let b = await c.voiceCorrection(zh).value
+    XCTAssertEqual(b, "练腿四十分")
+    // English: the phone's final word through /voice-fix
+    StubProtocol.reset([.init(status: 200, body: #"{"text":"Legs, forty minutes"}"#)])
+    let en = JarvisVoice.Take(text: "legs fourty", seconds: 2, wav: nil, final: Task { "legs fourty minutes" })
+    let e = await c.voiceCorrection(en).value
+    XCTAssertEqual(e, "Legs, forty minutes")
+    XCTAssertEqual(body(StubProtocol.requests[0])["text"] as? String, "legs fourty minutes")
   }
 
   func testReopenAConversation() async {
@@ -408,5 +579,25 @@ private final class HoldProtocol: URLProtocol {
     guard let o = open else { return }
     open = nil
     o.client?.urlProtocol(o, didFailWithError: URLError(.networkConnectionLost))
+  }
+}
+
+/// A door a test opens: `wait()` suspends until `open()`; `waiting` = something is waiting at it.
+@MainActor
+private final class Gate {
+  private var opened = false
+  private var waiters: [CheckedContinuation<Void, Never>] = []
+  private(set) var waiting = false
+
+  func wait() async {
+    if opened { return }
+    waiting = true
+    await withCheckedContinuation { waiters.append($0) }
+  }
+
+  func open() {
+    opened = true
+    waiters.forEach { $0.resume() }
+    waiters = []
   }
 }

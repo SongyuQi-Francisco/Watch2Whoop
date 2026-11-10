@@ -27,6 +27,7 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 - **看别人的数据（只读）**（Debug 版）：`SIMCTL_CHILD_W2W_DEV_MEMBER=<用户 id>[:today|trends|sleep|food|record|health]` 打开那个人的只读页面（服务器要说他共享给我）。
 - **饮食和训练的截图开关**（Debug 版）：`SIMCTL_CHILD_W2W_DEV_FOOD=shopping|diet|pick|scan|products|prices|product|history|grams|allmeals|combine`、`W2W_DEV_TODAYFOOD=day`（今天页的饮食卡）、`W2W_DEV_TRAINING=library|custom|split|goals|log|exercise:<slug>|plan:<日期>|muscle:<肌群>`；滚动锚点等细节在 `docs/ios-native-app.md` 第 9.3 节。
 - **模拟器里测 Keychain / 覆盖升级**：不能用 `CODE_SIGNING_ALLOWED=NO`（没签名的 app 写不进 Keychain）。用 `CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual W2W_TEAM_ID=FAKETEAMID` 构建：Flutter 的模拟器构建用的就是 `FAKETEAMID`，两边的 Keychain 访问组一致，才能读到 Flutter 版存的 token。
+- **模拟器测流畅度**（2.0.1，Debug 开关，用 Release 级优化编译才有意义：`-configuration Release SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG`）：`SIMCTL_CHILD_W2W_PERF=1` 打开帧计数器；再加 `W2W_PERF_SCRIPT=tabs` 自动切 tab、开关弹层、推入子页面，每一步记 `first`（到下一帧的毫秒数，即主线程被占了多久）；`W2W_PERF_SCROLL=1` / `W2W_PERF_SCROLL_TRENDS=1` 让今天页 / 趋势页自己滚；Jarvis 用 `W2W_JARVIS_DEMO=dial`（展开收起）和 `voice`（点完成到出字，假服务器加 `W2W_FAKE_ASR_DELAY=2.5`）。结果都是 `W2W_PERF …` 行（`simctl launch --console-pty`）。详见 `docs/ios-native-app.md` 9.1、9.2。
 - **模拟器里写测试健康数据**（Debug 版、只在模拟器）：`SIMCTL_CHILD_W2W_DEV_SEED_HEALTH=21` 启动时先弹一次写入授权，再写 21 天合成数据（心率、HRV、静息心率、睡眠阶段、步数、能量、隔天一次力量训练、逐拍心跳；元数据 `W2WTestData=1`，体重 99.9 kg）。模拟器里已经写过就只加一条新心率。全量回归的步骤见 `docs/ios-native-1.0.9-regression.md`。
 
 ## TestFlight

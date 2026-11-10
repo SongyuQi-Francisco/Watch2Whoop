@@ -70,10 +70,25 @@ final class JarvisChat: ObservableObject {
   private var pendingText = ""
   private var flushScheduled = false
   private var streaming: Int?
-  private var lost: (conv: Int, seq: Int, tries: Int)?
+  /// A turn whose stream dropped before its last event: picked up with GET …/events?after=seq while it is still the
+  /// conversation's latest turn (`turn`).
+  private var lost: Lost?
+  private struct Lost { let conv: Int; let seq: Int; let tries: Int; let turn: Int }
+  /// Every turn (a message, a confirmation, a retry) gets the next number. The server resumes only a conversation's
+  /// LATEST turn, so a resume left from an earlier turn must never run once a newer one has started: on 2.0.0 it then
+  /// added the newer reply (its cards and text) a second time, under the newer question (2.0.1).
+  private var turn = 0
+  /// A turn started while an earlier one was cut: once it ends, the conversation is read back from the server, so the
+  /// earlier reply is shown complete and nothing twice.
+  private var readBack = false
+  /// A resume is waiting before its next try (it holds no `lost` meanwhile).
+  private var resuming = false
   /// Waits before re-sending a message the server could not take because it was restarting (502–504).
   var restartWaits: [TimeInterval] = [3, 6]
   var sleep: (TimeInterval) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) }
+  /// Whether the app is in the foreground and active (a cut stream is picked up at once only then; otherwise when the app
+  /// becomes active again, JarvisLayer). A seam for the tests.
+  var isActive: () -> Bool = { UIApplication.shared.applicationState == .active }
 
   init(api: APIClient) {
     self.api = api
@@ -119,7 +134,28 @@ final class JarvisChat: ObservableObject {
     append(.user(text.isEmpty ? shown : (shown.isEmpty ? text : "\(text)\n\(shown)"), images: att.reduce(0) { $0 + $1.images.count },
                  voiceSeconds: voiceSeconds))
     let body = ChatBody(message: message, images: att.flatMap(\.images), conversation_id: conversationId, page: page, purpose: purpose)
-    Task { await run(try? .json(.post, Endpoint.assistantChat, body, idempotent: false), fresh: true) }
+    beginTurn()
+    Task {
+      await run(try? .json(.post, Endpoint.assistantChat, body, idempotent: false), fresh: true)
+      await readBackIfNeeded()
+    }
+  }
+
+  /// A new turn starts (a message, a confirmation, a retry): whatever an earlier, cut turn still had to resume is dropped
+  /// (the conversation is read back after this turn instead).
+  private func beginTurn() {
+    turn += 1
+    if lost != nil || resuming {
+      lost = nil
+      readBack = true
+    }
+  }
+
+  /// After a turn: the conversation as the server stored it, when an earlier turn could not be picked up any more.
+  private func readBackIfNeeded() async {
+    guard readBack, !busy, lost == nil, let id = conversationId else { return }
+    readBack = false
+    await open(id)
   }
 
   /// The user's answer to a pending write (delete / undo).
@@ -127,7 +163,11 @@ final class JarvisChat: ObservableObject {
     guard !busy, let i = items.firstIndex(where: { if case .confirm(let c, nil) = $0.kind { return c == call } else { return false } }) else { return }
     items[i].kind = .confirm(call, approved: approve)
     struct Body: Encodable { let call_id: Int; let approve: Bool }   // swiftlint:disable:this identifier_name
-    Task { await run(try? .json(.post, Endpoint.assistantConfirm, Body(call_id: call.callId, approve: approve), idempotent: false), fresh: false, wrote: approve) }
+    beginTurn()
+    Task {
+      await run(try? .json(.post, Endpoint.assistantConfirm, Body(call_id: call.callId, approve: approve), idempotent: false), fresh: false, wrote: approve)
+      await readBackIfNeeded()
+    }
   }
 
   func newConversation() {
@@ -135,14 +175,21 @@ final class JarvisChat: ObservableObject {
     conversationId = nil
     items = []
     lost = nil
+    readBack = false
   }
 
   /// Back in the foreground: a turn whose connection dropped is picked up from its last event.
   func resume() async {
     guard let l = lost, !busy else { return }
-    guard l.conv == conversationId else { lost = nil; return }
+    guard l.conv == conversationId, l.turn == turn else { lost = nil; return }
     lost = nil
-    if l.tries > 0 { await sleep(1.5) }
+    if l.tries > 0 {
+      resuming = true
+      await sleep(1.5)
+      resuming = false
+      // a new message went out meanwhile: the server now resumes that one, not this (it is read back after that turn)
+      guard l.turn == turn, !busy else { return }
+    }
     if l.tries >= 3 {
       note(tr("连不上服务器，稍后再试", "Can't reach the server, try again later"), warn: true)
       return
@@ -162,8 +209,9 @@ final class JarvisChat: ObservableObject {
 
   // MARK: - the stream
 
-  private func run(_ request: APIRequest?, fresh: Bool, wrote: Bool = false, resumeFrom: (conv: Int, seq: Int, tries: Int)? = nil) async {
-    guard var req = request else { return }
+  private func run(_ request: APIRequest?, fresh: Bool, wrote: Bool = false, resumeFrom: Lost? = nil) async {
+    guard var req = request else { busy = false; status = nil; return }
+    let myTurn = resumeFrom?.turn ?? turn
     req.timeout = max(req.timeout, 120)   // the idle limit between events; the server sends a keep-alive meanwhile
     busy = true
     status = resumeFrom == nil ? "…" : tr("接着回答…", "Carrying on…")
@@ -204,10 +252,10 @@ final class JarvisChat: ObservableObject {
     } catch {
       flush()
       status = nil
-      if seq > 0, let conv = conversationId {
-        lost = (conv, seq, seq > (resumeFrom?.seq ?? 0) ? 0 : (resumeFrom?.tries ?? 0) + 1)
+      if seq > 0, let conv = conversationId, myTurn == turn {
+        lost = Lost(conv: conv, seq: seq, tries: seq > (resumeFrom?.seq ?? 0) ? 0 : (resumeFrom?.tries ?? 0) + 1, turn: myTurn)
         status = tr("接着回答…", "Carrying on…")
-        if UIApplication.shared.applicationState == .active {
+        if isActive() {
           Task { [weak self] in
             await Task.yield()
             await self?.resume()
@@ -225,7 +273,11 @@ final class JarvisChat: ObservableObject {
   func retry(_ item: Item) {
     guard !busy, let r = retryRequests.removeValue(forKey: item.id) else { return }
     items.removeAll { $0.id == item.id }
-    Task { await run(r, fresh: true) }
+    beginTurn()
+    Task {
+      await run(r, fresh: true)
+      await readBackIfNeeded()
+    }
   }
 
   private func startFailed(_ code: Int, _ bytes: URLSession.AsyncBytes, request: APIRequest, fresh: Bool) async {
@@ -334,12 +386,18 @@ final class JarvisChat: ObservableObject {
 
   // MARK: - conversations
 
-  /// The answer the stream missed (resync): the messages after the last user message, as the server stored them.
+  /// The answer the stream missed (resync): the messages after the last user message, as the server stored them. They
+  /// replace what was shown of that answer (its first words, its cards), so nothing appears twice (2.0.1).
   private func reloadTail(_ id: Int) async {
     guard let v = try? await api.json(.get(Endpoint.conversation(id))) else { return }
     let view = JSONValue(any: v)
     let msgs = view["messages"]?.array ?? []
     let from = (msgs.lastIndex { $0["role"]?.string == "user" } ?? -1) + 1
+    flush()
+    streaming = nil
+    if let u = items.lastIndex(where: { if case .user = $0.kind { return true } else { return false } }) {
+      items = Array(items[...u]) + items[(u + 1)...].filter { if case .note = $0.kind { return true } else { return false } }
+    }
     if from > 0, let n = msgs[from - 1]["notice"]?.string, !items.contains(where: { $0.kind == .note(n, warn: true, retry: false) }) {
       note(n, warn: true)   // the stream that would have carried it was missed
     }
@@ -468,4 +526,102 @@ final class JarvisChat: ObservableObject {
           let t = JSONValue.parse(d)?["text"]?.string, !t.isEmpty else { return text }
     return t
   }
+
+  // MARK: - voice: the phone's words at once, the server's better version when it comes (2.0.1)
+
+  /// How long a voice message that goes out at once (flag jarvis_voice_direct) waits for the server's version before it
+  /// is sent with the phone's words; the message is on screen from the first moment either way.
+  static let voiceSendWait: TimeInterval = 2.5
+  /// How long the box waits for a correction before it keeps the phone's words for good.
+  static let voiceBoxWait: TimeInterval = 4
+
+  /// The better text for a recording, started at 完成 (nil = keep the phone's words). Chinese: the whole recording through
+  /// the server's recogniser with the user's terms, which needs no final word from the phone; if that fails, the phone's
+  /// own final word. English: the phone's final word (≤ 1 s), corrected with the user's terms (/voice-fix).
+  func voiceCorrection(_ take: JarvisVoice.Take) -> Task<String?, Never> {
+    Task { [weak self] in
+      if let wav = take.wav {
+        if let t = await self?.transcribe(wav: wav) { return t }
+        let local = await take.final.value
+        return local == take.text ? nil : local
+      }
+      let local = await take.final.value
+      guard !local.isEmpty, let fixed = await self?.voiceFix(local) else { return nil }
+      return fixed == take.text ? nil : fixed
+    }
+  }
+
+  /// Voice corrections still on their way (the composer shows a small spinner meanwhile).
+  @Published private(set) var correcting = 0
+
+  /// Puts recognised words in the box now; their correction replaces them in place when it comes within `voiceBoxWait`,
+  /// and only while that part of the box is still exactly as it was put there (an edit anywhere before it, or in it,
+  /// keeps the user's text).
+  func insertVoice(_ text: String, correction: Task<String?, Never>) {
+    let prefix = text.isEmpty ? draft : (draft.isEmpty ? "" : draft + "\n")
+    if !text.isEmpty { draft = prefix + text }
+    correcting += 1
+    Task {
+      let better = await first(correction, within: Self.voiceBoxWait)
+      correcting -= 1
+      guard let better, !better.isEmpty, better != text else { return }
+      if text.isEmpty {   // nothing was recognised on the phone: the server's words are added at the end
+        draft = draft.isEmpty ? better : "\(draft)\n\(better)"
+        return
+      }
+      draft = Self.replacing(in: draft, at: (prefix as NSString).length, old: text, new: better) ?? draft
+    }
+  }
+
+  /// `old` replaced by `new` when it is still at that UTF-16 offset of `s`; nil when the user changed it.
+  nonisolated static func replacing(in s: String, at offset: Int, old: String, new: String) -> String? {
+    let ns = s as NSString, len = (old as NSString).length
+    guard offset >= 0, offset + len <= ns.length, ns.substring(with: NSRange(location: offset, length: len)) == old else { return nil }
+    return ns.replacingCharacters(in: NSRange(location: offset, length: len), with: new)
+  }
+
+  /// A voice message that goes out at once: on screen now with the phone's words; sent with the server's version when it
+  /// comes within `voiceSendWait`, else with the phone's words (the bubble then shows exactly what was sent). While an
+  /// answer is still running it goes to the box instead, as typed messages do.
+  func sendVoice(_ text: String, seconds: Double, correction: Task<String?, Never>) {
+    guard !busy, !text.isEmpty else { insertVoice(text, correction: correction); return }
+    beginTurn()
+    let id = append(.user(text, images: 0, voiceSeconds: seconds))
+    busy = true
+    status = "…"
+    Task {
+      let better = await first(correction, within: Self.voiceSendWait)
+      let said = (better?.isEmpty == false ? better : nil) ?? text
+      if said != text, let i = items.firstIndex(where: { $0.id == id }) { items[i].kind = .user(said, images: 0, voiceSeconds: seconds) }
+      let body = ChatBody(message: tr("［语音］", "[voice] ") + said, images: [], conversation_id: conversationId, page: page, purpose: nil)
+      guard let req = try? APIRequest.json(.post, Endpoint.assistantChat, body, idempotent: false) else {
+        busy = false
+        status = nil
+        return
+      }
+      await run(req, fresh: true)
+      await readBackIfNeeded()
+    }
+  }
+
+  /// The task's value if it comes within `seconds` (the chat's own clock, `sleep`), else nil; the task itself is left to
+  /// finish or be dropped.
+  func first<T>(_ task: Task<T?, Never>, within seconds: TimeInterval) async -> T? {
+    let once = Once()
+    return await withCheckedContinuation { (c: CheckedContinuation<T?, Never>) in
+      Task { @MainActor in
+        let v = await task.value
+        if !once.done { once.done = true; c.resume(returning: v) }
+      }
+      Task { @MainActor [sleep] in
+        await sleep(seconds)
+        if !once.done { once.done = true; c.resume(returning: nil) }
+      }
+    }
+  }
+}
+
+/// Whether a race (JarvisChat.first) has been decided; touched on the main actor only.
+private final class Once {
+  var done = false
 }
