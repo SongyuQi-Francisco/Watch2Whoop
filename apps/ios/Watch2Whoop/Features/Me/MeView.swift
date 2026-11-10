@@ -1,7 +1,9 @@
 import SwiftUI
 
-/// 我: messages, the account, sync, the health record, settings, sign-out. Settings are online-only (docs/ios-native-app.md 5.5);
-/// each opens as a sheet, the sync center and the messages as a page. The tab's badge is the unread messages (flag `inbox`).
+/// 我: the account card, then a short first level (MeMenu.swift: messages and sync, the data, the settings people change,
+/// invites / help / account); the rest one tap further on a page of its own, pushed like the sync center. Settings are
+/// online-only (docs/ios-native-app.md 5.5); each opens as a sheet, the sync center, the messages and the pages as pages.
+/// The tab's badge is the unread messages (flag `inbox`).
 struct MeTab: View {
   @EnvironmentObject private var session: AccountSession
 
@@ -16,9 +18,9 @@ private struct MeScreen: View {
   @Environment(\.openURL) private var openURL
   @ObservedObject var inbox: InboxStore
   let circles: CirclesStore
-  @ObservedObject private var sync = HealthSyncService.shared
   @State private var openInbox = false
   @State private var sheet: MeSheet?
+  @State private var handbook: URL?
   @State private var unsent = 0
   @State private var confirmSignOut = false
   @State private var confirmDelete = false
@@ -30,105 +32,29 @@ private struct MeScreen: View {
   @State private var inviteOptional = false
   @State private var openingLink = false
   @State private var linkError: String?
+  /// Debug screenshots: the page `W2W_DEV_ME_PAGE` pushes at launch (never set in Release).
+  @State private var devPage: MePage?
+
+  private var menu: MeMenu {
+    let server = session.config.server
+    return MeMenu(flags: session.flags, inbox: inbox.on, unread: inbox.unread, unsent: unsent, shared: session.viewable.count,
+                  referrals: referrals, inviteOptional: inviteOptional,
+                  handbook: HandbookLink.url(server: server) != nil,
+                  privacy: LegalLinks.url(.privacy, server: server) != nil, terms: LegalLinks.url(.terms, server: server) != nil)
+  }
 
   var body: some View {
+    let menu = self.menu
+    let groups = menu.firstLevel
     NavigationStack {
       ScrollViewReader { proxy in
       PageScaffold(title: tr("我", "Me")) {
         VStack(alignment: .leading, spacing: 18) {
           header
           if TodayHome.isOn(session.flags) { TodayHomeMeEntry() }   // flag ui_ai_first
-          if inbox.on {
-            RowGroup {
-              ListRow(icon: .inbox, title: tr("消息", "Messages"), value: inbox.unread > 0 ? "\(inbox.unread)" : nil, tone: .bad) {
-                openInbox = true
-              }
-            }
-          }
-          RowGroup(title: tr("同步", "Sync")) {
-            NavigationLink { SyncCenterView() } label: {
-              row(.heartPulse, tr("同步中心", "Sync center"), value: sync.diagnosis.headline, tone: tone(sync.diagnosis.overall))
-            }
-            .buttonStyle(PressScale())
-            RowDivider()
-            ListRow(icon: .database, title: tr("数据状态", "Data status")) { sheet = .dataStatus }
-            if unsent > 0 {
-              RowDivider()
-              ListRow(icon: .inbox, title: tr("没提交的修改", "Unsent changes"), value: "\(unsent)", tone: .mid) { sheet = .unsent }
-            }
-          }
-          RowGroup(title: tr("健康档案", "Health record")) {
-            ListRow(icon: .pill, title: tr("补剂", "Supplements")) { sheet = .records(.supplements) }
-            RowDivider()
-            ListRow(icon: .flaskConical, title: tr("化验", "Lab results")) { sheet = .records(.labs) }
-            RowDivider()
-            ListRow(icon: .calendarDays, title: tr("身体事件", "Body events")) { sheet = .records(.events) }
-            RowDivider()
-            ListRow(icon: .activity, title: tr("身体年龄", "Body age")) { sheet = .bodyAge }
-            RowDivider()
-            ListRow(icon: .archive, title: tr("长期记忆", "Long-term memory")) { sheet = .memory }
-          }
-          if !session.viewable.isEmpty {
-            RowGroup(title: tr("共享给我的", "Shared with me")) {
-              ForEach(Array(session.viewable.enumerated()), id: \.element.id) { n, p in
-                if n > 0 { RowDivider() }
-                ListRow(icon: .users, title: p.shownName) { session.viewing = p }
-              }
-            }
-          }
-          RowGroup(title: tr("设置", "Settings")) {
-            ListRow(icon: .user, title: tr("个人资料", "Profile")) { sheet = .profile }
-            RowDivider()
-            ListRow(icon: .moon, title: tr("入睡目标", "Bedtime goal")) { sheet = .bedtimeGoal }
-            RowDivider()
-            ListRow(icon: .sparkles, title: tr("AI 设置", "AI settings")) { sheet = .ai }
-            if session.flags.contains("muscle_load") {
-              RowDivider()
-              ListRow(icon: .dumbbell, title: tr("训练设置", "Training settings")) { sheet = .trainingGoals }
-            }
-            if session.flags.contains("hevy_import") {
-              RowDivider()
-              ListRow(icon: .cloudUpload, title: tr("从 Hevy 导入", "Import from Hevy")) { sheet = .hevy }
-            }
-            RowDivider()
-            ListRow(icon: .bell, title: tr("通知", "Notifications")) { sheet = .notifications }
-            RowDivider()
-            languageRow
-            if session.flags.contains(AppearanceChoice.flag) {
-              RowDivider()
-              ListRow(icon: .palette, title: tr("外观", "Appearance")) { sheet = .appearance }
-            }
-            RowDivider()
-            ListRow(icon: .megaphone, title: tr("更新记录", "What's new")) { sheet = .whatsNew }
-          }
-          RowGroup(title: tr("账号", "Account")) {
-            ListRow(icon: .logIn, title: tr("登录方式", "Sign-in methods")) { sheet = .signIn }
-            if referrals {
-              RowDivider()
-              ListRow(icon: .userPlus, title: tr("邀请好友", "Invite friends")) { sheet = .invite }
-            }
-            if inviteOptional {
-              RowDivider()
-              ListRow(icon: .keyRound, title: tr("填写邀请码", "Enter an invite code")) { sheet = .lateInvite }
-            }
-          }
-          if !session.meLinks.isEmpty {
-            RowGroup {
-              ForEach(Array(session.meLinks.enumerated()), id: \.element.id) { n, link in
-                if n > 0 { RowDivider() }
-                ListRow(icon: .externalLink, title: link.title) { open(link) }
-              }
-            }
-            .id("me-links")
-          }
-          RowGroup(title: tr("帮助", "Help")) {
-            ListRow(icon: .messageCircle, title: tr("反馈记录", "Feedback")) { sheet = .feedback }
-          }
-          AboutRows(server: session.config.server) { sheet = .licences }
-          RowGroup {
-            ListRow(icon: .logOut, title: tr("退出登录", "Sign out")) { confirmSignOut = true }
-            RowDivider()
-            ListRow(icon: .userX, title: tr("删除账号", "Delete account"), tone: .bad) { deleteText = ""; deleteError = nil; confirmDelete = true }
+          ForEach(Array(groups.enumerated()), id: \.offset) { i, g in
+            if i == groups.count - 1 && !session.meLinks.isEmpty { links }   // the server's rows, before the last group
+            MeRowGroup(group: g, menu: menu, perform: perform).id(i == groups.count - 1 ? "me-end" : "me-\(i)")
           }
         }
         .padding(.top, 8)
@@ -137,11 +63,17 @@ private struct MeScreen: View {
       }
       .toolbar(.hidden, for: .navigationBar)
       .navigationDestination(isPresented: $openInbox) { InboxView(store: inbox, circles: circles) }
+      .navigationDestination(isPresented: Binding(get: { devPage != nil }, set: { if !$0 { devPage = nil } })) {
+        if let devPage { MePageView(page: devPage, menu: menu, perform: perform) }
+      }
     }
     .badge(inbox.unread)
     .onAppear { take(app.route) }
     #if DEBUG
-    .onAppear { if RecordDevShot.value("W2W_DEV_ME_SHEET") == "appearance" { sheet = .appearance } }   // simulator screenshots
+    .onAppear {   // simulator screenshots
+      if RecordDevShot.value("W2W_DEV_ME_SHEET") == "appearance" { sheet = .appearance }
+      devPage = RecordDevShot.value("W2W_DEV_ME_PAGE").flatMap(MePage.init(rawValue:))
+    }
     #endif
     .onChange(of: app.route) { take($0) }
     .task {
@@ -152,6 +84,11 @@ private struct MeScreen: View {
     }
     .sheet(item: $sheet, onDismiss: { Task { await countUnsent(); await loadAccountRows() } }) { s in
       MeSheetView(sheet: s).environmentObject(session).environmentObject(app)
+    }
+    .sheet(isPresented: Binding(get: { handbook != nil }, set: { if !$0 { handbook = nil } })) {
+      if let handbook {
+        SafariView(url: handbook) { self.handbook = nil }.ignoresSafeArea()
+      }
     }
     .confirmationDialog(tr("退出登录？", "Sign out?"), isPresented: $confirmSignOut, titleVisibility: .visible) {
       Button(tr("退出登录", "Sign out"), role: .destructive) { Task { await app.signOut() } }
@@ -179,15 +116,41 @@ private struct MeScreen: View {
     }
   }
 
-  /// Debug screenshots (RecordDevShot): `W2W_DEV_SCROLL=me-links` brings the server's rows on screen, `W2W_DEV_MELINK=<key>`
-  /// then does what a tap on that row does.
+  /// Debug screenshots (RecordDevShot): `W2W_DEV_SCROLL=me-links` brings the server's rows on screen (`me-end`: the bottom
+  /// of the page), `W2W_DEV_MELINK=<key>` then does what a tap on that row does.
   private func devShot(_ proxy: ScrollViewProxy) async {
     guard RecordDevShot.value("W2W_DEV_SCROLL") != nil || RecordDevShot.value("W2W_DEV_MELINK") != nil else { return }
     try? await Task.sleep(nanoseconds: 2_500_000_000)
-    if let anchor = RecordDevShot.value("W2W_DEV_SCROLL") { proxy.scrollTo(anchor, anchor: .center) }
+    if let anchor = RecordDevShot.value("W2W_DEV_SCROLL") { proxy.scrollTo(anchor, anchor: anchor == "me-end" ? .bottom : .center) }
     guard let key = RecordDevShot.value("W2W_DEV_MELINK"), let link = session.meLinks.first(where: { $0.key == key }) else { return }
     try? await Task.sleep(nanoseconds: 5_000_000_000)
     open(link)
+  }
+
+  /// Rows the server adds (`me_links`; none by default).
+  private var links: some View {
+    RowGroup {
+      ForEach(Array(session.meLinks.enumerated()), id: \.element.id) { n, link in
+        if n > 0 { RowDivider() }
+        ListRow(icon: .externalLink, title: link.title) { open(link) }
+      }
+    }
+    .id("me-links")
+  }
+
+  /// A tap on a row of 我 or of one of its pages (pages, the sync center and the language menu are links / menus of their own).
+  private func perform(_ item: MeItem) {
+    if let s = item.sheet { sheet = s; return }
+    let server = session.config.server
+    switch item {
+    case .inbox: openInbox = true
+    case .handbook: handbook = HandbookLink.url(server: server)
+    case .privacy: LegalLinks.url(.privacy, server: server).map { openURL($0) }
+    case .terms: LegalLinks.url(.terms, server: server).map { openURL($0) }
+    case .signOut: confirmSignOut = true
+    case .deleteAccount: deleteText = ""; deleteError = nil; confirmDelete = true
+    default: break
+    }
   }
 
   /// A row from the server: its address opens in the system browser (never in a web view inside the app).
@@ -237,33 +200,68 @@ private struct MeScreen: View {
     .accessibilityLabel(tr("打开个人资料", "Open your profile"))
   }
 
-  private var languageRow: some View {
-    Menu {
-      Button(tr("跟随系统", "System")) { setLang(nil) }
-      Button("\u{4E2D}\u{6587}") { setLang("zh") }   // each language named in itself
-      Button("English") { setLang("en") }
-    } label: {
-      row(.languages, tr("语言", "Language"), value: Lang.override == nil ? tr("跟随系统", "System") : (Lang.isZh ? "\u{4E2D}\u{6587}" : "English"))
-    }
+  private func countUnsent() async {
+    unsent = ((try? session.sync.queue.all()) ?? []).count   // everything not on the server yet
   }
 
-  private func row(_ icon: Icon.Name, _ title: String, value: String? = nil, tone: Tone = .text) -> some View {
-    HStack(spacing: 12) {
-      Icon(icon, size: 20).foregroundColor(Palette.text2)
-      Text(title).font(Typo.body).foregroundColor(Palette.text)
-      Spacer(minLength: 8)
-      if let value { Text(value).font(Typo.caption).foregroundColor(tone == .text ? Palette.text2 : tone.color).lineLimit(1) }
-      Icon(.chevronRight, size: 16).foregroundColor(Palette.text3)
-    }
-    .padding(.vertical, 12)
-    .contentShape(Rectangle())
+  /// A failed read leaves the rows as they are: they only add something.
+  private func loadAccountRows() async {
+    if let m = try? await session.api.send(.get(Endpoint.authMethods), as: AuthService.Methods.self) { referrals = m.referrals }
+    if let a = try? await session.api.send(.get(Endpoint.account), as: AccountInfo.self) { inviteOptional = a.inviteOptional }
   }
+}
 
-  private func tone(_ o: SyncDiagnosis.Overall) -> Tone {
-    switch o {
-    case .ok: return .good
-    case .attention: return .mid
-    default: return .text
+/// One card of 我's rows, on the first level or on a page.
+private struct MeRowGroup: View {
+  let group: MeMenuGroup
+  let menu: MeMenu
+  let perform: (MeItem) -> Void
+
+  var body: some View {
+    RowGroup(title: group.title) {
+      ForEach(Array(group.items.enumerated()), id: \.element) { n, item in
+        if n > 0 { RowDivider() }
+        MeItemRow(item: item, menu: menu, perform: perform)
+      }
+    }
+  }
+}
+
+/// One row: a page or the sync center is pushed, the language is a menu, the version is plain text, everything else is
+/// handed to `perform` (a sheet, a confirmation, the browser).
+private struct MeItemRow: View {
+  let item: MeItem
+  let menu: MeMenu
+  let perform: (MeItem) -> Void
+  @EnvironmentObject private var app: AppModel
+  @EnvironmentObject private var session: AccountSession
+
+  var body: some View {
+    switch item {
+    case .page(let p):
+      NavigationLink { MePageView(page: p, menu: menu, perform: perform) } label: {
+        MeRowLabel(icon: p.icon, title: p.title, value: p == .shared ? "\(menu.shared)" : nil)
+      }
+      .buttonStyle(PressScale())
+    case .syncCenter:
+      MeSyncRow()
+    case .language:
+      Menu {
+        Button(tr("跟随系统", "System")) { setLang(nil) }
+        Button("\u{4E2D}\u{6587}") { setLang("zh") }   // each language named in itself
+        Button("English") { setLang("en") }
+      } label: {
+        MeRowLabel(icon: item.icon, title: item.title,
+                   value: Lang.override == nil ? tr("跟随系统", "System") : (Lang.isZh ? "\u{4E2D}\u{6587}" : "English"))
+      }
+    case .version:
+      ListRow(icon: item.icon, title: item.title, value: APIClient.appVersion)
+    case .inbox:
+      ListRow(icon: item.icon, title: item.title, value: menu.unread > 0 ? "\(menu.unread)" : nil, tone: .bad) { perform(item) }
+    case .unsent:
+      ListRow(icon: item.icon, title: item.title, value: "\(menu.unsent)", tone: .mid) { perform(item) }
+    default:
+      ListRow(icon: item.icon, title: item.title, tone: item == .deleteAccount ? .bad : .text) { perform(item) }
     }
   }
 
@@ -276,15 +274,94 @@ private struct MeScreen: View {
       _ = try? await api.data(try .json(.patch, Endpoint.profile, body))
     }
   }
+}
 
-  private func countUnsent() async {
-    unsent = ((try? session.sync.queue.all()) ?? []).count   // everything not on the server yet
+/// A row that is a link or a menu rather than a button: the same look as ListRow, the value in the caption size.
+private struct MeRowLabel: View {
+  let icon: Icon.Name
+  let title: String
+  var value: String?
+  var tone: Tone = .text
+
+  var body: some View {
+    HStack(spacing: 12) {
+      Icon(icon, size: 20).foregroundColor(Palette.text2)
+      Text(title).font(Typo.body).foregroundColor(Palette.text)
+      Spacer(minLength: 8)
+      if let value { Text(value).font(Typo.caption).foregroundColor(tone == .text ? Palette.text2 : tone.color).lineLimit(1) }
+      Icon(.chevronRight, size: 16).foregroundColor(Palette.text3)
+    }
+    .padding(.vertical, 12)
+    .contentShape(Rectangle())
+  }
+}
+
+/// 同步中心 with the state in a word; only this row follows the sync service.
+private struct MeSyncRow: View {
+  @ObservedObject private var sync = HealthSyncService.shared
+
+  var body: some View {
+    NavigationLink { SyncCenterView() } label: {
+      MeRowLabel(icon: MeItem.syncCenter.icon, title: MeItem.syncCenter.title, value: sync.diagnosis.headline,
+                 tone: tone(sync.diagnosis.overall))
+    }
+    .buttonStyle(PressScale())
   }
 
-  /// A failed read leaves the rows as they are: they only add something.
-  private func loadAccountRows() async {
-    if let m = try? await session.api.send(.get(Endpoint.authMethods), as: AuthService.Methods.self) { referrals = m.referrals }
-    if let a = try? await session.api.send(.get(Endpoint.account), as: AccountInfo.self) { inviteOptional = a.inviteOptional }
+  private func tone(_ o: SyncDiagnosis.Overall) -> Tone {
+    switch o {
+    case .ok: return .good
+    case .attention: return .mid
+    default: return .text
+    }
+  }
+}
+
+/// A page of 我 (健康档案, 数据与导入, 偏好设置, 帮助与关于, 账号), or the people who share with me: a tap on one opens their
+/// read-only view over the whole app, as before.
+private struct MePageView: View {
+  let page: MePage
+  let menu: MeMenu
+  let perform: (MeItem) -> Void
+  @EnvironmentObject private var session: AccountSession
+
+  var body: some View {
+    ScrollView(.vertical, showsIndicators: false) {
+      VStack(alignment: .leading, spacing: 18) {
+        if page == .shared {
+          people
+        } else {
+          ForEach(Array(menu.groups(page).enumerated()), id: \.offset) { _, g in
+            MeRowGroup(group: g, menu: menu, perform: perform)
+          }
+        }
+      }
+      .padding(.horizontal, Metrics.gutter)
+      .padding(.top, 8)
+      .padding(.bottom, 32)
+      .frame(maxWidth: Metrics.maxContentWidth)
+      .frame(maxWidth: .infinity)
+    }
+    .background(Palette.bg.ignoresSafeArea())
+    .navigationTitle(page.title)
+    .navigationBarTitleDisplayMode(.inline)
+    .task { if page == .shared { await session.refreshViewable() } }   // a share may have just started or ended
+  }
+
+  @ViewBuilder private var people: some View {
+    if session.viewable.isEmpty {
+      Text(tr("现在没有人共享给你", "Nobody shares with you right now"))
+        .font(Typo.body).foregroundColor(Palette.text2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 8)
+    } else {
+      RowGroup {
+        ForEach(Array(session.viewable.enumerated()), id: \.element.id) { n, p in
+          if n > 0 { RowDivider() }
+          ListRow(icon: .users, title: p.shownName) { session.viewing = p }
+        }
+      }
+    }
   }
 }
 

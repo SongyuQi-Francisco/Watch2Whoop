@@ -2,7 +2,7 @@ import SafariServices
 import SwiftUI
 
 /// The user guide: static pages of the server the person signs in to (`/app/handbook/`, English in `en/`), opened in the app's
-/// Safari view. Not a first-run tutorial (zero tutorial): one row in 我 → 关于.
+/// Safari view. Not a first-run tutorial (zero tutorial): one row in 我 → 帮助与关于 (MeMenu.swift).
 enum HandbookLink {
   static func url(server: String, zh: Bool = Lang.isZh) -> URL? {
     guard var c = URLComponents(string: server), c.scheme == "https" || c.scheme == "http", c.host != nil else { return nil }
@@ -59,39 +59,6 @@ enum LegalLinks {
     switch doc {
     case .privacy: return tr("隐私政策", "Privacy Policy")
     case .terms: return tr("使用条款", "Terms of Use")
-    }
-  }
-}
-
-/// 「关于」 in 我: the user guide, privacy policy, terms, open-source licences, version.
-struct AboutRows: View {
-  let server: String
-  let licences: () -> Void
-  @Environment(\.openURL) private var openURL
-  @State private var handbook: URL?
-
-  var body: some View {
-    RowGroup(title: tr("关于", "About")) {
-      if let u = HandbookLink.url(server: server) {
-        ListRow(icon: .bookOpenText, title: tr("使用手册", "User guide")) { handbook = u }
-        RowDivider()
-      }
-      if let u = LegalLinks.url(.privacy, server: server) {
-        ListRow(icon: .lock, title: LegalLinks.title(.privacy)) { openURL(u) }
-        RowDivider()
-      }
-      if let u = LegalLinks.url(.terms, server: server) {
-        ListRow(icon: .fileText, title: LegalLinks.title(.terms)) { openURL(u) }
-        RowDivider()
-      }
-      ListRow(icon: .bookOpen, title: tr("开源许可", "Open-source licences"), action: licences)
-      RowDivider()
-      ListRow(icon: .info, title: tr("版本", "Version"), value: APIClient.appVersion)
-    }
-    .sheet(isPresented: Binding(get: { handbook != nil }, set: { if !$0 { handbook = nil } })) {
-      if let handbook {
-        SafariView(url: handbook) { self.handbook = nil }.ignoresSafeArea()
-      }
     }
   }
 }
