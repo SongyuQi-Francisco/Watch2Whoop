@@ -94,6 +94,7 @@ enum Endpoint {
   static let ingestResync = "/v1/ingest/resync"
   static let ingestSyncDevice = "/v1/ingest/sync-device"
   static let historyBackfill = "/v1/users/me/sync/backfill"
+  static let syncMissingDays = "/v1/users/me/sync/missing-days"   // FB-24: the days of the last 30 with a core kind missing
   static let syncHistory = "/v1/users/me/sync/history"              // coverage: how much history, the reminder's state
   static let syncHistorySeen = "/v1/users/me/sync/history/seen"
   static let syncHistoryMute = "/v1/users/me/sync/history/mute"

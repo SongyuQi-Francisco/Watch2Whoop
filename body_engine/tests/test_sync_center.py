@@ -353,6 +353,36 @@ def test_resync_stale_phone_job_frees_the_slot(client, users, dsn):
     assert client.post("/v1/ingest/resync", json={"days": 90}, headers=H(tok["c"])).json()["accepted"] is True
 
 
+def test_resync_one_day(client, users, dsn):
+    """FB-24 「重新同步这天」: {date} re-syncs one local day: the server part recomputes from it (days counted to today), a
+    day has its own short gap, so several days in a row work; a future day or one too old is 422."""
+    ids, tok = users
+    flag_on(dsn)
+    today = datetime.now(TZ).date()
+    with conn_of(dsn) as conn:
+        conn.execute("DELETE FROM sync_resync WHERE user_id = %s", (ids["b"],))
+        conn.commit()
+    post = lambda body: client.post("/v1/ingest/resync", json=body, headers=H(tok["b"]))   # noqa: E731
+    assert post({"date": (today + timedelta(days=1)).isoformat()}).status_code == 422
+    assert post({"date": (today - timedelta(days=SP.RESYNC_MAX_DAYS)).isoformat()}).status_code == 422
+    assert post({"date": "not a day"}).status_code == 422
+    day = today - timedelta(days=5)
+    r = post({"date": day.isoformat()})
+    assert r.status_code == 202, r.text
+    assert (r.json()["days"], r.json()["range_from"], r.json()["accepted"]) == (6, day.isoformat(), True)
+    client.delete("/v1/ingest/resync", headers=H(tok["b"]))
+    t = post({"date": (day + timedelta(days=1)).isoformat()})
+    assert t.json()["reason"] == "throttled" and 0 < int(t.headers["Retry-After"]) <= 61
+    # a range right after a day still waits its usual gap
+    with conn_of(dsn) as conn:
+        conn.execute("UPDATE sync_resync SET requested_at = now() - interval '2 minutes' WHERE user_id = %s", (ids["b"],))
+        conn.commit()
+    assert post({"days": 7}).json()["reason"] == "throttled"
+    nxt = post({"date": (day + timedelta(days=1)).isoformat()}).json()
+    assert nxt["accepted"] is True and nxt["range_from"] == (day + timedelta(days=1)).isoformat()
+    client.delete("/v1/ingest/resync", headers=H(tok["b"]))
+
+
 def test_resync_ow_client_failure_fails_the_job_not_the_run(client, users, dsn, monkeypatch):
     """OWClient() raising (no OW API key): the job ends in error with the reason, sync_refresh is idle again and
     sync-refresh-run returns normally, instead of raising out of it with the job stuck queued."""

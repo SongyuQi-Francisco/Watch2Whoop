@@ -25,6 +25,7 @@ struct SyncSettings {
     static let resync = "w2w.native.resync.v1"
     static let account = "w2w.native.sync.account.v1"
     static let lastOk = "w2w.native.sync.lastOk.v1"
+    static let resyncedDays = "w2w.native.sync.resyncedDays.v1"
     // the Flutter app's (shared_preferences: "flutter." + its key)
     static let flutterConfig = "flutter.w2w.config.v1"
     static let flutterRawRange = "flutter.w2w.raw.range.v1"
@@ -96,6 +97,18 @@ struct SyncSettings {
     nonmutating set { defaults.set(newValue, forKey: Key.lastOk) }
   }
 
+  /// The days of the missing-days list whose own re-sync finished, and when (FB-24): still missing afterwards is not
+  /// prompted again. The 60 newest days are kept.
+  var resyncedDays: [String: Date] {
+    get {
+      (defaults.dictionary(forKey: Key.resyncedDays) ?? [:]).compactMapValues { ($0 as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) } }
+    }
+    nonmutating set {
+      let keep = newValue.keys.sorted().suffix(60)
+      defaults.set(Dictionary(uniqueKeysWithValues: keep.map { ($0, newValue[$0]!.timeIntervalSince1970) }), forKey: Key.resyncedDays)
+    }
+  }
+
   var resync: ResyncJob? {
     get { defaults.data(forKey: Key.resync).flatMap { try? JSONDecoder().decode(ResyncJob.self, from: $0) } }
     nonmutating set {
@@ -106,7 +119,9 @@ struct SyncSettings {
 
   /// Sign-out: the next account starts from scratch (the Health permission belongs to the app, not the account).
   func clear() {
-    for k in [Key.daysBack, Key.rawRange, Key.backfillTo, Key.resync, Key.account, Key.lastOk] { defaults.removeObject(forKey: k) }
+    for k in [Key.daysBack, Key.rawRange, Key.backfillTo, Key.resync, Key.account, Key.lastOk, Key.resyncedDays] {
+      defaults.removeObject(forKey: k)
+    }
   }
 }
 
@@ -119,4 +134,14 @@ struct ResyncJob: Codable, Equatable {
   var history: Bool
   var rawDone = false
   var engineDone = false
+  /// One local day ("yyyy-MM-dd") of the missing-days list (FB-24); `days` then counts from it to today (RawSync reads
+  /// that far back, the engine only that day).
+  var day: String?
+
+  init(days: Int?, startedAt: Date, history: Bool, day: String? = nil) {
+    self.days = days
+    self.startedAt = startedAt
+    self.history = history
+    self.day = day
+  }
 }

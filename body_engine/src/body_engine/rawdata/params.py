@@ -64,6 +64,9 @@ CUTOVER_COVERAGE = 0.95                     # share of OW's daily items (metric-
 CUTOVER_MIN_APP_VERSION = "1.0.8"           # the first app with the engine (A1); older apps keep OW
 CUTOVER_NATIVE_APP_VERSION = "2.0.0"        # the native app has no OW SDK: a phone on it no longer feeds OW
 CUTOVER_APP_SEEN = timedelta(days=7)        # ... and it uploaded engine batches within this many days
+# A native-app batch from a user still in shadow queues the switch for the per-minute job at once (FB-23: the hourly
+# `sync-mode apply` left up to an hour of 「已同步」 on the phone next to stale scores); asked again after this long at most
+CUTOVER_NATIVE_RETRY = timedelta(minutes=30)
 CUTOVER_REDERIVE_DAYS = 90                  # days re-derived in the app mode at the switch (the first sync's range)
 CUTOVER_CHECK_DAYS = 14                     # score consistency window before / after the switch
 CUTOVER_SCORE_MEAN = 2.0                    # mean |Δ recovery| / |Δ sleep score| over the window (points) ...

@@ -90,7 +90,7 @@ struct SyncStuck: Equatable {
 
   static func of(_ d: SyncDiagnosis, card: TodayModel.SyncCard?) -> SyncStuck? {
     switch d.overall {
-    case .syncing, .off:
+    case .syncing, .processing, .off:
       return nil
     case .attention:
       if let i = d.issues.first(where: { $0.action != nil }) {
