@@ -43,7 +43,7 @@
 | `Watch2Whoop/HealthSync/` | 从 Flutter 拷来的 `SyncEngine.swift`、`RawSync.swift`、`Backfill.swift`（逐字节相同），加上 `HealthSyncBridge`（async 包装）；注册表 `Resources/healthkit_types.json` 也由脚本拷贝 | 拷贝件用脚本同步；宿主一侧在 `Features/Sync/`（N8） |
 | `Watch2Whoop/Features/<页面>/` | 每个页面一个目录：`Today/`（N3）、`Trends/`（N4）、`Record/`、`Food/`（N5）、`Jarvis/`（N6）、`Circles/`（N7）、`Onboarding/`（登录、同意书、资料、健康权限）、`Me/`、`Sync/`（同步中心和同步宿主）（N8）；`Placeholders/` 是还没做的 tab | 各页面 agent |
 | `Watch2Whoop/Localization/` | `tr()`、`Lang` | — |
-| `Watch2Whoop/Resources/` | `Assets.xcassets`（AppIcon、`LaunchBackground`、`Icons/lucide.*`）；`licenses.json`（「我 → 关于 → 开源许可」，和 `THIRD_PARTY_NOTICES.md`、`project.yml` 的 SPM 版本一致，`check_sources.py` 检查）；`zh-Hans.lproj` / `en.lproj` 的 `InfoPlist.strings`（权限说明，英文同时写在 `project.yml`） | — |
+| `Watch2Whoop/Resources/` | `Assets.xcassets`（AppIcon、`LaunchBackground`、`Icons/lucide.*`）；`licenses.json`（「我 → 帮助与关于 → 开源许可」，和 `THIRD_PARTY_NOTICES.md`、`project.yml` 的 SPM 版本一致，`check_sources.py` 检查）；`zh-Hans.lproj` / `en.lproj` 的 `InfoPlist.strings`（权限说明，英文同时写在 `project.yml`） | — |
 | `Watch2Whoop/PrivacyInfo.xcprivacy` | 隐私清单：用到的 required-reason API（UserDefaults CA92.1、文件时间戳 C617.1）、收集的数据类型（和 `docs/legal/privacy.md` 第 1 节、App Store Connect 的隐私标签一致）、不跟踪。新用到 required-reason API（磁盘空间、开机时间等）时要加进来 | 上架包 A |
 | `Watch2WhoopTests/` | XCTest 单元测试，在模拟器上跑 | 每个 PR 都要加测试 |
 | `Packages/FlutterShim/` | 本地 SPM 包，模块名就叫 `Flutter`：只有 `FlutterMethodCall`、`FlutterResult`、`FlutterError` 三个类型，让拷进来的文件不改一个字节也能编译。N8 之后只剩 `RawSync.swift` 用它 | Flutter 原文件的 RawSync 拆出原生接口后删掉 |
@@ -95,7 +95,7 @@
 - 路径：`Application Support/W2W/accounts/<key>/body.sqlite`，`key` = sha256(`服务器|user id`) 的前 16 位十六进制。同一台手机登录不同账号或不同服务器，数据互不相见。
 - 文件保护级别 `completeUntilFirstUserAuthentication`：后台同步要读。
 - 不进 iCloud / 设备备份：服务器有全量备份；Keychain 是「仅本机」，换机恢复后本来就要重新登录、从云端重新拉。账号目录、`W2W/` 根目录和三个 SQLite 文件都设了 `isExcludedFromBackup`。
-- 新库是 `auto_vacuum = INCREMENTAL`，定期 `incremental_vacuum` / `VACUUM`；「我 → 数据状态」显示占用并能清除本机缓存（`Storage/LocalStorage.swift`，第 9.1 节「本机完整历史」）。
+- 新库是 `auto_vacuum = INCREMENTAL`，定期 `incremental_vacuum` / `VACUUM`；「我 → 数据与导入 → 数据状态」显示占用并能清除本机缓存（`Storage/LocalStorage.swift`，第 9.1 节「本机完整历史」）。
 - GRDB `DatabasePool`（WAL）：读不会挡写。
 - 退出登录时删掉整个目录。删之前，离线队列里没发出去的写操作先问用户（N8 的弹窗，规则同 `offline-plan.md` 第 4 节）。
 
@@ -226,6 +226,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 
 - **AI 设置（含自己的 API key）是原生页面**（#399，`Features/Me/AISettingsView.swift`、`AIProviderForm.swift`、`AIConnectView.swift`）：选哪个 AI（`/ai-choice`，立即生效）、自己的 AI（`/ai-providers`：添加 / 修改 / 停用 / 删除）、托底 AI 的额度和条款（`/ai-fallback`）、连接客户端（MCP）的地址、已连接的应用和 AI token（`/ai-connections`、`/ai-tokens`），全部只在线，没有缓存，也不进离线队列。**API key 只在表单里**：它放在表单的视图状态（`AIProviderDraft`）中，请求发出前清空，页面关掉时也清空，不写本地库、不写 Keychain，也不进日志（请求体类型 `AIProviderBody` 的 `description` / `dump` / `Mirror` 都不打印它）；服务器只回末 4 位。新建的 AI token 同样只显示一次。
 - **「我」页的其他账号功能**（#399，`AccountViews.swift`、`MemoryFeedbackViews.swift`、`HevyImportView.swift`）：登录方式（绑定邮箱 / Apple ID；已属于别的账号的返回 409，不合并）、邀请好友（服务器打开推荐时才显示）、填写邀请码（开放注册的头几天）、长期记忆（「还准确」/ 删除，`memory_hygiene` 关着时只能删笔记）、反馈记录、训练设置（开关 `muscle_load`）、从 Hevy 导入（开关 `hevy_import`）。这些读写都直接请求服务器。
+- **「我」页的结构**（2.0.1，`Features/Me/MeMenu.swift`，纯数据，`MeMenuTests` 检查）：一级最多 4 组、12 行——消息 / 同步中心 / 没提交的修改（有数时）；数据：共享给我的（有人共享时，显示人数）/ 健康档案 / 数据与导入；设置：AI 设置 / 通知 / 偏好设置；邀请好友 / 帮助与关于 / 账号。其余在二级页（push，和同步中心一样，不折叠）：健康档案（补剂、化验、身体事件、身体年龄、长期记忆）、数据与导入（数据状态、从 Hevy 导入；只剩一行时一级直接显示那一行）、偏好设置（入睡目标、训练设置、语言、外观）、帮助与关于（使用手册、反馈记录、更新记录、隐私政策、使用条款、开源许可、版本）、账号（个人资料、登录方式、填写邀请码、退出登录、删除账号）、共享给我的（每人一行）。任何入口最多点两下；删除账号 = 我 → 账号 → 删除账号。服务器下发的入口（`me_links`）放在最后一组前面。
 - **消息中心**（开关 `inbox`，#403，`Features/Me/InboxStore.swift`）：「加入」「忽略」圈子邀请和「邀请到另一个圈子」只在线。已读、全部已读和隐藏先改本地缓存文档 `inbox:list`，联网时再发出去，**不走离线队列**：发出时已经不在列表里的项不算失败，不需要用户处理。
 - **训练页的计划编辑**（#402，`Features/Record/TrainingPlanActions.swift`）：动作库、切换分化、移除 / 恢复动作、加入计划、我的动作、训练设置都不排队，因为它们改的是服务器检查禁用动作用的计划，要拿到服务器的回答才知道结果；离线时提示「离线，连上网络后重试」，什么也不改。逐组记录和当天训练草稿仍走离线队列（第 9.3 节）。
 - **看别人的数据（只读）**（#407，`Features/MemberView/`）：入口是朋友 tab 的成员卡和「我 → 共享给我的」。数据不进本地库（第 4.2 节）；离线时点进去提示「需要联网」。
@@ -534,7 +535,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
   - 条件：第一次恢复已完成，而且这个用户是 `app` 模式（别的用户的分数手机本来就不算）。
   - 只在 Wi‑Fi 并且在充电时下；用户在同步中心打开了「用蜂窝数据补历史」（和上传补历史共用一个开关）时任何网络都下；低数据模式下不下。
   - 每一页和它的游标在同一个事务里写，随时可以中断再续。前台每次同步后最多下 12 页，剩下的交给 `BGProcessingTask`（`watch2whoop.history.download`，`requiresExternalPower`，允许蜂窝时不要求充电）。`Retry-After` 不超过 30 秒就等，更长就这次先停。
-  - 进度在同步中心「本机历史数据」（`LocalHistoryCard`）和「我 → 数据状态」显示。
+  - 进度在同步中心「本机历史数据」（`LocalHistoryCard`）和「我 → 数据与导入 → 数据状态」显示。
 - **本机完整重算**（`ScoringSync`）：
   - 历史下完（`HistoryDownload.isComplete`：`done`、没有 `complete = false` 的天）以后，换算法包就从算分起点开始全部重算；没下完时还是只重算最近 14 天（带种子）。
   - 按 `scoreChunkDays`（14）天一块算，每块用上一块刚写的行当种子（带种子的算法本来就支持连续接力），进度存在 `meta` 的 `scoring.full_next`，被打断（后台任务到时间、前台 20 秒）下次接着算。
@@ -544,7 +545,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 - **存储卫生**（`Storage/LocalStorage.swift`）：
   - 账号目录、`W2W/` 根目录和 SQLite 的三个文件都设了 `isExcludedFromBackup`，不进 iCloud 备份。
   - 新库建库时就是 `auto_vacuum = INCREMENTAL`，老库在第一次完整 `VACUUM` 时切过去；每次同步后 `PRAGMA incremental_vacuum`，后台任务里接电时最多每 7 天、空闲页超过 20% 才做一次完整 `VACUUM`；之后都把 WAL 截短。
-  - 「我 → 数据状态 → 本机存储」：合计、近 60 天原始数据、历史数据、分数和每日汇总、其他（`dbstat` 按表算），和「清除本机缓存」：服务器能重新给的全部清掉，还没上传的记录（`outbox` 和它们的 `records`）和算法包保留，然后完整 `VACUUM`，再从服务器全量恢复。
+  - 「我 → 数据与导入 → 数据状态 → 本机存储」：合计、近 60 天原始数据、历史数据、分数和每日汇总、其他（`dbstat` 按表算），和「清除本机缓存」：服务器能重新给的全部清掉，还没上传的记录（`outbox` 和它们的 `records`）和算法包保留，然后完整 `VACUUM`，再从服务器全量恢复。
 
 *本机占多少*（`LocalHistoryMeasureTests`，iPhone 17 模拟器，虚构的高密度 Apple Watch 日：约 2,000 条心率、8 次 HRV、110 次呼吸、30 次血氧、1 次手腕温度、32 段睡眠、8 次逐拍读数）：
 
@@ -690,7 +691,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 
 ### 9.3 N5 饮食 / 记录 / 健康档案：数据从哪来、写怎么走
 
-- **页面**：`Features/Food/`（饮食 tab：今天吃了的四个进度环和按餐的每条记录、改份量 / 删除、选择后合并或存成模板〔`FoodCombine`，开关 `meal_merge`〕、喝水、快捷记餐、每餐推荐〔`MealPlan`〕、饮食档案〔`DietProfile`，只读，内容由用户的 AI 写〕、食谱列表和详情、采购〔清单、商品库、家里存货、价格记录、超市链接，`GroceryView` / `GroceryModels`；「拍小票 / 价签」是一键小票，第 9.2 节〕；今天 tab 的饮食卡 `TodayFoodCard`，第 9.1 节）、`Features/Record/`（记录 tab：训练 · 日记，`friends` 开关打开时多一个「饮食」分段；训练里有肌肉负荷图、今天的计划和逐组记录、本周、动作限制、训练历史月历，以及 #402 补齐的动作库和动作详情〔`ExerciseLibraryView`，含演示图〕、切换分化 / 移除 / 恢复动作 / 训练设置〔`TrainingSheets`〕、我的动作〔`CustomExercisesView`〕、肌肉详情的推荐动作和「让 Jarvis 分析」〔`MuscleDetailView`〕；今天 tab 的训练卡和肌肉负荷小卡 `TodayTrainingCards`，第 9.1 节）、`Features/Health/`（「我」→ 补剂 / 化验 / 身体事件）。
+- **页面**：`Features/Food/`（饮食 tab：今天吃了的四个进度环和按餐的每条记录、改份量 / 删除、选择后合并或存成模板〔`FoodCombine`，开关 `meal_merge`〕、喝水、快捷记餐、每餐推荐〔`MealPlan`〕、饮食档案〔`DietProfile`，只读，内容由用户的 AI 写〕、食谱列表和详情、采购〔清单、商品库、家里存货、价格记录、超市链接，`GroceryView` / `GroceryModels`；「拍小票 / 价签」是一键小票，第 9.2 节〕；今天 tab 的饮食卡 `TodayFoodCard`，第 9.1 节）、`Features/Record/`（记录 tab：训练 · 日记，`friends` 开关打开时多一个「饮食」分段；训练里有肌肉负荷图、今天的计划和逐组记录、本周、动作限制、训练历史月历，以及 #402 补齐的动作库和动作详情〔`ExerciseLibraryView`，含演示图〕、切换分化 / 移除 / 恢复动作 / 训练设置〔`TrainingSheets`〕、我的动作〔`CustomExercisesView`〕、肌肉详情的推荐动作和「让 Jarvis 分析」〔`MuscleDetailView`〕；今天 tab 的训练卡和肌肉负荷小卡 `TodayTrainingCards`，第 9.1 节）、`Features/Health/`（「我」→ 健康档案 → 补剂 / 化验 / 身体事件）。
 - **读**：每个页面一个 `LocalPageStore` 子类（`Sync/LocalPageStore.swift`）：订阅 `docs` 里自己的文档 + `records` 里还没被服务器视图包含的行（`LocalView`，`.immediate`，第一帧就有缓存），刷新时 `RecordsPuller` 并行拉、在**一个事务**里存文档并删掉「已经发出去、服务器视图里已经有了」的本地行，所以同一条不会同时出现两次。文档键：`today:<日期>`（N3 的今天文档，用它的 `nutrition` 块）、`water:<日期>`、`food:templates`、`food:recipes`、`food:recipe:<id>`、`grocery:list:<周一>`、`journal:items`、`journal:frequent`、`journal:<日期>`、`training:session:<日期>`、`training:week:<周一>`、`training:calendar:<年-月>`、`training:day:<日期>`、`training:muscle`、`exercise:rules`、`health:supplements`、`health:labs`、`health:lab:<化验项>`、`health:events`；2.0.0 补齐时加的：`food:mealplan:<日>`、`food:diet`、`food:diet:brief`、`grocery:products`、`grocery:stores`、`grocery:store-products`、`grocery:store-product:<id>`、`grocery:pantry`、`grocery:pantry-auto`、`grocery:specials`（#400），`exercise:detail:<slug>`、`training:muscle:<肌群>`（肌肉详情）（#402）。
 - **写**（`Sync/LocalRecords.swift`）：一次写 = `records` 一行（`id = c:<client_id>`，`pending`，`payload` 是页面叠加要用的内容）+ 离线队列一条（同一个 `client_id`），同一个事务。页面把这些行叠在服务器文档上（`NutritionDay.applying`、`WaterDay.build`、`JournalDay.build`、`TrainingSession.build`、`GroceryList.build`、`Supplement.build`），钟表 = 等待提交，红色感叹号 = 被拒（在「我 → 没提交的修改」里重试 / 丢弃）。
   - 只追加：喝水 `POST /water`、快捷记餐 `POST /meal-templates/{id}/log`、食谱 `POST /recipes/{id}/log`（`client_id` 在 body）。当天已记过 = 409 → 冲突，页面提示「再记一份」（丢掉这条，带 `allow_duplicates` 重记）。
