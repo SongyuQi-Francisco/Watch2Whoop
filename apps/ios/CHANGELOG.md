@@ -13,6 +13,8 @@ tags it and the workflow publishes this section as the release notes. The Flutte
 
 ## 2.0.1
 
+- 同步中心只给一个结论：手机传完、服务器还在切换或算分时显示「已上传，分数计算中」，不再出现「已同步」和「同步连接失效」同时出现（FB-23）；「后台 App 刷新」关着单独一行，点一下打开本 app 的系统设置，不算同步失败。 / The sync center gives one answer: while the server switches you over or computes, it says "Uploaded, scores being computed" instead of "Synced" next to "Sync connection expired" (FB-23); Background App Refresh off is its own row that opens this app's Settings, not a sync failure.
+- 同步中心新增「最近 30 天 · 缺 N 天」：点进去按日期列出缺数据的日子和缺的类别（睡眠 / 心率 / HRV / 步数），每天可以单独重新同步，也可以全部重新同步；「健康」里本来就没有的日子标「健康里也没有」，不再提示（FB-24）。 / New in the sync center, "Last 30 days · N days missing": the days with data missing, newest first, with what is missing (sleep / heart rate / HRV / steps), a re-sync per day and one for all; days Health has nothing of either say "Not in Health" and are not prompted again (FB-24).
 - 「我」页更清爽：一级只留常用入口，其余收进健康档案、数据与导入、偏好设置、帮助与关于、账号几页；共享给我的人点进去看。 / A tidier Me page: the first screen keeps what you use most, the rest moves into Health record, Data and import, Preferences, Help and about, and Account; people who share with you are one tap in.
 
 ## 2.0.0

@@ -21,10 +21,13 @@
   when the page opens watch2whoop://backfill?days=N|all and reports through /v1/ingest/resync (docs/sync-onboarding-app-requirements.md §10).
 - GET  /v1/users/{user}/data-status -> per health data type what the server received (data_status.py, issue #163): the
   Today page's 「我 → 数据状态」 (flag data_status). Own data only, read scope is enough.
+- GET  /v1/users/{user}/sync/missing-days -> the days of the last 30 the server has nothing of sleep / heart rate / HRV /
+  steps, newest first, with the kinds missing each day (missing_days.py, FB-24: the app's 「缺 N 天」 list). Own data only.
 - GET  /v1/ingest/data-status -> the same for the Watch2Whoop app's sync page: Bearer only, its account token or its
   upload-only token (like GET /v1/ingest/healthkit; dates and counts, no health values).
 - /v1/ingest/resync (flag sync_center, 404 when off; Bearer like the above): the app's forced re-sync (resync.py).
-  GET -> the job + the refresh status; POST {days: 1–3650 | null} -> 202 {accepted: true, …} or 200 {accepted: false,
+  GET -> the job + the refresh status; POST {days: 1–3650 | null} or {date: YYYY-MM-DD} (one local day, FB-24) ->
+  202 {accepted: true, …} or 200 {accepted: false,
   reason: busy | throttled | consent, retry_after?} (Retry-After header when throttled); PUT {phone_percent?, counts?,
   phone_done?} -> the phone's progress; DELETE -> cancel before the server part started.
 - GET  /v1/users/{user}/sync/engine/days?date=&end= (flag apple_sync_engine, 404 when off for this user): the two sync
@@ -48,7 +51,7 @@ from ..records.api import current_user, get_conn
 from ..rawdata import engine as rx_engine, shadow as rx_shadow, side_by_side, sync_status as rx_status
 from ..rawdata.api import ingest_user
 from . import params as P
-from . import backfill, broken, data_status, history, overview, refresh, resync
+from . import backfill, broken, data_status, history, missing_days, overview, refresh, resync
 
 router = APIRouter(tags=["sync"])
 
@@ -194,6 +197,13 @@ def get_data_status(user: str, conn=Depends(get_conn), viewer=Depends(current_us
     return data_status.collect(conn, viewer["id"])
 
 
+@router.get("/v1/users/{user}/sync/missing-days")
+def get_missing_days(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    if user not in ("me", str(viewer["id"])):
+        raise HTTPException(403, L("只能看自己的数据状态", "You can only see your own data status"))
+    return missing_days.collect(conn, viewer["id"])
+
+
 @router.get("/v1/users/{user}/sync/engine/days")
 def get_engine_days(user: str, start: date = Query(alias="date"), end: date | None = None, conn=Depends(get_conn),
                     viewer=Depends(current_user)):
@@ -252,6 +262,7 @@ def _resync_user(conn=Depends(get_conn), viewer=Depends(ingest_user)) -> dict:
 class ResyncIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     days: int | None = Field(None, ge=1, le=3650)   # null = all history
+    day: date | None = Field(None, alias="date")    # one local day instead (FB-24); days is then ignored
 
 
 class ResyncProgressIn(BaseModel):
@@ -269,7 +280,10 @@ def get_resync(conn=Depends(get_conn), viewer=Depends(_resync_user)):
 
 @router.post("/v1/ingest/resync", status_code=202)
 def post_resync(body: ResyncIn, response: Response, conn=Depends(get_conn), viewer=Depends(_resync_user)):
-    res = resync.request(conn, viewer["id"], body.days)
+    try:
+        res = resync.request(conn, viewer["id"], body.days, day=body.day)
+    except ValueError:
+        raise HTTPException(422, L(f"日期要在最近 {P.RESYNC_MAX_DAYS} 天内", f"The date must be within the last {P.RESYNC_MAX_DAYS} days")) from None
     if not res["accepted"]:
         response.status_code = 200
         if res.get("retry_after"):

@@ -313,6 +313,7 @@ def run_queued(conn: psycopg.Connection, user_id: int | None = None, scorer=None
             _set(conn, uid, status="idle")
             conn.commit()
             continue
+        switched = _native_switch(conn, uid)
         if resync.pending(conn, uid):
             # its last step recomputes the scores from the start of its range, which covers the usual window too
             out.append({"user_id": uid, "resync": resync.run_step(conn, uid, **(resync_kw or {}))})
@@ -324,8 +325,24 @@ def run_queued(conn: psycopg.Connection, user_id: int | None = None, scorer=None
                 out.append({"user_id": uid, "import": imported})
                 continue
         res = run_scores(conn, uid, scorer=scorer)
-        out.append({"user_id": uid, **({"import": _brief(imported)} if imported else {}), **res})
+        out.append({"user_id": uid, **({"switch": switched} if switched else {}),
+                    **({"import": _brief(imported)} if imported else {}), **res})
     return out
+
+
+def _native_switch(conn: psycopg.Connection, user_id: int) -> dict | None:
+    """A user whose phone moved to the native app while still in shadow (queued by rawdata/cutover.queue_native_switch):
+    switch them before the recompute, so it already uses the app's data (FB-23). None when there is nothing to switch."""
+    from ..rawdata import cutover
+    try:
+        if not cutover.native_waiting(conn, user_id):
+            return None
+        res = cutover.apply(conn, user_id=user_id, check_scores=False)
+        return res[0] if res else None
+    except Exception as e:  # noqa: BLE001  the hourly `sync-mode apply` tries again
+        conn.rollback()
+        log.warning("native-app switch failed for user %s: %s", user_id, e)
+        return {"error": str(e)[:300]}
 
 
 def _brief(res: dict) -> dict:

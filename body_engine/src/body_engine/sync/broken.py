@@ -84,13 +84,15 @@ def _mode(conn: psycopg.Connection, user_id: int) -> str:
     return rx_engine.mode(conn, user_id)
 
 
-def check(conn: psycopg.Connection, user_id: int, now: datetime | None = None, visiting: bool = True) -> dict:
+def check(conn: psycopg.Connection, user_id: int, now: datetime | None = None, visiting: bool = True,
+          mode: str | None = None) -> dict:
     """{broken, reason, channel, last_data_at, hours, after_hours, app_seen_at} for one user. visiting: the user is on the
-    page now."""
+    page now. mode: judge this channel instead of the user's sync mode ("app" for a phone on the native app while the
+    server still waits to switch it: it has no OW SDK, so OW's silence says nothing, sync/overview.py)."""
     r = conn.execute(_SQL + " WHERE u.id = %s", (user_id,)).fetchone()
     if r is None:
         raise ValueError(f"no user {user_id}")
-    return _judge(r, now or datetime.now(timezone.utc), visiting, _mode(conn, user_id))
+    return _judge(r, now or datetime.now(timezone.utc), visiting, mode or _mode(conn, user_id))
 
 
 def broken_users(conn: psycopg.Connection, now: datetime | None = None) -> list[dict]:
