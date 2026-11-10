@@ -62,6 +62,7 @@ struct MainTabView: View {
     .onChange(of: session.viewing) { p in if p == nil { Task { await session.refreshViewable() } } }
     .task { await openDevMember() }
     .task { await devThemeFlip() }
+    .task { await perfScript() }
     .onChange(of: session.circlesTab) { on in
       if selection == .circles && !on { selection = .today }
       if selection == .food && on { selection = .record }
@@ -84,6 +85,13 @@ struct MainTabView: View {
     guard let s = RecordDevShot.value("W2W_DEV_THEME_FLIP").flatMap(Double.init) else { return }
     try? await Task.sleep(nanoseconds: UInt64(s * 1_000_000_000))
     try? await session.saveAppearance(AppearancePatch(theme: session.appearance?.isSlim == true ? "default" : "slim"))
+    #endif
+  }
+
+  /// `SIMCTL_CHILD_W2W_PERF_SCRIPT=tabs` (Debug): steps through the tabs and logs how long each step keeps the main thread.
+  private func perfScript() async {
+    #if DEBUG
+    await PerfScript.run(selection: $selection, tabs: AppTab.visible(circles: session.circlesTab))
     #endif
   }
 

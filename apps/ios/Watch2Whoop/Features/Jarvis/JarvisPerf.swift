@@ -3,7 +3,9 @@ import QuartzCore
 import UIKit
 
 /// Frame timing of the Jarvis animations (W2W_PERF=1, or the demo): a display link counts the frames of a window after
-/// the dial opens / closes or a hold starts, and logs `W2W_PERF jarvis-open fps=… worst=…ms dropped=…`. Off otherwise.
+/// the dial opens / closes or a hold starts, and logs `W2W_PERF jarvis-open fps=… worst=…ms dropped=… first=…ms`. Off
+/// otherwise. `first` = from the call to the first frame after it: how long the main thread was busy with what the step
+/// started (PerfScript uses the same meter for tab switches, sheets and pages).
 @MainActor
 final class JarvisPerf: NSObject {
   static let shared = JarvisPerf()
@@ -15,10 +17,13 @@ final class JarvisPerf: NSObject {
     let worstMs: Double
     let dropped: Int
     let maxFps: Int
+    /// From the start of the window to its first frame (0 when the window had no start time).
+    var firstMs: Double = 0
     var fps: Double { seconds > 0 ? Double(frames) / seconds : 0 }
 
     var line: String {
-      String(format: "W2W_PERF %@ fps=%.1f/%d worst=%.1fms dropped=%d frames=%d", name, fps, maxFps, worstMs, dropped, frames)
+      String(format: "W2W_PERF %@ fps=%.1f/%d worst=%.1fms dropped=%d frames=%d first=%.1fms", name, fps, maxFps, worstMs,
+             dropped, frames, firstMs)
     }
   }
 
@@ -26,6 +31,7 @@ final class JarvisPerf: NSObject {
   private var link: CADisplayLink?
   private var name = ""
   private var stamps: [CFTimeInterval] = []
+  private var started: CFTimeInterval = 0
   private var until: CFTimeInterval = 0
   private let log = Logger(subsystem: "org.watch2whoop.native", category: "perf")
 
@@ -39,7 +45,8 @@ final class JarvisPerf: NSObject {
     finish()
     self.name = name
     stamps = []
-    until = CACurrentMediaTime() + seconds
+    started = CACurrentMediaTime()
+    until = started + seconds
     let l = CADisplayLink(target: self, selector: #selector(tick(_:)))
     l.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
     l.add(to: .main, forMode: .common)
@@ -55,15 +62,19 @@ final class JarvisPerf: NSObject {
     guard let l = link else { return }
     l.invalidate()
     link = nil
-    let s = Self.summarise(name, stamps, maxFps: UIScreen.main.maximumFramesPerSecond)
+    let s = Self.summarise(name, stamps, maxFps: UIScreen.main.maximumFramesPerSecond, start: started)
     samples.append(s)
     log.info("\(s.line, privacy: .public)")
     print(s.line)
   }
 
   /// Frames, worst gap and frames dropped (a gap over 1.5 frame periods counts the frames it skipped).
-  nonisolated static func summarise(_ name: String, _ t: [CFTimeInterval], maxFps: Int) -> Sample {
-    guard t.count > 1 else { return Sample(name: name, frames: t.count, seconds: 0, worstMs: 0, dropped: 0, maxFps: maxFps) }
+  /// `start`: when the step began; the gap to the first frame counts as a gap of the window too.
+  nonisolated static func summarise(_ name: String, _ t: [CFTimeInterval], maxFps: Int, start: CFTimeInterval? = nil) -> Sample {
+    let first = start.flatMap { s in t.first.map { max(0, $0 - s) * 1000 } } ?? 0
+    guard t.count > 1 else {
+      return Sample(name: name, frames: t.count, seconds: 0, worstMs: first, dropped: 0, maxFps: maxFps, firstMs: first)
+    }
     let period = 1.0 / Double(max(1, maxFps))
     var worst = 0.0, dropped = 0
     for i in 1..<t.count {
@@ -71,7 +82,8 @@ final class JarvisPerf: NSObject {
       worst = max(worst, gap)
       if gap > period * 1.5 { dropped += Int((gap / period).rounded()) - 1 }
     }
-    return Sample(name: name, frames: t.count - 1, seconds: t.last! - t.first!, worstMs: worst * 1000, dropped: dropped, maxFps: maxFps)
+    return Sample(name: name, frames: t.count - 1, seconds: t.last! - t.first!, worstMs: max(worst * 1000, first),
+                  dropped: dropped, maxFps: maxFps, firstMs: first)
   }
 }
 
