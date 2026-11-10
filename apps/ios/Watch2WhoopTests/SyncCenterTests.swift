@@ -239,19 +239,26 @@ final class SyncCenterTests: XCTestCase {
   }
 
   func testMissingDayStateDoesNotPromptTwice() {
-    let of = MissingDayState.of
+    let now = Date(timeIntervalSince1970: 1_794_200_000)
+    let of = { (m: [String], p: [String: Bool], at: Date?, running: Bool) in
+      MissingDayState.of(missing: m, phone: p, resyncedAt: at, running: running, now: now)
+    }
+    let earlier = now.addingTimeInterval(-3600)
     // Health has a sample of a missing kind: re-sync it
-    XCTAssertEqual(of(["sleep", "hrv"], ["sleep": true, "hrv": false], false, false), .notSynced)
+    XCTAssertEqual(of(["sleep", "hrv"], ["sleep": true, "hrv": false], nil, false), .notSynced)
     // Health has none of the missing kinds: the watch was not worn, not a sync problem
-    XCTAssertEqual(of(["sleep", "hrv"], ["sleep": false, "hrv": false], false, false), .notInHealth)
+    XCTAssertEqual(of(["sleep", "hrv"], ["sleep": false, "hrv": false], nil, false), .notInHealth)
     // the phone could not tell: offer the re-sync once; after it, still missing is 「健康里也没有」
-    XCTAssertEqual(of(["steps"], [:], false, false), .notSynced)
-    XCTAssertEqual(of(["steps"], [:], true, false), .notInHealth)
+    XCTAssertEqual(of(["steps"], [:], nil, false), .notSynced)
+    XCTAssertEqual(of(["steps"], [:], earlier, false), .notInHealth)
     // re-synced, Health has the data, the server still has not: a label, no second prompt
-    XCTAssertEqual(of(["sleep"], ["sleep": true], true, false), .stillMissing)
-    XCTAssertEqual(of(["sleep"], ["sleep": true], false, true), .resyncing)
+    XCTAssertEqual(of(["sleep"], ["sleep": true], earlier, false), .stillMissing)
+    // right after the re-sync the server still derives and scores: no verdict yet
+    XCTAssertEqual(of(["sleep"], ["sleep": true], now.addingTimeInterval(-60), false), .computing)
+    XCTAssertEqual(of(["sleep"], ["sleep": true], nil, true), .resyncing)
     XCTAssertTrue(MissingDayState.notSynced.canResync)
-    XCTAssertFalse(MissingDayState.notInHealth.canResync || MissingDayState.stillMissing.canResync)
+    XCTAssertFalse(MissingDayState.notInHealth.canResync || MissingDayState.stillMissing.canResync
+                   || MissingDayState.computing.canResync)
   }
 
   func testOneDayResyncJobAndRemembers() {
@@ -267,9 +274,10 @@ final class SyncCenterTests: XCTestCase {
     let job = try! JSONDecoder().decode(ResyncJob.self, from: json)
     XCTAssertNil(job.day)
     XCTAssertEqual(job.days, 7)
-    s.resyncedDays.insert("2026-11-05")
-    s.resyncedDays.insert("2026-11-04")
-    XCTAssertEqual(s.resyncedDays, ["2026-11-04", "2026-11-05"])
+    s.resyncedDays["2026-11-05"] = Date(timeIntervalSince1970: 1_794_200_000)
+    s.resyncedDays["2026-11-04"] = Date(timeIntervalSince1970: 1_794_100_000)
+    XCTAssertEqual(s.resyncedDays.keys.sorted(), ["2026-11-04", "2026-11-05"])
+    XCTAssertEqual(s.resyncedDays["2026-11-05"], Date(timeIntervalSince1970: 1_794_200_000))
     s.clear()
     XCTAssertTrue(s.resyncedDays.isEmpty)
   }

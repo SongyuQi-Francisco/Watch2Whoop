@@ -94,11 +94,19 @@ enum MissingDayState: Equatable {
   case notInHealth
   /// This day's re-sync runs now.
   case resyncing
+  /// Its re-sync just ended: the server derives and scores it (a few minutes), so no verdict yet.
+  case computing
+
+  /// After a day's re-sync the server needs this long before "still missing" means anything.
+  static let settle: TimeInterval = 10 * 60
 
   /// - phone: kind -> whether Health has a sample of it that day (missing key: the phone could not tell);
-  /// - resynced: this day's re-sync finished before.
-  static func of(missing: [String], phone: [String: Bool], resynced: Bool, running: Bool) -> MissingDayState {
+  /// - resyncedAt: when this day's re-sync finished (nil: never).
+  static func of(missing: [String], phone: [String: Bool], resyncedAt: Date?, running: Bool,
+                 now: Date = Date()) -> MissingDayState {
     if running { return .resyncing }
+    if let at = resyncedAt, now.timeIntervalSince(at) < settle { return .computing }
+    let resynced = resyncedAt != nil
     let known = missing.compactMap { phone[$0] }
     if known.contains(true) { return resynced ? .stillMissing : .notSynced }
     if !missing.isEmpty && known.count == missing.count { return .notInHealth }   // Health has none of them
@@ -189,6 +197,8 @@ struct MissingDayRow: View {
           ProgressView().scaleEffect(0.7).tint(Palette.text2)
           if let percent { Text("\(percent)%").font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2) }
         }
+      case .computing:
+        Text(tr("计算中", "Computing")).font(Typo.caption).foregroundColor(Palette.text2)
       case .stillMissing:
         Text(tr("重传后仍缺", "Still missing")).font(Typo.caption).foregroundColor(Palette.mid)
       case .notInHealth:
@@ -255,6 +265,7 @@ struct MissingDaysView: View {
   @State private var message: String?
   @State private var busy = false
   @State private var confirmAll: Int?
+  @State private var resynced: [String: Date] = [:]
 
   var body: some View {
     ScrollView(.vertical, showsIndicators: false) {
@@ -294,7 +305,7 @@ struct MissingDaysView: View {
   }
 
   private func state(_ d: MissingDays.Day) -> MissingDayState {
-    MissingDayState.of(missing: d.kinds, phone: phone[d.date] ?? [:], resynced: sync.settings.resyncedDays.contains(d.date),
+    MissingDayState.of(missing: d.kinds, phone: phone[d.date] ?? [:], resyncedAt: resynced[d.date],
                        running: sync.job?.day == d.date)
   }
 
@@ -307,6 +318,7 @@ struct MissingDaysView: View {
         for k in d.kinds { if let has = await checker.has(kind: k, day: d.date) { out[d.date, default: [:]][k] = has } }
       }
       phone = out
+      resynced = sync.settings.resyncedDays
     } catch APIError.notFound {
       message = tr("这台服务器还不支持缺失日期", "This server cannot list missing days yet")
       model = MissingDays()

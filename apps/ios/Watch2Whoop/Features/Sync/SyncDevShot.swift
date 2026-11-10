@@ -46,9 +46,10 @@ enum SyncDevShot {
     switch m.days.firstIndex(of: d) {
     case 0: return .resyncing
     case 1, 4: return MissingDayState.of(missing: d.kinds, phone: Dictionary(uniqueKeysWithValues: d.kinds.map { ($0, false) }),
-                                         resynced: false, running: false)
-    case 3: return MissingDayState.of(missing: d.kinds, phone: ["sleep": true], resynced: true, running: false)
-    default: return MissingDayState.of(missing: d.kinds, phone: [:], resynced: false, running: false)
+                                         resyncedAt: nil, running: false)
+    case 3: return MissingDayState.of(missing: d.kinds, phone: ["sleep": true], resyncedAt: Date().addingTimeInterval(-3600),
+                                      running: false)
+    default: return MissingDayState.of(missing: d.kinds, phone: [:], resyncedAt: nil, running: false)
     }
   }
 }

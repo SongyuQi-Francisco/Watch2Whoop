@@ -97,10 +97,16 @@ struct SyncSettings {
     nonmutating set { defaults.set(newValue, forKey: Key.lastOk) }
   }
 
-  /// The days of the missing-days list whose own re-sync finished (FB-24): still missing afterwards is not prompted again.
-  var resyncedDays: Set<String> {
-    get { Set(defaults.stringArray(forKey: Key.resyncedDays) ?? []) }
-    nonmutating set { defaults.set(Array(newValue.sorted().suffix(60)), forKey: Key.resyncedDays) }
+  /// The days of the missing-days list whose own re-sync finished, and when (FB-24): still missing afterwards is not
+  /// prompted again. The 60 newest days are kept.
+  var resyncedDays: [String: Date] {
+    get {
+      (defaults.dictionary(forKey: Key.resyncedDays) ?? [:]).compactMapValues { ($0 as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) } }
+    }
+    nonmutating set {
+      let keep = newValue.keys.sorted().suffix(60)
+      defaults.set(Dictionary(uniqueKeysWithValues: keep.map { ($0, newValue[$0]!.timeIntervalSince1970) }), forKey: Key.resyncedDays)
+    }
   }
 
   var resync: ResyncJob? {

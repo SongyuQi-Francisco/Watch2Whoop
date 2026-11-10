@@ -443,7 +443,7 @@ final class HealthSyncService: ObservableObject {
     let percent = done ? 100 : max(1, min(99, ((j.rawDone ? 100 : 0) + enginePercent) / 2))
     jobPercent = percent
     if await report(percent: percent, done: done), done {
-      if let day = j.day { settings.resyncedDays.insert(day) }
+      if let day = j.day { settings.resyncedDays[day] = Date() }
       settings.resync = nil
       job = nil
       return
