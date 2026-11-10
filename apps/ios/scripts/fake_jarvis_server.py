@@ -17,6 +17,15 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 18766
+# Seconds /transcribe and /voice-fix take (W2W_FAKE_ASR_DELAY=2.5 stands in for the server's recogniser; default 0)
+ASR_DELAY = float(os.environ.get("W2W_FAKE_ASR_DELAY") or 0)
+# W2W_FAKE_ECHO=1: every answer names its question and comes after tool rounds (report_feedback, show_card), so two answers in
+# a row can be told apart (the 2.0.1 repeated-reply check). W2W_FAKE_CUT=<n>: the next chat stream stops after n events
+# without its last one, as a dropped connection; the app picks it up with GET /chat/{id}/events?after=.
+ECHO = os.environ.get("W2W_FAKE_ECHO") == "1"
+CUT = {"left": int(os.environ.get("W2W_FAKE_CUT") or 0)}
+# conversation id -> the events of its latest turn (body_engine ai/runs.py keeps only that one per conversation)
+RUNS = {}
 STATE = {"choice": "fallback", "consent": True, "conversations": []}
 
 
@@ -53,6 +62,17 @@ def cards(zh):
                        {"name_zh": "腿举", "name_en": "Leg press", "target": "3×12"}],
          "log": None, "actions": [{"kind": "open", "page": "record.training"}, {"kind": "send", "key": "adjust_training"}]},
     ]
+
+
+def echo_answer(msg, zh):
+    q = msg.replace("［语音］", "").replace("[voice] ", "")[:24]
+    text = (f"关于「{q}」：今天恢复 64%，可以按计划练。" if zh else f"About \u201c{q}\u201d: recovery is 64%, train as planned.")
+    out = [("tool", {"name": "get_briefing", "status": "running"}), ("tool", {"name": "get_briefing", "status": "done"}),
+           ("tool", {"name": "report_feedback", "status": "running"}), ("tool", {"name": "report_feedback", "status": "done"}),
+           ("card", {"card": cards(zh)[0], "call_id": 300})]
+    for i in range(0, len(text), 6):
+        out.append(("text", {"delta": text[i:i + 6]}))
+    return out
 
 
 def answer(msg, zh):
@@ -103,13 +123,15 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b)
 
-    def sse(self, events, delay=0.03):
+    def sse(self, events, delay=0.03, first=1, cut=0):
         self.send_response(200)
         self.send_header("content-type", "text/event-stream")
         self.send_header("cache-control", "no-cache")
         self.send_header("connection", "close")
         self.end_headers()
-        for seq, (ev, data) in enumerate(events, 1):
+        for seq, (ev, data) in enumerate(events, first):
+            if cut and seq > cut:
+                break   # a dropped connection: no last event
             self.wfile.write(f"id: {seq}\nevent: {ev}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n".encode())
             self.wfile.flush()
             time.sleep(delay)
@@ -131,6 +153,12 @@ class H(BaseHTTPRequestHandler):
                 if self.zh else ["What you send to Jarvis and the health data it needs go to the model provider.",
                                  "There is a monthly allowance; it resets next month.", "You can withdraw any time in AI settings."]
             return self.json({"points": pts, "consent_version": "demo-1", "points_translated": not self.zh, "consent": STATE["consent"]})
+        if p.startswith("/v1/assistant/chat/") and p.endswith("/events"):   # resume a turn after `after`
+            cid = int(p.split("/")[4])
+            after = int((self.path.split("after=")[1:] or ["0"])[0].split("&")[0])
+            if cid not in RUNS:
+                return self.sse([("resync", {"conversation_id": cid})])
+            return self.sse(RUNS[cid][after:], first=after + 1)
         if p == "/v1/assistant/conversations":
             return self.json([{"id": 1, "title": "今天适合练吗" if self.zh else "Should I train today", "state": "idle",
                                "updated_at": days(1)[0] + "T08:30:00+10:00"},
@@ -161,11 +189,13 @@ class H(BaseHTTPRequestHandler):
             msg = b.get("message", "")
             ev = [("conversation", {"id": 1, "provider": "fallback", "model": "demo", "display_name": "Jarvis",
                                     "quota": {"spent_cny": 0.54, "quota_cny": 3, "remaining_cny": 2.46}})]
-            ev += answer(msg, self.zh)
+            ev += echo_answer(msg, self.zh) if ECHO else answer(msg, self.zh)
             ev += [("usage", {"currency": "CNY", "remaining_cny": 2.4, "quota_cny": 3, "month_cost_cny": 0.6})]
             if ev[-2][0] != "confirm":
                 ev.append(("done", {"conversation_id": 1}))
-            return self.sse(ev)
+            RUNS[1] = ev
+            cut, CUT["left"] = CUT["left"], 0
+            return self.sse(ev, cut=cut)
         if p == "/v1/assistant/chat/confirm":
             ok = b.get("approve")
             return self.sse([("tool", {"name": "undo_meal_log", "status": "done" if ok else "rejected", "call_id": 41}),
@@ -175,9 +205,10 @@ class H(BaseHTTPRequestHandler):
             STATE["consent"] = True
             return self.json({"consent": True})
         if p == "/v1/assistant/voice-fix":
+            time.sleep(ASR_DELAY)
             return self.json({"text": b.get("text", ""), "fixed": []})
-        if p == "/v1/assistant/transcribe":
-            self.rfile.read(int(self.headers.get("content-length") or 0))
+        if p == "/v1/assistant/transcribe":   # the WAV was already read by body() above
+            time.sleep(ASR_DELAY)
             return self.json({"text": "今天睡得不错，练腿四十分钟", "seconds": 3})
         return self.json({"detail": "not here"}, 404)
 

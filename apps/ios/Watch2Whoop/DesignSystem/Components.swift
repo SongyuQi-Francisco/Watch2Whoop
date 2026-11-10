@@ -92,13 +92,18 @@ struct Chip: View {
   }
 }
 
-/// Pressed = slightly smaller and dimmer (the page's `:active`).
+/// Pressed = slightly smaller and dimmer (the page's `:active`). Down in 0.08 s, so even a quick tap shows it before the
+/// finger is up (2.0.1: the old spring took about 0.2 s to get there, and a tap often ended before anything moved); back
+/// with a short spring.
 struct PressScale: ButtonStyle {
+  static let down = Animation.easeOut(duration: 0.08)
+  static let up = Animation.spring(response: 0.28, dampingFraction: 0.82)
+
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
       .scaleEffect(configuration.isPressed ? 0.96 : 1)
       .opacity(configuration.isPressed ? 0.75 : 1)
-      .animation(.spring(response: 0.25, dampingFraction: 0.8), value: configuration.isPressed)
+      .animation(configuration.isPressed ? Self.down : Self.up, value: configuration.isPressed)
   }
 }
 

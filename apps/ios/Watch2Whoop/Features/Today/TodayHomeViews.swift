@@ -36,7 +36,15 @@ enum TodayHomeAI {
 /// page, in the new structure: three rings → the search field that also asks Jarvis, with questions made from the user's numbers
 /// → 重点 → the circles card → my modules (each says why it is there) → 全部功能. Long press, or ⋯ on a module, has a menu whose
 /// first row asks Jarvis about that card. Its body is a flat list of rows, so TodayView's LazyVStack stays lazy.
-struct TodayHomePage: View {
+///
+/// Equatable without the closures and the food card, like TodayDayCards (2.0.1): the page's own state (sheets, the tab)
+/// does not rebuild every module; the two observed stores still redraw it when they change.
+struct TodayHomePage: View, Equatable {
+  static func == (a: TodayHomePage, b: TodayHomePage) -> Bool {
+    a.model == b.model && a.home == b.home && a.flags == b.flags && a.circlesTab == b.circlesTab && a.hasData == b.hasData
+      && a.store === b.store && a.sync === b.sync
+  }
+
   let model: TodayModel
   let home: TodayHome
   let flags: Set<String>

@@ -61,6 +61,7 @@ struct JarvisDetailSheet: View {
           }
         }
         .background(Palette.bg.ignoresSafeArea())
+        .sheetSurface(Palette.bg)
       } else {
         SheetContainer(title: detail.title, close: close) { content(detail) }
       }

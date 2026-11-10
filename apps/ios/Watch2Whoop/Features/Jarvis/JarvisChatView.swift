@@ -1,4 +1,5 @@
 import PhotosUI
+import QuartzCore
 import SwiftUI
 
 /// The Jarvis chat (the page's ai.js panel, native): the answer streams in and is drawn as Markdown, cards are native
@@ -34,6 +35,12 @@ struct JarvisChatView: View {
       if recording { recorder } else { composer }
     }
     .background(Palette.sheet.ignoresSafeArea())
+    .sheetSurface()
+    .onAppear {
+      #if DEBUG
+      JarvisDemo.chatMic = (start: { startRecording() }, done: { Task { await stopRecording() } })
+      #endif
+    }
     .sheet(isPresented: $history) { HistorySheet(chat: chat) }
     .sheet(item: $router.detail) { d in JarvisDetailSheet(detail: d) { router.detail = nil }.environmentObject(session) }
     .sheet(isPresented: consentShown) {
@@ -276,8 +283,14 @@ struct JarvisChatView: View {
         .lineLimit(1...6)
         .font(Typo.body)
         .focused($focused)
-        .padding(.vertical, 10).padding(.horizontal, 14)
+        .padding(.vertical, 10).padding(.leading, 14).padding(.trailing, chat.correcting > 0 ? 34 : 14)
         .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Palette.inSheet))
+        .overlay(alignment: .trailing) {   // the server is still checking spoken words
+          if chat.correcting > 0 {
+            ProgressView().controlSize(.small).tint(Palette.text3).padding(.trailing, 12)
+              .accessibilityLabel(tr("正在校对语音", "Checking the spoken words"))
+          }
+        }
       if chat.draft.isEmpty && chat.attachments.isEmpty && !JarvisVoice.supportedLangs.isEmpty {
         Button { startRecording() } label: {
           Icon(.mic, size: 20).foregroundColor(Palette.text).frame(width: 40, height: 40).background(Circle().fill(Palette.inSheet))
@@ -331,13 +344,14 @@ struct JarvisChatView: View {
     }
   }
 
+  /// 完成: the words in the box at once; the server's version replaces them when it comes (JarvisChat.insertVoice).
   private func stopRecording() async {
-    let out = await voice.stop()
+    let t0 = CACurrentMediaTime()
+    let take = await voice.finish()
     recording = false
-    var text = out?.text ?? ""
-    if let wav = out?.wav, let t = await chat.transcribe(wav: wav) { text = t } else if !text.isEmpty { text = await chat.voiceFix(text) }
-    guard !text.isEmpty else { return }
-    chat.draft = chat.draft.isEmpty ? text : "\(chat.draft)\n\(text)"
+    guard let take else { return }
+    chat.insertVoice(take.text, correction: chat.voiceCorrection(take))
+    JarvisPerf.shared.mark("voice-chat-done-to-text", since: t0)
   }
 
   private func addPicked(_ items: [PhotosPickerItem]) async {

@@ -15,10 +15,15 @@ import UIKit
 final class JarvisVoice: ObservableObject {
   enum Failure: Error, Equatable { case permission, unsupportedLang, unavailable, interrupted }
 
-  struct Result: Equatable {
-    var text: String
-    var seconds: Double
-    var wav: Data?
+  /// What 完成 gives at once (2.0.1): the words recognised so far and, for Chinese, the whole recording (the microphone
+  /// is already off, so it is complete). `final` is the recogniser's last word on it: its final result, or the words once
+  /// they have not changed for `stableSeconds`, at most `finalCap` after 完成. On-device recognition often never says
+  /// final; 2.0.0 waited 2.5 s for it before anything was shown, and only then asked the server.
+  struct Take {
+    let text: String
+    let seconds: Double
+    let wav: Data?
+    let final: Task<String, Never>
   }
 
   /// The last `bars` loudness values, 0…1 (the waveform), newest last.
@@ -31,8 +36,9 @@ final class JarvisVoice: ObservableObject {
   static let bars = 34
   /// At most this much audio is kept (the page stops at 60 s).
   static let maxSeconds = 60.0
-  /// After stop: the recogniser's final result usually comes within a moment; after this the last partial text is used.
-  static let finalWait = 2.5
+  /// After 完成: words that have not changed for this long count as final, and nothing is waited for longer than finalCap.
+  static let stableSeconds = 0.4
+  static let finalCap = 1.0
   nonisolated static let pcmFormat = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000, channels: 1, interleaved: true)!
 
   private let engine = AVAudioEngine()
@@ -44,6 +50,8 @@ final class JarvisVoice: ObservableObject {
   private var request: SFSpeechAudioBufferRecognitionRequest?
   private var task: SFSpeechRecognitionTask?
   private var startedAt: Date?
+  /// When `partial` last changed (CACurrentMediaTime).
+  private var partialAt: CFTimeInterval = 0
   private var run = 0
   private var finishing: CheckedContinuation<String, Never>?
   private var observer: NSObjectProtocol?
@@ -92,7 +100,7 @@ final class JarvisVoice: ObservableObject {
   func start(lang: String, keepAudio: Bool) async throws {
     teardown()
     #if DEBUG && targetEnvironment(simulator)
-    if JarvisDemo.scriptedVoice { startScript(); return }
+    if JarvisDemo.scriptedVoice { scriptKeepsAudio = keepAudio; startScript(); return }
     #endif
     guard await Self.authorize() else { throw Failure.permission }
     guard let loc = Self.locale(for: lang), let rec = SFSpeechRecognizer(locale: loc), rec.isAvailable else {
@@ -152,28 +160,64 @@ final class JarvisVoice: ObservableObject {
     }
   }
 
-  /// Stops listening; the final text (or the last partial text after `finalWait`), and the WAV when kept.
-  func stop() async -> Result? {
+  /// 完成: stops listening and returns at once (a few ms: the engine stops on its own queue) with what is there; the
+  /// recogniser keeps going in the background for its final word (`Take.final`), then the session is torn down. nil when
+  /// nothing was said and nothing recorded.
+  func finish() async -> Take? {
     guard running else { return nil }
     let seconds = elapsed
-    #if DEBUG && targetEnvironment(simulator)
-    if JarvisDemo.scriptedVoice { let t = partial; teardown(); return t.isEmpty ? nil : Result(text: t, seconds: seconds, wav: nil) }
-    #endif
-    stopAudio()
-    request?.endAudio()
     let r = run
-    let text: String = await withCheckedContinuation { c in
-      finishing = c
-      DispatchQueue.main.asyncAfter(deadline: .now() + Self.finalWait) { [weak self] in
-        guard let self, self.run == r else { return }
-        self.finish(self.partial)
+    running = false
+    levels = Array(repeating: 0, count: Self.bars)
+    var pcm = Data()
+    #if DEBUG && targetEnvironment(simulator)
+    let scripted = JarvisDemo.scriptedVoice
+    if scripted {
+      script?.invalidate()
+      script = nil
+      if scriptKeepsAudio { pcm = Data(count: Int(seconds * 16000) * 2) }
+    }
+    #else
+    let scripted = false
+    #endif
+    if !scripted {
+      let sink = audio
+      pcm = await withCheckedContinuation { c in
+        stopAudio { c.resume(returning: sink.pcm()) }
+        request?.endAudio()
       }
     }
-    let pcm = audio.pcm()
-    teardown()
-    let said = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    if said.isEmpty && pcm.isEmpty { return nil }
-    return Result(text: said, seconds: seconds, wav: pcm.isEmpty ? nil : Self.wav(pcm))
+    let now = partial.trimmingCharacters(in: .whitespacesAndNewlines)
+    partialAt = CACurrentMediaTime()
+    let final = Task { @MainActor [weak self] () -> String in
+      guard let self, self.run == r else { return now }
+      let text: String = await withCheckedContinuation { c in
+        self.finishing = c
+        self.watchFinal(run: r, since: CACurrentMediaTime())
+      }
+      if self.run == r { self.teardown() }
+      let said = text.trimmingCharacters(in: .whitespacesAndNewlines)
+      return said.isEmpty ? now : said
+    }
+    if now.isEmpty && pcm.isEmpty {
+      final.cancel()
+      if run == r { teardown() }
+      return nil
+    }
+    return Take(text: now, seconds: seconds, wav: pcm.isEmpty ? nil : Self.wav(pcm), final: final)
+  }
+
+  /// Ends the wait for the final word when the words have been still for `stableSeconds`, or at `finalCap`.
+  private func watchFinal(run r: Int, since start: CFTimeInterval) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+      guard let self, self.run == r, self.finishing != nil else { return }
+      let t = CACurrentMediaTime()
+      if t - self.partialAt >= Self.stableSeconds || t - start >= Self.finalCap {
+        self.finish(self.partial)
+      } else {
+        self.watchFinal(run: r, since: start)
+      }
+    }
   }
 
   func cancel() { teardown() }
@@ -206,7 +250,7 @@ final class JarvisVoice: ObservableObject {
 
   private func recognized(_ text: String?, isFinal: Bool, failed: Bool, run r: Int) {
     guard r == run else { return }
-    if let text { partial = text }
+    if let text, text != partial { partial = text; partialAt = CACurrentMediaTime() }
     if isFinal || (failed && finishing != nil) { finish(partial) }
   }
 
@@ -216,11 +260,13 @@ final class JarvisVoice: ObservableObject {
     c.resume(returning: text)
   }
 
-  private func stopAudio(deactivate: Bool = false) {
+  /// `then` runs on the audio queue once the engine has stopped (nothing more reaches the sink after that).
+  private func stopAudio(deactivate: Bool = false, then: (@Sendable () -> Void)? = nil) {
     let engine = self.engine
     audioQueue.async { [weak self] in
       if engine.isRunning { engine.stop() }
       if self?.tapped == true { engine.inputNode.removeTap(onBus: 0); self?.tapped = false }
+      then?()
       if deactivate { try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
     }
   }
@@ -262,6 +308,11 @@ final class JarvisVoice: ObservableObject {
   /// Simulator debug builds with the demo on (`JarvisDemo`): a scripted recogniser with the real one's events, so the
   /// hold-to-talk gestures can be recorded without a microphone or the permission sheet.
   private var script: Timer?
+  private var scriptKeepsAudio = false
+
+  // `finish` treats it like a phone's recogniser after `endAudio`: no final result (the words count as final once still for
+  // `stableSeconds`); Chinese also gives a WAV (silence of the same length) for /transcribe.
+
   private func startScript() {
     let words = [tr("今天", "Slept"), tr("今天睡得", "Slept well"), tr("今天睡得不错", "Slept well, legs"),
                  tr("今天睡得不错，练腿", "Slept well, legs today"), tr("今天睡得不错，练腿四十分钟", "Slept well, legs for forty minutes")]
@@ -273,7 +324,7 @@ final class JarvisVoice: ObservableObject {
         guard let self, self.running else { return }
         tick += 1
         self.push(0.35 + 0.3 * abs(sin(Double(tick) / 3)), run: self.run)
-        if tick % 8 == 0 { self.partial = words[min(tick / 8 - 1, words.count - 1)] }
+        if tick % 8 == 0 { self.recognized(words[min(tick / 8 - 1, words.count - 1)], isFinal: false, failed: false, run: self.run) }
       }
     }
   }

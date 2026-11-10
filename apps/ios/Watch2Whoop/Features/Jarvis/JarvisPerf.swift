@@ -3,7 +3,9 @@ import QuartzCore
 import UIKit
 
 /// Frame timing of the Jarvis animations (W2W_PERF=1, or the demo): a display link counts the frames of a window after
-/// the dial opens / closes or a hold starts, and logs `W2W_PERF jarvis-open fps=… worst=…ms dropped=…`. Off otherwise.
+/// the dial opens / closes or a hold starts, and logs `W2W_PERF jarvis-open fps=… worst=…ms dropped=… first=…ms`. Off
+/// otherwise. `first` = from the call to the first frame after it: how long the main thread was busy with what the step
+/// started (PerfScript uses the same meter for tab switches, sheets and pages).
 @MainActor
 final class JarvisPerf: NSObject {
   static let shared = JarvisPerf()
@@ -15,10 +17,13 @@ final class JarvisPerf: NSObject {
     let worstMs: Double
     let dropped: Int
     let maxFps: Int
+    /// From the start of the window to its first frame (0 when the window had no start time).
+    var firstMs: Double = 0
     var fps: Double { seconds > 0 ? Double(frames) / seconds : 0 }
 
     var line: String {
-      String(format: "W2W_PERF %@ fps=%.1f/%d worst=%.1fms dropped=%d frames=%d", name, fps, maxFps, worstMs, dropped, frames)
+      String(format: "W2W_PERF %@ fps=%.1f/%d worst=%.1fms dropped=%d frames=%d first=%.1fms", name, fps, maxFps, worstMs,
+             dropped, frames, firstMs)
     }
   }
 
@@ -26,6 +31,7 @@ final class JarvisPerf: NSObject {
   private var link: CADisplayLink?
   private var name = ""
   private var stamps: [CFTimeInterval] = []
+  private var started: CFTimeInterval = 0
   private var until: CFTimeInterval = 0
   private let log = Logger(subsystem: "org.watch2whoop.native", category: "perf")
 
@@ -39,12 +45,26 @@ final class JarvisPerf: NSObject {
     finish()
     self.name = name
     stamps = []
-    until = CACurrentMediaTime() + seconds
+    started = CACurrentMediaTime()
+    until = started + seconds
     let l = CADisplayLink(target: self, selector: #selector(tick(_:)))
     l.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
     l.add(to: .main, forMode: .common)
     link = l
   }
+
+  /// A duration (not frames): `W2W_PERF <name> ms=…` from `since` (CACurrentMediaTime) to now, e.g. 完成 → the text in the
+  /// box (voice). Kept in `marks` for the demo's summary.
+  func mark(_ name: String, since: CFTimeInterval) {
+    guard enabled else { return }
+    let ms = (CACurrentMediaTime() - since) * 1000
+    marks.append((name, ms))
+    let line = String(format: "W2W_PERF %@ ms=%.0f", name, ms)
+    log.info("\(line, privacy: .public)")
+    print(line)
+  }
+
+  private(set) var marks: [(String, Double)] = []
 
   @objc private func tick(_ l: CADisplayLink) {
     stamps.append(l.timestamp)
@@ -55,15 +75,19 @@ final class JarvisPerf: NSObject {
     guard let l = link else { return }
     l.invalidate()
     link = nil
-    let s = Self.summarise(name, stamps, maxFps: UIScreen.main.maximumFramesPerSecond)
+    let s = Self.summarise(name, stamps, maxFps: UIScreen.main.maximumFramesPerSecond, start: started)
     samples.append(s)
     log.info("\(s.line, privacy: .public)")
     print(s.line)
   }
 
   /// Frames, worst gap and frames dropped (a gap over 1.5 frame periods counts the frames it skipped).
-  nonisolated static func summarise(_ name: String, _ t: [CFTimeInterval], maxFps: Int) -> Sample {
-    guard t.count > 1 else { return Sample(name: name, frames: t.count, seconds: 0, worstMs: 0, dropped: 0, maxFps: maxFps) }
+  /// `start`: when the step began; the gap to the first frame counts as a gap of the window too.
+  nonisolated static func summarise(_ name: String, _ t: [CFTimeInterval], maxFps: Int, start: CFTimeInterval? = nil) -> Sample {
+    let first = start.flatMap { s in t.first.map { max(0, $0 - s) * 1000 } } ?? 0
+    guard t.count > 1 else {
+      return Sample(name: name, frames: t.count, seconds: 0, worstMs: first, dropped: 0, maxFps: maxFps, firstMs: first)
+    }
     let period = 1.0 / Double(max(1, maxFps))
     var worst = 0.0, dropped = 0
     for i in 1..<t.count {
@@ -71,7 +95,8 @@ final class JarvisPerf: NSObject {
       worst = max(worst, gap)
       if gap > period * 1.5 { dropped += Int((gap / period).rounded()) - 1 }
     }
-    return Sample(name: name, frames: t.count - 1, seconds: t.last! - t.first!, worstMs: worst * 1000, dropped: dropped, maxFps: maxFps)
+    return Sample(name: name, frames: t.count - 1, seconds: t.last! - t.first!, worstMs: max(worst * 1000, first),
+                  dropped: dropped, maxFps: maxFps, firstMs: first)
   }
 }
 
@@ -83,7 +108,11 @@ final class JarvisPerf: NSObject {
 /// - `script`: nothing but the scripted recogniser (UI tests drive the key with real touches);
 /// - `open`: open the dial and leave it open; `hold`: start holding and stay; `chat`: open the chat and ask a quick question;
 /// - `posture`: the chat with the posture sheet open; `posture-filled`: with three made-up photos in it;
-///   `posture-send`: send three made-up photos and the prefilled question (flat colours, no person in them).
+///   `posture-send`: send three made-up photos and the prefilled question (flat colours, no person in them);
+/// - `voice`: talk three times through the key (hold, release) and three times through the chat's own microphone (完成),
+///   logging `voice-key-done-to-text` / `voice-chat-done-to-text` (the scripted recogniser behaves like the phone's: no
+///   final result, so `stop` waits as on a phone, and a Chinese WAV goes to /transcribe; the fake server's
+///   `W2W_FAKE_ASR_DELAY=<s>` stands in for the real recogniser's time).
 /// `W2W_JARVIS_MATERIAL=1` draws the pre-iOS 26 material keys on iOS 26 too (to compare).
 enum JarvisDemo {
   struct Hooks {
@@ -97,6 +126,8 @@ enum JarvisDemo {
   static var scriptedVoice: Bool { mode != nil }
   static var forceMaterial: Bool { ProcessInfo.processInfo.environment["W2W_JARVIS_MATERIAL"] != nil }
   private static var ran = false
+  /// The chat's own microphone, while the chat is open (start / 完成), for the `voice` demo.
+  static var chatMic: (start: () -> Void, done: () -> Void)?
 
   static func postureFlow() -> PostureFlow {
     var f = PostureFlow()
@@ -142,6 +173,31 @@ enum JarvisDemo {
         router.present(.chat)
         await sec(1)
         router.chat?.send(PostureFlow.question, attachments: postureFlow().attachments, purpose: PostureFlow.purpose)
+      case "voice":
+        for _ in 0..<3 {
+          let c = h.center()
+          h.press(c)
+          await sec(2)
+          h.release(c)
+          await sec(7)
+          router.sheet = nil
+          await sec(1)
+        }
+        router.present(.chat)
+        await sec(1.5)
+        for _ in 0..<3 {
+          chatMic?.start()
+          await sec(2)
+          chatMic?.done()
+          await sec(7)
+          router.chat?.draft = ""
+          await sec(0.5)
+        }
+        for name in ["voice-key-done-to-text", "voice-chat-done-to-text"] {
+          let ms = JarvisPerf.shared.marks.filter { $0.0 == name }.map(\.1)
+          guard !ms.isEmpty else { continue }
+          print(String(format: "W2W_PERF summary %@ n=%d avg=%.0fms max=%.0fms", name, ms.count, ms.reduce(0, +) / Double(ms.count), ms.max() ?? 0))
+        }
       case "hold":
         h.press(h.center())
         await sec(1.5)

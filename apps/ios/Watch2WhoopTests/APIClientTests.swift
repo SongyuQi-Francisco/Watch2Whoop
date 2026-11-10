@@ -12,10 +12,13 @@ final class StubProtocol: URLProtocol {
 
   static var replies: [Reply] = []
   static var requests: [URLRequest] = []
+  /// Answers by request before the queue (nil = take the next queued reply), e.g. a path that may or may not be asked.
+  static var route: ((URLRequest) -> Reply?)?
 
   static func reset(_ r: [Reply]) {
     replies = r
     requests = []
+    route = nil
   }
 
   override class func canInit(with request: URLRequest) -> Bool { true }
@@ -23,7 +26,7 @@ final class StubProtocol: URLProtocol {
 
   override func startLoading() {
     Self.requests.append(request)
-    let r = Self.replies.isEmpty ? Reply(status: 500) : Self.replies.removeFirst()
+    let r = Self.route?(request) ?? (Self.replies.isEmpty ? Reply(status: 500) : Self.replies.removeFirst())
     if let code = r.error {
       client?.urlProtocol(self, didFailWithError: URLError(code))
       return
