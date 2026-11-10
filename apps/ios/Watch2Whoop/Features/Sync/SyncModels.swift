@@ -152,6 +152,11 @@ struct ServerSyncStatus: Equatable {
   var openFailure: String?
   var upToDate = false
   var pendingDays = 0
+  /// The uploads are in, the scores not yet (FB-23): the server still switches this phone to the app mode, or a recompute
+  /// is queued / running (`pipeline.computing`, servers from 2026-11-10; older ones: false).
+  var computing = false
+  /// ... because the server still has to switch the user to the app mode (`pipeline.switching`).
+  var switching = false
 
   init() {}
 
@@ -170,6 +175,8 @@ struct ServerSyncStatus: Equatable {
     let p = j["pipeline"] as? [String: Any] ?? [:]
     upToDate = p["up_to_date"] as? Bool ?? false
     pendingDays = (p["pending_days"] as? [Any])?.count ?? Int(num(p["pending_days"]) ?? 0)
+    computing = p["computing"] as? Bool ?? false
+    switching = p["switching"] as? Bool ?? false
   }
 }
 

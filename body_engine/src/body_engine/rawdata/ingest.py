@@ -227,7 +227,19 @@ def ingest(conn: psycopg.Connection, user_id: int, batch: dict, size: int | None
     if ctx["changed_from"] is not None:
         from ..sync import refresh
         refresh.queue_scores(conn, user_id, ctx["changed_from"])
+    if uses and ctx["mode"] == "shadow" and batch.get("phase"):
+        _native_switch(conn, user_id, batch.get("app_version"))
     return {**counts, "dirty_days": dirty_days, **flags_now}
+
+
+def _native_switch(conn: psycopg.Connection, user_id: int, app_version: str | None) -> None:
+    """The native app's batch of a user still in shadow: the per-minute job switches them now (rawdata/cutover.py,
+    FB-23). Bookkeeping: a failure never changes the batch's answer (it is stored already)."""
+    from . import cutover
+    try:
+        cutover.queue_native_switch(conn, user_id, app_version)
+    except Exception:  # noqa: BLE001  the hourly `sync-mode apply` still switches them
+        conn.rollback()
 
 
 def status(conn: psycopg.Connection, user_id: int, light: bool = False) -> dict:

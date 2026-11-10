@@ -127,7 +127,8 @@ final class SyncCenterTests: XCTestCase {
     i.lastSkipped = ["wifi_only"]
     i.backgroundRefresh = false
     let ids = SyncDiagnosis.of(i).issues.map(\.id)
-    XCTAssertEqual(ids, ["wifi"])   // a locked phone and background refresh off are in the sync result now
+    XCTAssertEqual(ids, ["wifi"])   // a locked phone is in the sync result, background refresh off is a hint
+    XCTAssertEqual(SyncDiagnosis.of(i).hints.map(\.id), ["background"])
     XCTAssertEqual(SyncDiagnosis.of(i).overall, .ok)   // none of these blocks the sync
     i.serverProblem = "offline"
     XCTAssertEqual(SyncDiagnosis.of(i).overall, .attention)
@@ -141,6 +142,144 @@ final class SyncCenterTests: XCTestCase {
     i.info = activeInfo()
     i.rows = [TypeRow(type: HealthType(hk: "A", key: "a", kind: "quantity"), phone: nil, server: nil, verdict: .notCollected)]
     XCTAssertEqual(SyncDiagnosis.of(i).issues.first?.action, .openHealthApp)
+  }
+
+  // MARK: - one conclusion (FB-23: 「已同步」 next to 「同步连接失败」, scores empty for days)
+
+  /// The phone's round went through; what the headline says depends on the server's pipeline only.
+  private func uploaded(server: [String: Any], now: Date) -> SyncDiagnosis.Input {
+    var i = SyncDiagnosis.Input()
+    i.permission = .asked
+    i.info = activeInfo()
+    i.engine = EngineSnapshot(["mode": "app", "active": true, "firstSync": ["types": 3, "done": 3]])
+    i.lastOk = now.addingTimeInterval(-60)
+    i.server = ServerSyncStatus(server)
+    i.result = SyncResult.of(SyncResult.Input())
+    return i
+  }
+
+  func testUploadedWhileTheServerStillSwitchesIsProcessingNotSynced() {
+    let now = Date(timeIntervalSince1970: 1_794_200_000)
+    let s = ServerSyncStatus(["mode": "shadow", "native_app": true, "pipeline": ["computing": true, "switching": true]])
+    XCTAssertTrue(s.computing && s.switching)
+    XCTAssertFalse(ServerSyncStatus(["pipeline": ["up_to_date": true]]).computing)   // an older server: no field
+    let d = SyncDiagnosis.of(uploaded(server: ["mode": "shadow", "pipeline": ["computing": true, "switching": true]], now: now), now: now)
+    XCTAssertEqual(d.overall, .processing)
+    XCTAssertEqual(d.headline, tr("已上传，分数计算中", "Uploaded, scores being computed"))
+    XCTAssertTrue(d.issues.isEmpty && d.hints.isEmpty)   // nothing about Open Wearables, nothing "failed"
+    XCTAssertNil(SyncStuck.of(d, card: nil))              // no banner on Today either
+  }
+
+  func testUploadedInTheAppModeIsSynced() {
+    let now = Date(timeIntervalSince1970: 1_794_200_000)
+    let d = SyncDiagnosis.of(uploaded(server: ["mode": "app", "pipeline": ["up_to_date": true, "computing": false]], now: now), now: now)
+    XCTAssertEqual(d.overall, .ok)
+    XCTAssertEqual(d.headline, tr("已同步 · 1 分钟前", "Synced · 1 min ago"))
+    // a recompute queued after this upload: processing until it ran
+    let q = SyncDiagnosis.of(uploaded(server: ["mode": "app", "pipeline": ["computing": true]], now: now), now: now)
+    XCTAssertEqual(q.overall, .processing)
+  }
+
+  func testUploadFailedNeedsAttentionWhateverTheServerComputes() {
+    let now = Date(timeIntervalSince1970: 1_794_200_000)
+    var i = uploaded(server: ["mode": "app", "pipeline": ["computing": true]], now: now)
+    i.engine = EngineSnapshot(["mode": "app", "active": true, "lastStop": "failed", "firstSync": ["types": 3, "done": 3]])
+    var d = SyncDiagnosis.of(i, now: now)
+    XCTAssertEqual(d.overall, .attention)
+    XCTAssertEqual(d.issues.map(\.id), ["failed"])
+    i.engine = EngineSnapshot(["mode": "app", "active": true, "firstSync": ["types": 3, "done": 3]])
+    i.server = ServerSyncStatus(["mode": "app", "failures": ["recovered": false, "last": ["code": "too_large"]]])
+    d = SyncDiagnosis.of(i, now: now)
+    XCTAssertEqual(d.overall, .attention)
+    XCTAssertEqual(d.issues.map(\.id), ["refused"])
+    i.server = nil
+    i.serverProblem = "offline"
+    XCTAssertEqual(SyncDiagnosis.of(i, now: now).overall, .attention)
+  }
+
+  func testBackgroundRefreshOffIsAHintNotAFailure() {
+    let now = Date(timeIntervalSince1970: 1_794_200_000)
+    var i = uploaded(server: ["mode": "app", "pipeline": ["up_to_date": true]], now: now)
+    i.backgroundRefresh = false
+    var d = SyncDiagnosis.of(i, now: now)
+    XCTAssertEqual(d.overall, .ok)
+    XCTAssertEqual(d.headline, tr("已同步 · 1 分钟前", "Synced · 1 min ago"))
+    XCTAssertTrue(d.issues.isEmpty)
+    XCTAssertEqual(d.hints.map(\.id), ["background"])
+    XCTAssertEqual(d.hints.first?.action, .openSettings)
+    XCTAssertEqual(d.hints.first?.actionTitle, tr("打开设置", "Open Settings"))
+    XCTAssertTrue(SyncResult.of(SyncResult.Input()).warnings.isEmpty)   // and not in the sync result
+    i.server = ServerSyncStatus(["mode": "shadow", "pipeline": ["computing": true, "switching": true]])
+    d = SyncDiagnosis.of(i, now: now)
+    XCTAssertEqual(d.overall, .processing)
+    XCTAssertEqual(d.hints.count, 1)
+  }
+
+  // MARK: - missing days (FB-24)
+
+  func testMissingDaysParseAndLabels() {
+    let m = MissingDays(["window_days": 30, "kinds": [["key": "sleep", "label": "睡眠"], ["key": "steps", "label": "步数"]],
+                         "days": [["date": "2026-11-09", "kinds": ["sleep"]], ["date": "bad", "kinds": ["steps"]],
+                                  ["date": "2026-11-02", "kinds": ["sleep", "steps"]]], "count": 2])
+    XCTAssertEqual(m.days.map(\.date), ["2026-11-09", "2026-11-02"])
+    XCTAssertEqual(m.label("steps"), "步数")
+    XCTAssertEqual(m.label("unknown"), "unknown")
+    let cal = Self.sydney
+    let day = MissingDays.dayStart("2026-11-09", cal)!
+    XCTAssertEqual(TypeVerdict.dayString(day, cal), "2026-11-09")
+    // a night belongs to the day it ends on after 04:00 (the server's wake − 4 h); the other kinds to the day itself
+    let sleep = MissingDays.window(kind: "sleep", day: day, calendar: cal)
+    XCTAssertEqual(sleep.start, day.addingTimeInterval(4 * 3600))
+    XCTAssertTrue(sleep.byEnd)
+    XCTAssertEqual(MissingDays.window(kind: "steps", day: day, calendar: cal).end, cal.date(byAdding: .day, value: 1, to: day))
+    let now = cal.date(byAdding: .hour, value: 30, to: day)!   // 2026-11-10 06:00
+    XCTAssertEqual(MissingDays.daysBack(to: "2026-11-09", now: now, calendar: cal), 2)
+    XCTAssertEqual(MissingDays.daysBack(to: "2026-11-02", now: now, calendar: cal), 9)
+    XCTAssertEqual(Set(MissingDays.healthTypes.keys), ["sleep", "heart_rate", "hrv", "steps"])
+  }
+
+  func testMissingDayStateDoesNotPromptTwice() {
+    let now = Date(timeIntervalSince1970: 1_794_200_000)
+    let of = { (m: [String], p: [String: Bool], at: Date?, running: Bool) in
+      MissingDayState.of(missing: m, phone: p, resyncedAt: at, running: running, now: now)
+    }
+    let earlier = now.addingTimeInterval(-3600)
+    // Health has a sample of a missing kind: re-sync it
+    XCTAssertEqual(of(["sleep", "hrv"], ["sleep": true, "hrv": false], nil, false), .notSynced)
+    // Health has none of the missing kinds: the watch was not worn, not a sync problem
+    XCTAssertEqual(of(["sleep", "hrv"], ["sleep": false, "hrv": false], nil, false), .notInHealth)
+    // the phone could not tell: offer the re-sync once; after it, still missing is 「健康里也没有」
+    XCTAssertEqual(of(["steps"], [:], nil, false), .notSynced)
+    XCTAssertEqual(of(["steps"], [:], earlier, false), .notInHealth)
+    // re-synced, Health has the data, the server still has not: a label, no second prompt
+    XCTAssertEqual(of(["sleep"], ["sleep": true], earlier, false), .stillMissing)
+    // right after the re-sync the server still derives and scores: no verdict yet
+    XCTAssertEqual(of(["sleep"], ["sleep": true], now.addingTimeInterval(-60), false), .computing)
+    XCTAssertEqual(of(["sleep"], ["sleep": true], nil, true), .resyncing)
+    XCTAssertTrue(MissingDayState.notSynced.canResync)
+    XCTAssertFalse(MissingDayState.notInHealth.canResync || MissingDayState.stillMissing.canResync
+                   || MissingDayState.computing.canResync)
+  }
+
+  func testOneDayResyncJobAndRemembers() {
+    let suite = "w2w.tests.missingdays"
+    let d = UserDefaults(suiteName: suite)!
+    d.removePersistentDomain(forName: suite)
+    defer { d.removePersistentDomain(forName: suite) }
+    let s = SyncSettings(defaults: d)
+    s.resync = ResyncJob(days: 5, startedAt: Date(timeIntervalSince1970: 0), history: false, day: "2026-11-05")
+    XCTAssertEqual(s.resync?.day, "2026-11-05")
+    // a job stored by 2.0.0 (no `day`) still decodes
+    let json = #"{"days":7,"startedAt":0,"history":false,"rawDone":false,"engineDone":false}"#.data(using: .utf8)!
+    let job = try! JSONDecoder().decode(ResyncJob.self, from: json)
+    XCTAssertNil(job.day)
+    XCTAssertEqual(job.days, 7)
+    s.resyncedDays["2026-11-05"] = Date(timeIntervalSince1970: 1_794_200_000)
+    s.resyncedDays["2026-11-04"] = Date(timeIntervalSince1970: 1_794_100_000)
+    XCTAssertEqual(s.resyncedDays.keys.sorted(), ["2026-11-04", "2026-11-05"])
+    XCTAssertEqual(s.resyncedDays["2026-11-05"], Date(timeIntervalSince1970: 1_794_200_000))
+    s.clear()
+    XCTAssertTrue(s.resyncedDays.isEmpty)
   }
 
   // MARK: - one post-sync answer (the owner's report 2026-10-31)
@@ -200,7 +339,6 @@ final class SyncCenterTests: XCTestCase {
     i.lastOk = now.addingTimeInterval(-60)
     i.now = now
     i.lastStop = "locked"
-    i.backgroundRefresh = false
     let r = SyncResult.of(i)
     XCTAssertTrue(r.synced)
     XCTAssertTrue(r.problems.isEmpty)
@@ -211,8 +349,7 @@ final class SyncCenterTests: XCTestCase {
     XCTAssertEqual(SyncDiagnosis.Issue(id: "", text: "", action: .sleepFocusHelp).actionTitle, tr("怎么开", "How to turn on"))
     XCTAssertEqual(SyncResult.hintLabel("sleep_focus"), tr("要开睡眠专注", "Needs Sleep Focus"))
     XCTAssertEqual(SyncResult.sleepFocusSteps.count, 4)
-    XCTAssertEqual(r.warnings.map(\.reason), [.locked, .backgroundOff])
-    XCTAssertEqual(r.warnings.last?.action, .backgroundHelp)
+    XCTAssertEqual(r.warnings.map(\.reason), [.locked])   // background refresh off: the diagnosis's hint row (FB-23)
     // the headline agrees: 已同步, never next to a type that is not
     var d = SyncDiagnosis.Input()
     d.permission = .asked
@@ -258,7 +395,6 @@ final class SyncCenterTests: XCTestCase {
     XCTAssertEqual(SyncDiagnosis.of(d, now: now).overall, .attention)
     XCTAssertEqual(SyncDiagnosis.of(d, now: now).headline, tr("3 项没同步", "3 not synced"))
     XCTAssertFalse(SyncResult.reasonLabel(r.problems[1]).isEmpty)
-    XCTAssertEqual(SyncResult.backgroundSteps.count, 4)
   }
 
   /// A server may send an action code this app does not know yet: the row stays a quiet "nothing new" one, with the generic

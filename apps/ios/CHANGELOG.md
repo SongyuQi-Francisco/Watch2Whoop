@@ -13,6 +13,8 @@ tags it and the workflow publishes this section as the release notes. The Flutte
 
 ## 2.0.1
 
+- 同步中心只给一个结论：手机传完、服务器还在切换或算分时显示「已上传，分数计算中」，不再出现「已同步」和「同步连接失效」同时出现（FB-23）；「后台 App 刷新」关着单独一行，点一下打开本 app 的系统设置，不算同步失败。 / The sync center gives one answer: while the server switches you over or computes, it says "Uploaded, scores being computed" instead of "Synced" next to "Sync connection expired" (FB-23); Background App Refresh off is its own row that opens this app's Settings, not a sync failure.
+- 同步中心新增「最近 30 天 · 缺 N 天」：点进去按日期列出缺数据的日子和缺的类别（睡眠 / 心率 / HRV / 步数），每天可以单独重新同步，也可以全部重新同步；「健康」里本来就没有的日子标「健康里也没有」，不再提示（FB-24）。 / New in the sync center, "Last 30 days · N days missing": the days with data missing, newest first, with what is missing (sleep / heart rate / HRV / steps), a re-sync per day and one for all; days Health has nothing of either say "Not in Health" and are not prompted again (FB-24).
 - 交互更跟手：今天页打开弹层、进睡眠页、切 tab 不再先把整页重算一遍；按钮按下立刻有反馈；Jarvis 只有主按键保留液态玻璃，菜单收起时按键不再挤成一团。 / Snappier: opening a sheet or the sleep page and switching tabs no longer rebuild the whole Today page first; buttons react as soon as you press them; only the main Jarvis key stays Liquid Glass, and the menu no longer piles up when it closes.
 - 语音输入：点「完成」后文字马上出现，服务器校对好的版本随后替换（你改过就不动）。 / Voice input: your words appear as soon as you tap Done, and the server's corrected version replaces them a moment later (unless you have edited them).
 - 修复 Jarvis 有时把上一条回答再显示一遍（断线续读接到了下一问的回答上）。 / Fixed Jarvis sometimes showing a reply twice (a resumed connection picked up the next question's reply).

@@ -9,12 +9,13 @@ import Foundation
 ///   anything of a type a worn watch records daily = probably no read permission (HealthKit never says); not delivered;
 ///   or quiet: nothing new recorded on the phone (the watch not worn, no scale, on-demand like ECG, outdoor only like
 ///   VO₂ max, drinks logged in Health only, a type logged elsewhere);
-/// - the phone: the last round stopped because the phone was locked; Background App Refresh off.
+/// - the phone: the last round stopped because the phone was locked. Background App Refresh off is the diagnosis's hint
+///   row (FB-23: it is not a sync failure), not part of this answer.
 /// `synced` is true when nothing the phone has is missing on the server; the phone-side warnings and the quiet types do
 /// not change it.
 struct SyncResult: Equatable {
   enum Reason: String, Equatable {
-    case notSynced, outsideRange, notDelivered, noPermission, locked, backgroundOff, notRecorded
+    case notSynced, outsideRange, notDelivered, noPermission, locked, notRecorded
   }
 
   struct Item: Equatable, Identifiable {
@@ -30,7 +31,6 @@ struct SyncResult: Equatable {
     var rows: [TypeRow] = []
     var status: ServerDataStatus?
     var lastStop: String?
-    var backgroundRefresh = true
     var lastOk: Date?
     var now = Date()
   }
@@ -91,10 +91,6 @@ struct SyncResult: Equatable {
     if i.lastStop == "locked" {
       warnings.append(Item(id: "locked", label: tr("后台同步", "Background sync"), reason: .locked))
     }
-    if !i.backgroundRefresh {
-      warnings.append(Item(id: "background", label: tr("后台 App 刷新", "Background App Refresh"), reason: .backgroundOff,
-                           action: .backgroundHelp))
-    }
     return SyncResult(synced: problems.isEmpty, at: i.lastOk, problems: problems, warnings: warnings, quiet: quiet,
                       historyDays: historyDays)
   }
@@ -108,7 +104,6 @@ struct SyncResult: Equatable {
     case .notDelivered: return tr("没传上来", "Not delivered")
     case .noPermission: return tr("可能没开读取", "Access may be off")
     case .locked: return tr("锁屏时读不到", "Phone was locked")
-    case .backgroundOff: return tr("关着", "Off")
     case .notRecorded: return hintLabel(item.hint)
     }
   }
@@ -141,8 +136,6 @@ struct SyncResult: Equatable {
       return tr("这一项从来没收到过。iOS 不告诉 app 有没有读取权限：在「健康」→ 头像 →「App」→「Watch2Whoop」里打开它。", "Nothing of this ever arrived. iOS does not tell apps whether reading is allowed: turn it on in Health → profile → Apps → Watch2Whoop.")
     case .locked:
       return tr("iPhone 锁着时 iOS 不让 app 读「健康」。上次后台同步碰上锁屏，解锁后会自动接着传。", "iOS does not let apps read Health while the iPhone is locked. The last background sync met a locked phone; it continues once unlocked.")
-    case .backgroundOff:
-      return tr("「后台 App 刷新」关着时只有打开 app 才同步。", "With Background App Refresh off, it only syncs while the app is open.")
     case .notRecorded:
       return tr("手机上也没有更新的记录，不是同步的问题：比如没戴手表、没戴表睡觉、睡眠手腕温度要开睡眠专注和睡眠追踪才会记、没有体重秤、心电图要自己测、VO₂max 只在户外运动后估算、饮水只读「健康」里记的。体重在这里记录的也算。", "The phone has nothing newer either, so it is not a sync problem: the watch not worn (or not in bed), sleeping wrist temperature only recorded with Sleep Focus and sleep tracking on, no scale, ECGs only when you record one, VO₂ max only after outdoor workouts, water only as logged in Health. Weights logged here count too.")
     }
@@ -156,13 +149,5 @@ struct SyncResult: Equatable {
      tr("在「睡眠计划」里设好作息，点「选项」，打开「睡眠专注模式」", "Set up a Sleep Schedule, tap Options and turn on Sleep Focus"),
      tr("打开「用 Apple Watch 追踪睡眠」（也可以在「手表」App → 睡眠 里打开）", "Turn on Track Sleep with Apple Watch (also in the Watch app → Sleep)"),
      tr("睡前给手表充好电，戴着它睡觉；第一次开启后约 5 晚才会出读数", "Charge the watch before bed and wear it to sleep; values appear after about 5 nights")]
-  }
-
-  /// Steps to turn Background App Refresh on (the person does it; the app never changes settings).
-  static var backgroundSteps: [String] {
-    [tr("打开 iPhone「设置」，下滑找到「Watch2Whoop」", "Open iPhone Settings and scroll to Watch2Whoop"),
-     tr("打开「后台 App 刷新」", "Turn on Background App Refresh"),
-     tr("如果那里是灰的：「设置」→「通用」→「后台 App 刷新」→ 选「无线局域网与蜂窝网络」", "If it is greyed out: Settings → General → Background App Refresh → Wi-Fi & Cellular Data"),
-     tr("低电量模式也会暂停后台刷新", "Low Power Mode also pauses it")]
   }
 }

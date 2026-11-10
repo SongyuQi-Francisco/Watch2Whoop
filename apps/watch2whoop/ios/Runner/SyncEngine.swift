@@ -131,6 +131,15 @@ final class SyncEngine: NSObject {
     }
   }
 
+  /// Range re-sync of [start, end) (UTC seconds), e.g. one local day of the native app's missing-days list (FB-24); nil
+  /// when the engine is off. The Flutter app does not call it.
+  func startRange(start: Double, end: Double, _ done: @escaping ([String: Any]?) -> Void) {
+    queue.async {
+      let r = self.startRange(from: start, to: end, label: "day")
+      DispatchQueue.main.async { done(r) }
+    }
+  }
+
   func cancelRange() { queue.async { EngineState.saveRange(nil) } }
 
   func rearmAsync() { queue.async { self.rearm() } }
@@ -381,18 +390,24 @@ final class SyncEngine: NSObject {
   // MARK: - range re-sync (contract §8)
 
   private func startRange(_ days: Int) -> [String: Any]? {
+    let now = Date().timeIntervalSince1970
+    let start = days > 0 ? now - Double(days) * 86400 : store.earliestPermittedSampleDate().timeIntervalSince1970
+    return startRange(from: start, to: now, label: days == 0 ? "all" : "\(days) days")
+  }
+
+  private func startRange(from: Double, to: Double, label: String) -> [String: Any]? {
     let c = EngineState.config()
     guard c.active else { return nil }
     let now = Date().timeIntervalSince1970
-    var start = days > 0 ? now - Double(days) * 86400 : store.earliestPermittedSampleDate().timeIntervalSince1970
-    start = max(start, EngineLimits.epochMin, now - EngineLimits.maxRangeDays * 86400)
+    let start = max(from, EngineLimits.epochMin, now - EngineLimits.maxRangeDays * 86400)
+    let end = max(start, min(to, now))
     let types = c.readTypes()
     let rawTypes = types.filter { $0.kind == "category" || $0.kind == "workout" || ($0.kind == "quantity" && $0.raw) }.map(\.hk)
     let statsTypes = types.filter { $0.kind == "quantity" && $0.stats }.map(\.hk)
-    let r = EngineRange(id: UUID().uuidString.lowercased(), start: start, end: now, types: Array(rawTypes.prefix(100)),
+    let r = EngineRange(id: UUID().uuidString.lowercased(), start: start, end: end, types: Array(rawTypes.prefix(100)),
                         statsTypes: statsTypes, cursor: start, startedAt: now)
     EngineState.saveRange(r)
-    EngineLog.add("range started: \(days == 0 ? "all" : "\(days) days"), \(rawTypes.count)+\(statsTypes.count) types")
+    EngineLog.add("range started: \(label), \(rawTypes.count)+\(statsTypes.count) types")
     scheduleProcessingIfNeeded(c)
     return r.map
   }

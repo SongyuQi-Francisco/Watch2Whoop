@@ -33,7 +33,9 @@ endpoint instead of four (web/static/sync.js, sync-repair.js); the separate endp
 `state`: consent / off / syncing / ok / issue. The own sync engine (#219) comes in through rawdata/sync_status.collect()
 (GET /v1/users/me/sync/engine/status, the same data): its mode, the refused uploads and the derive -> scores pipeline
 (`engine_status` in the answer, codes and times only). In its app mode the OW checks are skipped and the engine's uploads
-are the phone's channel.
+are the phone's channel. A phone on the native app (2.0.0+, no OW SDK, rawdata/cutover.on_native_app) is judged the same way
+while the server still waits to switch it (FB-23); meanwhile, and while a recompute is queued or running, the state is
+syncing with the label 「已上传，分数计算中」 (`computing`).
 """
 from __future__ import annotations
 
@@ -178,20 +180,27 @@ def collect(conn: psycopg.Connection, user_id: int, now: datetime | None = None,
     today = now.astimezone(tz).date()
     eng = _engine(conn, user_id)
     engine = eng.get("mode") or "ow"
+    pipe = eng.get("pipeline") or {}
+    # A phone on the native app (2.0.0+, no OW SDK) feeds only the engine: OW's silence says nothing about it, even while
+    # the server has not switched the user yet (FB-23: 「同步连接失效」 next to the phone's 「已同步」)
+    native = engine != "app" and bool(eng.get("native_app"))
+    ow_path = engine != "app" and not native
     fails = eng.get("failures") or {}
     fail = fails.get("last") if not fails.get("recovered", True) else None
     if fail and not (fails.get("counts_24h") or {}).get(fail["reason"]):
         fail = None   # an old refusal with no upload since: the other checks (behind, not seen) say more
-    link = broken.check(conn, user_id, now, visiting=in_app)
+    link = broken.check(conn, user_id, now, visiting=in_app, mode=None if ow_path else "app")
     ch = _channels(conn, user_id)
-    ow_last = link["last_data_at"] if engine != "app" else None
+    ow_last = link["last_data_at"] if ow_path else None
     last = max((t for t in (ow_last, ch["app"], ch["shortcut"]) if t is not None), default=None)
     dev = device(conn, user_id, now)
     ref = refresh.status(conn, user_id)
     hist = history.status(conn, user_id)
     types = _types(conn, user_id, tz_name, today)
     scores = _scores(conn, user_id, today)
-    syncing = bool(ref["busy"] or hist["active"])
+    # uploads are in, the scores are not yet: the switch to the app mode waits, or a recompute is queued / running
+    computing = bool(pipe.get("switching")) or (ref["busy"] and ref["status"] in ("scores_queued", "scoring"))
+    syncing = bool(ref["busy"] or hist["active"] or computing)
 
     issue = None
     behind = last is not None and now - last > P.SYNC_LAG_AFTER
@@ -199,11 +208,11 @@ def collect(conn: psycopg.Connection, user_id: int, now: datetime | None = None,
         issue = _issue("consent", ["consent"])
     elif last is None:
         issue = _issue("not_connected", ["connect"])
-    elif (engine != "app" and (link["reason"] == "broken" or (link["reason"] == "given_up" and behind))) \
+    elif (ow_path and (link["reason"] == "broken" or (link["reason"] == "given_up" and behind))) \
             or (dev and dev.get("last_error") == "auth" and behind) \
-            or (fail and fail["reason"] == "auth" and (behind or engine == "app")):
+            or (fail and fail["reason"] == "auth" and (behind or not ow_path)):
         issue = _issue("credentials", ["reconnect"])
-    elif (engine != "app" and link["reason"] == "server_stale") or (fail and fail["reason"] == "server"):
+    elif (ow_path and link["reason"] == "server_stale") or (fail and fail["reason"] == "server"):
         issue = _issue("server", ["retry"])
     elif behind and link["reason"] == "not_seen" and not in_app:
         issue = _issue("app_closed", ["open_app"])
@@ -233,9 +242,11 @@ def collect(conn: psycopg.Connection, user_id: int, now: datetime | None = None,
     else:
         state = "syncing" if syncing else "ok"
     label = issue["label"] if state in ("issue", "consent") else {
-        "off": L("未开启同步", "Sync off"), "syncing": L("同步中", "Syncing"), "ok": L("同步正常", "Syncing normally")}[state]
+        "off": L("未开启同步", "Sync off"),
+        "syncing": L("已上传，分数计算中", "Uploaded, scores being computed") if computing else L("同步中", "Syncing"),
+        "ok": L("同步正常", "Syncing normally")}[state]
     return {
-        "state": state, "label": label, "issue": issue, "engine": engine,
+        "state": state, "label": label, "issue": issue, "engine": engine, "computing": computing,
         "setup_needed": last is None and not consent.needs_consent(conn, user_id),
         "last_sync_at": _iso(last, tz),
         "minutes_ago": int((now - last).total_seconds() // 60) if last else None,
@@ -246,8 +257,8 @@ def collect(conn: psycopg.Connection, user_id: int, now: datetime | None = None,
         "history": {"active": hist["active"], "percent": hist["percent"]},
         "coverage": _coverage(conn, user_id, now),
         "engine_status": {"mode": engine, "failure": fail and {k: fail.get(k) for k in ("reason", "code", "at", "n")},
-                          "pending_days": (eng.get("pipeline") or {}).get("pending_days"),
-                          "up_to_date": (eng.get("pipeline") or {}).get("up_to_date")},
+                          "pending_days": pipe.get("pending_days"), "up_to_date": pipe.get("up_to_date"),
+                          "native_app": native, "switching": bool(pipe.get("switching"))},
         "device": {k: (_iso(v, tz) if isinstance(v, datetime) else v) for k, v in dev.items()} if dev else None,
         "parts": {"status": ref, "health_history": hist, "connection": _connection(conn, user_id, now, link, in_app)},
     }

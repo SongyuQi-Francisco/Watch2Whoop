@@ -1,7 +1,7 @@
 """Forced re-sync from the app's sync center (flag sync_center): "send everything of the last N days again".
 
 One job per user (table sync_resync, migration 675):
-1. request(): the app asks for a range (days 1–3650, or None = all history). Refused while another job of this user is
+1. request(): the app asks for a range (days 1–3650, None = all history, or one local day: FB-24). Refused while another job of this user is
    running ('busy'), within MIN_INTERVAL of the last accepted one ('throttled', ALL_MIN_INTERVAL for all history), or
    before consent ('consent'). Accepted -> 'phone': the phone re-reads Apple Health from the start of the range (Open
    Wearables SDK re-export + the app's own types, apps/watch2whoop/lib/src/resync.dart) and reports its progress.
@@ -110,11 +110,18 @@ def range_start(today: date, days: int | None) -> date | None:
     return None if days is None else today - timedelta(days=days)
 
 
-def request(conn: psycopg.Connection, user_id: int, days: int | None) -> dict:
-    """Start a re-sync of the last `days` days (None = all). Returns status() plus accepted / reason / retry_after."""
+def request(conn: psycopg.Connection, user_id: int, days: int | None, day: date | None = None) -> dict:
+    """Start a re-sync of the last `days` days (None = all), or of one local `day` (FB-24's 「重新同步这天」: the phone
+    re-reads that day only; the server recomputes from it, `days` counts from it to today). Returns status() plus
+    accepted / reason / retry_after."""
     from ..profile import consent
     if days is not None and not 1 <= days <= P.RESYNC_MAX_DAYS:
         raise ValueError(f"days must be 1–{P.RESYNC_MAX_DAYS} or null")
+    today = datetime.now(_tz(conn, user_id)).date()
+    if day is not None:
+        if not today - timedelta(days=P.RESYNC_MAX_DAYS - 1) <= day <= today:
+            raise ValueError(f"date must be within the last {P.RESYNC_MAX_DAYS} days")
+        days = (today - day).days + 1
     if consent.gate(conn, user_id):
         return {**status(conn, user_id), "accepted": False, "reason": "consent"}
     conn.execute("INSERT INTO sync_resync (user_id) VALUES (%s) ON CONFLICT DO NOTHING", (user_id,))
@@ -123,13 +130,13 @@ def request(conn: psycopg.Connection, user_id: int, days: int | None) -> dict:
     if _running(row, now):
         conn.commit()
         return {**status(conn, user_id), "accepted": False, "reason": "busy"}
-    gap = P.RESYNC_ALL_MIN_INTERVAL if days is None else P.RESYNC_MIN_INTERVAL
+    gap = P.RESYNC_DAY_MIN_INTERVAL if day is not None else P.RESYNC_ALL_MIN_INTERVAL if days is None else P.RESYNC_MIN_INTERVAL
     if row["requested_at"] and row["requested_at"] > now - gap:
         wait = int((row["requested_at"] + gap - now).total_seconds()) + 1
         conn.commit()
         return {**status(conn, user_id), "accepted": False, "reason": "throttled", "retry_after": wait}
-    today = datetime.now(_tz(conn, user_id)).date()
-    _set(conn, user_id, status=PHONE, days=days, range_from=range_start(today, days), requested_at=now, phone_percent=0,
+    frm = day if day is not None else range_start(today, days)
+    _set(conn, user_id, status=PHONE, days=days, range_from=frm, requested_at=now, phone_percent=0,
          phone_counts=Jsonb({}), phone_done_at=None, import_from=None, import_until=None, import_cursor=None,
          finished_at=None, error=None)
     conn.commit()

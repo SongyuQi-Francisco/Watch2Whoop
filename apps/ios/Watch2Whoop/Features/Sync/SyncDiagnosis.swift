@@ -1,15 +1,18 @@
 import Foundation
 
 /// "Where is it stuck, and what can I do?" in plain words, from everything the sync center knows. Pure (unit-tested):
-/// the view shows the headline, then each issue with its one self-help button.
+/// the view shows the headline, then each issue with its one self-help button, then the hints (not a failure).
+/// One conclusion (FB-23: 「已同步」 on the phone next to 「同步连接失败」 and days of empty scores): the phone's round, the
+/// server's refusals and its pipeline together; uploaded but not scored yet is 「已上传，分数计算中」, never 「已同步」.
 struct SyncDiagnosis: Equatable {
-  enum Overall: Equatable { case ok, syncing, attention, off }
+  /// processing: everything went up, the server has not scored it yet (switching to the app mode, or a recompute).
+  enum Overall: Equatable { case ok, syncing, processing, attention, off }
 
   /// The one button an issue offers.
   enum Action: Equatable {
     case requestPermission    // the one Health sheet
     case openHealthApp        // Health → profile → Apps → Watch2Whoop
-    case openSettings         // this app's page in iOS Settings (background app refresh)
+    case openSettings         // this app's page in iOS Settings (Background App Refresh)
     case syncNow
     case retry                // ask the server again
     case signIn
@@ -18,7 +21,6 @@ struct SyncDiagnosis: Equatable {
     case retryHistory
     case resync               // re-upload the last 7 days (a type still behind right after a sync)
     case fillHistory          // the history backfill (a type older than what the sync reads)
-    case backgroundHelp       // the steps to turn Background App Refresh on (the person does it in iOS Settings)
     case sleepFocusHelp       // the steps to turn on sleep tracking / Sleep Focus for wrist temperature (FB-18; iOS has no link to it)
   }
 
@@ -39,7 +41,6 @@ struct SyncDiagnosis: Equatable {
       case .retryHistory: return tr("继续补传", "Resume")
       case .resync: return tr("重新同步", "Re-sync")
       case .fillHistory: return tr("补全历史", "Fill in history")
-      case .backgroundHelp: return tr("怎么打开", "How to")
       case .sleepFocusHelp: return tr("怎么开", "How to turn on")
       case nil: return nil
       }
@@ -67,6 +68,7 @@ struct SyncDiagnosis: Equatable {
     var lowPower = false
     var consentRequired = false
     var running = false
+    /// The phone's last round that went through (uploaded, or nothing new).
     var lastOk: Date?
     /// The post-sync answer (SyncResult): its problems make the headline, so it never says 「已同步」 next to a type
     /// that is not.
@@ -76,11 +78,15 @@ struct SyncDiagnosis: Equatable {
   let overall: Overall
   let headline: String
   let issues: [Issue]
+  /// The phone side that is not a failure now but will slow the background sync (Background App Refresh off): its own
+  /// row, never the headline.
+  let hints: [Issue]
 
-  init(overall: Overall, headline: String, issues: [Issue]) {
+  init(overall: Overall, headline: String, issues: [Issue], hints: [Issue] = []) {
     self.overall = overall
     self.headline = headline
     self.issues = issues
+    self.hints = hints
   }
 
   static func of(_ i: Input, now: Date = Date()) -> SyncDiagnosis {
@@ -131,6 +137,8 @@ struct SyncDiagnosis: Equatable {
     if let b = i.backfill, b.active, let e = b.error, !e.isEmpty {
       add("history", tr("补历史暂停了，会自动继续", "History upload paused; it continues by itself"), .retryHistory)
     }
+    let hints = i.backgroundRefresh ? []
+      : [Issue(id: "background", text: tr("后台 App 刷新已关", "Background App Refresh is off"), action: .openSettings)]
 
     let blocking: Set<String> = ["signin", "offline", "consent", "permission", "engine_off", "nothing", "refused", "failed"]
     let overall: Overall
@@ -147,6 +155,9 @@ struct SyncDiagnosis: Equatable {
     } else if let r = i.result, !r.synced {
       overall = .attention
       headline = tr("\(r.problems.count) 项没同步", "\(r.problems.count) not synced")
+    } else if i.server?.computing == true {
+      overall = .processing
+      headline = tr("已上传，分数计算中", "Uploaded, scores being computed")
     } else if let at = i.lastOk {
       overall = .ok
       headline = tr("已同步 · \(Self.ago(at, now: now))", "Synced · \(Self.ago(at, now: now))")
@@ -154,7 +165,7 @@ struct SyncDiagnosis: Equatable {
       overall = .ok
       headline = tr("同步已开启", "Sync is on")
     }
-    return SyncDiagnosis(overall: overall, headline: headline, issues: out)
+    return SyncDiagnosis(overall: overall, headline: headline, issues: out, hints: hints)
   }
 
   /// "刚刚" / "5 分钟前" / "3 小时前" / "2 天前".

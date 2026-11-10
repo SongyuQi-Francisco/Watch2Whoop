@@ -151,6 +151,48 @@ def on_native_app(conn: psycopg.Connection, user_id: int) -> bool:
     return g["ok"] and _version(g["app_version"]) >= _version(P.CUTOVER_NATIVE_APP_VERSION)
 
 
+def _primary_reachable(conn: psycopg.Connection, user_id: int) -> bool:
+    """switch() can turn the kill switch on for this user: it is on already, or its cohort is the one switch() joins."""
+    if flags.enabled(conn, user_id, EN.PRIMARY_FLAG):
+        return True
+    row = flags.rows(conn).get(EN.PRIMARY_FLAG)
+    return bool(row and row["state"] in ("cohort", "percent") and row["cohort"] == PRIMARY_COHORT)
+
+
+def native_waiting(conn: psycopg.Connection, user_id: int) -> bool:
+    """The phone is on the native app (no OW SDK) while the server still reads OW for this user, and nothing stops the
+    switch (no pin, the kill switch reachable): its uploads count only once it is switched (FB-23). The sync status says
+    「已上传，分数计算中」 meanwhile (sync/overview.py, rawdata/sync_status.py)."""
+    if not EN.enabled(conn, user_id) or EN.mode(conn, user_id) == "app":
+        return False
+    st = state(conn, user_id)
+    if st and st["pin"]:
+        return False
+    return _primary_reachable(conn, user_id) and on_native_app(conn, user_id)
+
+
+def queue_native_switch(conn: psycopg.Connection, user_id: int, app_version: str | None,
+                        now: datetime | None = None) -> bool:
+    """After an engine batch from the native app of a user still in shadow (rawdata/ingest.py): queue the user for the
+    per-minute `sync-refresh-run`, which switches them (sync/refresh.run_queued -> apply), instead of waiting for the
+    hourly `sync-mode apply`. At most once per CUTOVER_NATIVE_RETRY (sync_mode_state.checks), so a switch that keeps
+    failing does not run every minute. Commits when it queues. Returns whether it queued."""
+    if _version(app_version) < _version(P.CUTOVER_NATIVE_APP_VERSION) or not native_waiting(conn, user_id):
+        return False
+    now = now or datetime.now(timezone.utc)
+    checks = (state(conn, user_id) or {}).get("checks") or {}
+    try:
+        last = datetime.fromisoformat(checks["at"]) if checks.get("result") in ("native_queued", "blocked") else None
+    except (KeyError, TypeError, ValueError):
+        last = None
+    if last is not None and now - last < P.CUTOVER_NATIVE_RETRY:
+        return False
+    from ..sync import refresh
+    _set_state(conn, user_id, checks={"at": now, "result": "native_queued", "app_version": app_version})
+    refresh.queue_scores(conn, user_id, datetime.now(_tz(conn, user_id)).date())   # commits
+    return True
+
+
 def score_check(conn: psycopg.Connection, client, user_id: int, start: date, end: date,
                 before: dict[date, dict] | None = None, after: dict[date, dict] | None = None) -> dict:
     """Stored scores (`before`, default: daily_scores now) vs the app mode's (`after`, default: recomputed without

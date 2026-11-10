@@ -1,9 +1,11 @@
 import SwiftUI
 import UIKit
 
-/// The sync center (sync is P0): one button to turn sync on / sync now, the overall state in a word, where it is stuck in
-/// plain words with one self-help button each, the first sync's progress, the history backfill (90 days / all, continues
-/// in the background), 「立即重新同步」, and per type "not recorded / not synced". Times, counts and codes only.
+/// The sync center (sync is P0): one button to turn sync on / sync now, the overall state in a word (one conclusion, FB-23),
+/// where it is stuck in plain words with one self-help button each, the hints that are not a failure (Background App
+/// Refresh off: opens this app's Settings), the days of the last 30 with data missing (FB-24, MissingDaysView), the first
+/// sync's progress, the history backfill (90 days / all, continues in the background), 「立即重新同步」, and per type
+/// "not recorded / not synced". Times, counts and codes only.
 struct SyncCenterView: View {
   /// Opened from `watch2whoop://backfill?days=…`: start that history backfill right away (0 = all).
   var startHistory: Int?
@@ -16,10 +18,10 @@ struct SyncCenterView: View {
   @State private var showTypes = false
   @State private var showLog = false
   @State private var showResultInfo = false
-  @State private var showBackgroundHelp = false
   @State private var showSleepFocusSteps = false
   @State private var confirmResync: Int?? = nil
   @State private var coverage: BackfillCoverage?
+  @State private var missing: MissingDays?
   @State private var tick = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
   var body: some View {
@@ -35,8 +37,17 @@ struct SyncCenterView: View {
             }
           }
         }
+        if !d.hints.isEmpty {
+          RowGroup {
+            ForEach(Array(d.hints.enumerated()), id: \.element.id) { i, h in
+              if i > 0 { RowDivider(inset: 0) }
+              SyncHintRow(hint: h) { if let a = h.action { Task { await perform(a) } } }
+            }
+          }
+        }
         if let message { Banner(text: message, tone: .text) }
         if sync.server != nil && !(sync.running || sync.engine.running) { resultCard(sync.result) }
+        missingDays
         if sync.engine.active && !sync.engine.firstSyncDone { firstSync }
         history
         LocalHistoryCard(sync: session.sync)
@@ -60,7 +71,9 @@ struct SyncCenterView: View {
       await sync.reloadDetails(server: true)
       if let days = startHistory { message = await sync.startHistory(days: days) ?? tr("已开始补全历史，会在后台接着传", "History started; it carries on in the background") }
       await loadCoverage()
+      await loadMissing()
     }
+    .onChange(of: sync.job == nil) { done in if done { Task { await loadMissing() } } }
     .onReceive(tick) { _ in
       Task {
         if sync.job != nil { await sync.stepJob() }
@@ -68,7 +81,6 @@ struct SyncCenterView: View {
       }
     }
     .w2wSheet(isPresented: $showResultInfo, title: tr("同步结果说明", "About the sync result")) { resultInfo(sync.result) }
-    .w2wSheet(isPresented: $showBackgroundHelp, title: tr("打开后台 App 刷新", "Turn on Background App Refresh")) { backgroundHelp }
     .sheet(isPresented: $showConsent) {
       ConsentView(reconfirm: false) { showConsent = false; sync.consentRequired = false }
         .environmentObject(session).environmentObject(app)
@@ -93,22 +105,7 @@ struct SyncCenterView: View {
   private func statusCard(_ d: SyncDiagnosis) -> some View {
     Card {
       VStack(alignment: .leading, spacing: 14) {
-        HStack(spacing: 12) {
-          Group {
-            switch d.overall {
-            case .syncing: ProgressView().tint(Palette.text2)
-            case .ok: Icon(.circleCheck, size: 26).foregroundColor(Palette.good)
-            case .attention: Icon(.circleAlert, size: 26).foregroundColor(Palette.mid)
-            case .off: Icon(.circleAlert, size: 26).foregroundColor(Palette.text3)
-            }
-          }
-          .frame(width: 28, height: 28)
-          VStack(alignment: .leading, spacing: 2) {
-            Text(d.headline).font(Typo.heroWord).foregroundColor(Palette.text)
-            Text(tr("上次后台同步 \(SyncDiagnosis.ago(sync.engine.lastBackgroundAt))", "Last background sync \(SyncDiagnosis.ago(sync.engine.lastBackgroundAt))"))
-              .font(Typo.caption).foregroundColor(Palette.text2)
-          }
-        }
+        SyncStatusHeader(diagnosis: d, lastBackground: sync.engine.lastBackgroundAt)
         PrimaryButton(title: sync.permission == .notAsked ? tr("开启同步", "Turn on sync") : tr("立即同步", "Sync now"),
                       busy: busy || sync.running) { Task { await syncNow() } }
       }
@@ -163,7 +160,7 @@ struct SyncCenterView: View {
       VStack(alignment: .leading, spacing: 2) {
         Text(item.label).font(Typo.body).foregroundColor(Palette.text)
         Text(SyncResult.reasonLabel(item)).font(Typo.caption)
-          .foregroundColor(item.reason == .locked || item.reason == .backgroundOff ? Palette.text2 : Palette.mid)
+          .foregroundColor(item.reason == .locked ? Palette.text2 : Palette.mid)
       }
       Spacer()
       if let a = item.action, let title = SyncDiagnosis.Issue(id: item.id, text: "", action: a).actionTitle {
@@ -216,22 +213,6 @@ struct SyncCenterView: View {
           }
         }
         if showSleepFocusSteps, r.quiet.contains(where: { $0.action == .sleepFocusHelp }) { sleepFocusHelp }
-      }
-    }
-  }
-
-  /// Background App Refresh: the steps; the person changes the setting (the app only opens its Settings page).
-  private var backgroundHelp: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Text(SyncResult.explanation(.backgroundOff)).font(Typo.caption).foregroundColor(Palette.text2)
-      ForEach(Array(SyncResult.backgroundSteps.enumerated()), id: \.offset) { i, step in
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-          Text("\(i + 1)").font(Typo.bodyStrong.monospacedDigit()).foregroundColor(Palette.text2)
-          Text(step).font(Typo.body).foregroundColor(Palette.text).fixedSize(horizontal: false, vertical: true)
-        }
-      }
-      SecondaryButton(icon: .settings, title: tr("打开设置", "Open Settings"), background: Palette.surface2) {
-        if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
       }
     }
   }
@@ -311,6 +292,24 @@ struct SyncCenterView: View {
       }
       .padding(.vertical, 12)
     }
+  }
+
+  /// 「最近 30 天 · 缺 N 天」 → the list (FB-24). Nothing while the server cannot answer (an older one: no row).
+  @ViewBuilder private var missingDays: some View {
+    if let m = missing {
+      RowGroup {
+        if m.days.isEmpty {
+          MissingDaysEntry(count: 0, windowDays: m.windowDays)
+        } else {
+          NavigationLink { MissingDaysView() } label: { MissingDaysEntry(count: m.days.count, windowDays: m.windowDays) }
+            .buttonStyle(PressScale())
+        }
+      }
+    }
+  }
+
+  private func loadMissing() async {
+    if let j = try? await session.api.json(.get(Endpoint.syncMissingDays)) { missing = MissingDays(j) }
   }
 
   private func loadCoverage() async {
@@ -450,7 +449,6 @@ struct SyncCenterView: View {
       busy = true
       message = await sync.startHistory(days: sync.result.historyDays) ?? tr("已开始补全历史，会在后台接着传", "History started; it carries on in the background")
       busy = false
-    case .backgroundHelp: showBackgroundHelp = true
     case .sleepFocusHelp: showSleepFocusSteps.toggle()
     }
   }
@@ -470,6 +468,54 @@ struct SyncCenterView: View {
     let parts = l.split(separator: "\t", maxSplits: 1).map(String.init)
     guard parts.count == 2, let at = ISO8601.parse(parts[0]) else { return l }
     return "\(dayFormat.string(from: at)) \(parts[1])"
+  }
+}
+
+/// The status card's top: the state's icon, the one headline, when the background sync last ran.
+struct SyncStatusHeader: View {
+  let diagnosis: SyncDiagnosis
+  let lastBackground: Date?
+
+  var body: some View {
+    HStack(spacing: 12) {
+      Group {
+        switch diagnosis.overall {
+        case .syncing: ProgressView().tint(Palette.text2)
+        case .processing: Icon(.cloudUpload, size: 26).foregroundColor(Palette.text2)
+        case .ok: Icon(.circleCheck, size: 26).foregroundColor(Palette.good)
+        case .attention: Icon(.circleAlert, size: 26).foregroundColor(Palette.mid)
+        case .off: Icon(.circleAlert, size: 26).foregroundColor(Palette.text3)
+        }
+      }
+      .frame(width: 28, height: 28)
+      VStack(alignment: .leading, spacing: 2) {
+        Text(diagnosis.headline).font(Typo.heroWord).foregroundColor(Palette.text)
+        Text(tr("上次后台同步 \(SyncDiagnosis.ago(lastBackground))", "Last background sync \(SyncDiagnosis.ago(lastBackground))"))
+          .font(Typo.caption).foregroundColor(Palette.text2)
+      }
+    }
+  }
+}
+
+/// A hint that is not a sync failure (Background App Refresh off): its words, then its one button (this app's page in
+/// Settings, where the person turns it on; the app never changes settings).
+struct SyncHintRow: View {
+  let hint: SyncDiagnosis.Issue
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      HStack(spacing: 10) {
+        Icon(.settings, size: 18).foregroundColor(Palette.text2)
+        Text(hint.text).font(Typo.body).foregroundColor(Palette.text)
+        Spacer(minLength: 6)
+        if let t = hint.actionTitle { Text(t).font(Typo.caption).foregroundColor(Palette.text2) }
+        Icon(.chevronRight, size: 16).foregroundColor(Palette.text3)
+      }
+      .padding(.vertical, 12)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(PressScale())
   }
 }
 
