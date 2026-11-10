@@ -112,7 +112,6 @@ final class HealthSyncService: ObservableObject {
     i.rows = rows
     i.status = dataStatus
     i.lastStop = engine.lastStop
-    i.backgroundRefresh = UIApplication.shared.backgroundRefreshStatus == .available
     i.lastOk = lastOk
     return SyncResult.of(i)
   }
@@ -380,6 +379,38 @@ final class HealthSyncService: ObservableObject {
     return nil
   }
 
+  /// 「重新同步这天」 (FB-24's missing-days list): the server's job for one local day ("yyyy-MM-dd"; it recomputes from that
+  /// day), then the engine's range re-sync of that day only. Its own short throttle on the server, so several days in a row
+  /// work. nil = started.
+  func startResync(day: String, calendar: Calendar = .current) async -> String? {
+    guard attached, let api else { return tr("还没有登录", "Not signed in") }
+    guard let start = MissingDays.dayStart(day, calendar) else { return tr("日期不对", "Invalid date") }
+    guard let i = await refreshInfo() else { return tr("连不上服务器，稍后再试", "Can't reach the server; try again later") }
+    guard i.engineActive else { return tr("服务器还没为你打开 app 同步", "Your server has not turned on app sync for you") }
+    do {
+      let r = try await api.json(try .json(.post, Endpoint.ingestResync, ["date": day]))
+      if r["accepted"] as? Bool != true { return refusal(r) ?? tr("现在不能重新同步", "Re-sync is not possible right now") }
+    } catch APIError.notFound {
+      return tr("这台服务器还不支持重新同步", "This server cannot re-sync yet")
+    } catch let e as APIError {
+      return e.userMessage
+    } catch {
+      return String(describing: error)
+    }
+    let end = calendar.date(byAdding: .day, value: 1, to: start) ?? start.addingTimeInterval(86_400)
+    guard await HealthSyncBridge.Engine.startRange(start: start.timeIntervalSince1970, end: end.timeIntervalSince1970) != nil else {
+      return tr("同步引擎没开，先点「立即同步」", "The sync engine is off; tap Sync now first")
+    }
+    await raw.reset(anchorSet: "resync")
+    let days = max(1, (calendar.dateComponents([.day], from: start, to: calendar.startOfDay(for: Date())).day ?? 0) + 1)
+    let j = ResyncJob(days: days, startedAt: Date(), history: false, day: day)
+    settings.resync = j
+    job = j
+    Task { await stepJob() }
+    await reloadDetails(server: false)
+    return nil
+  }
+
   func cancelJob() async {
     if let api { _ = try? await api.data(APIRequest(method: .delete, path: Endpoint.ingestResync)) }
     if job?.history == false { SyncEngine.shared.cancelRange() }
@@ -412,6 +443,7 @@ final class HealthSyncService: ObservableObject {
     let percent = done ? 100 : max(1, min(99, ((j.rawDone ? 100 : 0) + enginePercent) / 2))
     jobPercent = percent
     if await report(percent: percent, done: done), done {
+      if let day = j.day { settings.resyncedDays.insert(day) }
       settings.resync = nil
       job = nil
       return

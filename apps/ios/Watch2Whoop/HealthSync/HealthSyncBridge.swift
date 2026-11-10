@@ -51,6 +51,11 @@ enum HealthSyncBridge {
       await withCheckedContinuation { c in SyncEngine.shared.startRange(days: days) { c.resume(returning: $0) } }
     }
 
+    /// [start, end) in UTC seconds: one local day of the missing-days list (FB-24).
+    static func startRange(start: Double, end: Double) async -> [String: Any]? {
+      await withCheckedContinuation { c in SyncEngine.shared.startRange(start: start, end: end) { c.resume(returning: $0) } }
+    }
+
     static func reset() async {
       await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in SyncEngine.shared.reset { c.resume() } }
     }

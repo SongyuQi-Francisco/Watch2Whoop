@@ -8,12 +8,24 @@ struct Watch2WhoopApp: App {
   @StateObject private var model = AppModel()
   @Environment(\.scenePhase) private var scenePhase
 
+  private var root: some View {
+    RootView()
+      .environmentObject(model)
+      .task { await model.start() }
+      .onOpenURL { model.handle(url: $0) }
+  }
+
   var body: some Scene {
     WindowGroup {
-      RootView()
-        .environmentObject(model)
-        .task { await model.start() }
-        .onOpenURL { model.handle(url: $0) }
+      #if DEBUG
+      if let shot = SyncDevShot.state {
+        SyncDevShotView(state: shot)   // simulator screenshots of the sync center with made-up data (Debug only)
+      } else {
+        root
+      }
+      #else
+      root
+      #endif
     }
     .onChange(of: scenePhase) { phase in
       // Every return to the foreground: one sync round (the phone is unlocked, so Health can be read), at most every

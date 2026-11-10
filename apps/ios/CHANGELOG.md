@@ -11,6 +11,11 @@ tags it and the workflow publishes this section as the release notes. The Flutte
 
 1.0.9 (build 10) was never released: its content ships in 2.0.0, and the `## 1.0.9` section below is a development record only. 1.0.9 从未发布：它的内容并入 2.0.0 一起发布，下面 `## 1.0.9` 一节只是开发记录。
 
+## 2.0.1
+
+- 同步中心只给一个结论：手机传完、服务器还在切换或算分时显示「已上传，分数计算中」，不再出现「已同步」和「同步连接失效」同时出现（FB-23）；「后台 App 刷新」关着单独一行，点一下打开本 app 的系统设置，不算同步失败。 / The sync center gives one answer: while the server switches you over or computes, it says "Uploaded, scores being computed" instead of "Synced" next to "Sync connection expired" (FB-23); Background App Refresh off is its own row that opens this app's Settings, not a sync failure.
+- 同步中心新增「最近 30 天 · 缺 N 天」：点进去按日期列出缺数据的日子和缺的类别（睡眠 / 心率 / HRV / 步数），每天可以单独重新同步，也可以全部重新同步；「健康」里本来就没有的日子标「健康里也没有」，不再提示（FB-24）。 / New in the sync center, "Last 30 days · N days missing": the days with data missing, newest first, with what is missing (sleep / heart rate / HRV / steps), a re-sync per day and one for all; days Health has nothing of either say "Not in Health" and are not prompted again (FB-24).
+
 ## 2.0.0
 
 第一个原生 iOS 版本：整个 app 都是 iOS 原生页面（今天、趋势、记录、饮食、朋友、我、Jarvis），打开更快、滑动更顺；打开就是上一次的数据，没网也能看，记下的内容联网后自动发出去；恢复、睡眠、负荷这些分数在你的 iPhone 上算。这一版补上了网页版里还缺的主要功能：「我」页的账号和 AI 设置、饮食和采购、训练动作库、Jarvis 的卡片、今天页和睡眠的细节、圈子成员和家人共享给你的数据；还新增了消息中心、体态分析、圈子举报 / 屏蔽和上架需要的隐私说明。从 TestFlight 直接更新就行，**不用重新登录**；1.0.8 里的设置和同步进度都会接着用。第一次打开会弹一次「健康」授权，请点「全部打开」再「允许」。服务器上开关默认关闭的功能（消息中心 `inbox`、体态分析 `posture_photos`，以及下面各包的手机计算开关）要等服务器打开以后才会出现。

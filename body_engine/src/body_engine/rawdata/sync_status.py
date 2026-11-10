@@ -79,6 +79,18 @@ def _latest_days(conn: psycopg.Connection, user_id: int, hk: list) -> dict:
     return out
 
 
+def _native(conn: psycopg.Connection, user_id: int) -> tuple[bool, bool]:
+    """(the phone's latest engine batch came from the native app, the server still has to switch the user for it to count):
+    rawdata/cutover.on_native_app / native_waiting. A failure reads as neither."""
+    from . import cutover
+    try:
+        native = cutover.on_native_app(conn, user_id)
+        return native, native and cutover.native_waiting(conn, user_id)
+    except Exception:  # noqa: BLE001  the panel must answer
+        conn.rollback()
+        return False, False
+
+
 def collect(conn: psycopg.Connection, user_id: int) -> dict:
     tz = ZoneInfo(conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()["timezone"])
     now = datetime.now(timezone.utc)
@@ -121,14 +133,17 @@ def collect(conn: psycopg.Connection, user_id: int) -> dict:
                       (user_id,)).fetchone()
     queue = conn.execute("""SELECT count(*) AS days, min(queued_at) AS oldest FROM hk_dirty_days WHERE user_id = %s""",
                          (user_id,)).fetchone()
-    ref = conn.execute("SELECT status, scored_at, scores_queued_at, error FROM sync_refresh WHERE user_id = %s",
+    ref = conn.execute("SELECT status, scored_at, scores_queued_at, error, updated_at FROM sync_refresh WHERE user_id = %s",
                        (user_id,)).fetchone() or {}
+    native, switching = _native(conn, user_id)
+    from ..sync import refresh
+    queued = ref.get("status") in ("scores_queued", "scoring") and ref["updated_at"] > now - refresh.STALE
     run = conn.execute("""SELECT trigger, result, error, started_at, duration_ms, batches, samples FROM sync_runs
                           WHERE user_id = %s ORDER BY started_at DESC LIMIT 1""", (user_id,)).fetchone()
     scored, up = ref.get("scored_at"), last["received_at"] if last else None
     ok_since_fail = bool(up and last_fail and up > last_fail["at"])
     return {
-        "mode": EN.mode(conn, user_id), "engine_enabled": engine,
+        "mode": EN.mode(conn, user_id), "engine_enabled": engine, "native_app": native,
         "last_upload": None if not last else {
             "at": _iso(last["received_at"], tz), "phase": last["phase"], "app_version": last["app_version"],
             "device": last["device"], "batches_24h": day["batches"], "bytes_24h": int(day["bytes"])},
@@ -143,7 +158,9 @@ def collect(conn: psycopg.Connection, user_id: int) -> dict:
                      "refresh_status": ref.get("status"), "scored_at": _iso(scored, tz),
                      "scores_queued_at": _iso(ref.get("scores_queued_at"), tz), "error": ref.get("error"),
                      "upload_to_score_s": round((scored - up).total_seconds()) if scored and up and scored >= up else None,
-                     "up_to_date": bool(scored and up and scored >= up and not queue["days"])},
+                     "up_to_date": bool(scored and up and scored >= up and not queue["days"]),
+                     # FB-23: the uploads are in, the scores not yet (the app shows 「已上传，分数计算中」, not 「已同步」)
+                     "switching": switching, "computing": switching or queued},
         "last_run": None if not run else {**{k: run[k] for k in ("trigger", "result", "error", "duration_ms", "batches",
                                                                  "samples")},
                                           "started_at": _iso(run["started_at"], tz)},

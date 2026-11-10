@@ -490,3 +490,80 @@ def test_readiness_report(world, dsn):
     text = RD.markdown(rep)
     assert "可以切换" in text and "app 1.0.7 < 1.0.8" in text and "连续一致 1/2 天" in text
     assert EN.NEW_ACCOUNTS_FLAG in text and "| user | 名字 |" in text
+
+
+def test_first_native_batch_switches_in_the_minute_job(world, dsn):
+    """FB-23: the first engine batch from 2.0.0 of a user still in shadow queues the switch for the per-minute
+    sync-refresh-run instead of the hourly apply. Until it ran, the status says 「已上传，分数计算中」, never the OW link's
+    「同步连接失效」 (a phone without the OW SDK sends OW nothing, so OW's silence says nothing)."""
+    from body_engine.sync import broken, refresh
+    c, fake = world["client"], world["fake"]
+    with conn_of(dsn) as conn:
+        uid = conn.execute("""INSERT INTO users (display_name, role, consent_at, consent_version, timezone, birth_date, sex,
+                                                 height_cm, ow_user_id)
+                              VALUES ('Q', 'member', '2026-10-01', '2026-10-22.1', 'Australia/Sydney', '1990-01-01', 'male',
+                                      180, 'ow-Q') RETURNING id""").fetchone()["id"]
+        flags.cohort_add(conn, uid, "beta", actor="test")
+        hq = {"Authorization": f"Bearer {auth.create_token(conn, uid, 't', ['read', 'write'])}"}
+        ow.run(conn, fake, uid, D1, D2)
+        # OW's last data is days old while the server reaches OW: on the OW channel this reads as a broken link
+        conn.execute("""UPDATE sync_state SET cursor = to_json(now() - interval '3 days') #>> '{}', last_synced_at = now()
+                        WHERE user_id = %s AND source = 'ow'""", (uid,))
+        assert broken.check(conn, uid)["reason"] == "broken"
+    b = S2.app_batches()[0]
+    b["app_version"] = "1.0.8+8"                         # the Flutter app's engine: the normal way, nothing queued
+    assert c.post("/v1/ingest/healthkit", json=b, headers=hq).status_code == 200
+    with conn_of(dsn) as conn:
+        assert CO.state(conn, uid) is None and CO.native_waiting(conn, uid) is False
+    for b in S2.app_batches():
+        b["app_version"] = "2.0.0+11"
+        r = c.post("/v1/ingest/healthkit", json=b, headers=hq)
+        assert r.status_code == 200, r.text
+    with conn_of(dsn) as conn:
+        assert EN.mode(conn, uid) == "shadow" and CO.native_waiting(conn, uid) is True
+        assert CO.state(conn, uid)["checks"]["result"] == "native_queued"
+        assert conn.execute("SELECT status FROM sync_refresh WHERE user_id = %s", (uid,)).fetchone()["status"] == "scores_queued"
+        assert CO.queue_native_switch(conn, uid, "2.0.0+11") is False          # at most once per CUTOVER_NATIVE_RETRY
+    ov = c.get("/v1/users/me/sync/overview?in_app=1", headers=hq).json()
+    assert ov["issue"] is None and ov["state"] == "syncing" and ov["computing"] is True
+    assert ov["label"] == "已上传，分数计算中"
+    assert ov["engine_status"]["native_app"] is True and ov["engine_status"]["switching"] is True
+    st = c.get("/v1/ingest/sync-status", headers=hq).json()
+    assert st["native_app"] is True and st["mode"] == "shadow"
+    assert st["pipeline"]["switching"] is True and st["pipeline"]["computing"] is True
+    with conn_of(dsn) as conn:
+        out = refresh.run_queued(conn, uid, scorer=lambda *a: {"rows": 0})
+        assert out[0]["switch"]["action"] == "switch", out
+        assert EN.mode(conn, uid) == "app" and CO.state(conn, uid)["checks"]["forced"] is True
+        assert conn.execute("SELECT status FROM sync_refresh WHERE user_id = %s", (uid,)).fetchone()["status"] == "idle"
+    st = c.get("/v1/ingest/sync-status", headers=hq).json()
+    assert st["mode"] == "app" and st["pipeline"]["switching"] is False and st["pipeline"]["computing"] is False
+    ov = c.get("/v1/users/me/sync/overview?in_app=1", headers=hq).json()
+    assert (ov["state"], ov["issue"], ov["computing"]) == ("ok", None, False)
+    # in the app mode a new batch queues the recompute (the app shows 「已上传，分数计算中」 until it ran), not a switch
+    b = S2.app_batches()[0]
+    b["app_version"] = "2.0.0+11"                        # fresh UUIDs: new samples
+    assert c.post("/v1/ingest/healthkit", json=b, headers=hq).status_code == 200
+    st = c.get("/v1/ingest/sync-status", headers=hq).json()
+    assert st["pipeline"]["computing"] is True and st["pipeline"]["switching"] is False
+    with conn_of(dsn) as conn:
+        assert CO.state(conn, uid)["checks"]["result"] != "native_queued"
+
+
+def test_native_waiting_needs_a_reachable_switch(world, dsn):
+    """A pin or a kill switch that switch() cannot turn on: nothing is queued and the status does not say 「计算中」."""
+    uid = world["ids"]["N"]
+    with conn_of(dsn) as conn:
+        if EN.mode(conn, uid) == "app":
+            CO.rollback(conn, uid, world["fake"])
+        conn.execute("UPDATE rawdata_uploads SET app_version = '2.0.0+11' WHERE user_id = %s", (uid,))
+        CO._set_state(conn, uid, pin="ow")
+        assert CO.native_waiting(conn, uid) is False
+        assert CO.queue_native_switch(conn, uid, "2.0.0+11") is False
+        CO.unpin(conn, uid)
+        flags.set_flag(conn, EN.PRIMARY_FLAG, "cohort", cohort="someone_else", actor="test")
+        flags.invalidate()
+        assert CO.native_waiting(conn, uid) is False
+        flags.set_flag(conn, EN.PRIMARY_FLAG, "cohort", cohort=CO.PRIMARY_COHORT, actor="test")
+        flags.invalidate()
+        assert CO.native_waiting(conn, uid) is True

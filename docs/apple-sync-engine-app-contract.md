@@ -131,7 +131,7 @@ app 读 HealthKit → 按类型分页 → 列式 JSON + gzip → `POST /v1/inges
                         "first_at": "…", "at": "…", "phase": "backfill", "app_version": "1.0.8"}},
   "pipeline": {"pending_days": 0, "oldest_pending_at": null, "refresh_status": "idle",
                "scored_at": "2026-11-01T19:02:40+11:00", "scores_queued_at": "…", "error": null,
-               "upload_to_score_s": 29, "up_to_date": true},
+               "upload_to_score_s": 29, "up_to_date": true, "switching": false, "computing": false},
   "last_run": {"trigger": "observer", "result": "ok", "error": null, "duration_ms": 1200, "batches": 3,
                "samples": 4200, "started_at": "…"}
 }
@@ -144,7 +144,8 @@ app 读 HealthKit → 按类型分页 → 列式 JSON + gzip → `POST /v1/inges
 | `failures.counts_24h` | 近 24 小时被拒的次数，按原因：`auth`（token 吊销 / scope 不对 / 账号停用）、`format`（太大、gzip 坏、字段不合约）、`refused`（409：同意书、引擎没开、类型暂停）、`limit`（429）、`server`（500） |
 | `failures.last` | 最近一次被拒：`code`（`token_revoked`、`token_scope`、`validation`、`contract`、`bad_gzip`、`too_large`、`consent_required`、`engine_disabled`、`type_paused`、`rate_limited`、异常类名…）、`n` = 10 分钟内同一原因合并的次数 |
 | `failures.recovered` | 最后一次失败之后有没有成功上传过（面板可以只在 `false` 时标红） |
-| `pipeline` | 收到之后到出分：待派生的天数、算分队列状态、最后一次出分时间、`upload_to_score_s`（最后一次上传到最后一次出分的秒数）、`up_to_date`（最后一次上传已经算进分数） |
+| `pipeline` | 收到之后到出分：待派生的天数、算分队列状态、最后一次出分时间、`upload_to_score_s`（最后一次上传到最后一次出分的秒数）、`up_to_date`（最后一次上传已经算进分数）；2026-11-10 起（FB-23）：`switching` = 手机已经在原生 app（2.0.0+，没有 OW SDK）上传、服务器还没把这个人切到 app 模式（每分钟任务马上切，见 `rawdata/cutover.queue_native_switch`），`computing` = `switching` 或算分在排队 / 进行中；app 在这时显示「已上传，分数计算中」，不显示「已同步」 |
+| `native_app` | 最新一批引擎上传来自原生 app（2.0.0+）；这时服务器不再按 OW 连接判断「同步连接失效」（`sync/overview.py`） |
 | `last_run` | app 通过 `runs[]` 报的最近一轮同步（触发方式、结果、耗时、批数） |
 
 未知 token 的 401 没法归到任何人，不会出现在这里（app 自己知道收到了 401）。

@@ -91,6 +91,7 @@ RECORD_ACTION = {"weight": "use_scale", "vo2max": "outdoor_workout", "ecg": "rec
 RESYNC_MAX_DAYS = 3650                          # custom range: 1–3650 days (null = all history)
 RESYNC_MIN_INTERVAL = timedelta(minutes=10)     # between accepted requests of one user
 RESYNC_ALL_MIN_INTERVAL = timedelta(hours=6)    # before an "all history" request
+RESYNC_DAY_MIN_INTERVAL = timedelta(minutes=1)  # one local day (FB-24's 「重新同步这天」): small, so several days in a row work
 RESYNC_PHONE_STALE = timedelta(hours=24)        # a phone phase without a report for this long is no longer running
 RESYNC_WINDOW_DAYS = 30                         # OW import window of the server part (same as importers/ow.WINDOW)
 RESYNC_TIME_BUDGET = 240                        # seconds per sync-refresh-run step (the next run continues)
@@ -186,3 +187,9 @@ GAP_CORE_KINDS = ("heart_rate", "hrv", "resting_heart_rate", "sleep", "steps", "
                   "respiratory_rate")
 # Sources that are a history import, not a live way in: they never make a type "regular" or end a gap.
 GAP_HISTORY_SOURCES = frozenset({"apple_export"})
+
+# Missing days (sync/missing_days.py, the app's 「缺 N 天」 list, FB-24): the last MISSING_DAYS_WINDOW full days (today is not
+# over), per day the kinds below the server has nothing of. The kinds a worn Apple Watch records every day and the scores
+# stand on (sleep and HRV: sleep / recovery; heart rate: strain; steps: activity), with the data status's labels and tables.
+MISSING_DAYS_WINDOW = 30
+MISSING_DAY_KINDS = ("sleep", "heart_rate", "hrv", "steps")
