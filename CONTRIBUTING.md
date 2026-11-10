@@ -50,12 +50,12 @@ without both languages is not merged.
 **A pull request that changes something a user can see adds one entry** to `body_engine/src/body_engine/whatsnew/entries.py`:
 the day it ships, one short spoken sentence in Chinese and in English, and optionally a link into the Today page. Every user gets
 the new entries once a week (Sunday evening, their own time zone, notification category `updates`, they can switch it off) and
-can read all of them under 我 → 设置 → 更新记录. No PR or issue numbers, flag names or technical words (`tests/test_whats_new.py`
+can read all of them under 我 → 帮助与关于 → 更新记录. No PR or issue numbers, flag names or technical words (`tests/test_whats_new.py`
 checks length and wording). A change only some people can see yet (a feature switch not on for everyone) gets its entry when it
 reaches everyone. Pure refactors, tests, docs and CI need none.
 
 每个会让用户看到变化的 PR 都在 `whatsnew/entries.py` 加一条：上线日期、中文一句、英文一句，可选一个跳转链接。用户每周日晚（按自己的时区）收到
-上周以来的新条目，也可以在「我 → 设置 → 更新记录」里看全部。条目里不写 PR 号、开关名和技术词（测试会检查）；只开给部分人的功能等对所有人开放时再写。
+上周以来的新条目，也可以在「我 → 帮助与关于 → 更新记录」里看全部。条目里不写 PR 号、开关名和技术词（测试会检查）；只开给部分人的功能等对所有人开放时再写。
 纯重构、测试、文档、CI 不用写。
 
 ## Workflow
