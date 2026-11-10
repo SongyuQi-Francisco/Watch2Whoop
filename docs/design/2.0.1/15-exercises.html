@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>动作库</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+/* Exercise library, pushed from the 动作库 face (12) or from an exercise card (swap). Each row leads with the muscle it trains
+   (mini body, front or back), so the list can be scanned as pictures. Equipment filter and 我的动作 live behind the two header buttons.
+   Rhythm (y): header 54-98 -> 8 -> search 106-146 -> 12 -> chips 158-190 -> 12 -> rows from 202 (64 each; the list scrolls). */
+.x-hd{display:flex;gap:8px}
+.x-search{margin-top:8px;height:40px;border-radius:12px;background:var(--surface);display:flex;align-items:center;gap:8px;padding:0 12px;color:var(--text3);font-size:15px}
+.x-search i{font-size:17px;color:var(--text2)}
+.x-chips{margin-top:12px;display:flex;gap:6px}
+.x-chips .chip{padding:0 11px}
+.x-list{margin-top:12px;border-top:1px solid var(--hair)}
+.x-row{display:grid;grid-template-columns:29px 1fr 12px;align-items:center;column-gap:14px;height:64px;border-bottom:1px solid var(--hair)}
+.x-th{height:58px;aspect-ratio:1/2}
+.x-nm{font-size:15px;font-weight:500}
+.x-sub{margin-top:3px;font-size:12px;font-weight:500;color:var(--text2)}
+.x-row .chev{color:var(--text3);font-size:13px}
+</style>
+</head>
+<body>
+<div class="sb">
+  <div class="sb-time">9:41</div><div class="sb-island"></div>
+  <div class="sb-sys">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M1.2 4.2a10.4 10.4 0 0 1 14.6 0"/><path d="M3.9 6.9a6.5 6.5 0 0 1 9.2 0"/><circle cx="8.5" cy="9.9" r="1.2" fill="currentColor" stroke="none"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x="0.5" y="0.5" width="23" height="12" rx="3.6" stroke="currentColor" stroke-opacity="0.4"/><rect x="2" y="2" width="20" height="9" rx="2.2" fill="currentColor"/><path d="M25 4.5v4c.9-.3 1.5-1.1 1.5-2s-.6-1.7-1.5-2z" fill="currentColor" fill-opacity="0.45"/></svg>
+  </div>
+</div>
+
+<main class="page">
+  <header class="hdr">
+    <div class="hdr-back"><i data-i="chevron-left"></i>动作库</div>
+    <div class="x-hd"><div class="icon-btn"><i data-i="star"></i></div><div class="icon-btn"><i data-i="plus"></i></div></div>
+  </header>
+
+  <div class="x-search"><i data-i="search"></i>搜索</div>
+  <div class="x-chips"><span class="chip on">全部</span><span class="chip">胸</span><span class="chip">背</span><span class="chip">腿</span><span class="chip">肩</span><span class="chip">手臂</span><span class="chip">核心</span></div>
+
+  <section class="x-list">
+    <div class="x-row"><div class="x-th" data-body="front" data-lit="chest:train deltoids:train@.45 triceps:train@.45"></div><div><div class="x-nm">卧推</div><div class="x-sub">胸 · 杠铃</div></div><i class="chev" data-i="chevron-right"></i></div>
+    <div class="x-row"><div class="x-th" data-body="front" data-lit="chest:train deltoids:train@.6"></div><div><div class="x-nm">上斜哑铃卧推</div><div class="x-sub">胸 · 哑铃</div></div><i class="chev" data-i="chevron-right"></i></div>
+    <div class="x-row"><div class="x-th" data-body="back" data-lit="upper-back:train trapezius:train@.45"></div><div><div class="x-nm">哑铃划船</div><div class="x-sub">背 · 哑铃</div></div><i class="chev" data-i="chevron-right"></i></div>
+    <div class="x-row"><div class="x-th" data-body="back" data-lit="upper-back:train"></div><div><div class="x-nm">高位下拉</div><div class="x-sub">背 · 器械</div></div><i class="chev" data-i="chevron-right"></i></div>
+    <div class="x-row"><div class="x-th" data-body="front" data-lit="quadriceps:train adductors:train@.45"></div><div><div class="x-nm">深蹲</div><div class="x-sub">腿 · 杠铃</div></div><i class="chev" data-i="chevron-right"></i></div>
+    <div class="x-row"><div class="x-th" data-body="back" data-lit="hamstring:train gluteal:train lower-back:train@.45"></div><div><div class="x-nm">罗马尼亚硬拉</div><div class="x-sub">腿 · 杠铃</div></div><i class="chev" data-i="chevron-right"></i></div>
+    <div class="x-row"><div class="x-th" data-body="front" data-lit="deltoids:train"></div><div><div class="x-nm">侧平举</div><div class="x-sub">肩 · 哑铃</div></div><i class="chev" data-i="chevron-right"></i></div>
+  </section>
+</main>
+
+<div class="jarvis"><i data-i="orbit"></i></div>
+<nav class="tabbar">
+  <div class="tab"><i data-i="circle-gauge"></i>今天</div>
+  <div class="tab"><i data-i="activity"></i>身体</div>
+  <div class="tab on"><i data-i="square-plus"></i>记录</div>
+  <div class="tab"><i data-i="users"></i>圈子</div>
+  <div class="tab"><i data-i="user"></i>我</div>
+</nav>
+<div class="home-ind"></div>
+<script src="kit.js"></script>
+<script src="../../../body_engine/src/body_engine/web/static/muscle-body-data.js"></script>
+<script src="body.js"></script>
+</body>
+</html>

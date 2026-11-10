@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=402">
-<title>饮食 · second level</title>
+<title>记录 · 饮食</title>
 <link rel="stylesheet" href="kit.css">
 <style>
-/* Food, second level (pushed from the Today 饮食 face). Same rhythm as a tab root:
+/* 记录 tab, 饮食 view (the Today 饮食 face switches here). Same rhythm as a tab root:
    header 54-98 -> 32 -> dial 130-410 -> 40 -> three readings 450-509 -> 44 -> faces 553-673 -> 49 -> key 722.
    Meals continue below the fold (vertical scroll); logging goes through the Jarvis key (camera, voice). */
 .hero{margin-top:32px}
@@ -35,7 +35,7 @@
 <main class="page">
   <!-- pushed page: back + title left, sync state right (food entries arrive from Jarvis / other devices) -->
   <header class="hdr">
-    <div class="hdr-back"><i data-i="chevron-left"></i>饮食</div>
+    <div class="seg"><span><i data-i="dumbbell"></i>训练</span><span class="on"><i data-i="soup"></i>饮食</span></div>
     <div class="sync is-ok"><i data-i="circle-check"></i>2分前</div>
   </header>
 
@@ -89,8 +89,9 @@
 </main>
 <div class="jarvis"><i data-i="orbit"></i></div>
 <nav class="tabbar">
-  <div class="tab on"><i data-i="circle-gauge"></i>今天</div>
+  <div class="tab"><i data-i="circle-gauge"></i>今天</div>
   <div class="tab"><i data-i="activity"></i>身体</div>
+  <div class="tab on"><i data-i="square-plus"></i>记录</div>
   <div class="tab"><i data-i="users"></i>圈子</div>
   <div class="tab"><i data-i="user"></i>我</div>
 </nav>

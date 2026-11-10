@@ -207,3 +207,12 @@ i[data-i]{display:inline-flex;line-height:0}
 
 /* ---------- 17. Scrim (Jarvis menu / covers only; L1 sheets of a hero do not dim the hero) ---------- */
 .scrim{position:absolute;inset:0;background:var(--scrim);z-index:65}
+
+/* ---------- 14. Segment (two views of one tab root, e.g. 记录 = 训练 | 饮食) and muscle bodies (body.js) ---------- */
+.seg{display:inline-flex;height:34px;padding:3px;border-radius:17px;background:var(--surface)}
+.seg span{display:flex;align-items:center;gap:5px;height:28px;padding:0 14px;border-radius:14px;font-size:15px;font-weight:600;color:var(--text2)}
+.seg span i{font-size:15px}
+.seg span.on{background:var(--lozenge);color:var(--text)}
+.seg.s span{padding:0 11px;font-size:13px;font-weight:500}
+.bodies{display:flex;justify-content:center;gap:6px}
+.bodies > div{aspect-ratio:1/2}

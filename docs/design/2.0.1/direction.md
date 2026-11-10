@@ -84,11 +84,14 @@ Arc draws from 12 o'clock (spring 0.6 s); numbers roll (`contentTransition(.nume
 **Maximum counts on a tab root's first glance**: 7 blocks, 15 text runs, 6 numbers, 0 sentences, 0 control rows before data, 3 hues (one state colour + sleep + train; an attention face may add its one colour), one number > 28 pt. Today holds ≤ 6 modules: 3 on the first glance, 3 below the fold (vertical scroll only, no pager).
 
 ## 4. Tabs and the six open questions
-**Bar (D1)**: 今天 `circle-gauge` · 身体 `activity` · 圈子 `users` · 我 `user` + the 58 pt Jarvis key. Flag `friends` off → 今天 · 身体 · 我 (no circles face). Food and log become second-level pages.
-1. **Bar structure** → move to D1 now. One instrument per tab only works when food and log stop competing for a tab.
+**Bar (owner decision 2026-11-11, five tabs)**: 今天 `circle-gauge` · 身体 `activity` · 记录 `square-plus` · 圈子 `users` · 我 `user` + the 58 pt Jarvis key. Flag `friends` off → four tabs without 圈子. The four-tab proposal of the first demo is withdrawn: it removed training from reach.
+1. **Bar structure** → five tabs. 记录 holds the two things the user does: 训练 and 饮食, switched by one segmented control in the header (the only control row allowed on a tab root; it replaces the date). Each view keeps the tab-root rhythm (one hero, ≤ 3 readings, 3 faces).
+   - **训练** (`12-record.html`): hero = the set ring with today's muscles inside (front + back body, MIT asset already in the app); the ring is one arc per planned set, a wider gap between exercises. Sets are the reading outside the ring. Faces: 肌肉 → weekly muscle load map (`13`), 历史 → month + session cards (`14`), 动作库 → exercise library (`15`). Tap the ring → today's session (`11`): the ring and the bodies fill set by set; each exercise card leads with its muscle thumbnail.
+   - **饮食** (`10-food.html`): the food dial, as in the first demo.
+   - Muscle colours: `train` = today's or worked muscles (opacity = share); on the weekly map `train` dim = under the weekly range, `good` = in range, `bad` = over, grey = not trained.
 2. **One Today** → yes: one base, classic retired; `ui_ai_first` off = fixed module order (体征, 饮食, 圈子). HRV and resting HR leave the first glance: they are rows 1–2 of the recovery L1 and surface as an attention face when outside the usual.
 3. **Asking** → the ask field leaves Today and 身体; the key is the one entry. Tap = chat opens directly (dial retired; camera, voice, quick log move into the composer); hold = voice.
-4. **Food** → Today face + second-level page.
+4. **Food** → Today face + the 饮食 view of the 记录 tab (the face switches to it).
 5. **Bar area** → no `tabBarMinimizeBehavior` on any page where the key is visible (the key is positioned from a fixed bar height); no bottom accessory; `scrollEdgeEffectStyle(.soft)` on iOS 26 is fine. D14 stays closed.
 6. **Tech feel** → the look is open (this file lists every change); the feeling comes from precision (ticks, light numerals, thin tracks, tabular digits, black) and crisp motion. Palette meaning unchanged.
 
@@ -123,11 +126,12 @@ Arc draws from 12 o'clock (spring 0.6 s); numbers roll (`contentTransition(.nume
 Dial: one `Canvas` pass for 100 ticks (50 under 200 pt) + `Circle().trim` arcs, `Equatable`, redrawn on day change. Gauge: `Capsule` + `Rectangle` in `GeometryReader`, whole reading is one 59 pt button. Hero L1: `.presentationDetents([.height(444), .large])` + `.presentationBackgroundInteraction(.enabled(upThrough: .height(444)))` (16.4); a tap on the background closes the sheet; the background ignores other gestures while the sheet is up. 16.0–16.3: plain dimmed sheet. Charts: `ChartSpec` bars + band + dashed `RuleMark` edges; rows reuse `Sparkline` with a band. Strain "planned" = the average strain of the last 4 sessions of today's planned type (new rule, rule-based, no AI); no plan → no dots. Usual lane = person's 30-day P25–P75 (exists for the explain sheet). VoiceOver: dial = one element ("恢复 82%，高于常态，可上强度"). Slim look: `train` becomes orange-red like `bad`; the strain gauge is never adjacent to a red mark, and the verdict word keeps recovery readable; check in a slim render before shipping.
 
 ## 8. Departures from standing decisions (owner to confirm)
-1. **D13**: three rings side by side → one recovery dial + two attached gauges. Recovery stays dominant, all three scores stay on the first glance. Comparison: `01b-today-d13.html` (same page, only the hero differs). The owner chooses.
+Owner, 2026-11-11: the overall style is approved; every further screen follows it.
+1. **D13**: three rings side by side → one recovery dial + two attached gauges. **Approved by the owner on 2026-11-11** (`01b-today-d13.html` stays only as the record of the comparison).
 2. **Look reopened** (2026-11-10 feedback): type scale, light numerals, tick scales, thinner tracks, history in ink, chart text `text2`, 8 derived tokens. No existing hex changes.
 3. **"Mini charts have no axes"** → readings carry fine tick scales (they are the scale, not an axis).
 4. **Circles card** → a pinned face (slot 3) that switches to the 圈子 tab; still permanent, still mutable.
 5. **重点 section and reason tags** → the attention slot (slot 1) and the long-press menu.
 6. **Ask field leaves Today; the Jarvis dial retires** (key tap = chat, hold = voice).
-7. **Food and log lose their tabs** (D1).
+7. ~~Food and log lose their tabs~~ **Rejected by the owner on 2026-11-11**: five tabs stay, 记录 = 训练 + 饮食 (section 4).
 8. **Hero L1 sheet does not dim the hero** (background interaction on, tap outside closes).

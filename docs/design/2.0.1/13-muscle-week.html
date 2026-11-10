@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>肌肉负荷 · 本周</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+/* Weekly muscle load, pushed from the 肌肉 face (12). One subject: the body map. Colour = state of each muscle vs its weekly range:
+   train (dim) = under, good = in range, bad = over, grey = not trained. Rows = only the muscles that need a look (max 4).
+   Rhythm (y): header 54-98 -> 10 -> bodies 108-368 (260) -> 14 -> legend 382-398 -> 18 -> 4 rows 416-592 -> 16 -> exits 608-654. */
+.m-map{margin-top:10px;display:flex;justify-content:center;gap:10px}
+.m-map > div{height:260px;aspect-ratio:1/2}
+.m-leg{margin-top:14px;height:16px;display:flex;align-items:center;justify-content:space-between}
+.m-leg .k{display:flex;gap:14px;font-size:12px;font-weight:500;color:var(--text2)}
+.m-leg .k span{display:flex;align-items:center;gap:5px}
+.m-leg .k b{width:8px;height:8px;border-radius:4px}
+.m-sum{display:flex;align-items:baseline}
+.m-rows{margin-top:18px;border-top:1px solid var(--hair)}
+.m-row{display:grid;grid-template-columns:44px 1fr 58px 12px;align-items:center;column-gap:12px;height:44px;border-bottom:1px solid var(--hair)}
+.m-nm{font-size:15px;font-weight:500}
+.m-bar{height:14px}
+.m-v{text-align:right;white-space:nowrap}
+.m-row .chev{color:var(--text3);font-size:13px}
+.exits{margin-top:16px}
+.exits .cap{background:var(--surface)}
+</style>
+</head>
+<body>
+<div class="sb">
+  <div class="sb-time">9:41</div><div class="sb-island"></div>
+  <div class="sb-sys">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M1.2 4.2a10.4 10.4 0 0 1 14.6 0"/><path d="M3.9 6.9a6.5 6.5 0 0 1 9.2 0"/><circle cx="8.5" cy="9.9" r="1.2" fill="currentColor" stroke="none"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x="0.5" y="0.5" width="23" height="12" rx="3.6" stroke="currentColor" stroke-opacity="0.4"/><rect x="2" y="2" width="20" height="9" rx="2.2" fill="currentColor"/><path d="M25 4.5v4c.9-.3 1.5-1.1 1.5-2s-.6-1.7-1.5-2z" fill="currentColor" fill-opacity="0.45"/></svg>
+  </div>
+</div>
+
+<main class="page">
+  <header class="hdr">
+    <div class="hdr-back"><i data-i="chevron-left"></i>肌肉负荷</div>
+    <div class="seg s"><span class="on">本周</span><span>4 周</span></div>
+  </header>
+
+  <section class="m-map">
+    <div data-body="front" data-lit="chest:good deltoids:bad biceps:good triceps:good abs:train@.45 obliques:train@.45 quadriceps:train@.45 forearm:good"></div>
+    <div data-body="back" data-lit="upper-back:train@.45 deltoids:bad trapezius:good triceps:good lower-back:good gluteal:train@.45 hamstring:train@.45 forearm:good"></div>
+  </section>
+
+  <section class="m-leg">
+    <div class="m-sum"><span class="t-face">9</span><span class="u">/17 达标</span></div>
+    <div class="k"><span><b style="background:var(--train);opacity:.45"></b>不足</span><span><b style="background:var(--good)"></b>达标</span><span><b style="background:var(--bad)"></b>过量</span></div>
+  </section>
+
+  <!-- only what needs a look: bar = sets this week, tinted span = this muscle's weekly range -->
+  <section class="m-rows">
+    <div class="m-row"><div class="m-nm">肩</div><div class="m-bar" data-gauge="22" data-max="28" data-target="8 16" data-tone="bad"></div><div class="m-v"><span class="t-row">22</span><span class="u">组</span></div><i class="chev" data-i="chevron-right"></i></div>
+    <div class="m-row"><div class="m-nm">背</div><div class="m-bar" data-gauge="8" data-max="28" data-target="10 20" data-tone="train"></div><div class="m-v"><span class="t-row">8</span><span class="u">组</span></div><i class="chev" data-i="chevron-right"></i></div>
+    <div class="m-row"><div class="m-nm">腿</div><div class="m-bar" data-gauge="4" data-max="28" data-target="10 20" data-tone="train"></div><div class="m-v"><span class="t-row">4</span><span class="u">组</span></div><i class="chev" data-i="chevron-right"></i></div>
+    <div class="m-row"><div class="m-nm">核心</div><div class="m-bar" data-gauge="3" data-max="28" data-target="6 12" data-tone="train"></div><div class="m-v"><span class="t-row">3</span><span class="u">组</span></div><i class="chev" data-i="chevron-right"></i></div>
+  </section>
+
+  <section class="exits">
+    <div class="cap">全部肌群<i class="chev" data-i="chevron-right"></i></div>
+    <div class="cap"><i data-i="orbit"></i>问 Jarvis</div>
+  </section>
+</main>
+
+<div class="jarvis"><i data-i="orbit"></i></div>
+<nav class="tabbar">
+  <div class="tab"><i data-i="circle-gauge"></i>今天</div>
+  <div class="tab"><i data-i="activity"></i>身体</div>
+  <div class="tab on"><i data-i="square-plus"></i>记录</div>
+  <div class="tab"><i data-i="users"></i>圈子</div>
+  <div class="tab"><i data-i="user"></i>我</div>
+</nav>
+<div class="home-ind"></div>
+<script src="kit.js"></script>
+<script src="../../../body_engine/src/body_engine/web/static/muscle-body-data.js"></script>
+<script src="body.js"></script>
+</body>
+</html>
