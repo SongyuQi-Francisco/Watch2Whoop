@@ -351,6 +351,47 @@ final class JarvisTests: XCTestCase {
     XCTAssertEqual(s.frames, 4)
     XCTAssertEqual(s.dropped, 1)
     XCTAssertEqual(s.worstMs, 1000.0 / 30, accuracy: 0.01)
+    XCTAssertEqual(s.firstMs, 0)
+    // with a start time: the wait for the first frame counts (a step that kept the main thread 120 ms)
+    let late = JarvisPerf.summarise("y", [0.12, 0.12 + 1.0 / 60], maxFps: 60, start: 0)
+    XCTAssertEqual(late.firstMs, 120, accuracy: 0.01)
+    XCTAssertEqual(late.worstMs, 120, accuracy: 0.01)
+    XCTAssertTrue(late.line.contains("first=120.0ms"))
+  }
+
+  /// 2.0.1: the menu keys never overlap the Jarvis key or each other, in any step of the dial nor on the way between two
+  /// steps, with the keys up to a tenth of the move apart (their own small delays). The old close slid all four into
+  /// the key, where they piled up for a moment.
+  func testDialKeysNeverOverlap() {
+    let c = CGPoint(x: 201, y: 700)
+    let keys = JarvisMenuKey.allCases
+    let moves: [(JarvisLayer.DialStep, JarvisLayer.DialStep)] = [(.parked, .out), (.out, .up), (.up, .folding)]
+    let grid = stride(from: 0.0, through: 1.0, by: 0.1).map { CGFloat($0) }
+    func at(_ k: JarvisMenuKey, _ m: (JarvisLayer.DialStep, JarvisLayer.DialStep), _ f: CGFloat) -> (CGPoint, CGFloat) {
+      let a = JarvisLayer.pose(k, m.0, center: c), b = JarvisLayer.pose(k, m.1, center: c)
+      let p = CGPoint(x: a.point.x + (b.point.x - a.point.x) * f, y: a.point.y + (b.point.y - a.point.y) * f)
+      return (p, JarvisLayer.subSize / 2 * (a.scale + (b.scale - a.scale) * f))
+    }
+    for m in moves {
+      for (i, k) in keys.enumerated() {
+        for f in grid {
+          let (p, r) = at(k, m, f)
+          XCTAssertGreaterThan(hypot(p.x - c.x, p.y - c.y), r + JarvisLayer.keySize / 2, "\(k) \(m) \(f) touches the Jarvis key")
+          for k2 in keys.dropFirst(i + 1) {
+            for f2 in grid where abs(f - f2) <= 0.1 + 1e-9 {
+              let (p2, r2) = at(k2, m, f2)
+              XCTAssertGreaterThan(hypot(p.x - p2.x, p.y - p2.y), r + r2, "\(k) and \(k2) overlap (\(m) \(f) \(f2))")
+            }
+          }
+        }
+      }
+    }
+    // folding = gone; up = fully there, on the arc
+    for k in keys {
+      XCTAssertEqual(JarvisLayer.pose(k, .folding, center: c).opacity, 0)
+      XCTAssertEqual(JarvisLayer.pose(k, .parked, center: c).opacity, 0)
+      XCTAssertEqual(JarvisLayer.pose(k, .up, center: c), JarvisLayer.KeyPose(point: JarvisLayer.position(k, center: c), scale: 1, opacity: 1))
+    }
   }
 }
 

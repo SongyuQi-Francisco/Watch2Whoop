@@ -82,7 +82,6 @@ final class TodayStore: ObservableObject {
   @Published private(set) var userToday: String?
 
   private var cancellable: AnyDatabaseCancellable?
-  private var lastSnapshot: TodaySnapshot?
   private weak var session: AccountSession?
 
   /// With the session the first read happens here, so the page's first body already has the cached numbers (one layout
@@ -98,11 +97,16 @@ final class TodayStore: ObservableObject {
     self.session = session
     if userToday == nil, let cur = try? session.db.doc(DocKey.todayCurrent) { userToday = TodaySnapshot.dateOf(cur) }
     let date = self.date, circlesOn = session.circlesTab, muscleOn = session.flags.contains("muscle_load")
+    let known = userToday
     cancellable?.cancel()
+    // The documents' JSON and the model are built in the observation's own queue, off the main thread (2.0.1: a sync
+    // landing while the page scrolls or a tab opens no longer costs frames); only the first value, for the first frame,
+    // is built here synchronously.
     cancellable = ValueObservation.tracking { db in try TodaySnapshot.read(db, date: date) }
       .removeDuplicates()
-      .start(in: session.db.writer, scheduling: .immediate, onError: { _ in }, onChange: { [weak self] snap in
-        self?.apply(snap, circlesOn: circlesOn, muscleOn: muscleOn)
+      .map { snap in Self.build(snap, date: date, userToday: known, circlesOn: circlesOn, muscleOn: muscleOn) }
+      .start(in: session.db.writer, scheduling: .immediate, onError: { _ in }, onChange: { [weak self] built in
+        self?.apply(built)
       })
   }
 
@@ -111,10 +115,27 @@ final class TodayStore: ObservableObject {
     cancellable = nil
   }
 
-  private func apply(_ s: TodaySnapshot, circlesOn: Bool, muscleOn: Bool) {
-    lastSnapshot = s
+  /// One database change, ready to show: the model of the day, and what the store keeps from the snapshot.
+  struct Built {
+    let model: TodayModel
+    /// The day of the today document (= the user's today when no date is selected).
+    let day: String?
+    let hasMain: Bool
+  }
+
+  private func apply(_ b: Built) {
+    if date == nil, let d = b.day { userToday = d }
+    if b.model != model { model = b.model }
+    if !hasData && b.hasMain {
+      hasData = true
+      PerfProbe.shared.firstData()
+    }
+  }
+
+  /// The page's model from one snapshot. Pure (no store state), so it runs in the observation's queue.
+  nonisolated static func build(_ s: TodaySnapshot, date: String?, userToday known: String?, circlesOn: Bool, muscleOn: Bool) -> Built {
     let mainKey = date.map(DocKey.today) ?? DocKey.todayCurrent
-    if date == nil, let d = s.day { userToday = d }
+    let userToday = date == nil ? (s.day ?? known) : known
     // M4 primary: the phone's strain target, health monitor and the today document's `scores` / `sleep` blocks
     let local = s.day.flatMap { s.docs[CoachLocal.coachKey($0)]?.json }
     var today = s.docs[mainKey]?.json
@@ -138,12 +159,7 @@ final class TodayStore: ObservableObject {
       trendsLocal: s.day.flatMap { s.docs[TrendsLocal.docKey($0)]?.json },
       sleepCoach: (local?["sleep_coach"] as? [String: Any]) ?? s.day.flatMap { s.docs[TodayDocs.sleepCoach($0)]?.json },
       muscle: muscleOn ? s.docs[RecordDocs.muscle]?.json : nil)
-    let m = TodayModel(inp)
-    if m != model { model = m }
-    if !hasData && s.docs[mainKey] != nil {
-      hasData = true
-      PerfProbe.shared.firstData()
-    }
+    return Built(model: TodayModel(inp), day: s.day, hasMain: s.docs[mainKey] != nil)
   }
 
   /// Look back at `day` (nil or the user's today = today).

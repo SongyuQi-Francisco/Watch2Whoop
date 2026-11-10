@@ -29,11 +29,19 @@ struct SheetContainer<Content: View>: View {
       .scrollDismissesKeyboard(keyboardDone ? .interactively : .automatic)
     }
     .background(Palette.sheet.ignoresSafeArea())
+    .sheetSurface()
     if keyboardDone { sheet.keyboardDoneBar() } else { sheet }
   }
 }
 
 extension View {
+  /// The sheet's own background is the page's sheet colour, not the system's (iOS 26: Liquid Glass, which samples and
+  /// blurs the page behind on every frame while the sheet moves). The content paints the same colour, so the look does
+  /// not change (2.0.1).
+  @ViewBuilder func sheetSurface(_ color: Color = Palette.sheet) -> some View {
+    if #available(iOS 16.4, *) { presentationBackground(color) } else { self }
+  }
+
   /// Medium / large detents with the grabber, the page's sheet colours.
   func w2wSheet<Content: View>(isPresented: Binding<Bool>, title: String,
                                @ViewBuilder content: @escaping () -> Content) -> some View {

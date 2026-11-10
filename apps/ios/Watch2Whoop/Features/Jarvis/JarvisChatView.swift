@@ -34,6 +34,7 @@ struct JarvisChatView: View {
       if recording { recorder } else { composer }
     }
     .background(Palette.sheet.ignoresSafeArea())
+    .sheetSurface()
     .sheet(isPresented: $history) { HistorySheet(chat: chat) }
     .sheet(item: $router.detail) { d in JarvisDetailSheet(detail: d) { router.detail = nil }.environmentObject(session) }
     .sheet(isPresented: consentShown) {

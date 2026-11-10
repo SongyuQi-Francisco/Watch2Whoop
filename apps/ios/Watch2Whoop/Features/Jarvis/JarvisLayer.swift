@@ -4,10 +4,12 @@ import UIKit
 /// The Jarvis key at the bottom centre, above the tab bar, and everything that grows out of it (#340 N6). MainTabView
 /// lays it over the tabs: `.overlay { JarvisLayer(tab: $selection) }`.
 ///
-/// - Tap (in-app AI): the menu opens like a Mission-style dial: the four keys slide out to both sides, then rise onto an
-///   arc whose centre sits below the key and grow to just under its size. No ticks, no connecting lines; one ink
-///   (the text colour), springs on transform and opacity only. iOS 26: the keys are Liquid Glass in one container, so
-///   they flow out of the key's glass; earlier systems: thin material discs with a hairline.
+/// - Tap (in-app AI): the menu opens like a Mission-style dial: the four keys appear just outside the key's rim, slide out
+///   to both sides, then rise onto an arc whose centre sits below the key and grow to just under its size. Closing
+///   folds them a third of the way back while they fade, so no key ever touches the Jarvis key or another key
+///   (`pose`, tested). No ticks, no connecting lines; one ink (the text colour), springs on transform and opacity only.
+///   Only the Jarvis key is Liquid Glass (iOS 26; a thin material disc before): the menu keys are plain discs with a
+///   hairline over the wash, which costs nothing to draw while they move (2.0.1).
 /// - Hold (0.35 s): talk at once, recognised on the phone. Slide up-left = cancel, up-right = lock (hands free, then
 ///   完成). Release = done: Chinese is finalised by the server's recogniser, English stays on the phone; both are
 ///   corrected with the user's own terms, then go to the chat.
@@ -21,9 +23,8 @@ struct JarvisLayer: View {
   @Environment(\.colorScheme) private var scheme
 
   // dial
-  @State private var spread = [Bool](repeating: false, count: 4)
-  @State private var lift = [Bool](repeating: false, count: 4)
-  /// The keys exist only while the dial is out (glass keys parked under the Jarvis key would still be composited).
+  @State private var steps = [DialStep](repeating: .parked, count: 4)
+  /// The keys exist only while the dial is out.
   @State private var present = false
   @State private var gen = 0
   // press / hold
@@ -125,6 +126,40 @@ struct JarvisLayer: View {
     return CGPoint(x: c.x + CGFloat(sin(r)) * arcRadius, y: c.y + arcDrop - CGFloat(cos(r)) * arcRadius)
   }
 
+  /// The steps of a menu key: inserted invisible just outside the key's rim, out to its side, up on the arc, folding away.
+  enum DialStep: Equatable { case parked, out, up, folding }
+
+  struct KeyPose: Equatable {
+    var point: CGPoint
+    var scale: CGFloat
+    var opacity: Double
+  }
+
+  /// How far out of the key's rim a menu key is parked (inner keys) and how far the outer keys start beyond them.
+  static let parkGap: CGFloat = 4
+  static let parkStagger: CGFloat = 22
+  /// The part of the way back to the key a folding key travels (it is gone before it could touch anything).
+  static let foldTravel: CGFloat = 0.35
+
+  /// Where a menu key is drawn in each step. The keys never overlap the Jarvis key or each other in any step, nor on the
+  /// way between steps (JarvisTests): the old close slid them all into the key, where they piled up for a moment.
+  static func pose(_ k: JarvisMenuKey, _ step: DialStep, center c: CGPoint) -> KeyPose {
+    let p = position(k, center: c)
+    let side: CGFloat = k.degrees < 0 ? -1 : 1
+    let outer = abs(k.degrees) > 50
+    switch step {
+    case .parked:
+      let dx = keySize / 2 + subSize * 0.3 / 2 + parkGap + (outer ? parkStagger : 0)
+      return KeyPose(point: CGPoint(x: c.x + side * dx, y: c.y), scale: 0.3, opacity: 0)
+    case .out:
+      return KeyPose(point: CGPoint(x: p.x, y: c.y), scale: 0.6, opacity: 1)
+    case .up:
+      return KeyPose(point: p, scale: 1, opacity: 1)
+    case .folding:
+      return KeyPose(point: CGPoint(x: p.x + (c.x - p.x) * foldTravel, y: p.y + (c.y - p.y) * foldTravel), scale: 0.6, opacity: 0)
+    }
+  }
+
   // MARK: - layers
 
   @ViewBuilder private var scrim: some View {
@@ -143,43 +178,30 @@ struct JarvisLayer: View {
     }
   }
 
-  @ViewBuilder private func keys(_ c: CGPoint) -> some View {
-    #if compiler(>=6.2)   // the iOS 26 SDK; an older Xcode builds the material keys only
-    if #available(iOS 26.0, *), !JarvisDemo.forceMaterial {
-      GlassEffectContainer(spacing: 18) { keyStack(c, glass: true) }
-    } else {
-      keyStack(c, glass: false)
-    }
-    #else
-    keyStack(c, glass: false)
-    #endif
-  }
-
-  private func keyStack(_ c: CGPoint, glass: Bool) -> some View {
+  /// The menu keys under the Jarvis key. Only the Jarvis key itself is glass, on its own (no container: nothing can
+  /// merge into it).
+  private func keys(_ c: CGPoint) -> some View {
     ZStack(alignment: .topLeading) {
       ForEach(Array(JarvisMenuKey.allCases.enumerated()), id: \.element) { i, k in
-        let p = Self.position(k, center: c)
-        let x = spread[i] ? p.x : c.x
-        let y = lift[i] ? p.y : c.y
-        let scale: CGFloat = lift[i] ? 1 : (spread[i] ? 0.6 : 0.3)
         if present {
-          subKey(k, glass: glass)
-            .scaleEffect(scale)
-            .opacity(spread[i] ? 1 : 0)
-            .position(x: x, y: y)
-            .allowsHitTesting(lift[i])
+          let pose = Self.pose(k, steps[i], center: c)
+          subKey(k)
+            .scaleEffect(pose.scale)
+            .opacity(pose.opacity)
+            .position(pose.point)
+            .allowsHitTesting(steps[i] == .up)
             .accessibilityHidden(!router.menuOpen)
         }
       }
-      mainKey(glass: glass).position(c)
+      mainKey(glass: !JarvisDemo.forceMaterial).position(c)
     }
   }
 
-  /// The keys' names, outside the glass container (glass would refract them) and only while the keys are up.
+  /// The keys' names, only while the keys are up.
   private func labels(_ c: CGPoint) -> some View {
     ZStack(alignment: .topLeading) {
       ForEach(Array(JarvisMenuKey.allCases.enumerated()), id: \.element) { i, k in
-        if lift[i] {
+        if steps[i] == .up {
           let p = Self.position(k, center: c)
           Text(k.title)
             .font(.system(size: 11, weight: .semibold)).foregroundColor(ink)
@@ -193,7 +215,7 @@ struct JarvisLayer: View {
     .accessibilityHidden(true)
   }
 
-  private func subKey(_ k: JarvisMenuKey, glass: Bool) -> some View {
+  private func subKey(_ k: JarvisMenuKey) -> some View {
     Button {
       JarvisHaptics.light.impactOccurred()
       router.run(k)
@@ -201,7 +223,7 @@ struct JarvisLayer: View {
       Icon(k.icon, size: 21).foregroundColor(ink)
         .frame(width: Self.subSize, height: Self.subSize)
         .contentShape(Circle())
-        .modifier(KeySurface(glass: glass, filled: false, ink: ink, dark: scheme == .dark))
+        .modifier(KeySurface(style: .plain, filled: false, ink: ink, dark: scheme == .dark))
     }
     .buttonStyle(PressScale())
     .accessibilityLabel(k.title)
@@ -221,7 +243,7 @@ struct JarvisLayer: View {
       .foregroundColor(rec ? Palette.bg : ink)
       .frame(width: Self.keySize, height: Self.keySize)
       .contentShape(Circle())
-      .modifier(KeySurface(glass: glass, filled: rec, ink: ink, dark: scheme == .dark))
+      .modifier(KeySurface(style: glass ? .glass : .material, filled: rec, ink: ink, dark: scheme == .dark))
       .overlay(   // the hold ring: fills while the finger stays down, then talking starts
         Circle().trim(from: 0, to: holdFill).stroke(ink, style: StrokeStyle(lineWidth: 2, lineCap: .round))
           .rotationEffect(.degrees(-90)).frame(width: Self.keySize + 10, height: Self.keySize + 10).allowsHitTesting(false)
@@ -249,37 +271,44 @@ struct JarvisLayer: View {
     gen += 1
     JarvisPerf.shared.measure("jarvis-open", seconds: 0.6)
     JarvisHaptics.light.impactOccurred()
-    present = true
-    if reduceMotion {
-      spread = [true, true, true, true]
-      lift = spread
-      return
+    var parked = Transaction()
+    parked.disablesAnimations = true
+    withTransaction(parked) {
+      steps = [DialStep](repeating: reduceMotion ? .up : .parked, count: 4)
+      present = true
     }
+    if reduceMotion { return }
     // 1. out to both sides (outer keys a hair first, so the pair reads as one movement); the keys were just inserted
-    //    at the centre, so the move starts on the next frame
+    //    at the key's rim, so the move starts on the next frame
     later(0) {
       for (i, k) in JarvisMenuKey.allCases.enumerated() {
         let outer = abs(k.degrees) > 50
-        withAnimation(.spring(response: 0.22, dampingFraction: 0.92).delay(outer ? 0 : 0.015)) { spread[i] = true }
+        withAnimation(.spring(response: 0.22, dampingFraction: 0.92).delay(outer ? 0 : 0.015)) { steps[i] = .out }
       }
     }
     // 2. up onto the arc, growing to size with a little overshoot
     later(0.1) {
       for (i, k) in JarvisMenuKey.allCases.enumerated() {
         let outer = abs(k.degrees) > 50
-        withAnimation(.spring(response: 0.34, dampingFraction: 0.68).delay(outer ? 0.03 : 0)) { lift[i] = true }
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.68).delay(outer ? 0.03 : 0)) { steps[i] = .up }
       }
     }
   }
 
+  /// All four keys at once: back a third of the way and gone in 0.16 s, then out of the tree.
   private func runClose() {
     gen += 1
     JarvisPerf.shared.measure("jarvis-close", seconds: 0.4)
-    let a: Animation? = reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.92)
-    withAnimation(a) { lift = [false, false, false, false] }
-    later(reduceMotion ? 0 : 0.06) { withAnimation(a) { spread = [false, false, false, false] } }
-    later(reduceMotion ? 0 : 0.4) { present = false }
+    withAnimation(reduceMotion ? nil : .easeOut(duration: Self.foldSeconds)) {
+      steps = [DialStep](repeating: .folding, count: 4)
+    }
+    later(reduceMotion ? 0 : Self.foldSeconds + 0.02) {
+      present = false
+      steps = [DialStep](repeating: .parked, count: 4)
+    }
   }
+
+  static let foldSeconds = 0.16
 
   // MARK: - press: tap / hold to talk
 
@@ -588,18 +617,35 @@ struct JarvisLayer: View {
   #endif
 }
 
-/// The disc under a key: system Liquid Glass on iOS 26+, otherwise a thin material with a hairline in the ink.
+/// The disc under a key. `glass`: system Liquid Glass on iOS 26+ (the Jarvis key only; not `.interactive()`: the key's
+/// own press scale is the feedback, so a tap gets one crisp response instead of two), a thin material before;
+/// `material`: the thin material with a hairline in the ink; `plain`: the page colour with the hairline (the menu keys,
+/// over the wash: nothing behind them to blur). Filled (recording) is solid ink in every style: tinted glass would
+/// refract the panel's words into the key.
 struct KeySurface: ViewModifier {
-  let glass: Bool
+  enum Style: Equatable { case glass, material, plain }
+  let style: Style
   let filled: Bool
   let ink: Color
   let dark: Bool
 
   @ViewBuilder func body(content: Content) -> some View {
-    #if compiler(>=6.2)
-    if #available(iOS 26.0, *), glass, !filled {
-      content.glassEffect(Glass.regular.interactive(), in: Circle())
-    } else {   // filled (recording) is solid ink: tinted glass would refract the panel's words into the key
+    if filled || style == .material {
+      material(content)
+    } else if style == .plain {
+      content
+        .background(Circle().fill(Palette.bg))
+        .overlay(Circle().strokeBorder(ink.opacity(0.8), lineWidth: 1))
+    } else {
+      glass(content)
+    }
+  }
+
+  @ViewBuilder private func glass(_ content: Content) -> some View {
+    #if compiler(>=6.2)   // the iOS 26 SDK; an older Xcode builds the material key only
+    if #available(iOS 26.0, *) {
+      content.glassEffect(Glass.regular, in: Circle())
+    } else {
       material(content)
     }
     #else
