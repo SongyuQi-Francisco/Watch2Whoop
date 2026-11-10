@@ -17,6 +17,8 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 18766
+# Seconds /transcribe and /voice-fix take (W2W_FAKE_ASR_DELAY=2.5 stands in for the server's recogniser; default 0)
+ASR_DELAY = float(os.environ.get("W2W_FAKE_ASR_DELAY") or 0)
 STATE = {"choice": "fallback", "consent": True, "conversations": []}
 
 
@@ -175,9 +177,11 @@ class H(BaseHTTPRequestHandler):
             STATE["consent"] = True
             return self.json({"consent": True})
         if p == "/v1/assistant/voice-fix":
+            time.sleep(ASR_DELAY)
             return self.json({"text": b.get("text", ""), "fixed": []})
         if p == "/v1/assistant/transcribe":
             self.rfile.read(int(self.headers.get("content-length") or 0))
+            time.sleep(ASR_DELAY)
             return self.json({"text": "今天睡得不错，练腿四十分钟", "seconds": 3})
         return self.json({"detail": "not here"}, 404)
 

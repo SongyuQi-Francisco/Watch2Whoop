@@ -53,6 +53,19 @@ final class JarvisPerf: NSObject {
     link = l
   }
 
+  /// A duration (not frames): `W2W_PERF <name> ms=…` from `since` (CACurrentMediaTime) to now, e.g. 完成 → the text in the
+  /// box (voice). Kept in `marks` for the demo's summary.
+  func mark(_ name: String, since: CFTimeInterval) {
+    guard enabled else { return }
+    let ms = (CACurrentMediaTime() - since) * 1000
+    marks.append((name, ms))
+    let line = String(format: "W2W_PERF %@ ms=%.0f", name, ms)
+    log.info("\(line, privacy: .public)")
+    print(line)
+  }
+
+  private(set) var marks: [(String, Double)] = []
+
   @objc private func tick(_ l: CADisplayLink) {
     stamps.append(l.timestamp)
     if l.timestamp >= until { finish() }
@@ -95,7 +108,11 @@ final class JarvisPerf: NSObject {
 /// - `script`: nothing but the scripted recogniser (UI tests drive the key with real touches);
 /// - `open`: open the dial and leave it open; `hold`: start holding and stay; `chat`: open the chat and ask a quick question;
 /// - `posture`: the chat with the posture sheet open; `posture-filled`: with three made-up photos in it;
-///   `posture-send`: send three made-up photos and the prefilled question (flat colours, no person in them).
+///   `posture-send`: send three made-up photos and the prefilled question (flat colours, no person in them);
+/// - `voice`: talk three times through the key (hold, release) and three times through the chat's own microphone (完成),
+///   logging `voice-key-done-to-text` / `voice-chat-done-to-text` (the scripted recogniser behaves like the phone's: no
+///   final result, so `stop` waits as on a phone, and a Chinese WAV goes to /transcribe; the fake server's
+///   `W2W_FAKE_ASR_DELAY=<s>` stands in for the real recogniser's time).
 /// `W2W_JARVIS_MATERIAL=1` draws the pre-iOS 26 material keys on iOS 26 too (to compare).
 enum JarvisDemo {
   struct Hooks {
@@ -109,6 +126,8 @@ enum JarvisDemo {
   static var scriptedVoice: Bool { mode != nil }
   static var forceMaterial: Bool { ProcessInfo.processInfo.environment["W2W_JARVIS_MATERIAL"] != nil }
   private static var ran = false
+  /// The chat's own microphone, while the chat is open (start / 完成), for the `voice` demo.
+  static var chatMic: (start: () -> Void, done: () -> Void)?
 
   static func postureFlow() -> PostureFlow {
     var f = PostureFlow()
@@ -154,6 +173,31 @@ enum JarvisDemo {
         router.present(.chat)
         await sec(1)
         router.chat?.send(PostureFlow.question, attachments: postureFlow().attachments, purpose: PostureFlow.purpose)
+      case "voice":
+        for _ in 0..<3 {
+          let c = h.center()
+          h.press(c)
+          await sec(2)
+          h.release(c)
+          await sec(7)
+          router.sheet = nil
+          await sec(1)
+        }
+        router.present(.chat)
+        await sec(1.5)
+        for _ in 0..<3 {
+          chatMic?.start()
+          await sec(2)
+          chatMic?.done()
+          await sec(7)
+          router.chat?.draft = ""
+          await sec(0.5)
+        }
+        for name in ["voice-key-done-to-text", "voice-chat-done-to-text"] {
+          let ms = JarvisPerf.shared.marks.filter { $0.0 == name }.map(\.1)
+          guard !ms.isEmpty else { continue }
+          print(String(format: "W2W_PERF summary %@ n=%d avg=%.0fms max=%.0fms", name, ms.count, ms.reduce(0, +) / Double(ms.count), ms.max() ?? 0))
+        }
       case "hold":
         h.press(h.center())
         await sec(1.5)

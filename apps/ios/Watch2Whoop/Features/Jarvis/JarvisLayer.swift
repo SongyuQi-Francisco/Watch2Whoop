@@ -443,6 +443,7 @@ struct JarvisLayer: View {
       return
     }
     withAnimation(.easeOut(duration: 0.15)) { mode = .final }
+    let t0 = CACurrentMediaTime()
     Task {
       let out = await voice.stop()
       guard mode == .final else { return }
@@ -460,6 +461,7 @@ struct JarvisLayer: View {
       endVoice(message: nil)
       JarvisHaptics.notice.notificationOccurred(.success)
       router.deliverVoice(text, seconds: out?.seconds ?? 0)
+      JarvisPerf.shared.mark("voice-key-done-to-text", since: t0)
     }
   }
 

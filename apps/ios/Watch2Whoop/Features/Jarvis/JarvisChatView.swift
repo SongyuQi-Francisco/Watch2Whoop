@@ -1,4 +1,5 @@
 import PhotosUI
+import QuartzCore
 import SwiftUI
 
 /// The Jarvis chat (the page's ai.js panel, native): the answer streams in and is drawn as Markdown, cards are native
@@ -35,6 +36,11 @@ struct JarvisChatView: View {
     }
     .background(Palette.sheet.ignoresSafeArea())
     .sheetSurface()
+    .onAppear {
+      #if DEBUG
+      JarvisDemo.chatMic = (start: { startRecording() }, done: { Task { await stopRecording() } })
+      #endif
+    }
     .sheet(isPresented: $history) { HistorySheet(chat: chat) }
     .sheet(item: $router.detail) { d in JarvisDetailSheet(detail: d) { router.detail = nil }.environmentObject(session) }
     .sheet(isPresented: consentShown) {
@@ -333,12 +339,14 @@ struct JarvisChatView: View {
   }
 
   private func stopRecording() async {
+    let t0 = CACurrentMediaTime()
     let out = await voice.stop()
     recording = false
     var text = out?.text ?? ""
     if let wav = out?.wav, let t = await chat.transcribe(wav: wav) { text = t } else if !text.isEmpty { text = await chat.voiceFix(text) }
     guard !text.isEmpty else { return }
     chat.draft = chat.draft.isEmpty ? text : "\(chat.draft)\n\(text)"
+    JarvisPerf.shared.mark("voice-chat-done-to-text", since: t0)
   }
 
   private func addPicked(_ items: [PhotosPickerItem]) async {

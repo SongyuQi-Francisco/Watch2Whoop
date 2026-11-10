@@ -92,7 +92,7 @@ final class JarvisVoice: ObservableObject {
   func start(lang: String, keepAudio: Bool) async throws {
     teardown()
     #if DEBUG && targetEnvironment(simulator)
-    if JarvisDemo.scriptedVoice { startScript(); return }
+    if JarvisDemo.scriptedVoice { scriptKeepsAudio = keepAudio; startScript(); return }
     #endif
     guard await Self.authorize() else { throw Failure.permission }
     guard let loc = Self.locale(for: lang), let rec = SFSpeechRecognizer(locale: loc), rec.isAvailable else {
@@ -157,7 +157,7 @@ final class JarvisVoice: ObservableObject {
     guard running else { return nil }
     let seconds = elapsed
     #if DEBUG && targetEnvironment(simulator)
-    if JarvisDemo.scriptedVoice { let t = partial; teardown(); return t.isEmpty ? nil : Result(text: t, seconds: seconds, wav: nil) }
+    if JarvisDemo.scriptedVoice { return await stopScript(seconds: seconds) }
     #endif
     stopAudio()
     request?.endAudio()
@@ -262,6 +262,26 @@ final class JarvisVoice: ObservableObject {
   /// Simulator debug builds with the demo on (`JarvisDemo`): a scripted recogniser with the real one's events, so the
   /// hold-to-talk gestures can be recorded without a microphone or the permission sheet.
   private var script: Timer?
+  private var scriptKeepsAudio = false
+
+  /// Like a phone's recogniser after `endAudio`: no final result, so the last partial text after `finalWait`; Chinese
+  /// also gives a WAV (silence of the same length) for /transcribe.
+  private func stopScript(seconds: Double) async -> Result? {
+    script?.invalidate()
+    script = nil
+    let r = run
+    let text: String = await withCheckedContinuation { c in
+      finishing = c
+      DispatchQueue.main.asyncAfter(deadline: .now() + Self.finalWait) { [weak self] in
+        guard let self, self.run == r else { return }
+        self.finish(self.partial)
+      }
+    }
+    let wav = scriptKeepsAudio ? Self.wav(Data(count: Int(seconds * 16000) * 2)) : nil
+    teardown()
+    return text.isEmpty && wav == nil ? nil : Result(text: text, seconds: seconds, wav: wav)
+  }
+
   private func startScript() {
     let words = [tr("今天", "Slept"), tr("今天睡得", "Slept well"), tr("今天睡得不错", "Slept well, legs"),
                  tr("今天睡得不错，练腿", "Slept well, legs today"), tr("今天睡得不错，练腿四十分钟", "Slept well, legs for forty minutes")]
