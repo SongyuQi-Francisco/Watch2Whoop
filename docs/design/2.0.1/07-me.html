@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>我 · first glance</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+/* 我 tab root. No attached readings: header 54-98 -> 32 -> hero 130-410 -> 40 -> faces 450-570 (the readings slot) -> 44 ->
+   rows from 614 (group 1 of 4; the list scrolls on under the glass bar; labels left, values right, nothing in the key's column).
+   Hero = sync dial: 30 batons = the last 30 days (oldest right of 12 o'clock, yesterday left of it), ink = complete,
+   mid = missing; centre = complete days + one quiet verdict. Tap = sync center. Rows (4 groups / 9 rows) start below the fold. */
+.hero{margin-top:32px}
+.faces{margin-top:40px}
+.group{margin-top:44px}
+.li .v{font-size:15px}
+/* iOS 26 soft scroll edge (system, scrollEdgeEffectStyle .soft): the list fades as it runs under the bar; drawn here as a mask */
+.p-fold{-webkit-mask-image:linear-gradient(to bottom,#000 0,#000 46px,transparent 104px);mask-image:linear-gradient(to bottom,#000 0,#000 46px,transparent 104px)}
+.p-acct{display:flex;align-items:center;gap:9px;font-size:17px;font-weight:600;letter-spacing:-0.2px}
+.p-acct .p-av{width:30px;height:30px;border-radius:15px;background:var(--surface2);display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:600;color:var(--text)}
+.p-acct i{font-size:13px;color:var(--text3);margin-left:-3px}
+.p-sync{position:absolute;left:50%;top:0;width:280px;height:280px;margin-left:-140px}
+.verdict{margin-top:14px}
+.av i{font-size:11px}
+</style>
+</head>
+<body>
+
+<div class="sb">
+  <div class="sb-time">9:41</div><div class="sb-island"></div>
+  <div class="sb-sys">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M1.2 4.2a10.4 10.4 0 0 1 14.6 0"/><path d="M3.9 6.9a6.5 6.5 0 0 1 9.2 0"/><circle cx="8.5" cy="9.9" r="1.2" fill="currentColor" stroke="none"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x="0.5" y="0.5" width="23" height="12" rx="3.6" stroke="currentColor" stroke-opacity="0.4"/><rect x="2" y="2" width="20" height="9" rx="2.2" fill="currentColor"/><path d="M25 4.5v4c.9-.3 1.5-1.1 1.5-2s-.6-1.7-1.5-2z" fill="currentColor" fill-opacity="0.45"/></svg>
+  </div>
+</div>
+
+<main class="page">
+  <!-- header: account (tap = 个人资料) | sync capsule (tap = sync now, long press = sync center) -->
+  <header class="hdr">
+    <div class="p-acct"><span class="p-av">林</span>小林<i data-i="chevron-right"></i></div>
+    <div class="sync is-ok"><i data-i="circle-check"></i>2分前</div>
+  </header>
+
+  <!-- HERO: sync dial (tap = sync center). Two missing days a week ago (11/2, 11/3), phone still has them. -->
+  <section class="hero">
+    <svg class="p-sync" width="280" height="280" viewBox="0 0 280 280" fill="none"><circle cx="140" cy="140" r="133" stroke="var(--track)" stroke-width="1.5"/><line x1="140" y1="40.6" x2="140" y2="12.6" stroke="var(--tick-major)" stroke-width="1.5" stroke-linecap="round"/><line x1="151.39" y1="31.68" x2="152.85" y2="17.75" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="173.66" y1="36.41" x2="177.98" y2="23.1" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="194.46" y1="45.67" x2="201.46" y2="33.55" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="212.88" y1="59.06" x2="222.25" y2="48.65" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="228.12" y1="75.98" x2="239.44" y2="67.75" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="239.5" y1="95.7" x2="252.29" y2="90" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="246.54" y1="117.35" x2="260.23" y2="114.44" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="248.92" y1="140" x2="262.92" y2="140" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="246.54" y1="162.65" x2="260.23" y2="165.56" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="239.5" y1="184.3" x2="252.29" y2="190" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="228.12" y1="204.02" x2="239.44" y2="212.25" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="212.88" y1="220.94" x2="222.25" y2="231.35" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="194.46" y1="234.33" x2="201.46" y2="246.45" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="173.66" y1="243.59" x2="177.98" y2="256.9" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="151.39" y1="248.32" x2="152.85" y2="262.25" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="128.61" y1="248.32" x2="127.15" y2="262.25" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="106.34" y1="243.59" x2="102.02" y2="256.9" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="85.54" y1="234.33" x2="78.54" y2="246.45" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="67.12" y1="220.94" x2="57.75" y2="231.35" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="51.88" y1="204.02" x2="40.56" y2="212.25" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="40.5" y1="184.3" x2="27.71" y2="190" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="33.46" y1="162.65" x2="19.77" y2="165.56" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="31.08" y1="140" x2="17.08" y2="140" stroke="var(--mid)" stroke-width="3.33" stroke-linecap="round"/><line x1="33.46" y1="117.35" x2="19.77" y2="114.44" stroke="var(--mid)" stroke-width="3.33" stroke-linecap="round"/><line x1="40.5" y1="95.7" x2="27.71" y2="90" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="51.88" y1="75.98" x2="40.56" y2="67.75" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="67.12" y1="59.06" x2="57.75" y2="48.65" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="85.54" y1="45.67" x2="78.54" y2="33.55" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="106.34" y1="36.41" x2="102.02" y2="23.1" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/><line x1="128.61" y1="31.68" x2="127.15" y2="17.75" stroke="var(--tick-major)" stroke-width="2.66" stroke-linecap="round"/></svg>
+    <div class="dial-core">
+      <div class="hero-label">同步天数</div>
+      <div class="hero-num"><span class="t-hero">28</span><span class="pct">/30</span></div>
+      <div class="verdict t-verdict">可补传</div>
+    </div>
+  </section>
+
+  <!-- faces: 消息 (unread + senders), AI (this month's quota), 共享 (people who can see my data) -->
+  <section class="faces">
+    <div class="face">
+      <div class="face-hd"><i data-i="inbox"></i>消息</div>
+      <div class="face-num"><span class="t-face">2</span><span class="u">条未读</span></div>
+      <div class="face-gfx avs"><span class="av">鹿</span><span class="av"><i data-i="sparkles"></i></span></div>
+    </div>
+    <div class="face">
+      <div class="face-hd"><i data-i="orbit"></i>AI 额度</div>
+      <div class="face-num"><span class="t-face">¥1.2</span><span class="u">/ ¥3</span></div>
+      <div class="face-gfx"><div data-gauge="1.2" data-max="3" data-tone="text" data-step="0.5" style="width:100%;height:22px"></div></div>
+    </div>
+    <div class="face">
+      <div class="face-hd"><i data-i="users"></i>共享</div>
+      <div class="face-num"><span class="t-face">5</span><span class="u">人可看</span></div>
+      <div class="face-gfx avs"><span class="av">鹿</span><span class="av">杰</span><span class="av">木</span><span class="av">K</span><span class="av">安</span></div>
+    </div>
+  </section>
+
+  <!-- below the fold: 4 groups / 9 rows. 数据: 健康档案, 共享给我的, 数据与导入 · 设置: AI 设置, 通知, 偏好设置 ·
+       邀请好友, 帮助与关于 · 账号. Only the top of group 1 is in the first glance. -->
+  <section class="group p-fold">
+    <div class="li"><i data-i="file-text"></i>健康档案<i class="chev" data-i="chevron-right" style="margin-left:auto"></i></div>
+    <div class="li"><i data-i="link"></i>共享给我的<span class="v">2 人</span><i class="chev" data-i="chevron-right"></i></div>
+    <div class="li"><i data-i="database"></i>数据与导入<i class="chev" data-i="chevron-right" style="margin-left:auto"></i></div>
+  </section>
+</main>
+
+<div class="jarvis"><i data-i="orbit"></i></div>
+<nav class="tabbar">
+  <div class="tab"><i data-i="circle-gauge"></i>今天</div>
+  <div class="tab"><i data-i="activity"></i>身体</div>
+  <div class="tab"><i data-i="users"></i>圈子</div>
+  <div class="tab on"><i data-i="user"></i>我</div>
+</nav>
+<div class="home-ind"></div>
+<script src="kit.js"></script>
+</body>
+</html>

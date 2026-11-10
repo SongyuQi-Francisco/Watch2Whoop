@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>今天 · strain L1</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+/* L0 = 01-today, unchanged and not dimmed. L1 sheet top at y 368 (11 pt under the verdict word; the dial stays readable). */
+.hero{margin-top:32px}
+.gauges{margin-top:40px}
+.sheet{top:368px}
+/* reading line: the gauge number that the sheet now covers, plus the planned end of the day */
+.p-read{display:flex;align-items:baseline;height:28px}
+.p-read .t-label{margin-left:6px}
+.p-plan{margin-left:auto;display:flex;align-items:baseline;gap:6px}
+.p-plan svg{align-self:center}
+.p-plan .v{font-size:17px;font-weight:500;letter-spacing:-0.2px}
+/* day line 00:00-24:00 */
+.p-chart{position:relative;height:80px;margin-top:12px}
+.p-day{display:block;overflow:visible}
+.p-ax{font-size:10px;font-weight:500;fill:var(--text2);font-family:system-ui}
+.p-blk{position:absolute;top:2px;display:flex;align-items:center;gap:3px;font-size:10px;font-weight:500;color:var(--text2);transform:translateX(-50%)}
+.p-blk i{font-size:11px;color:var(--train)}
+.p-tl{width:318px;display:flex;justify-content:space-between;margin-top:4px;font-size:10px;font-weight:500;color:var(--text2)}
+/* rows: bullet gauges (value, usual-by-now line, goal tick) and one DiffBar */
+.rows{margin-top:12px}
+.p-g{padding-top:5px}
+.exits{margin-top:14px}
+</style>
+</head>
+<body>
+
+<div class="sb">
+  <div class="sb-time">9:41</div><div class="sb-island"></div>
+  <div class="sb-sys">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M1.2 4.2a10.4 10.4 0 0 1 14.6 0"/><path d="M3.9 6.9a6.5 6.5 0 0 1 9.2 0"/><circle cx="8.5" cy="9.9" r="1.2" fill="currentColor" stroke="none"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x="0.5" y="0.5" width="23" height="12" rx="3.6" stroke="currentColor" stroke-opacity="0.4"/><rect x="2" y="2" width="20" height="9" rx="2.2" fill="currentColor"/><path d="M25 4.5v4c.9-.3 1.5-1.1 1.5-2s-.6-1.7-1.5-2z" fill="currentColor" fill-opacity="0.45"/></svg>
+  </div>
+</div>
+
+<!-- L0 behind the sheet (unchanged, not dimmed; a tap on it closes the sheet) -->
+<main class="page">
+  <header class="hdr">
+    <div class="hdr-date">11月10日<i data-i="chevron-down"></i></div>
+    <div class="sync is-ok"><i data-i="circle-check"></i>2分前</div>
+  </header>
+  <section class="hero">
+    <div class="dial" data-dial="82" data-band="58 74" data-zones="34 67" data-tone="good"></div>
+    <div class="dial-core">
+      <div class="hero-label">恢复</div>
+      <div class="hero-num"><span class="t-hero">82</span><span class="pct">%</span></div>
+      <div class="minibars" style="--tone:var(--good)">
+        <b style="height:9.5px"></b><b style="height:12px"></b><b style="height:6.5px"></b><b style="height:11px"></b>
+        <b style="height:13px"></b><b style="height:11.4px"></b><b style="height:16px"></b>
+      </div>
+      <div class="verdict t-verdict">可上强度</div>
+    </div>
+  </section>
+  <section class="gauges">
+    <div class="gauge">
+      <div class="gauge-hd"><span class="t-gauge">88</span><span class="t-label">睡眠</span></div>
+      <div class="gauge-bar" data-gauge="88" data-max="100" data-band="72 84" data-tone="sleep" data-step="10"></div>
+    </div>
+    <div class="gauge">
+      <div class="gauge-hd"><span class="t-gauge">2.8</span><span class="t-label">负荷</span></div>
+      <div class="gauge-bar" data-gauge="2.8" data-max="21" data-target="12 16" data-plan="13.4" data-tone="train" data-step="2" data-majors="10 14 18"></div>
+    </div>
+  </section>
+</main>
+<div class="jarvis"><i data-i="orbit"></i></div>
+<nav class="tabbar">
+  <div class="tab on"><i data-i="circle-gauge"></i>今天</div>
+  <div class="tab"><i data-i="activity"></i>身体</div>
+  <div class="tab"><i data-i="users"></i>圈子</div>
+  <div class="tab"><i data-i="user"></i>我</div>
+</nav>
+
+<!-- L1: strain. Reading line -> day line (so far solid, planned dots, 18:30 session block, target on the scale) -> 4 rows -> exits -->
+<section class="sheet">
+  <div class="grabber"></div>
+  <div class="sheet-hd">
+    <span class="t-title">负荷</span>
+    <span class="tag"><i data-i="info"></i>非诊断</span>
+    <span class="icon-btn"><i data-i="x"></i></span>
+  </div>
+
+  <div class="p-read">
+    <span class="t-gauge">2.8</span><span class="t-label">现在</span>
+    <span class="p-plan"><svg width="12" height="4" viewBox="0 0 12 4"><circle cx="1.5" cy="2" r="1.25" fill="var(--train)"/><circle cx="6" cy="2" r="1.25" fill="var(--train)"/><circle cx="10.5" cy="2" r="1.25" fill="var(--train)"/></svg><span class="t-label">预计</span><span class="v">13.4</span></span>
+  </div>
+
+  <div class="p-chart">
+    <svg class="p-day" width="350" height="80" viewBox="0 0 350 80" fill="none">
+    <rect x="0" y="21.24" width="318" height="12.19" fill="var(--train)" fill-opacity="0.08"/>
+    <rect x="245.12" y="18" width="13.25" height="52" rx="3" fill="var(--train)" fill-opacity="0.16"/>
+    <rect x="0" y="70" width="318" height="1" fill="var(--hair-strong)"/>
+    <rect x="0" y="72" width="1" height="4" fill="var(--tick-major)"/>
+    <rect x="13.25" y="72" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="26.5" y="72" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="39.75" y="72" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="53" y="72" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="66.25" y="72" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="79.5" y="72" width="1" height="4" fill="var(--tick-major)"/>
+    <rect x="92.75" y="72" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="106" y="72" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="119.25" y="72" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="132.5" y="72" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="145.75" y="72" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="159" y="72" width="1" height="4" fill="var(--tick-major)"/>
+    <rect x="172.25" y="72" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="185.5" y="72" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="198.75" y="72" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="212" y="72" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="225.25" y="72" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="238.5" y="72" width="1" height="4" fill="var(--tick-major)"/>
+    <rect x="251.75" y="72" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="265" y="72" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="278.25" y="72" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="291.5" y="72" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="304.75" y="72" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="317" y="72" width="1" height="4" fill="var(--tick-major)"/>
+    <rect x="127.8" y="12" width="1" height="58" fill="var(--band-line)"/>
+    <circle cx="131.28" cy="61.14" r="1.25" fill="var(--train)"/>
+    <circle cx="135.85" cy="60.62" r="1.25" fill="var(--train)"/>
+    <circle cx="140.42" cy="60.11" r="1.25" fill="var(--train)"/>
+    <circle cx="144.99" cy="59.59" r="1.25" fill="var(--train)"/>
+    <circle cx="149.57" cy="59.09" r="1.25" fill="var(--train)"/>
+    <circle cx="154.14" cy="58.6" r="1.25" fill="var(--train)"/>
+    <circle cx="158.72" cy="58.14" r="1.25" fill="var(--train)"/>
+    <circle cx="163.3" cy="57.69" r="1.25" fill="var(--train)"/>
+    <circle cx="167.87" cy="57.22" r="1.25" fill="var(--train)"/>
+    <circle cx="172.45" cy="56.74" r="1.25" fill="var(--train)"/>
+    <circle cx="177.02" cy="56.28" r="1.25" fill="var(--train)"/>
+    <circle cx="181.6" cy="55.85" r="1.25" fill="var(--train)"/>
+    <circle cx="186.19" cy="55.47" r="1.25" fill="var(--train)"/>
+    <circle cx="190.78" cy="55.14" r="1.25" fill="var(--train)"/>
+    <circle cx="195.37" cy="54.89" r="1.25" fill="var(--train)"/>
+    <circle cx="199.97" cy="54.73" r="1.25" fill="var(--train)"/>
+    <circle cx="204.56" cy="54.62" r="1.25" fill="var(--train)"/>
+    <circle cx="209.16" cy="54.53" r="1.25" fill="var(--train)"/>
+    <circle cx="213.76" cy="54.42" r="1.25" fill="var(--train)"/>
+    <circle cx="218.36" cy="54.26" r="1.25" fill="var(--train)"/>
+    <circle cx="222.95" cy="54.02" r="1.25" fill="var(--train)"/>
+    <circle cx="227.54" cy="53.68" r="1.25" fill="var(--train)"/>
+    <circle cx="232.12" cy="53.2" r="1.25" fill="var(--train)"/>
+    <circle cx="236.67" cy="52.55" r="1.25" fill="var(--train)"/>
+    <circle cx="241.19" cy="51.71" r="1.25" fill="var(--train)"/>
+    <circle cx="245.64" cy="50.58" r="1.25" fill="var(--train)"/>
+    <circle cx="248.48" cy="47.01" r="1.25" fill="var(--train)"/>
+    <circle cx="250.8" cy="43.04" r="1.25" fill="var(--train)"/>
+    <circle cx="253.44" cy="39.28" r="1.25" fill="var(--train)"/>
+    <circle cx="256.14" cy="35.55" r="1.25" fill="var(--train)"/>
+    <circle cx="259.98" cy="33.2" r="1.25" fill="var(--train)"/>
+    <circle cx="264.46" cy="32.18" r="1.25" fill="var(--train)"/>
+    <circle cx="269.03" cy="31.68" r="1.25" fill="var(--train)"/>
+    <circle cx="273.62" cy="31.46" r="1.25" fill="var(--train)"/>
+    <circle cx="278.22" cy="31.3" r="1.25" fill="var(--train)"/>
+    <circle cx="282.82" cy="31.07" r="1.25" fill="var(--train)"/>
+    <circle cx="287.41" cy="30.83" r="1.25" fill="var(--train)"/>
+    <circle cx="292" cy="30.59" r="1.25" fill="var(--train)"/>
+    <circle cx="296.6" cy="30.34" r="1.25" fill="var(--train)"/>
+    <circle cx="301.19" cy="30.08" r="1.25" fill="var(--train)"/>
+    <circle cx="305.78" cy="29.83" r="1.25" fill="var(--train)"/>
+    <circle cx="310.37" cy="29.58" r="1.25" fill="var(--train)"/>
+    <circle cx="314.97" cy="29.33" r="1.25" fill="var(--train)"/>
+    <circle cx="315.4" cy="29.16" r="2.6" stroke="var(--train)" stroke-width="1.4" fill="var(--sheet)"/>
+    <path d="M0 70C4.42 69.95 8.83 69.9 13.25 69.85C17.67 69.8 22.08 69.74 26.5 69.7C30.92 69.65 35.33 69.61 39.75 69.57C44.17 69.53 48.58 69.49 53 69.45C57.42 69.41 61.83 69.38 66.25 69.33C70.67 69.28 75.08 69.23 79.5 69.18C83.92 69.12 88.33 69.05 92.75 68.99C97.17 68.94 101.58 68.99 106 68.72C107.77 68.61 109.53 68.45 111.3 67.99C112.85 67.58 114.39 66.9 115.94 66.19C117.26 65.58 118.59 64.67 119.91 64.06C121.24 63.45 122.56 62.95 123.89 62.53C125.36 62.07 126.83 61.82 128.3 61.47" stroke="var(--train)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="128.3" cy="61.47" r="3" fill="var(--train)" stroke="var(--sheet)" stroke-width="1.5"/>
+    <rect x="325.25" y="6" width="1.5" height="64" rx="0.75" fill="var(--track)"/>
+    <rect x="328" y="69.5" width="4.5" height="1" fill="var(--tick-major)"/>
+    <rect x="328" y="63.4" width="2.5" height="1" fill="var(--tick)"/>
+    <rect x="328" y="57.31" width="2.5" height="1" fill="var(--tick)"/>
+    <rect x="328" y="51.21" width="2.5" height="1" fill="var(--tick)"/>
+    <rect x="328" y="45.12" width="2.5" height="1" fill="var(--tick)"/>
+    <rect x="328" y="39.02" width="4.5" height="1" fill="var(--tick-major)"/>
+    <rect x="328" y="32.93" width="2.5" height="1" fill="var(--tick)"/>
+    <rect x="328" y="26.83" width="4.5" height="1" fill="var(--tick-major)"/>
+    <rect x="328" y="20.74" width="2.5" height="1" fill="var(--tick)"/>
+    <rect x="328" y="14.64" width="4.5" height="1" fill="var(--tick-major)"/>
+    <rect x="328" y="8.55" width="2.5" height="1" fill="var(--tick)"/>
+    <rect x="328" y="5.5" width="4.5" height="1" fill="var(--tick-major)"/>
+    <rect x="320" y="32.68" width="12" height="1.5" rx="0.75" fill="var(--train)"/>
+    <text x="337" y="36.93" class="p-ax">12</text>
+    <rect x="320" y="20.49" width="12" height="1.5" rx="0.75" fill="var(--train)"/>
+    <text x="337" y="24.74" class="p-ax">16</text>
+    </svg>
+    <span class="p-blk" style="left:251.75px"><i data-i="dumbbell"></i>18:30</span>
+  </div>
+  <div class="p-tl"><span>00:00</span><span>12:00</span><span>24:00</span></div>
+
+  <!-- rows: label | gauge (bar = so far, grey line = your usual by this hour, ink tick = daily goal) | value | vs usual by now | chevron -->
+  <div class="rows">
+    <div class="row">
+      <span class="row-l">步数</span>
+      <div class="spark p-g" data-gauge="3860" data-max="10000" data-target="8000" data-band="2700 3800" data-tone="text"></div>
+      <span class="row-v"><span class="t-row">3,860</span><span class="u">步</span></span>
+      <span class="delta good">+540</span><i class="chev" data-i="chevron-right"></i>
+    </div>
+    <div class="row">
+      <span class="row-l">活动能量</span>
+      <div class="spark p-g" data-gauge="186" data-max="700" data-target="550" data-band="140 230" data-tone="text"></div>
+      <span class="row-v"><span class="t-row">186</span><span class="u">kcal</span></span>
+      <span class="delta">+12</span><i class="chev" data-i="chevron-right"></i>
+    </div>
+    <div class="row">
+      <span class="row-l">运动分钟</span>
+      <div class="spark p-g" data-gauge="12" data-max="40" data-target="30" data-band="9 22" data-tone="text"></div>
+      <span class="row-v"><span class="t-row">12</span><span class="u">分</span></span>
+      <span class="delta">−4</span><i class="chev" data-i="chevron-right"></i>
+    </div>
+    <div class="row">
+      <span class="row-l">训练状态</span>
+      <div class="spark"><svg class="p-diff" width="128" height="24" viewBox="0 0 128 24" fill="none" style="display:block"><rect x="0" y="10.25" width="128" height="1.5" rx="0.75" fill="var(--track)"/><rect x="31.5" y="7" width="1" height="8" fill="var(--tick)"/><rect x="95.5" y="7" width="1" height="8" fill="var(--tick)"/><rect x="63.25" y="4.5" width="1.5" height="13" rx="0.75" fill="var(--tick-major)"/><rect x="65.5" y="9" width="11.3" height="4" rx="2" fill="var(--text)"/></svg></div>
+      <span class="row-v"><span class="t-row">+4</span></span>
+      <span class="delta">新鲜</span><i class="chev" data-i="chevron-right"></i>
+    </div>
+  </div>
+
+  <div class="exits">
+    <div class="cap">全部指标<i class="chev" data-i="chevron-right"></i></div>
+    <div class="cap"><i data-i="orbit"></i>问 Jarvis</div>
+  </div>
+</section>
+<div class="home-ind"></div>
+<script src="kit.js"></script>
+</body>
+</html>

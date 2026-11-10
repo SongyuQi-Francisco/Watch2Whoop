@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>身体 · first glance</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+/* 身体 tab root. Rhythm (y): header 54-98 -> 32 -> label 130-146 -> mean 150-232 (the 100 pt line box hangs 18 pt of empty
+   descender space into the chart's headroom) -> 30 bars 232-412 (same bar grammar as 02: ~6.5 pt bars, even gaps) -> dates 418-430
+   -> 24 -> page dots 454-460 (they belong to the paged hero) -> faces 553-673 (same slot as on Today) -> 49 -> key 722 */
+.p-hero{margin-top:32px}
+.p-hl{font-size:13px;font-weight:500;color:var(--text2);letter-spacing:2px;height:16px;line-height:16px}
+.p-mean{display:flex;align-items:flex-start;margin-top:4px;height:82px}
+.p-mean .hero-num{margin-top:0}
+.p-delta{align-self:flex-end;margin-left:30px;margin-bottom:-5px;display:flex;flex-direction:column;gap:3px}
+.p-delta .d{font-size:22px;font-weight:500;letter-spacing:-0.3px;line-height:1;color:var(--good)}
+.p-bars{height:180px}
+.p-dots{display:flex;justify-content:center;gap:8px;margin-top:24px}
+.p-dots b{width:6px;height:6px;border-radius:3px;background:var(--past)}
+.p-dots b.on{background:var(--text)}
+.faces{position:absolute;left:20px;right:20px;top:499px}
+</style>
+</head>
+<body>
+
+<div class="sb">
+  <div class="sb-time">9:41</div><div class="sb-island"></div>
+  <div class="sb-sys">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M1.2 4.2a10.4 10.4 0 0 1 14.6 0"/><path d="M3.9 6.9a6.5 6.5 0 0 1 9.2 0"/><circle cx="8.5" cy="9.9" r="1.2" fill="currentColor" stroke="none"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x="0.5" y="0.5" width="23" height="12" rx="3.6" stroke="currentColor" stroke-opacity="0.4"/><rect x="2" y="2" width="20" height="9" rx="2.2" fill="currentColor"/><path d="M25 4.5v4c.9-.3 1.5-1.1 1.5-2s-.6-1.7-1.5-2z" fill="currentColor" fill-opacity="0.45"/></svg>
+  </div>
+</div>
+
+<main class="page">
+  <!-- header: period menu (7 / 30 / 90 / 365 天) + sync state. No page title on a tab root. -->
+  <header class="hdr">
+    <div class="hdr-date">近 30 天<i data-i="chevron-down"></i></div>
+    <div class="sync is-ok"><i data-i="circle-check"></i>2分前</div>
+  </header>
+
+  <!-- HERO: the period of the selected score. Mean = the one big number; delta vs the previous 30 days.
+       Bars: history in past, today in the state colour, usual band behind. Swipe left/right = 睡眠 / 负荷 (page dots). -->
+  <section class="p-hero">
+    <div class="p-hl">平均恢复</div>
+    <div class="p-mean">
+      <div class="hero-num"><span class="t-hero">64</span><span class="pct">%</span></div>
+      <div class="p-delta"><span class="d">+3</span><span class="t-label">比上期</span></div>
+    </div>
+    <div class="p-bars" data-bars="58 66 71 49 62 74 69 55 61 77 72 64 38 52 67 70 63 59 75 68 46 61 66 64 71 55 68 74 69 82" data-band="58 74" data-max="100" data-tone="good"></div>
+    <div class="clabels"><span>10/12</span><span>10/26</span><span>11/10</span></div>
+    <div class="p-dots"><b class="on"></b><b></b><b></b></div>
+  </section>
+
+  <!-- faces: 心肺 (HRV, 30 days on the usual band), 身体年龄 (pace vs the calendar), 周报 (last week) -->
+  <section class="faces">
+    <div class="face">
+      <div class="face-hd"><i data-i="heart"></i>心肺</div>
+      <div class="face-num"><span class="t-face">68</span><span class="u">ms</span></div>
+      <div class="face-gfx"><div data-spark="55 58 54 57 60 56 52 59 61 58 55 60 57 59 62 57 60 58 55 61 63 59 60 64 62 61 65 63 66 68" data-band="54 64" data-dot="text" data-bg="surface" style="width:100%;height:26px"></div></div>
+    </div>
+    <div class="face">
+      <div class="face-hd"><i data-i="person-standing"></i>身体年龄</div>
+      <div class="face-num"><span class="t-face">29.4</span><span class="u">岁</span></div>
+      <div class="face-gfx"><svg width="91" height="22" viewBox="0 0 91 22" fill="none" style="display:block;overflow:visible"><rect x="0" y="5.25" width="91" height="1.5" rx="0.75" fill="var(--track)"/><rect x="0" y="17" width="1" height="5" fill="var(--tick-major)"/><rect x="11.37" y="17" width="1" height="3" fill="var(--tick)"/><rect x="22.75" y="17" width="1" height="3" fill="var(--tick)"/><rect x="34.12" y="17" width="1" height="3" fill="var(--tick)"/><rect x="45.5" y="17" width="1" height="5" fill="var(--tick-major)"/><rect x="56.88" y="17" width="1" height="3" fill="var(--tick)"/><rect x="68.25" y="17" width="1" height="3" fill="var(--tick)"/><rect x="79.62" y="17" width="1" height="3" fill="var(--tick)"/><rect x="90" y="17" width="1" height="5" fill="var(--tick-major)"/><rect x="44.75" y="0" width="1.5" height="12" rx="0.75" fill="var(--tick-major)"/><rect x="27.3" y="4" width="16.7" height="4" rx="2" fill="var(--good)"/></svg></div>
+    </div>
+    <div class="face">
+      <div class="face-hd"><i data-i="calendar-days"></i>周报</div>
+      <div class="face-num"><span class="t-face">4</span><span class="u">天训练</span></div>
+      <div class="face-gfx" style="align-items:center"><svg width="91" height="10" viewBox="0 0 91 10" fill="none" style="display:block"><circle cx="4.5" cy="5" r="4.5" fill="var(--train)"/><circle cx="18.17" cy="5" r="4.5" fill="var(--train)"/><circle cx="31.83" cy="5" r="3.75" stroke="var(--track)" stroke-width="1.5"/><circle cx="45.5" cy="5" r="4.5" fill="var(--train)"/><circle cx="59.17" cy="5" r="3.75" stroke="var(--track)" stroke-width="1.5"/><circle cx="72.83" cy="5" r="4.5" fill="var(--train)"/><circle cx="86.5" cy="5" r="3.75" stroke="var(--track)" stroke-width="1.5"/></svg></div>
+    </div>
+  </section>
+  <!-- below the fold (vertical scroll only): category rows 恢复 / 睡眠 / 负荷 / 压力 / 长期, each with a mini graphic -> category L2 -->
+</main>
+<div class="jarvis"><i data-i="orbit"></i></div>
+<nav class="tabbar">
+  <div class="tab"><i data-i="circle-gauge"></i>今天</div>
+  <div class="tab on"><i data-i="activity"></i>身体</div>
+  <div class="tab"><i data-i="users"></i>圈子</div>
+  <div class="tab"><i data-i="user"></i>我</div>
+</nav>
+<div class="home-ind"></div>
+<script src="kit.js"></script>
+</body>
+</html>

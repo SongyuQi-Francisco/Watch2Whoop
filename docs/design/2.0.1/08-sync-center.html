@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>同步中心 · behind</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+/* Sync center, opened from the Today sync capsule (behind state). Not a hero L1, so the page behind is dimmed.
+   Sheet top 176 (custom detent 690: cuts the dial ring, never a digit), content: title -> sync dial 200 -> one primary button -> the one self-help step ->
+   4 type lanes (14 days) + 3 dates -> quiet exit. Order = answer, action, evidence. */
+.hero{margin-top:32px}
+.gauges{margin-top:40px}
+.sheet{top:176px}
+.p-dialbox{position:relative;width:200px;height:200px;margin:18px auto 0}
+.p-sdial{position:absolute;inset:0}
+.p-core{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.p-core .hero-label{font-size:12px;letter-spacing:1.5px;margin-right:-1.5px}
+.p-miss{display:flex;align-items:baseline;color:var(--mid);margin-top:2px}
+.p-miss b{font-size:64px;font-weight:200;letter-spacing:-1.5px;line-height:1;margin:0 3px}
+.p-miss span{font-size:20px;font-weight:300}
+.btn-primary{margin-top:28px}
+.p-help{height:44px;margin-top:6px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:15px;font-weight:500}
+.p-help i:first-child{font-size:17px;color:var(--mid)}
+.p-help .chev{font-size:14px;color:var(--text3)}
+.p-lanes{margin-top:30px;border-top:1px solid var(--hair);padding-top:6px}
+.p-lane{display:grid;grid-template-columns:50px 286px;column-gap:14px;align-items:center;height:30px}
+.p-dates{position:relative;height:14px;margin:4px 0 0 64px}
+.p-dates span{position:absolute;top:0;transform:translateX(-50%);font-size:10px;font-weight:500;color:var(--text2);white-space:nowrap}
+.p-dates span:last-child{transform:translateX(-80%)}
+.p-more{height:44px;margin-top:20px;display:flex;align-items:center;justify-content:center;gap:4px;font-size:15px;font-weight:500;color:var(--text2)}
+.p-more i{font-size:14px;color:var(--text3)}
+.vitals rect{fill:var(--band)}
+.vitals circle{fill:var(--text)}
+</style>
+</head>
+<body>
+
+<div class="sb" style="z-index:80"><!-- status bar stays above the dimming, as in iOS -->
+  <div class="sb-time">9:41</div><div class="sb-island"></div>
+  <div class="sb-sys">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M1.2 4.2a10.4 10.4 0 0 1 14.6 0"/><path d="M3.9 6.9a6.5 6.5 0 0 1 9.2 0"/><circle cx="8.5" cy="9.9" r="1.2" fill="currentColor" stroke="none"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x="0.5" y="0.5" width="23" height="12" rx="3.6" stroke="currentColor" stroke-opacity="0.4"/><rect x="2" y="2" width="20" height="9" rx="2.2" fill="currentColor"/><path d="M25 4.5v4c.9-.3 1.5-1.1 1.5-2s-.6-1.7-1.5-2z" fill="currentColor" fill-opacity="0.45"/></svg>
+  </div>
+</div>
+
+<!-- Today behind the sheet (same page as 01, capsule in the behind state: it is what was tapped). Dimmed by the scrim. -->
+<main class="page">
+  <header class="hdr">
+    <div class="hdr-date">11月10日<i data-i="chevron-down"></i></div>
+    <div class="sync is-stale"><i data-i="circle-alert"></i>缺2天</div>
+  </header>
+  <section class="hero">
+    <div class="dial" data-dial="82" data-band="58 74" data-zones="34 67" data-tone="good"></div>
+    <div class="dial-core">
+      <div class="hero-label">恢复</div>
+      <div class="hero-num"><span class="t-hero">82</span><span class="pct">%</span></div>
+      <div class="minibars" style="--tone:var(--good)">
+        <b style="height:9.5px"></b><b style="height:12px"></b><b style="height:6.5px"></b><b style="height:11px"></b>
+        <b style="height:13px"></b><b style="height:11.4px"></b><b style="height:16px"></b>
+      </div>
+      <div class="verdict t-verdict">可上强度</div>
+    </div>
+  </section>
+</main>
+<div class="jarvis"><i data-i="orbit"></i></div>
+<nav class="tabbar">
+  <div class="tab on"><i data-i="circle-gauge"></i>今天</div>
+  <div class="tab"><i data-i="activity"></i>身体</div>
+  <div class="tab"><i data-i="users"></i>圈子</div>
+  <div class="tab"><i data-i="user"></i>我</div>
+</nav>
+<div class="scrim"></div>
+
+<!-- SYNC CENTER (behind). Dial: 30 batons = last 30 days, the two newest in mid. One primary action. One self-help step
+     (≤ 6 characters, opens this app's page in Settings). Lanes: filled = on the server, hollow mid = on the phone but not on
+     the server (tap = re-sync that day), small grey = nothing to sync (no training / watch not worn). -->
+<section class="sheet">
+  <div class="grabber"></div>
+  <div class="sheet-hd">
+    <span class="t-title">同步中心</span>
+    <span class="icon-btn"><i data-i="x"></i></span>
+  </div>
+
+  <div class="p-dialbox">
+    <svg class="p-sdial" width="200" height="200" viewBox="0 0 200 200" fill="none"><circle cx="100" cy="100" r="95" stroke="var(--track)" stroke-width="1.5"/><line x1="100" y1="29" x2="100" y2="9" stroke="var(--tick-major)" stroke-width="1.5" stroke-linecap="round"/><line x1="108.13" y1="22.63" x2="109.18" y2="12.68" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="124.04" y1="26.01" x2="127.13" y2="16.5" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="138.9" y1="32.62" x2="143.9" y2="23.96" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="152.06" y1="42.18" x2="158.75" y2="34.75" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="162.94" y1="54.27" x2="171.03" y2="48.39" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="171.07" y1="68.36" x2="180.21" y2="64.29" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="176.1" y1="83.82" x2="185.88" y2="81.75" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="177.8" y1="100" x2="187.8" y2="100" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="176.1" y1="116.18" x2="185.88" y2="118.25" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="171.07" y1="131.64" x2="180.21" y2="135.71" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="162.94" y1="145.73" x2="171.03" y2="151.61" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="152.06" y1="157.82" x2="158.75" y2="165.25" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="138.9" y1="167.38" x2="143.9" y2="176.04" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="124.04" y1="173.99" x2="127.13" y2="183.5" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="108.13" y1="177.37" x2="109.18" y2="187.32" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="91.87" y1="177.37" x2="90.82" y2="187.32" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="75.96" y1="173.99" x2="72.87" y2="183.5" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="61.1" y1="167.38" x2="56.1" y2="176.04" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="47.94" y1="157.82" x2="41.25" y2="165.25" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="37.06" y1="145.73" x2="28.97" y2="151.61" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="28.93" y1="131.64" x2="19.79" y2="135.71" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="23.9" y1="116.18" x2="14.12" y2="118.25" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="22.2" y1="100" x2="12.2" y2="100" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="23.9" y1="83.82" x2="14.12" y2="81.75" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="28.93" y1="68.36" x2="19.79" y2="64.29" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="37.06" y1="54.27" x2="28.97" y2="48.39" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="47.94" y1="42.18" x2="41.25" y2="34.75" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="61.1" y1="32.62" x2="56.1" y2="23.96" stroke="var(--tick-major)" stroke-width="2.2" stroke-linecap="round"/><line x1="75.96" y1="26.01" x2="72.87" y2="16.5" stroke="var(--mid)" stroke-width="2.75" stroke-linecap="round"/><line x1="91.87" y1="22.63" x2="90.82" y2="12.68" stroke="var(--mid)" stroke-width="2.75" stroke-linecap="round"/></svg>
+    <div class="p-core">
+      <div class="hero-label">近30天</div>
+      <div class="p-miss"><span>缺</span><b>2</b><span>天</span></div>
+    </div>
+  </div>
+
+  <div class="btn-primary"><i data-i="refresh-cw"></i>立即同步</div>
+  <div class="p-help"><i data-i="settings"></i>后台刷新已关<i class="chev" data-i="chevron-right"></i></div>
+
+  <div class="p-lanes">
+    <div class="p-lane"><span class="row-l">心率</span><svg width="286" height="16" viewBox="0 0 286 16" fill="none"><circle cx="4.0" cy="8" r="4" fill="var(--tick-major)"/><circle cx="25.4" cy="8" r="4" fill="var(--tick-major)"/><circle cx="46.8" cy="8" r="4" fill="var(--tick-major)"/><circle cx="68.2" cy="8" r="4" fill="var(--tick-major)"/><circle cx="89.5" cy="8" r="4" fill="var(--tick-major)"/><circle cx="110.9" cy="8" r="4" fill="var(--tick-major)"/><circle cx="132.3" cy="8" r="4" fill="var(--tick-major)"/><circle cx="153.7" cy="8" r="4" fill="var(--tick-major)"/><circle cx="175.1" cy="8" r="4" fill="var(--tick-major)"/><circle cx="196.5" cy="8" r="4" fill="var(--tick-major)"/><circle cx="217.8" cy="8" r="4" fill="var(--tick-major)"/><circle cx="239.2" cy="8" r="4" fill="var(--tick-major)"/><circle cx="260.6" cy="8" r="3.4" stroke="var(--mid)" stroke-width="1.5"/><circle cx="282.0" cy="8" r="3.4" stroke="var(--mid)" stroke-width="1.5"/></svg></div>
+    <div class="p-lane"><span class="row-l">睡眠</span><svg width="286" height="16" viewBox="0 0 286 16" fill="none"><circle cx="4.0" cy="8" r="4" fill="var(--tick-major)"/><circle cx="25.4" cy="8" r="4" fill="var(--tick-major)"/><circle cx="46.8" cy="8" r="4" fill="var(--tick-major)"/><circle cx="68.2" cy="8" r="4" fill="var(--tick-major)"/><circle cx="89.5" cy="8" r="1.6" fill="var(--track)"/><circle cx="110.9" cy="8" r="4" fill="var(--tick-major)"/><circle cx="132.3" cy="8" r="4" fill="var(--tick-major)"/><circle cx="153.7" cy="8" r="4" fill="var(--tick-major)"/><circle cx="175.1" cy="8" r="4" fill="var(--tick-major)"/><circle cx="196.5" cy="8" r="4" fill="var(--tick-major)"/><circle cx="217.8" cy="8" r="4" fill="var(--tick-major)"/><circle cx="239.2" cy="8" r="4" fill="var(--tick-major)"/><circle cx="260.6" cy="8" r="3.4" stroke="var(--mid)" stroke-width="1.5"/><circle cx="282.0" cy="8" r="3.4" stroke="var(--mid)" stroke-width="1.5"/></svg></div>
+    <div class="p-lane"><span class="row-l">训练</span><svg width="286" height="16" viewBox="0 0 286 16" fill="none"><circle cx="4.0" cy="8" r="4" fill="var(--tick-major)"/><circle cx="25.4" cy="8" r="1.6" fill="var(--track)"/><circle cx="46.8" cy="8" r="4" fill="var(--tick-major)"/><circle cx="68.2" cy="8" r="1.6" fill="var(--track)"/><circle cx="89.5" cy="8" r="4" fill="var(--tick-major)"/><circle cx="110.9" cy="8" r="4" fill="var(--tick-major)"/><circle cx="132.3" cy="8" r="1.6" fill="var(--track)"/><circle cx="153.7" cy="8" r="4" fill="var(--tick-major)"/><circle cx="175.1" cy="8" r="1.6" fill="var(--track)"/><circle cx="196.5" cy="8" r="4" fill="var(--tick-major)"/><circle cx="217.8" cy="8" r="4" fill="var(--tick-major)"/><circle cx="239.2" cy="8" r="1.6" fill="var(--track)"/><circle cx="260.6" cy="8" r="3.4" stroke="var(--mid)" stroke-width="1.5"/><circle cx="282.0" cy="8" r="1.6" fill="var(--track)"/></svg></div>
+    <div class="p-lane"><span class="row-l">步数</span><svg width="286" height="16" viewBox="0 0 286 16" fill="none"><circle cx="4.0" cy="8" r="4" fill="var(--tick-major)"/><circle cx="25.4" cy="8" r="4" fill="var(--tick-major)"/><circle cx="46.8" cy="8" r="4" fill="var(--tick-major)"/><circle cx="68.2" cy="8" r="4" fill="var(--tick-major)"/><circle cx="89.5" cy="8" r="4" fill="var(--tick-major)"/><circle cx="110.9" cy="8" r="4" fill="var(--tick-major)"/><circle cx="132.3" cy="8" r="4" fill="var(--tick-major)"/><circle cx="153.7" cy="8" r="4" fill="var(--tick-major)"/><circle cx="175.1" cy="8" r="4" fill="var(--tick-major)"/><circle cx="196.5" cy="8" r="4" fill="var(--tick-major)"/><circle cx="217.8" cy="8" r="4" fill="var(--tick-major)"/><circle cx="239.2" cy="8" r="4" fill="var(--tick-major)"/><circle cx="260.6" cy="8" r="3.4" stroke="var(--mid)" stroke-width="1.5"/><circle cx="282.0" cy="8" r="3.4" stroke="var(--mid)" stroke-width="1.5"/></svg></div>
+  </div>
+  <div class="p-dates"><span style="left:4.0px">10/27</span><span style="left:153.7px">11/3</span><span style="left:282.0px">11/9</span></div>
+
+  <div class="p-more">更多工具<i data-i="chevron-right"></i></div>
+</section>
+<div class="home-ind"></div>
+<script src="kit.js"></script>
+</body>
+</html>

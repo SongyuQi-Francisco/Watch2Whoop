@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>TEMPLATE · copy me</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+/* Page-specific CSS goes here: only spacing between the blocks of THIS page and one-off SVG classes.
+   Never redefine tokens or kit classes here. Keep the vertical rhythm on a 4 pt grid. */
+</style>
+</head>
+<body>
+<!-- 1. Status bar: copy as is (9:41, island, signal / wifi / battery). -->
+<div class="sb">
+  <div class="sb-time">9:41</div><div class="sb-island"></div>
+  <div class="sb-sys">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M1.2 4.2a10.4 10.4 0 0 1 14.6 0"/><path d="M3.9 6.9a6.5 6.5 0 0 1 9.2 0"/><circle cx="8.5" cy="9.9" r="1.2" fill="currentColor" stroke="none"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x="0.5" y="0.5" width="23" height="12" rx="3.6" stroke="currentColor" stroke-opacity="0.4"/><rect x="2" y="2" width="20" height="9" rx="2.2" fill="currentColor"/><path d="M25 4.5v4c.9-.3 1.5-1.1 1.5-2s-.6-1.7-1.5-2z" fill="currentColor" fill-opacity="0.45"/></svg>
+  </div>
+</div>
+
+<main class="page">
+  <!-- 2. Header (44 pt).
+       Tab root: left = date or the tab's own context (circle picker on 圈子), right = the sync capsule, ALWAYS.
+         <div class="sync is-ok"><i data-i="circle-check"></i>2分前</div>      states: is-ok | is-busy | is-stale | is-fail
+       Pushed page: replace the left side with <div class="hdr-back"><i data-i="chevron-left"></i>标题</div>; no sync capsule. -->
+  <header class="hdr">
+    <div class="hdr-date">11月10日<i data-i="chevron-down"></i></div>
+    <div class="sync is-ok"><i data-i="circle-check"></i>2分前</div>
+  </header>
+
+  <!-- 3. HERO (exactly one per tab root): the one graphic that answers the tab's question.
+       Use .hero + a kit.js helper (data-dial / data-bars / data-spark) or a hand-drawn SVG built from kit tokens.
+       Biggest number on the page lives here (.t-hero, 100 / 200). Nothing else on the page may exceed 28 pt. -->
+  <section class="hero" style="margin-top:32px">
+    <!-- <div class="dial" data-dial="82" data-band="58 74" data-zones="34 67" data-tone="good"></div> -->
+  </section>
+
+  <!-- 4. ATTACHED READINGS (optional, max 2): what the hero rests on. .gauges with data-gauge, 28 pt numbers. -->
+
+  <!-- 5. MODULE FACES (max 3 on the first glance, one row of .faces; more rows only below the fold):
+       <div class="face"><div class="face-hd"><i data-i="soup"></i>饮食</div>
+         <div class="face-num"><span class="t-face">420</span><span class="u">kcal</span></div>
+         <div class="face-gfx"> ONE graphic, max one colour </div></div>
+       States: .attn (6 pt mid dot; .attn.bad for red), .stale (number in text2). No data = no face. -->
+
+  <!-- 6. Keep everything important above y 712 (the Jarvis key) on a tab root; pushed pages end above y 700. -->
+</main>
+
+<!-- 7. L1 sheet (only on an "open" screen): .sheet > .grabber, .sheet-hd (title + tag + .icon-btn x),
+       one chart, max 4 .row, then .exits (全部指标 / 问 Jarvis). Remove the tab bar and key from view only by covering them. -->
+
+<!-- 8. Jarvis key + system tab bar (D1: 今天 · 身体 · 圈子 · 我). Move .on to the current tab. Do not restyle. -->
+<div class="jarvis"><i data-i="orbit"></i></div>
+<nav class="tabbar">
+  <div class="tab on"><i data-i="circle-gauge"></i>今天</div>
+  <div class="tab"><i data-i="activity"></i>身体</div>
+  <div class="tab"><i data-i="users"></i>圈子</div>
+  <div class="tab"><i data-i="user"></i>我</div>
+</nav>
+<div class="home-ind"></div>
+<script src="kit.js"></script>
+</body>
+</html>

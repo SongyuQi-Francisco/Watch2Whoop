@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>圈子 · first glance</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+/* 圈子 tab root. Same rhythm as 01-today: header 54-98 -> 32 -> hero 130-410 -> 40 -> readings 450-509 -> 44 -> faces 553-673 -> 49 -> key 722.
+   Hero = circle dial: the kit dial with no value arc (scale 0-100, zone edges 34 / 67), each member a bead on the track at
+   today's recovery, an ink needle at the exact value (mine in my state colour). Bead ring: solid train = trained today,
+   dotted train = planned (only known for me), track = not yet. Colour is spent on me only; friends are ink. */
+.hero{margin-top:32px}
+.gauges{margin-top:40px}
+.faces{margin-top:44px}
+.p-beads{position:absolute;left:50%;top:0;width:280px;height:280px;margin-left:-140px;overflow:visible}
+.p-bead text{font-size:13px;font-weight:600;text-anchor:middle;font-family:system-ui}
+.p-strip{height:22px;margin-top:9px}
+.p-ranks rect{fill:var(--past)}
+.p-ranks rect.me{fill:var(--text)}
+.p-invite{margin-top:auto;height:32px;border-radius:16px;background:var(--surface2);display:flex;align-items:center;justify-content:center;
+  gap:5px;font-size:13px;font-weight:600}
+.p-invite i{font-size:15px}
+</style>
+</head>
+<body>
+
+<div class="sb">
+  <div class="sb-time">9:41</div><div class="sb-island"></div>
+  <div class="sb-sys">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M1.2 4.2a10.4 10.4 0 0 1 14.6 0"/><path d="M3.9 6.9a6.5 6.5 0 0 1 9.2 0"/><circle cx="8.5" cy="9.9" r="1.2" fill="currentColor" stroke="none"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x="0.5" y="0.5" width="23" height="12" rx="3.6" stroke="currentColor" stroke-opacity="0.4"/><rect x="2" y="2" width="20" height="9" rx="2.2" fill="currentColor"/><path d="M25 4.5v4c.9-.3 1.5-1.1 1.5-2s-.6-1.7-1.5-2z" fill="currentColor" fill-opacity="0.45"/></svg>
+  </div>
+</div>
+
+<main class="page">
+  <!-- header: circle picker (menu of my circles + 管理圈子) | sync capsule -->
+  <header class="hdr">
+    <div class="hdr-date">跑团<i data-i="chevron-down"></i></div>
+    <div class="sync is-ok"><i data-i="circle-check"></i>2分前</div>
+  </header>
+
+  <!-- HERO: circle dial. Tap a bead = that member's day sheet (shared scopes only, ECG never); tap the centre = member list. -->
+  <section class="hero">
+    <div class="dial" data-dial="" data-zones="34 67"></div>
+    <svg class="p-beads" width="280" height="280" viewBox="0 0 280 280" fill="none">
+      <line x1="55.9" y1="100.4" x2="35" y2="90.6" stroke="var(--good)" stroke-width="2" stroke-linecap="round"/>
+      <line x1="36.8" y1="54.6" x2="27.5" y2="46.9" stroke="var(--tick-major)" stroke-width="1" stroke-linecap="round"/>
+      <g class="p-bead"><circle cx="19.7" cy="83.4" r="19" fill="var(--bg)"/><circle cx="19.7" cy="83.4" r="16" fill="var(--surface2)" stroke="var(--train)" stroke-width="2" stroke-dasharray="0.01 4.2" stroke-linecap="round"/><text x="19.7" y="88" fill="var(--text)">我</text></g>
+      <g class="p-bead"><circle cx="13.6" cy="35.5" r="19" fill="var(--bg)"/><circle cx="13.6" cy="35.5" r="16" fill="var(--surface2)" stroke="var(--train)" stroke-width="1.75"/><text x="13.6" y="40.1" fill="var(--text)">鹿</text></g>
+      <g class="p-bead"><circle cx="7.3" cy="148.4" r="19" fill="var(--bg)"/><circle cx="7.3" cy="148.4" r="16" fill="var(--surface2)" stroke="var(--train)" stroke-width="1.75"/><text x="7.3" y="153" fill="var(--text)">杰</text></g>
+      <g class="p-bead"><circle cx="55.2" cy="242.5" r="19" fill="var(--bg)"/><circle cx="55.2" cy="242.5" r="16" fill="var(--surface2)" stroke="var(--track)" stroke-width="1.5"/><text x="55.2" y="247.1" fill="var(--text2)">木</text></g>
+      <g class="p-bead"><circle cx="164.9" cy="270.6" r="19" fill="var(--bg)"/><circle cx="164.9" cy="270.6" r="16" fill="var(--surface2)" stroke="var(--train)" stroke-width="1.75"/><text x="164.9" y="275.2" fill="var(--text)">K</text></g>
+      <g class="p-bead"><circle cx="266.5" cy="181.1" r="19" fill="var(--bg)"/><circle cx="266.5" cy="181.1" r="16" fill="var(--surface2)" stroke="var(--track)" stroke-width="1.5"/><text x="266.5" y="185.7" fill="var(--text2)">安</text></g>
+    </svg>
+    <div class="dial-core">
+      <div class="hero-label">今天练了</div>
+      <div class="hero-num"><span class="t-hero">3</span><span class="pct">/6</span></div>
+      <div class="minibars" style="--tone:var(--train)">
+        <b style="height:5.5px"></b><b style="height:10.5px"></b><b style="height:8px"></b><b style="height:3px"></b>
+        <b style="height:13.5px"></b><b style="height:5.5px"></b><b style="height:8px"></b>
+      </div>
+    </div>
+  </section>
+
+  <!-- readings: the circle's sleep and strain today. One dot per member (mine in the category colour), ink tick = circle mean. -->
+  <section class="gauges">
+    <div class="gauge">
+      <div class="gauge-hd"><span class="t-gauge">78</span><span class="t-label">平均睡眠</span></div>
+      <div class="p-strip"><svg width="171" height="22" viewBox="0 0 171 22" fill="none"><rect x="0" y="5.25" width="171" height="1.5" rx="0.75" fill="var(--track)"/><rect x="0" y="4" width="132.5" height="4" rx="2" fill="var(--past)"/><rect x="131.8" y="0" width="1.5" height="12" rx="0.75" fill="var(--tick-major)"/><circle cx="155.6" cy="6" r="2.75" fill="var(--text2)"/><circle cx="140.2" cy="6" r="2.75" fill="var(--text2)"/><circle cx="130" cy="6" r="2.75" fill="var(--text2)"/><circle cx="119.7" cy="6" r="2.75" fill="var(--text2)"/><circle cx="99.2" cy="6" r="2.75" fill="var(--text2)"/><circle cx="150.5" cy="6" r="3.75" fill="var(--sleep)"/><rect x="0" y="17" width="1" height="5" fill="var(--tick-major)"/><rect x="17.1" y="17" width="1" height="3" fill="var(--tick)"/><rect x="34.2" y="17" width="1" height="3" fill="var(--tick)"/><rect x="51.3" y="17" width="1" height="3" fill="var(--tick)"/><rect x="68.4" y="17" width="1" height="3" fill="var(--tick)"/><rect x="85.5" y="17" width="1" height="3" fill="var(--tick)"/><rect x="102.6" y="17" width="1" height="3" fill="var(--tick)"/><rect x="119.7" y="17" width="1" height="3" fill="var(--tick)"/><rect x="136.8" y="17" width="1" height="3" fill="var(--tick)"/><rect x="153.9" y="17" width="1" height="3" fill="var(--tick)"/><rect x="170" y="17" width="1" height="5" fill="var(--tick-major)"/></svg></div>
+    </div>
+    <div class="gauge">
+      <div class="gauge-hd"><span class="t-gauge">7.3</span><span class="t-label">平均负荷</span></div>
+      <div class="p-strip"><svg width="171" height="22" viewBox="0 0 171 22" fill="none"><rect x="0" y="5.25" width="171" height="1.5" rx="0.75" fill="var(--track)"/><rect x="0" y="4" width="59.6" height="4" rx="2" fill="var(--past)"/><rect x="58.8" y="0" width="1.5" height="12" rx="0.75" fill="var(--tick-major)"/><circle cx="94.5" cy="6" r="2.75" fill="var(--text2)"/><circle cx="79.8" cy="6" r="2.75" fill="var(--text2)"/><circle cx="34.2" cy="6" r="2.75" fill="var(--text2)"/><circle cx="101" cy="6" r="2.75" fill="var(--text2)"/><circle cx="25.2" cy="6" r="2.75" fill="var(--text2)"/><circle cx="22.8" cy="6" r="3.75" fill="var(--train)"/><rect x="0" y="17" width="1" height="5" fill="var(--tick-major)"/><rect x="16.3" y="17" width="1" height="3" fill="var(--tick)"/><rect x="32.6" y="17" width="1" height="3" fill="var(--tick)"/><rect x="48.9" y="17" width="1" height="3" fill="var(--tick)"/><rect x="65.1" y="17" width="1" height="3" fill="var(--tick)"/><rect x="81.4" y="17" width="1" height="5" fill="var(--tick-major)"/><rect x="97.7" y="17" width="1" height="3" fill="var(--tick)"/><rect x="114" y="17" width="1" height="5" fill="var(--tick-major)"/><rect x="130.3" y="17" width="1" height="3" fill="var(--tick)"/><rect x="146.6" y="17" width="1" height="5" fill="var(--tick-major)"/><rect x="162.9" y="17" width="1" height="3" fill="var(--tick)"/></svg></div>
+    </div>
+  </section>
+
+  <!-- faces: 动态 (feed, unread + who posted), 排行 (my rank on the last board), 邀请 (action face) -->
+  <section class="faces">
+    <div class="face">
+      <div class="face-hd"><i data-i="messages-square"></i>动态</div>
+      <div class="face-num"><span class="t-face">4</span><span class="u">条未读</span></div>
+      <div class="face-gfx avs"><span class="av on">杰</span><span class="av on">鹿</span><span class="av on">K</span></div>
+    </div>
+    <div class="face">
+      <div class="face-hd"><i data-i="trophy"></i>排行</div>
+      <div class="face-num"><span class="t-face">2</span><span class="u">/6 名</span></div>
+      <div class="face-gfx">
+        <svg class="p-ranks" width="91" height="26" viewBox="0 0 91 26">
+          <rect x="0" y="2" width="6" height="24" rx="3"/><rect class="me" x="17" y="5" width="6" height="21" rx="3"/>
+          <rect x="34" y="8" width="6" height="18" rx="3"/><rect x="51" y="11" width="6" height="15" rx="3"/>
+          <rect x="68" y="14" width="6" height="12" rx="3"/><rect x="85" y="18" width="6" height="8" rx="3"/>
+        </svg>
+      </div>
+    </div>
+    <div class="face">
+      <div class="face-hd"><i data-i="user-plus"></i>邀请</div>
+      <div class="p-invite"><i data-i="share"></i>分享</div>
+    </div>
+  </section>
+</main>
+
+<div class="jarvis"><i data-i="orbit"></i></div>
+<nav class="tabbar">
+  <div class="tab"><i data-i="circle-gauge"></i>今天</div>
+  <div class="tab"><i data-i="activity"></i>身体</div>
+  <div class="tab on"><i data-i="users"></i>圈子</div>
+  <div class="tab"><i data-i="user"></i>我</div>
+</nav>
+<div class="home-ind"></div>
+<script src="kit.js"></script>
+</body>
+</html>

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>饮食 · second level</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+/* Food, second level (pushed from the Today 饮食 face). Same rhythm as a tab root:
+   header 54-98 -> 32 -> dial 130-410 -> 40 -> three readings 450-509 -> 44 -> faces 553-673 -> 49 -> key 722.
+   Meals continue below the fold (vertical scroll); logging goes through the Jarvis key (camera, voice). */
+.hero{margin-top:32px}
+.p-ovl{position:absolute;left:50%;top:0;margin-left:-140px;overflow:visible}
+.p-goal{margin-top:4px;display:flex;align-items:baseline;gap:4px;font-size:12px;font-weight:500;color:var(--text2)}
+.p-left{margin-top:10px;display:flex;align-items:baseline;gap:4px;font-size:14px;font-weight:500;color:var(--text2)}
+.p-left .u{margin-left:1px}
+.gauges{grid-template-columns:repeat(3,1fr);gap:16px;margin-top:40px}
+.gauge-hd{gap:3px}
+.gauge-hd .t-label{margin-left:3px}
+.faces{margin-top:44px}
+.face-hd .p-name{margin-left:auto;color:var(--text)}
+</style>
+</head>
+<body>
+
+<div class="sb">
+  <div class="sb-time">9:41</div><div class="sb-island"></div>
+  <div class="sb-sys">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M1.2 4.2a10.4 10.4 0 0 1 14.6 0"/><path d="M3.9 6.9a6.5 6.5 0 0 1 9.2 0"/><circle cx="8.5" cy="9.9" r="1.2" fill="currentColor" stroke="none"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x="0.5" y="0.5" width="23" height="12" rx="3.6" stroke="currentColor" stroke-opacity="0.4"/><rect x="2" y="2" width="20" height="9" rx="2.2" fill="currentColor"/><path d="M25 4.5v4c.9-.3 1.5-1.1 1.5-2s-.6-1.7-1.5-2z" fill="currentColor" fill-opacity="0.45"/></svg>
+  </div>
+</div>
+
+<main class="page">
+  <!-- pushed page: back + title left, sync state right (food entries arrive from Jarvis / other devices) -->
+  <header class="hdr">
+    <div class="hdr-back"><i data-i="chevron-left"></i>饮食</div>
+    <div class="sync is-ok"><i data-i="circle-check"></i>2分前</div>
+  </header>
+
+  <!-- HERO: kcal dial. Unit printed on the face (like km/h on a speedometer); ink arc = eaten today; the one long ink tick across the track = goal, read as 目标 2,100 under the remaining value -->
+  <section class="hero">
+    <div class="dial" data-dial="420" data-max="2500" data-tone="text"></div>
+    <svg class="p-ovl" width="280" height="280" viewBox="0 0 280 280" fill="none"><line x1="34.46" y1="73.02" x2="21.79" y2="64.98" stroke="var(--text)" stroke-width="2" stroke-linecap="round"/></svg>
+    <div class="dial-core">
+      <div class="hero-label">kcal</div>
+      <div class="hero-num"><span class="t-hero">420</span></div>
+      <div class="p-left">剩<span class="num">1,680</span></div>
+      <div class="p-goal">目标<span class="num">2,100</span></div>
+    </div>
+  </section>
+
+  <!-- three readings: macros eaten vs today's targets (ink tick) -->
+  <section class="gauges">
+    <div class="gauge">
+      <div class="gauge-hd"><span class="t-gauge">32</span><span class="u">g</span><span class="t-label">蛋白</span></div>
+      <div class="gauge-bar" data-gauge="32" data-max="180" data-target="150" data-tone="text" data-step="20"></div>
+    </div>
+    <div class="gauge">
+      <div class="gauge-hd"><span class="t-gauge">46</span><span class="u">g</span><span class="t-label">碳水</span></div>
+      <div class="gauge-bar" data-gauge="46" data-max="270" data-target="230" data-tone="text" data-step="30"></div>
+    </div>
+    <div class="gauge">
+      <div class="gauge-hd"><span class="t-gauge">12</span><span class="u">g</span><span class="t-label">脂肪</span></div>
+      <div class="gauge-bar" data-gauge="12" data-max="72" data-target="60" data-tone="text" data-step="8"></div>
+    </div>
+  </section>
+
+  <!-- faces: 快记 (last template, tap = log it once with undo), 饮水 (ml vs goal), 食谱 (what you can cook now) -->
+  <section class="faces">
+    <div class="face">
+      <div class="face-hd"><i data-i="zap"></i>快记<span class="p-name">燕麦碗</span></div>
+      <div class="face-num"><span class="t-face">380</span><span class="u">kcal</span></div>
+      <div class="face-gfx" style="align-items:center"><svg width="91" height="6" viewBox="0 0 91 6" fill="none" style="display:block"><rect x="0" y="0" width="29.58" height="6" rx="3" fill="var(--text)" fill-opacity="1.0"/><rect x="31.58" y="0" width="36.54" height="6" rx="3" fill="var(--text)" fill-opacity="0.55"/><rect x="70.12" y="0" width="20.88" height="6" rx="3" fill="var(--text)" fill-opacity="0.28"/></svg></div>
+    </div>
+    <div class="face">
+      <div class="face-hd"><i data-i="droplet"></i>饮水</div>
+      <div class="face-num"><span class="t-face">750</span><span class="u">ml</span></div>
+      <div class="face-gfx"><div data-gauge="750" data-max="2500" data-target="2000" data-tone="text" data-step="500" style="width:100%;height:22px"></div></div>
+    </div>
+    <div class="face">
+      <div class="face-hd"><i data-i="book-open-text"></i>食谱</div>
+      <div class="face-num"><span class="t-face">6</span><span class="u">道能做</span></div>
+      <div class="face-gfx" style="align-items:center"><svg width="91" height="14" viewBox="0 0 91 14" fill="none" style="display:block"><rect x="0" y="7" width="1.5" height="7" rx="0.75" fill="var(--tick)"/><rect x="3.89" y="0" width="1.5" height="14" rx="0.75" fill="var(--text)"/><rect x="7.78" y="7" width="1.5" height="7" rx="0.75" fill="var(--tick)"/><rect x="11.67" y="7" width="1.5" height="7" rx="0.75" fill="var(--tick)"/><rect x="15.57" y="0" width="1.5" height="14" rx="0.75" fill="var(--text)"/><rect x="19.46" y="0" width="1.5" height="14" rx="0.75" fill="var(--text)"/><rect x="23.35" y="7" width="1.5" height="7" rx="0.75" fill="var(--tick)"/><rect x="27.24" y="7" width="1.5" height="7" rx="0.75" fill="var(--tick)"/><rect x="31.13" y="7" width="1.5" height="7" rx="0.75" fill="var(--tick)"/><rect x="35.02" y="0" width="1.5" height="14" rx="0.75" fill="var(--text)"/><rect x="38.91" y="7" width="1.5" height="7" rx="0.75" fill="var(--tick)"/><rect x="42.8" y="7" width="1.5" height="7" rx="0.75" fill="var(--tick)"/><rect x="46.7" y="7" width="1.5" height="7" rx="0.75" fill="var(--tick)"/><rect x="50.59" y="7" width="1.5" height="7" rx="0.75" fill="var(--tick)"/><rect x="54.48" y="0" width="1.5" height="14" rx="0.75" fill="var(--text)"/><rect x="58.37" y="7" width="1.5" height="7" rx="0.75" fill="var(--tick)"/><rect x="62.26" y="7" width="1.5" height="7" rx="0.75" fill="var(--tick)"/><rect x="66.15" y="0" width="1.5" height="14" rx="0.75" fill="var(--text)"/><rect x="70.04" y="7" width="1.5" height="7" rx="0.75" fill="var(--tick)"/><rect x="73.93" y="7" width="1.5" height="7" rx="0.75" fill="var(--tick)"/><rect x="77.83" y="7" width="1.5" height="7" rx="0.75" fill="var(--tick)"/><rect x="81.72" y="7" width="1.5" height="7" rx="0.75" fill="var(--tick)"/><rect x="85.61" y="7" width="1.5" height="7" rx="0.75" fill="var(--tick)"/><rect x="89.5" y="7" width="1.5" height="7" rx="0.75" fill="var(--tick)"/></svg></div>
+    </div>
+  </section>
+  <!-- below the fold: meals as rows (早餐 08:10 420 kcal ...), then 每餐推荐 -->
+</main>
+<div class="jarvis"><i data-i="orbit"></i></div>
+<nav class="tabbar">
+  <div class="tab on"><i data-i="circle-gauge"></i>今天</div>
+  <div class="tab"><i data-i="activity"></i>身体</div>
+  <div class="tab"><i data-i="users"></i>圈子</div>
+  <div class="tab"><i data-i="user"></i>我</div>
+</nav>
+<div class="home-ind"></div>
+<script src="kit.js"></script>
+</body>
+</html>
