@@ -172,7 +172,14 @@ struct TrendsView: View {
 
 /// 指标 of the Trends tab: the range control, then 今天's list or the range's cards. The tab and the read-only view of someone
 /// else (`MemberTrendsPage`) draw the same thing from a `TrendsPage`.
-struct TrendsMetricsContent: View {
+///
+/// Equatable without the closures (2.0.1, as TodayDayCards): opening a sheet or the sleep page no longer builds every
+/// chart of the range again first.
+struct TrendsMetricsContent: View, Equatable {
+  static func == (a: TrendsMetricsContent, b: TrendsMetricsContent) -> Bool {
+    a.range == b.range && a.loading == b.loading && a.offline == b.offline && a.foldOn == b.foldOn && a.page == b.page
+  }
+
   let page: TrendsPage?
   let range: TrendRange
   let loading: Bool

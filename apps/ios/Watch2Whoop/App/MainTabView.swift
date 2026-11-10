@@ -42,7 +42,7 @@ struct MainTabView: View {
   var body: some View {
     TabView(selection: $selection) {
       ForEach(AppTab.visible(circles: session.circlesTab)) { tab in
-        screen(tab)
+        TabRoot(tab: tab, session: session)
           .tabItem {
             Label { Text(tab.title) } icon: { Image(tab.icon.assetName).renderingMode(.template) }
           }
@@ -101,9 +101,19 @@ struct MainTabView: View {
     #endif
     return .today
   }
+}
+
+/// One tab's page. Equatable on the tab alone (2.0.1): switching tabs re-runs MainTabView's body, and without this every
+/// tab's page counted as changed (their state objects are built by closures, which never compare equal) and was built
+/// again, the ones not on screen included. The pages still follow the session and their own stores as before.
+private struct TabRoot: View, Equatable {
+  let tab: AppTab
+  let session: AccountSession
+
+  static func == (a: TabRoot, b: TabRoot) -> Bool { a.tab == b.tab && a.session === b.session }
 
   // Each tab is owned by one page agent (docs/ios-native-app.md section 9); they replace their placeholder here.
-  @ViewBuilder private func screen(_ tab: AppTab) -> some View {
+  var body: some View {
     switch tab {
     case .today: TodayView(session: session)                                              // N3
     case .trends: TrendsView(session: session)                                            // N4

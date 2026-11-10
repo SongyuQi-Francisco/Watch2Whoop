@@ -356,7 +356,18 @@ struct TodayView: View {
 /// Everything a day shows, from the rings to the reminders: the Today tab's page and the read-only view of someone else
 /// (`MemberTodayPage`) draw the same cards from a `TodayModel`. What happens on a tap belongs to the page. What leads to my own
 /// data (the button under an empty ring, the training cards, the food card) is only there when the page passes it.
-struct TodayDayCards: View {
+///
+/// Equatable on what it draws (the model and which optional parts are there), never on the closures: opening a sheet,
+/// pushing the sleep page or switching tabs changes the page's own state, and without this every card of the day was
+/// built and laid out again before the sheet could move (2.0.1: 150–330 ms on the simulator). The closures only reach
+/// the page's state, which lives outside the view value, so an older copy of them does the same.
+struct TodayDayCards: View, Equatable {
+  static func == (a: TodayDayCards, b: TodayDayCards) -> Bool {
+    a.model == b.model && a.hasData == b.hasData && (a.recoveryNext == nil) == (b.recoveryNext == nil)
+      && (a.openTraining == nil) == (b.openTraining == nil) && (a.openHistory == nil) == (b.openHistory == nil)
+      && (a.foodCard == nil) == (b.foodCard == nil)
+  }
+
   let model: TodayModel
   var hasData = true
   var onRingsShown: () -> Void = {}
