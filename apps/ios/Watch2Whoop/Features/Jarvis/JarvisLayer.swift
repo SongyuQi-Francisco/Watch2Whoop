@@ -108,8 +108,12 @@ struct JarvisLayer: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { router.open(page: "record.training") }
       })
       .presentationDetents([.large])
-    case .backfill(let o):
-      CockpitBackfillSheet(client: ManualWorkoutAPI(api: session.api), options: o, today: session.db.userToday()) { router.sheet = nil }
+    case .backfill:
+      CockpitBackfillSheet(client: ManualWorkoutAPI(api: session.api), today: session.db.userToday(), close: { router.sheet = nil },
+                           fallback: {
+                             router.sheet = nil
+                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { router.open(page: "record.training") }
+                           })
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
     case .camera:

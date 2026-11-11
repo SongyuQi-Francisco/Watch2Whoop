@@ -63,14 +63,15 @@ struct ManualWorkoutAPI {
     var workoutId: Int
     var name: String
     var date: String
-    /// The watch (or another copy) already has this session: this record is linked to it and counts nowhere.
+    /// Another record of this session already exists (its `source`: apple = the watch): this one is linked to it and counts
+    /// nowhere.
     var duplicate: String?
 
     static func parse(_ j: [String: Any]) -> Outcome? {
       guard let w = j["workout"] as? [String: Any], let id = (w["id"] as? NSNumber)?.intValue else { return nil }
       let dup = j["duplicate_of"] as? [String: Any]
       return Outcome(workoutId: id, name: w["name"] as? String ?? "", date: w["date"] as? String ?? "",
-                     duplicate: dup.map { ($0["name"] as? String) ?? "" })
+                     duplicate: dup.map { ($0["source"] as? String) ?? "" })
     }
   }
 
@@ -93,12 +94,66 @@ struct ManualWorkoutAPI {
     return out
   }
 
+  /// A 404 counts as undone: the record is gone (an earlier DELETE went through and only its answer was lost).
   func undo(_ id: Int) async throws {
-    _ = try await api.data(APIRequest(method: .delete, path: "\(Self.base)/\(id)"))
+    do {
+      _ = try await api.data(APIRequest(method: .delete, path: "\(Self.base)/\(id)"))
+    } catch APIError.notFound {
+      return
+    }
+  }
+
+  /// The card's line for a session another record already has (`duplicate_of.source`).
+  static func duplicateLabel(_ source: String) -> String {
+    switch source {
+    case "apple", "apple_export", "healthkit", "ow", "shortcut":
+      return tr("手表已有这次训练，以手表为准", "The watch has this session; the watch's counts")
+    case "manual":
+      return tr("已经补记过这次训练", "This session is already logged")
+    default:
+      return tr("已有这次训练，以已有记录为准", "This session is already recorded; that record counts")
+    }
   }
 }
 
+/// 补记: opens at once and loads the server's types and levels inside (a server without the endpoint: 记录 → 训练).
 struct CockpitBackfillSheet: View {
+  let client: ManualWorkoutAPI
+  let today: String
+  let close: () -> Void
+  /// The server does not have manual workouts yet (404): the key's old way.
+  let fallback: () -> Void
+  @State private var options: ManualWorkoutAPI.Options?
+  @State private var failed: String?
+
+  var body: some View {
+    Group {
+      if let options {
+        CockpitBackfillForm(client: client, options: options, today: today, close: close)
+      } else {
+        SheetContainer(title: tr("补记训练", "Log a session"), close: close) {
+          if let failed {
+            RetryNote(text: failed) { Task { await load() } }
+          } else {
+            ProgressView().tint(Palette.text2).frame(maxWidth: .infinity).padding(.vertical, 40)
+          }
+        }
+      }
+    }
+    .task { await load() }
+  }
+
+  private func load() async {
+    failed = nil
+    do {
+      if let o = try await client.options() { options = o } else { fallback() }
+    } catch {
+      failed = TrainingStore.message(error)
+    }
+  }
+}
+
+struct CockpitBackfillForm: View {
   let client: ManualWorkoutAPI
   let options: ManualWorkoutAPI.Options
   let today: String
@@ -113,6 +168,8 @@ struct CockpitBackfillSheet: View {
   @State private var intensity: String
   @State private var busy = false
   @State private var done: ManualWorkoutAPI.Outcome?
+  /// The type the result card names (in the app's language: the server's name is Chinese).
+  @State private var doneName = ""
   @State private var toast: Toast?
 
   init(client: ManualWorkoutAPI, options: ManualWorkoutAPI.Options, today: String, close: @escaping () -> Void) {
@@ -132,6 +189,11 @@ struct CockpitBackfillSheet: View {
 
   static let step: Double = 5
 
+  /// The latest start time that can be picked: now on today, the end of the day before.
+  static func latestStart(day: String, today: String, now: Date = Date()) -> PartialRangeThrough<Date> {
+    ...(day == today ? now : Date.distantFuture)
+  }
+
   var entry: ManualWorkoutAPI.Entry {
     let f = DateFormatter()
     f.dateFormat = "HH:mm"
@@ -145,6 +207,7 @@ struct CockpitBackfillSheet: View {
       if let done { result(done) } else { form }
     }
     .toast($toast)
+    .interactiveDismissDisabled(busy)   // a record being written keeps its sheet (and its 撤销)
   }
 
   private var form: some View {
@@ -177,7 +240,10 @@ struct CockpitBackfillSheet: View {
       HStack {
         Toggle(tr("开始时间", "Start time"), isOn: $timed).font(Typo.body).tint(Palette.accent).fixedSize()
         Spacer()
-        if timed { DatePicker("", selection: $start, displayedComponents: .hourAndMinute).labelsHidden() }
+        if timed {
+          // today: no start time after now
+          DatePicker("", selection: $start, in: Self.latestStart(day: day, today: today), displayedComponents: .hourAndMinute).labelsHidden()
+        }
       }
       HStack {
         stepButton(.minus) { minutes = max(Self.step, minutes - Self.step) }
@@ -211,12 +277,11 @@ struct CockpitBackfillSheet: View {
     VStack(alignment: .leading, spacing: 16) {
       HStack(spacing: 6) {
         Icon(o.duplicate == nil ? .circleCheck : .circleAlert, size: 18).foregroundColor(o.duplicate == nil ? Palette.good : Palette.mid)
-        Text(o.duplicate == nil ? tr("已记到 \(RecordDay.short(o.date))", "Logged to \(RecordDay.short(o.date))")
-                                : tr("手表已有这次训练，以手表为准", "The watch has this session; the watch's counts"))
+        Text(o.duplicate.map(ManualWorkoutAPI.duplicateLabel) ?? tr("已记到 \(RecordDay.short(o.date))", "Logged to \(RecordDay.short(o.date))"))
           .font(Typo.bodyStrong).foregroundColor(Palette.text)
       }
       HStack(alignment: .firstTextBaseline, spacing: 6) {
-        Text(o.name).font(.system(size: 26, weight: .semibold)).foregroundColor(Palette.text)
+        Text(doneName.isEmpty ? o.name : doneName).font(.system(size: 26, weight: .semibold)).foregroundColor(Palette.text)
         Spacer()
         Text(RecordFormat.num(minutes)).font(.system(size: 26, weight: .semibold).monospacedDigit()).foregroundColor(Palette.text)
         Text(tr("分", "min")).font(Typo.unit).foregroundColor(Palette.text2)
@@ -240,7 +305,9 @@ struct CockpitBackfillSheet: View {
     Task {
       defer { busy = false }
       do {
-        done = try await client.add(e)
+        let out = try await client.add(e)
+        doneName = options.types.first { $0.type == e.type }?.name ?? ""
+        done = out
         JarvisHaptics.notice.notificationOccurred(.success)
         NotificationCenter.default.post(name: JarvisRouter.wroteNotification, object: nil)
       } catch {

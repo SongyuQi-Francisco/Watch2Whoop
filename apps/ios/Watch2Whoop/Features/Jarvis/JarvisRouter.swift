@@ -23,11 +23,11 @@ final class JarvisRouter: ObservableObject {
   /// Posted after Jarvis changed the user's records: pages showing server views refresh.
   static let wroteNotification = Notification.Name("w2w.jarvis.wrote")
 
-  enum Sheet: Identifiable, Hashable {
+  enum Sheet: Identifiable, Equatable {
     case chat, quick, camera
     /// The cockpit's screens (2.0.1): 记一餐 → 拍照 / 更多, 记训练 → 计划 / 补记.
     case mealPhoto, templates, plan
-    case backfill(ManualWorkoutAPI.Options)
+    case backfill
     var id: Self { self }
   }
 

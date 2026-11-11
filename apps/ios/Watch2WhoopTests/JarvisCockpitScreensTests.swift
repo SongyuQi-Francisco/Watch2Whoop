@@ -145,7 +145,10 @@ final class JarvisCockpitScreensTests: XCTestCase {
     let e = ManualWorkoutAPI.Entry(type: "basketball", minutes: 60, intensity: "moderate", date: "2026-11-11", time: nil, clientId: "k3")
     let out = try await client().add(e)
     XCTAssertEqual(out.workoutId, 78)
-    XCTAssertEqual(out.duplicate, "篮球", "the card says the watch has it")
+    XCTAssertEqual(out.duplicate, "apple", "the source of the record it was linked to")
+    XCTAssertTrue(ManualWorkoutAPI.duplicateLabel("apple").contains(tr("手表", "watch")))
+    XCTAssertFalse(ManualWorkoutAPI.duplicateLabel("manual").contains(tr("手表", "watch")), "not the watch: not said to be")
+    XCTAssertFalse(ManualWorkoutAPI.duplicateLabel("other").contains(tr("手表", "watch")))
   }
 
   func testBackfillUndoDeletesThatRecord() async throws {
@@ -156,7 +159,28 @@ final class JarvisCockpitScreensTests: XCTestCase {
   }
 
   func testBackfillDays() {
-    let d = CockpitBackfillSheet.days(today: "2026-11-12", back: 3)
+    let d = CockpitBackfillForm.days(today: "2026-11-12", back: 3)
     XCTAssertEqual(d, ["2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12"])
+  }
+
+  // MARK: - second review (2026-11-12)
+
+  /// A DELETE whose answer was lost: the retry's 404 means it is gone, which is what 撤销 wanted.
+  func testBackfillUndo404IsUndone() async throws {
+    StubProtocol.reset([StubProtocol.Reply(status: 404, body: "{\"detail\":\"none\"}")])
+    try await client().undo(78)
+  }
+
+  func testBackfillStartTimeNotAfterNow() {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    XCTAssertEqual(CockpitBackfillForm.latestStart(day: "2026-11-12", today: "2026-11-12", now: now).upperBound, now)
+    XCTAssertEqual(CockpitBackfillForm.latestStart(day: "2026-11-11", today: "2026-11-12", now: now).upperBound, .distantFuture)
+  }
+
+  func testCameraAccess() {
+    XCTAssertEqual(MealCamera.access(.authorized), .allowed)
+    XCTAssertEqual(MealCamera.access(.denied), .denied)
+    XCTAssertEqual(MealCamera.access(.restricted), .denied)
+    XCTAssertEqual(MealCamera.access(.notDetermined), .unknown)
   }
 }

@@ -46,8 +46,9 @@ final class CockpitMealPhoto: ObservableObject {
     return r
   }
 
+  /// One photo at a time: the shutter and the library cannot both send (the first one wins).
   func send(_ image: UIImage) {
-    guard let router, let chat = router.chat else { return }
+    guard phase == .viewfinder, let router, let chat = router.chat else { return }
     guard router.ai.vision else { error = tr("这个 AI 看不了图片", "This AI can't read pictures"); return }
     guard !chat.busy else { error = tr("上一条还在回答，等它说完再发", "Still answering the last message; wait for it to finish"); return }
     guard let a = JarvisMedia.photo(image) else { return }
@@ -65,6 +66,7 @@ final class CockpitMealPhoto: ObservableObject {
         return
       }
       if items.contains(where: { if case .confirm(_, approved: nil) = $0.kind { return true } else { return false } }) {
+        guard !Task.isCancelled else { return }
         router.present(.chat)   // a yes is needed first: that happens in the conversation
         return
       }
@@ -83,10 +85,28 @@ final class CockpitMealPhoto: ObservableObject {
     photo = nil
     phase = .viewfinder
   }
+
+  /// The sheet went away: stop waiting for the answer (the chat keeps the turn; nothing opens by itself afterwards).
+  func cancel() {
+    work?.cancel()
+    work = nil
+  }
 }
 
 /// The camera (AVCaptureSession on its own queue) and its preview.
 final class MealCamera: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
+  /// Camera access: asked the first time; refused = a line and 去设置 instead of a black viewfinder (the library still works).
+  enum Access: Equatable { case unknown, allowed, denied }
+  @Published private(set) var access = Access.unknown
+
+  static func access(_ s: AVAuthorizationStatus) -> Access {
+    switch s {
+    case .authorized: return .allowed
+    case .denied, .restricted: return .denied
+    default: return .unknown
+    }
+  }
+
   let session = AVCaptureSession()
   private let output = AVCapturePhotoOutput()
   private let queue = DispatchQueue(label: "org.watch2whoop.jarvis.camera", qos: .userInitiated)
@@ -95,6 +115,18 @@ final class MealCamera: NSObject, ObservableObject, AVCapturePhotoCaptureDelegat
   @Published private(set) var available = true
 
   func start() {
+    let status = AVCaptureDevice.authorizationStatus(for: .video)
+    if status == .notDetermined {
+      AVCaptureDevice.requestAccess(for: .video) { ok in
+        DispatchQueue.main.async { [weak self] in
+          self?.access = ok ? .allowed : .denied
+          if ok { self?.start() }
+        }
+      }
+      return
+    }
+    access = Self.access(status)
+    guard access == .allowed else { return }
     queue.async { [weak self] in
       guard let self else { return }
       if self.session.inputs.isEmpty {
@@ -186,7 +218,10 @@ struct CockpitMealPhotoView: View {
       if let e { toast = Toast(e); model.error = nil }
     }
     .onAppear { camera.start() }
-    .onDisappear { camera.stop() }
+    .onDisappear {
+      camera.stop()
+      model.cancel()
+    }
     .toast($toast)
     .environment(\.colorScheme, .dark)
   }
@@ -197,9 +232,27 @@ struct CockpitMealPhotoView: View {
     VStack(spacing: 0) {
       topBar
       ZStack {
-        if camera.available { CameraPreview(session: camera.session) } else { Color.black }
-        FrameCorners().stroke(Palette.text, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
-          .padding(.horizontal, 51).padding(.vertical, 118)
+        if camera.access == .denied {
+          VStack(spacing: 12) {
+            Text(tr("相机没打开：在设置里允许 Watch2Whoop 使用相机", "Camera is off: allow Watch2Whoop to use the camera in Settings"))
+              .font(Typo.caption).foregroundColor(Palette.text2).multilineTextAlignment(.center)
+            Button(tr("去设置", "Open Settings")) {
+              if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
+            }
+            .font(Typo.bodyStrong).foregroundColor(Palette.text)
+            .padding(.horizontal, 18).frame(minHeight: 40)
+            .overlay(Capsule().stroke(Palette.text.opacity(0.3), lineWidth: 1))
+          }
+          .padding(.horizontal, 60)
+        } else if camera.available && camera.access == .allowed {
+          CameraPreview(session: camera.session)
+        } else {
+          Color.black
+        }
+        if camera.access != .denied {
+          FrameCorners().stroke(Palette.text, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+            .padding(.horizontal, 51).padding(.vertical, 118)
+        }
       }
       .clipped()
       Text(tr("对准这一餐", "Frame the meal")).font(Typo.label).foregroundColor(Palette.text2).padding(.top, 14)
@@ -216,7 +269,7 @@ struct CockpitMealPhotoView: View {
           CockpitCoreGlyph(size: 72)
         }
         .buttonStyle(PressScale())
-        .disabled(!camera.available)
+        .disabled(!camera.available || camera.access != .allowed)
         .accessibilityLabel(tr("拍照", "Take photo"))
         Spacer()
         Button { camera.flash.toggle() } label: {

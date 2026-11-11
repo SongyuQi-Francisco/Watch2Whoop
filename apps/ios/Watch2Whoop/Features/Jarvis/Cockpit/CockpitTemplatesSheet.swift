@@ -7,7 +7,10 @@ struct CockpitTemplatesSheet: View {
   @StateObject private var store: FoodStore
   @State private var query = ""
   @State private var filter = Filter.common
-  @State private var busy: Int?
+  /// Rows being written (one write per row at a time; another row does not free this one).
+  @State private var busy: Set<Int> = []
+  /// What this sheet logged: template id → that logging (its server log id or queued copy). Only these offer 撤销.
+  @State private var mine: [Int: (logId: Int?, clientId: String?)] = [:]
   @State private var toast: Toast?
 
   enum Filter: Hashable {
@@ -71,13 +74,13 @@ struct CockpitTemplatesSheet: View {
             Text(tr("已记到\(t.meal.title)", "Logged to \(t.meal.title)")).font(Typo.label).foregroundColor(Palette.good)
           }
         }
-        if t.isLogged {
+        if t.isLogged && mine[t.id] != nil {   // 撤销 only for what this sheet just logged
           Button { undo(t) } label: {
             HStack(spacing: 4) { Icon(.undo2, size: 12); Text(tr("撤销", "Undo")).font(Typo.label) }
               .foregroundColor(Palette.text2)
           }
           .buttonStyle(PressScale())
-          .disabled(busy == t.id)
+          .disabled(busy.contains(t.id))
         } else {
           MacroBar(macros: t.totals).frame(width: 96, height: 6)
         }
@@ -94,23 +97,28 @@ struct CockpitTemplatesSheet: View {
           .background(Circle().fill(t.isLogged ? Palette.good : Palette.inSheet))
       }
       .buttonStyle(PressScale())
-      .disabled(t.isLogged || busy == t.id)
+      .disabled(t.isLogged || busy.contains(t.id))
       .accessibilityLabel(t.isLogged ? tr("已记 \(t.name)", "\(t.name) logged") : tr("记一份 \(t.name)", "Log \(t.name)"))
     }
     .padding(.vertical, 12)
-    .opacity(busy == t.id ? 0.5 : 1)
+    .opacity(busy.contains(t.id) ? 0.5 : 1)
   }
 
   private func log(_ t: MealTemplate) {
-    busy = t.id
+    guard !busy.contains(t.id), !t.isLogged else { return }   // a double tap writes once
+    busy.insert(t.id)
     Task {
-      defer { busy = nil }
+      defer { busy.remove(t.id) }
+      let before = t.todayLog
       let out = await store.log(t)
       if out.conflict {
         store.drop(out)
         toast = Toast(tr("今天已记过「\(t.name)」", "\(t.name) is already logged today"))
       } else if out.sent || out.queued {
         JarvisHaptics.notice.notificationOccurred(.success)
+        let logId = CockpitController.thisWrite(before: before, after: store.templates.first { $0.id == t.id }?.todayLog)
+        let clientId = out.queued ? out.clientId : nil
+        if logId != nil || clientId != nil { mine[t.id] = (logId, clientId) }
         if out.queued { toast = Toast(out.message) }
       } else {
         toast = Toast(out.message)
@@ -119,11 +127,13 @@ struct CockpitTemplatesSheet: View {
   }
 
   private func undo(_ t: MealTemplate) {
-    busy = t.id
+    guard let w = mine[t.id], !busy.contains(t.id) else { return }
+    busy.insert(t.id)
     Task {
-      defer { busy = nil }
-      let cur = store.templates.first { $0.id == t.id } ?? t
-      toast = Toast(await store.undoLog(cur) ? tr("已撤销", "Undone") : tr("撤销要联网，稍后再试", "Undo needs a connection, try again later"))
+      defer { busy.remove(t.id) }
+      let ok = await store.undoMealLog(id: w.logId, clientId: w.clientId)   // this write only
+      if ok { mine[t.id] = nil }
+      toast = Toast(ok ? tr("已撤销", "Undone") : tr("撤销要联网，稍后再试", "Undo needs a connection, try again later"))
     }
   }
 }
