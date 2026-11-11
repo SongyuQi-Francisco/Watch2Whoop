@@ -94,7 +94,8 @@ final class JarvisCockpitScreensTests: XCTestCase {
        "intensities":[{"key":"light","label":"轻"},{"key":"moderate","label":"中"},{"key":"hard","label":"强"}],
        "max_duration_min":600,"max_past_days":7}
       """), StubProtocol.Reply(status: 404, body: "{\"detail\":\"Not Found\"}")])
-    let o = try await XCTUnwrap(client().options())
+    let got = try await client().options()
+    let o = try XCTUnwrap(got)
     XCTAssertEqual(o.types.map(\.type), ["basketball", "swim"])
     XCTAssertEqual(o.intensities.map(\.key), ["light", "moderate", "hard"])
     XCTAssertEqual(o.maxPastDays, 7)
