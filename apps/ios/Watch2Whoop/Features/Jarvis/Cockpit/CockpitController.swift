@@ -69,7 +69,9 @@ final class CockpitController: ObservableObject {
       DispatchQueue.main.async { [weak self] in
         guard let self else { return }
         self.sync()
-        self.handle(fx)
+        // effects of this frame run a moment later: one the user has overtaken meanwhile (× before the microphone
+        // started, a close before the words went out) is dropped
+        self.handle(fx.filter { Self.stillValid($0, self.machine) })
       }
     }
   }
@@ -135,6 +137,18 @@ final class CockpitController: ObservableObject {
 
   // MARK: - effects
 
+  /// Whether an effect computed in an earlier frame still fits the machine as it is now.
+  static func stillValid(_ e: CockpitEffect, _ m: CockpitMachine) -> Bool {
+    switch e {
+    case .listen(let f): return m.mode == .listen && m.flow == f
+    case .switchLanguage: return m.mode == .listen
+    case .send(let f): return m.mode == .think && m.flow == f
+    case .run(.template): return m.mode == .think
+    case .opened: return m.mode == .menu
+    default: return true   // closing, stopping, giving up and opening a page are safe whenever they come
+    }
+  }
+
   private func handle(_ fx: [CockpitEffect]) {
     for e in fx {
       switch e {
@@ -175,6 +189,12 @@ final class CockpitController: ObservableObject {
       guard let self else { return }
       self.machine.meals = Self.meals(self.food?.templates ?? [])
     }
+  }
+
+  /// The server's id of the logging this write made: the template's log of today after it, when that is a new one.
+  static func thisWrite(before: Int?, after: Int?) -> Int? {
+    guard let after, after != before else { return nil }
+    return after
   }
 
   /// The two most used quick meals of the last 30 days.
@@ -219,6 +239,7 @@ final class CockpitController: ObservableObject {
     turn?.cancel()
     turn = Task { [weak self] in
       let before = food.nutrition?.intake.kcal ?? 0
+      let logBefore = t.todayLog
       let out = await food.log(t)
       guard let self else { return }
       if out.conflict {
@@ -228,10 +249,12 @@ final class CockpitController: ObservableObject {
       }
       guard out.sent || out.queued else { self.failed(out.message); return }
       JarvisHaptics.notice.notificationOccurred(.success)
-      self.undo = { [weak food] in
-        // that logging's own id (or its queued copy): never anything else of the day
-        guard let food, let cur = food.templates.first(where: { $0.id == t.id }), cur.isLogged else { return false }
-        return await food.undoLog(cur)
+      // this write and nothing else: its queued copy, or the log id the server gave it
+      let logId = Self.thisWrite(before: logBefore, after: food.templates.first { $0.id == t.id }?.todayLog)
+      let clientId = out.queued ? out.clientId : nil
+      self.undo = logId == nil && clientId == nil ? nil : { [weak food] in
+        guard let food else { return false }
+        return await food.undoMealLog(id: logId, clientId: clientId)
       }
       self.show(.meal(Self.mealCard(slot: t.meal.title, name: t.name, added: t.totals, before: before, day: food.nutrition)))
     }

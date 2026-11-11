@@ -125,11 +125,12 @@ struct CockpitItem: Equatable {
     return out
   }
 
+  /// 记训练. The prototype's 说一组 is left out: no tool of the in-app AI writes one set into today's session (log_workout
+  /// logs a whole workout and skips the same exercise twice a day), and a key must not offer what the back end cannot do.
   static func trainRing() -> [CockpitItem] {
-    [CockpitItem(key: .trainStart, angle: -54, icon: .zap, title: tr("开始", "Start")),
-     CockpitItem(key: .trainTalk, angle: -18, icon: .mic, title: tr("说一组", "Say a set")),
-     CockpitItem(key: .trainBackfill, angle: 18, icon: .clock, title: tr("补记", "Backfill")),
-     CockpitItem(key: .trainPlan, angle: 54, icon: .calendarDays, title: tr("计划", "Plan"))]
+    [CockpitItem(key: .trainStart, angle: -36, icon: .zap, title: tr("开始", "Start")),
+     CockpitItem(key: .trainBackfill, angle: 0, icon: .clock, title: tr("补记", "Backfill")),
+     CockpitItem(key: .trainPlan, angle: 36, icon: .calendarDays, title: tr("计划", "Plan"))]
   }
 }
 
@@ -200,8 +201,9 @@ struct CockpitMachine {
   /// The two quick meals of the 记一餐 ring.
   var meals: [CockpitMeal] = []
   /// A pause sends by itself after the one-second ring (flag `jarvis_voice_direct`). Off: the words wait in the confirm
-  /// state until the user sends them (the core, or 发送) or edits them; nothing goes out by itself.
-  var autoSend = true
+  /// state until the user sends them (the core, or 发送) or edits them; nothing goes out by itself. Off until the flag says
+  /// otherwise (CockpitController.startVoice sets it from the account's flags).
+  var autoSend = false
   /// The language chip is shown (the phone recognises more than one language).
   var canSwitchLanguage = false
 

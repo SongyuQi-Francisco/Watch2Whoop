@@ -275,6 +275,18 @@ final class FoodStore: LocalPageStore {
     }
   }
 
+  /// Undo one logging of a quick meal, by that logging alone: its queued copy (`clientId`) or the server's log id. Never
+  /// "the template's logging today" (that may be another one, made elsewhere). A log already gone (404) counts as undone.
+  func undoMealLog(id: Int?, clientId: String?) async -> Bool {
+    guard id != nil || clientId != nil else { return false }
+    let ok = await undo(clientId: clientId) {
+      guard let id else { throw APIError.notFound }
+      do { _ = try await self.api.data(APIRequest(method: .delete, path: FoodAPI.mealLog(id))) } catch APIError.notFound {}
+    }
+    if ok { await refreshDay() }
+    return ok
+  }
+
   func log(_ r: Recipe, servings: Double, meal: MealSlot, again: Bool = false) async -> WriteOutcome {
     var body: [String: Any] = ["date": day, "meal": meal.rawValue, "servings": servings]
     if again { body["allow_duplicates"] = true }
