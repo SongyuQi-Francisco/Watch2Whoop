@@ -207,7 +207,8 @@ class H(BaseHTTPRequestHandler):
         p = self.path.split("?")[0]
         if p == "/v1/web/me":
             extra = [f for f in os.environ.get("W2W_FAKE_FLAGS", "").split(",") if f]   # e.g. friends: food moves into 记录
-            return self.json({"me": {"id": 1, "display_name": "Demo"}, "flags": ["water", "jarvis_voice_direct", *extra], "ai": ai()})
+            direct = [] if os.environ.get("W2W_FAKE_NO_DIRECT") else ["jarvis_voice_direct"]   # off: voice waits for 发送
+            return self.json({"me": {"id": 1, "display_name": "Demo"}, "flags": ["water", *direct, *extra], "ai": ai()})
         if p == "/v1/users/me/ai-choice":
             return self.json({"options": options(), "ai": ai()})
         if p == "/v1/users/me/ai-fallback":
