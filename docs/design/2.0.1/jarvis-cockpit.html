@@ -5,88 +5,174 @@
 <meta name="viewport" content="width=402">
 <title>Jarvis · cockpit interaction prototype</title>
 <style>
-/* Moving prototype of the Jarvis key in a cockpit style, second pass: same style, far fewer lines (2.0.1 proposal).
-   Idle is key K1 (one inverted triangle on the glass key). Opened: one arc and five nodes, nothing else.
-   Everything is drawn by one function of time, so a still or a film frame is reproducible:
-     ?s=idle|open|listen|think&t=<ms in that state>   one still
-     ?demo=1&t=<ms>                                   a frame of the scripted demo (idle -> open -> listen -> think -> idle)
-     ?tone=ice (default) | ink                        ice = accent with a soft glow; ink = white, no glow
-   No query = interactive: tap the key to open or close, tap the mic node to listen.
-   Geometry only (circle, arc, inverted triangle); icons are Lucide (ISC). No third-party artwork. */
+/* Moving prototype of the Jarvis key in a cockpit style, third pass (2.0.1 proposal).
+   Key: the first-pass core (tick ring, three segments, inverted triangle with a lit inner triangle).
+   Function keys: five panels of one instrument ring that fan out of the core on springs, with one tick ring outside.
+   Flows: voice (live transcript -> pause -> auto-send countdown -> thinking -> reply card), 记一餐 and 记训练
+   (second ring: the tick ring turns one notch, the chosen key docks above the core), reply cards, jump to a screen.
+   Every value moves on a spring, so motion is continuous and can be interrupted.
+     ?demo=1&t=<ms>            a frame of the scripted film (three scenes, 21 s)
+     ?tone=ice (default) | ink ice = accent with a soft glow; ink = white, no glow
+   No query = interactive: tap the key, then the panels. Speech is simulated.
+   Geometry only (circle, arc, sector, inverted triangle); icons are Lucide (ISC). No third-party artwork. All data synthetic. */
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{width:402px;height:874px;overflow:hidden;background:#000;font-family:system-ui;-webkit-font-smoothing:antialiased}
-#bg{position:absolute;left:0;top:0;width:402px;height:874px}
+img{position:absolute;left:0;top:0;width:402px;height:874px}
 #hud{position:absolute;left:0;top:0;width:402px;height:874px;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 text{font-family:system-ui;user-select:none}
 </style>
 </head>
 <body>
 <img id="bg" src="01-today-dark.png" alt="">
+<img id="bg2" src="11-training-dark.png" alt="" style="opacity:0">
 <svg id="hud" viewBox="0 0 402 874" xmlns="http://www.w3.org/2000/svg"></svg>
 <script src="kit.js"></script>
 <script>
-var q=new URLSearchParams(location.search),TONE=q.get('tone')||'ice';
-var A=TONE==='ink'?'#F4F4F6':'#8FDCFF',INK='#F4F4F6',GLOW=TONE!=='ink';
-var CX=201,CY=751,R2=118;
-var TRI="M13.73 4a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"; // Lucide "triangle" (ISC), drawn rotated 180 deg
-var NODES=[{a:-72,i:'soup',l:'记一餐',o:2},{a:-36,i:'dumbbell',l:'记训练',o:1},{a:0,i:'mic',l:'说话',o:0},{a:36,i:'camera',l:'拍照',o:1},{a:72,i:'message-circle',l:'提问',o:2}];
-var S={mode:'idle',hud:0,n:0,l:0,k:0,T:0,since:0,tl:2600,tk:2200};
+var q=new URLSearchParams(location.search),TONE=q.get('tone')||'ice',DEMO=!!q.get('demo');
+var A=TONE==='ink'?'#F4F4F6':'#8FDCFF',INK='#F4F4F6',DIM='#8D8D94',GOOD='#72BF8E',PANEL='#0B0E12',GLOW=TONE!=='ink';
+var CX=201,CY=751,RI=80,RO=136,HW=16,RM=108;
+var L1=[{a:-72,i:'soup',l:'记一餐',act:'sub:meal'},{a:-36,i:'dumbbell',l:'记训练',act:'sub:train'},{a:0,i:'mic',l:'说话',act:'voice:qa'},{a:36,i:'camera',l:'拍照'},{a:72,i:'message-circle',l:'提问'}];
+var MEAL=[{a:-72,i:'camera',l:'拍照'},{a:-36,i:'mic',l:'说',act:'voice:meal'},{a:0,t:'鸡胸饭',s:'570 kcal',act:'log:meal'},{a:36,t:'燕麦碗',s:'420 kcal',act:'log:meal'},{a:72,i:'ellipsis',l:'更多'}];
+var TRAIN=[{a:-54,i:'zap',l:'开始',act:'nav'},{a:-18,i:'mic',l:'说一组',act:'voice:set'},{a:18,i:'clock',l:'补记'},{a:54,i:'calendar-days',l:'计划'}];
+var SAY={qa:{text:'今天适合练腿吗',dur:1500,kind:'qa',tk:1300},meal:{text:'中午吃了鸡胸饭',dur:1500,kind:'meal',tk:1000},set:{text:'卧推六十公斤八个',dur:1700,kind:'set',tk:1000}};
+var CARDH={qa:214,meal:190,set:160};
+var S={mode:'idle',T:0,since:0,items:L1,lv:1,fanT:0,fanSince:0,sel:-1,pend:null,say:SAY.qa,kind:'qa',tk:1300,nav:0,rotT:0,ra:0,rb:0,pulse:-9999,crumbI:'soup',taps:[],cap:''};
+var V={};
+function spr(n,to,k,c,dt){var o=V[n]||(V[n]={x:0,v:0});o.v+=(-k*(o.x-to)-c*o.v)*dt/1000;o.x+=o.v*dt/1000;return o.x}
+function val(n){return V[n]?V[n].x:0}
 function cl(x){return x<0?0:x>1?1:x}
 function e(x){x=cl(x);return 1-Math.pow(1-x,3)}
-function sm(x){x=cl(x);return x*x*(3-2*x)}
-function back(x){x=cl(x);var c=1.25;return 1+(c+1)*Math.pow(x-1,3)+c*Math.pow(x-1,2)}
-function P(r,d){var a=d*Math.PI/180;return [CX+r*Math.sin(a),CY-r*Math.cos(a)]}
 function f(n){return n.toFixed(2)}
-function arc(r,a0,a1){var p=P(r,a0),b=P(r,a1);return 'M'+f(p[0])+' '+f(p[1])+'A'+r+' '+r+' 0 '+((a1-a0)>180?1:0)+' 1 '+f(b[0])+' '+f(b[1])}
-function path(d,c,w,o){return '<path d="'+d+'" fill="none" stroke="'+c+'" stroke-width="'+w+'" stroke-linecap="round" opacity="'+f(o)+'"/>'}
-function txt(x,y,s,size,c,o){return '<text x="'+f(x)+'" y="'+f(y)+'" font-size="'+size+'" fill="'+c+'" opacity="'+f(o)+'" text-anchor="middle" letter-spacing=".5" font-weight="500">'+s+'</text>'}
+function P(r,d){var a=d*Math.PI/180;return [CX+r*Math.sin(a),CY-r*Math.cos(a)]}
+function arc(r,a0,a1){if(a1-a0>=359.9)return 'M'+f(CX-r)+' '+CY+'a'+f(r)+' '+f(r)+' 0 1 0 '+f(2*r)+' 0a'+f(r)+' '+f(r)+' 0 1 0 '+f(-2*r)+' 0';
+  var p=P(r,a0),b=P(r,a1);return 'M'+f(p[0])+' '+f(p[1])+'A'+f(r)+' '+f(r)+' 0 '+((a1-a0)>180?1:0)+' 1 '+f(b[0])+' '+f(b[1])}
+function sector(ri,ro,a0,a1){var a=P(ri,a0),b=P(ro,a0),c=P(ro,a1),d=P(ri,a1);
+  return 'M'+f(a[0])+' '+f(a[1])+'L'+f(b[0])+' '+f(b[1])+'A'+f(ro)+' '+f(ro)+' 0 0 1 '+f(c[0])+' '+f(c[1])+'L'+f(d[0])+' '+f(d[1])+'A'+f(ri)+' '+f(ri)+' 0 0 0 '+f(a[0])+' '+f(a[1])+'Z'}
+function path(d,c,w,o){return '<path d="'+d+'" fill="none" stroke="'+c+'" stroke-width="'+w+'" stroke-linecap="round" opacity="'+f(cl(o))+'"/>'}
+function ln(r0,r1,d,c,w,o){var p=P(r0,d),b=P(r1,d);return '<line x1="'+f(p[0])+'" y1="'+f(p[1])+'" x2="'+f(b[0])+'" y2="'+f(b[1])+'" stroke="'+c+'" stroke-width="'+w+'" stroke-linecap="round" opacity="'+f(cl(o))+'"/>'}
+function tri(cx,cy,r){var d='';[60,180,300].forEach(function(g,i){var a=g*Math.PI/180;d+=(i?'L':'M')+f(cx+r*Math.sin(a))+' '+f(cy-r*Math.cos(a))});return d+'Z'}
+function tx(x,y,s,size,c,o,anchor,w,ls){return '<text x="'+f(x)+'" y="'+f(y)+'" font-size="'+size+'" fill="'+c+'" opacity="'+f(cl(o))+'" text-anchor="'+(anchor||'middle')+'" letter-spacing="'+(ls||0)+'" font-weight="'+(w||500)+'">'+s+'</text>'}
+function ico(n,x,y,size,c,o,sw){return '<g transform="translate('+f(x-size/2)+' '+f(y-size/2)+') scale('+f(size/24)+')" fill="none" stroke="'+c+'" stroke-width="'+(sw||1.8)+'" stroke-linecap="round" stroke-linejoin="round" opacity="'+f(cl(o))+'">'+window.LUCIDE[n].d+'</g>'}
 function wave(r0,amp,ph){var d='';for(var i=0;i<=120;i++){var th=i*3,x=th*Math.PI/180,r=r0+amp*(Math.sin(3*x+ph)*Math.sin(ph*.7)+.6*Math.sin(5*x-ph*1.4)),p=P(r,th);d+=(i?'L':'M')+f(p[0])+' '+f(p[1])}return d+'Z'}
 
-function draw(){var T=S.T,h=S.hud,s='',g='',on=sm(h/260);
-  s+='<rect width="402" height="874" fill="#000" opacity="'+f(.84*on)+'"/>';
-  // one arc: the rail the nodes sit on
-  var n=S.n,sw=92*e((h-60)/520)*sm(n);
-  if(sw>1)g+=path(arc(+f(R2*(.5+.5*sm(n))),-sw,sw),A,1,.28*sm(n*2-1));
-  // nodes fly out of the core, centre first
-  if(n>0.01&&h>0){NODES.forEach(function(nd,i){var p=cl((h-90-nd.o*70)/420),k=back(p)*sm(n),o=cl(p*2.2)*sm(n);if(o<=0)return;
-    var c=P(R2*k,nd.a),hot=(S.flash===i);
-    g+='<circle cx="'+f(c[0])+'" cy="'+f(c[1])+'" r="'+f(25*(.6+.4*cl(k)))+'" fill="'+(hot?A:'#0B0D10')+'" stroke="'+A+'" stroke-width="1" stroke-opacity=".8" opacity="'+f(o)+'"/>';
-    g+='<g transform="translate('+f(c[0]-11)+' '+f(c[1]-11)+') scale('+f(22/24)+')" fill="none" stroke="'+(hot?'#000':INK)+'" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" opacity="'+f(o)+'">'+window.LUCIDE[nd.i].d+'</g>';
-    var lo=sm((p-.55)/.45)*sm(n*4-3),lp=Math.abs(nd.a)>60?[c[0],c[1]+44]:P(R2*k+37,nd.a);
-    if(lo>0)g+=txt(lp[0],lp[1]+4,nd.l,11,INK,.8*lo)});}
-  // listening: one soft ring that moves with the voice
-  if(S.l>0.01){var l=sm(S.l);g+=path(wave(40,5.5*l,T/260),A,1.6,.95*l)+path(wave(47,4*l,-T/340+2),A,1,.4*l)}
+/* reply cards: one graphic, a few numbers, one or two actions; the sentence-long answer stays in the conversation */
+function cardBody(kind,x,y,h){var s='',W=354,R=x+W-20;function rv(ry){return cl((h-ry)/26)}
+  if(kind==='qa'){
+    s+='<path d="'+tri(x+25,y+24,6)+'" fill="none" stroke="'+A+'" stroke-width="1.4" stroke-linejoin="round" opacity="'+f(rv(28))+'"/>'+tx(x+40,y+28,'今天适合练腿吗',12,DIM,rv(28),'start');
+    s+=tx(x+20,y+78,'可以练',30,INK,rv(78),'start',600)+tx(x+20,y+102,'恢复够 · 可上强度',13,DIM,rv(102),'start');
+    var gx=R-28,gy=y+72,c=2*Math.PI*26;
+    s+='<circle cx="'+gx+'" cy="'+gy+'" r="26" fill="none" stroke="#fff" stroke-opacity=".14" stroke-width="4"/><circle cx="'+gx+'" cy="'+gy+'" r="26" fill="none" stroke="'+GOOD+'" stroke-width="4" stroke-linecap="round" stroke-dasharray="'+f(c*.82*rv(110))+' '+f(c)+'" transform="rotate(-90 '+gx+' '+gy+')"/>'+tx(gx,gy+6,'82',17,INK,rv(80),'middle',600);
+    s+='<line x1="'+(x+20)+'" x2="'+R+'" y1="'+(y+122)+'" y2="'+(y+122)+'" stroke="#fff" stroke-opacity="'+f(.1*rv(122))+'"/>';
+    [['88','睡眠'],['2.8','负荷'],['3 天','上次练腿']].forEach(function(r,i){var rx=x+20+i*104;s+=tx(rx,y+148,r[0],17,INK,rv(150),'start',600)+tx(rx+(r[0].length>2?38:r[0].length*11+8),y+148,r[1],10.5,DIM,rv(150),'start')});
+    s+='<rect x="'+(x+20)+'" y="'+(y+166)+'" width="112" height="32" rx="16" fill="'+A+'" fill-opacity=".1" stroke="'+A+'" stroke-opacity="'+f(.8*rv(196))+'"/>'+tx(x+76,y+186.5,'开始训练',13,A,rv(196),'middle',600)+tx(R,y+186.5,'展开对话 ›',12,DIM,rv(196),'end')}
+  else{var meal=kind==='meal';
+    s+=ico('circle-check',x+27,y+23,16,GOOD,rv(28))+tx(x+42,y+28,meal?'已记到午餐':'已记到 上肢 A',12,DIM,rv(28),'start');
+    s+='<rect x="'+(R-66)+'" y="'+(y+10)+'" width="66" height="26" rx="13" fill="none" stroke="#fff" stroke-opacity="'+f(.25*rv(28))+'"/>'+ico('undo-2',R-50,y+23,12,INK,rv(28))+tx(R-26,y+27.5,'撤销',12,INK,rv(28));
+    if(meal){s+=tx(x+20,y+80,'鸡胸饭',26,INK,rv(80),'start',600)+tx(R-32,y+80,'570',26,INK,rv(80),'end',600)+tx(R,y+80,'kcal',11,DIM,rv(80),'end');
+      [['蛋白','45 g',.75],['碳水','66 g',.62],['脂肪','14 g',.4]].forEach(function(r,i){var rx=x+20+i*108;
+        s+=tx(rx,y+110,r[0],10.5,DIM,rv(112),'start')+tx(rx+28,y+110,r[1],13,INK,rv(112),'start',600)+'<rect x="'+rx+'" y="'+(y+120)+'" width="92" height="3" rx="1.5" fill="#fff" fill-opacity=".12"/><rect x="'+rx+'" y="'+(y+120)+'" width="'+f(92*r[2]*rv(140))+'" height="3" rx="1.5" fill="'+INK+'"/>'});
+      var bw=314,a0=bw*420/2300,a1=bw*570/2300*rv(176);
+      s+='<rect x="'+(x+20)+'" y="'+(y+150)+'" width="'+bw+'" height="4" rx="2" fill="#fff" fill-opacity=".12"/><rect x="'+(x+20)+'" y="'+(y+150)+'" width="'+f(a0)+'" height="4" rx="2" fill="#fff" fill-opacity=".55"/><rect x="'+f(x+20+a0+2)+'" y="'+(y+150)+'" width="'+f(a1)+'" height="4" rx="2" fill="'+A+'"/>';
+      s+=tx(x+20,y+174,'今天 990 / 2,300 kcal',11,DIM,rv(176),'start')}
+    else{s+=tx(x+20,y+80,'卧推',26,INK,rv(80),'start',600)+tx(R,y+80,'60 kg × 8',20,INK,rv(80),'end',600);
+      for(var i=0;i<5;i++)s+='<circle cx="'+(x+26+i*18)+'" cy="'+(y+116)+'" r="5" fill="'+(i<4?'#5FB7C2':A)+'" opacity="'+f((i<4?.55:1)*rv(124+i*4))+'"/>';
+      s+=tx(x+118,y+120,'第 5 组',12,DIM,rv(130),'start')+tx(R,y+120,'5 / 18 组',12,DIM,rv(130),'end')}}
+  return s}
+
+function draw(){var T=S.T,on=cl(val('on')),s='',g='',t2='',i;
+  document.getElementById('bg2').style.opacity=f(cl(val('nav')));
+  s+='<rect width="402" height="874" fill="#000" opacity="'+f(.86*on)+'"/>';
+  // fan: how far it is open (leading panel)
+  var F=0;S.items.forEach(function(it,k){F=Math.max(F,cl(val('w'+k)))});
+  // the tick ring outside the panels (echo of the core and of the app icon); it turns one notch per level
+  if(F>.02){var span=100*e(F),rot=val('rot')+T*.004;
+    for(i=0;i<90;i++){var an=((i*4+rot)%360+540)%360-180,ab=Math.abs(an);if(ab>span)continue;var maj=i%9===0;
+      g+=ln(143,maj?150:146.5,an,A,1,(maj?.85:.34)*F*cl((span-ab)/14))}
+    if(S.sel>=0){var sa=S.items[S.sel].a;g+=path(arc(153,sa-9,sa+9),A,2,cl(val('sel'))*F)}}
+  // the panels: sectors of one ring, fanning out of the core
+  S.items.forEach(function(it,k){var v=val('w'+k);if(v<.02)return;var vc=cl(v),hot=S.sel===k,sv=hot?val('sel'):0,od=(hot||S.sel<0)?1:1-.65*cl(val('sel'));
+    var ang=it.a*v,ri=34+(RI-34)*v+7*sv,ro=ri+(RO-RI)*cl(v*1.15),hw=HW*(.25+.75*vc),o=cl(v*3)*od,d=sector(ri,ro,ang-hw,ang+hw);
+    g+='<path d="'+d+'" fill="'+PANEL+'" fill-opacity=".94" stroke="'+A+'" stroke-opacity=".5" stroke-width="1" stroke-linejoin="round" opacity="'+f(o)+'"/>';
+    if(hot)g+='<path d="'+d+'" fill="'+A+'" opacity="'+f(cl(sv)*o)+'"/>';
+    g+=path(arc(ro,ang-hw+3.5,ang+hw-3.5),A,2,.95*o);
+    var co=cl((v-.55)/.35)*od,c=P((ri+ro)/2,ang),ink=hot&&sv>.5?'#04121A':INK;
+    if(it.i){t2+=ico(it.i,c[0],c[1]-7,22,ink,co)+tx(c[0],c[1]+19,it.l,10.5,ink,.9*co,'middle',500,.3)}
+    else{t2+=tx(c[0],c[1]+1,it.t,12.5,ink,co,'middle',600)+tx(c[0],c[1]+16,it.s,9.5,hot&&sv>.5?'#04121A':DIM,co)}});
+  // level 2: the chosen key docks above the core (tap it to go back)
+  var cv=val('crumb');if(cv>.02){var cp=P(54,0);g+='<circle cx="'+cp[0]+'" cy="'+f(cp[1])+'" r="'+f(13*cv)+'" fill="'+PANEL+'" stroke="'+A+'" stroke-opacity=".8"/>';t2+=ico(S.crumbI,cp[0],cp[1],14*cl(cv),INK,cl(cv))}
+  // listening: the approved soft ring that moves with the voice
+  var l=cl(val('l'));if(l>.01){var en=.25+.75*cl(val('env'));g+=path(wave(40,5.5*l*en,T/260),A,1.6,.95*l)+path(wave(47,4*l*en,-T/340+2),A,1,.4*l)}
+  // pause heard: the ring closes in one second, then it sends (tap the key to send now, the text to edit)
+  var cf=cl(val('cf'));if(cf>.01){g+='<circle cx="'+CX+'" cy="'+CY+'" r="40" fill="none" stroke="'+A+'" stroke-width="1" opacity="'+f(.22*cf)+'"/>'+path(arc(40,0,S.mode==='confirm'?Math.max(.5,360*cl(S.since/1000)):360),A,2,.95*cf)}
   // thinking: one arc going round
-  if(S.k>0.01){var k2=sm(S.k),a1=T*.36;g+='<circle cx="'+CX+'" cy="'+CY+'" r="40" fill="none" stroke="'+A+'" stroke-width="1" opacity="'+f(.22*k2)+'"/>'+path(arc(40,a1,a1+96),A,2,.95*k2)}
-  // press feedback: one ring leaving the key
-  var pu=h/420;if(pu>0&&pu<1)g+='<circle cx="'+CX+'" cy="'+CY+'" r="'+f(29+34*e(pu))+'" fill="none" stroke="'+A+'" stroke-width="1.2" opacity="'+f(.7*(1-pu)*(1-pu))+'"/>';
-  // the key: K1, one inverted triangle on the glass key
-  g+='<circle cx="'+CX+'" cy="'+CY+'" r="29" fill="rgb(24,24,27)" stroke="'+(on>0?A:'#FFFFFF')+'" stroke-width="1" stroke-opacity="'+f(.14+.66*on)+'"/>';
-  var br=1+.035*Math.sin(T/900)*on;
-  g+='<g transform="translate('+CX+' '+CY+') rotate(180) scale('+f(1.08*br)+') translate(-12 -14.4)"><path d="'+TRI+'" fill="none" stroke="'+INK+'" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></g>';
-  var ga=Math.round(on*110+16).toString(16);
-  s+='<g'+(GLOW&&on>0?' style="filter:drop-shadow(0 0 6px '+A+ga+')"':'')+'>'+g+'</g>';
+  var k2=cl(val('k'));if(k2>.01){var a1=T*.36;g+='<circle cx="'+CX+'" cy="'+CY+'" r="40" fill="none" stroke="'+A+'" stroke-width="1" opacity="'+f(.22*k2)+'"/>'+path(arc(40,a1,a1+96),A,2,.95*k2)}
+  // transcript, live
+  var tr=cl(val('tr'));if(tr>.01){var sy=S.say,n=S.mode==='listen'?Math.floor(cl(S.since/sy.dur)*sy.text.length+.001):sy.text.length,live=S.mode==='listen'&&n<sy.text.length;
+    var a=sy.text.slice(0,Math.max(0,n-(live?2:0))),b=sy.text.slice(a.length,n);
+    t2+='<text x="201" y="'+f(606-10*(1-tr))+'" font-size="22" font-weight="600" text-anchor="middle" opacity="'+f(tr)+'"><tspan fill="'+INK+'">'+a+'</tspan><tspan fill="'+A+'" fill-opacity=".75">'+b+'</tspan></text>';
+    t2+=tx(201,634,S.mode==='listen'?'说完停一下，自动发送':'点文字可修改',11,DIM,.9*tr,'middle',500,.3);
+    g+='<circle cx="'+(CX-80)+'" cy="'+CY+'" r="17" fill="'+PANEL+'" stroke="#fff" stroke-opacity=".25" opacity="'+f(tr)+'"/>';t2+=ico('x',CX-80,CY,15,INK,tr)}
+  // reply card: a line leaves the core, widens, unfolds upwards
+  var cw=cl(val('cardw'));if(cw>.02){var H=CARDH[S.kind],h=Math.max(0,H*val('card')),w=354*cw,x=201-w/2,y1=652,y0=y1-h,ch=Math.min(18,h/2);
+    g+=ln(37,99,0,A,1,.7*cw)+'<circle cx="201" cy="652" r="2.2" fill="'+A+'" opacity="'+f(cw)+'"/>';
+    g+='<path d="M'+f(x)+' '+f(y0+6)+'Q'+f(x)+' '+f(y0)+' '+f(x+6)+' '+f(y0)+'H'+f(x+w-ch)+'L'+f(x+w)+' '+f(y0+ch)+'V'+f(y1-6)+'Q'+f(x+w)+' '+f(y1)+' '+f(x+w-6)+' '+f(y1)+'H'+f(x+6)+'Q'+f(x)+' '+f(y1)+' '+f(x)+' '+f(y1-6)+'Z" fill="'+PANEL+'" fill-opacity=".97" stroke="'+A+'" stroke-opacity=".5" stroke-width="1" stroke-linejoin="round"/>';
+    g+='<line x1="'+f(x+12)+'" x2="'+f(x+12+44*cw)+'" y1="'+f(y0)+'" y2="'+f(y0)+'" stroke="'+A+'" stroke-width="2" stroke-linecap="round"/>';
+    if(h>8)t2+='<clipPath id="cc"><rect x="24" y="'+f(y0)+'" width="354" height="'+f(h)+'"/></clipPath><g clip-path="url(#cc)" opacity="'+f(cl(cw*3-2))+'">'+cardBody(S.kind,24,y0,h)+'</g>'}
+  // the key: tick ring, three segments, inverted triangle with a lit inner triangle
+  var c='',pu=(T-S.pulse)/520;if(pu>0&&pu<1)c+='<circle cx="'+CX+'" cy="'+CY+'" r="'+f(29+36*e(pu))+'" fill="none" stroke="'+A+'" stroke-width="1.3" opacity="'+f(.75*(1-pu)*(1-pu))+'"/>';
+  var sc=1+.5*val('pr');
+  c+='<g transform="translate('+CX+' '+CY+') scale('+f(sc)+') translate('+(-CX)+' '+(-CY)+')"><circle cx="'+CX+'" cy="'+CY+'" r="29" fill="#08090B" stroke="'+A+'" stroke-width="1" stroke-opacity="'+f(.5+.45*on)+'"/>';
+  for(i=0;i<24;i++)c+=ln(22,i%6===0?26.5:25,S.ra+i*15,A,1,i%6===0?.95:.5);
+  for(i=0;i<3;i++)c+=path(arc(17.5,S.rb+i*120,S.rb+i*120+84),A,1.5,.85);
+  var hot=TONE==='ink'?GOOD:A;
+  c+='<path d="'+tri(CX,CY,11.5)+'" fill="none" stroke="'+INK+'" stroke-width="1.6" stroke-linejoin="round"/><path d="'+tri(CX,CY,4.6)+'" fill="'+hot+'" stroke="'+hot+'" stroke-width="1" stroke-linejoin="round" opacity="'+f(.6+.4*Math.sin(T/700))+'"/></g>';
+  s+='<g'+(GLOW?' style="filter:drop-shadow(0 0 6px '+A+'66)"':'')+'>'+g+'</g>'+t2+'<g'+(GLOW?' style="filter:drop-shadow(0 0 5px '+A+'99) drop-shadow(0 0 14px '+A+'44)"':'')+'>'+c+'</g>';
+  // film only: scene caption and the finger
+  if(DEMO){if(S.cap)s+='<rect x="141" y="100" width="120" height="26" rx="13" fill="#000" fill-opacity=".55" stroke="#fff" stroke-opacity=".14"/>'+tx(201,117.5,S.cap,12,INK,.85,'middle',500,1);
+    S.taps.forEach(function(p){var d=T-p[0];if(d<-300||d>320)return;var o=d<0?.42*e((d+300)/220):.42*(1-d/320),r=d<0?22-6*e((d+300)/300):16+10*e(d/320);
+      s+='<circle cx="'+p[1]+'" cy="'+p[2]+'" r="'+f(r)+'" fill="#fff" fill-opacity="'+f(o*.5)+'" stroke="#fff" stroke-opacity="'+f(o)+'" stroke-width="1.2"/>'})}
   document.getElementById('hud').innerHTML=s}
 
-function step(dt){S.T+=dt;S.since+=dt;var m=S.mode,up=m!=='idle';
-  S.hud=up?Math.min(900,S.hud+dt):Math.max(0,S.hud-dt*2.4);
-  function mv(v,on,ms){return cl(v+(on?dt:-dt)/ms)}
-  S.n=mv(S.n,m==='open',300);S.l=mv(S.l,m==='listen',380);S.k=mv(S.k,m==='think',380);
-  if(m==='listen'&&S.since>S.tl&&S.auto)set('think');else if(m==='think'&&S.since>S.tk&&S.auto)set('idle');
-  if(S.flash!=null&&S.since>200&&m==='open'){var i=S.flash;S.flash=null;if(NODES[i].i==='mic'){S.auto=true;set('listen')}else set('idle')}}
 function set(m){S.mode=m;S.since=0}
+function openMenu(items,lv){S.items=items;S.lv=lv;S.fanT=1;S.fanSince=0;S.sel=-1;V.sel={x:0,v:0};for(var i=0;i<5;i++)V['w'+i]={x:0,v:0};set('menu')}
+function closeAll(){S.fanT=0;S.pend=null;set('idle')}
+function act(it){var a=(it.act||'close').split(':');
+  if(a[0]==='sub'){S.fanT=0;S.pend={at:S.T+300,fn:function(){S.rotT+=36;S.crumbI=it.i;openMenu(a[1]==='meal'?MEAL:TRAIN,2)}}}
+  else if(a[0]==='voice'){S.fanT=0;S.say=SAY[a[1]];set('listen')}
+  else if(a[0]==='log'){S.fanT=0;S.kind='meal';S.tk=600;set('think')}
+  else if(a[0]==='nav'){S.fanT=0;S.nav=1;set('idle')}
+  else closeAll()}
+function tap(x,y){var m=S.mode,i;
+  if(Math.hypot(x-CX,y-CY)<34){V.pr=V.pr||{x:0,v:0};V.pr.v=-3;S.pulse=S.T;
+    if(m==='idle')openMenu(L1,1);else if(m==='listen')set('confirm');else if(m==='confirm'){S.kind=S.say.kind;S.tk=S.say.tk;set('think')}else closeAll();return}
+  if((m==='listen'||m==='confirm')&&Math.hypot(x-CX+80,y-CY)<24){closeAll();return}
+  if(m==='menu'){if(S.sel>=0)return;
+    if(S.lv===2&&Math.hypot(x-CX,y-(CY-54))<18){S.fanT=0;S.pend={at:S.T+280,fn:function(){S.rotT-=36;openMenu(L1,1)}};return}
+    for(i=0;i<S.items.length;i++){var c=P(RM,S.items[i].a);if(Math.hypot(x-c[0],y-c[1])<31){S.sel=i;(function(it){S.pend={at:S.T+260,fn:function(){act(it)}}})(S.items[i]);return}}
+    closeAll();return}
+  if(m!=='idle')closeAll()}
+function step(dt){S.T+=dt;S.since+=dt;S.fanSince+=dt;var m=S.mode;
+  if(S.pend&&S.T>=S.pend.at){var fn=S.pend.fn;S.pend=null;fn();m=S.mode}
+  if(m==='listen'&&S.since>S.say.dur+500)set('confirm');
+  else if(m==='confirm'&&S.since>1000){S.kind=S.say.kind;S.tk=S.say.tk;set('think')}
+  else if(m==='think'&&S.since>S.tk)set('card');
+  m=S.mode;
+  spr('on',m==='idle'?0:1,110,21,dt);
+  for(var i=0;i<5;i++){var it=S.items[i],tg=it&&S.fanT&&S.fanSince>=Math.abs(it.a)/36*60?1:0;spr('w'+i,tg,S.fanT?150:300,S.fanT?15.5:32,dt)}
+  spr('sel',S.sel>=0?1:0,420,26,dt);spr('crumb',m==='menu'&&S.lv===2&&S.fanT?1:0,220,21,dt);spr('rot',S.rotT,80,13,dt);
+  spr('l',m==='listen'?1:0,90,19,dt);spr('env',m==='listen'&&S.since<S.say.dur?1:0,160,25,dt);spr('cf',m==='confirm'?1:0,140,24,dt);spr('k',m==='think'?1:0,90,19,dt);
+  spr('tr',m==='listen'||m==='confirm'?1:0,120,22,dt);
+  spr('cardw',m==='card'?1:0,m==='card'?260:120,m==='card'?32:22,dt);spr('card',m==='card'&&val('cardw')>.6?1:0,m==='card'?120:260,m==='card'?16.5:32,dt);
+  spr('nav',S.nav,36,12,dt);spr('pr',0,320,18,dt);
+  var sp=1+5*cl(val('k'))+1.5*cl(val('on'))+2*cl(val('l'));S.ra+=dt*.02*sp;S.rb-=dt*.035*sp}
 
-var still=q.get('s'),t=+q.get('t')||0;
-if(q.get('demo')){ // scripted film: idle 0.5 s -> open -> (2.2 s) tap mic -> listen 2 s -> think 1.6 s -> idle
-  S.tl=2000;S.tk=1600;var ev=[[500,function(){set('open')}],[2200,function(){S.flash=2;S.since=0}]],k=0,dt=1000/120;
-  for(var x=0;x<t;x+=dt){while(k<ev.length&&x>=ev[k][0]){ev[k][1]();k++}step(dt)}draw()}
-else if(still){S.T=4000+t;S.mode=still;if(still!=='idle'){S.hud=Math.min(900,still==='open'?t:900)}
-  S.n=still==='open'?1:0;S.l=still==='listen'?1:0;S.k=still==='think'?1:0;draw()}
-else{var last=performance.now();(function loop(now){step(Math.min(34,now-last));last=now;draw();requestAnimationFrame(loop)})(last);
-  document.getElementById('hud').addEventListener('click',function(ev){var r=this.getBoundingClientRect(),x=(ev.clientX-r.left)*402/r.width,y=(ev.clientY-r.top)*874/r.height;
-    if(Math.hypot(x-CX,y-CY)<34){S.auto=false;set(S.mode==='idle'?'open':'idle');return}
-    if(S.mode==='open'){for(var i=0;i<NODES.length;i++){var c=P(R2,NODES[i].a);if(Math.hypot(x-c[0],y-c[1])<30){S.flash=i;S.since=0;return}}set('idle')}
-    else if(S.mode!=='idle')set('idle')})}
+if(DEMO){ // scripted film: 1 voice question -> reply card; 2 记一餐 -> second ring -> logged card; 3 记训练 -> second ring -> the training screen
+  var t=+q.get('t')||0,w=function(a){return P(RM,a)},ev=[[500,CX,CY],[1800].concat(w(0)),[8600,201,250],[9500,CX,CY],[10600].concat(w(-72)),[12400].concat(w(0)),[15400,201,250],[16300,CX,CY],[17400].concat(w(-36)),[19200].concat(w(-54))],k=0,dt=1000/120;
+  S.taps=ev;
+  for(var x=0;x<t;x+=dt){while(k<ev.length&&x>=ev[k][0]){tap(ev[k][1],ev[k][2]);k++}step(dt)}
+  S.cap=t<9100?'1 · 说话':t<15900?'2 · 记一餐':'3 · 记训练';draw()}
+else{var last=performance.now();(function loop(now){var d=Math.min(50,now-last);last=now;while(d>0){step(Math.min(8,d));d-=8}draw();requestAnimationFrame(loop)})(last);
+  document.getElementById('hud').addEventListener('click',function(ev){var r=this.getBoundingClientRect();S.nav=0;tap((ev.clientX-r.left)*402/r.width,(ev.clientY-r.top)*874/r.height)})}
 </script>
 </body>
 </html>
