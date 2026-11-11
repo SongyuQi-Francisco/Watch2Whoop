@@ -32,6 +32,7 @@ struct JarvisChatView: View {
       log
       if chat.started && !quick.isEmpty { quickRow }
       if !chat.attachments.isEmpty { thumbs }
+      if !chat.started && !context.isEmpty && !recording { contextRow }
       if recording { recorder } else { composer }
     }
     .background(Palette.sheet.ignoresSafeArea())
@@ -66,6 +67,11 @@ struct JarvisChatView: View {
     }
     .presentationDragIndicator(.visible)
     .task {
+      context = Self.contextChips(TodayStore.snapshot(session))
+      if router.focusComposer {   // 提问 from the cockpit: the keyboard is up at once
+        router.focusComposer = false
+        focused = true
+      }
       if chat.choices.isEmpty { await chat.loadChoices() }
       #if DEBUG
       if JarvisDemo.mode == "posture" || JarvisDemo.mode == "posture-filled" { posture = true }
@@ -155,15 +161,90 @@ struct JarvisChatView: View {
     }
   }
 
+  /// The empty conversation (docs/design/2.0.1/17-ask.html): the page's questions as rows, a tap sends one.
   private var welcome: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      Text(tr("问问题，或者直接说要记什么", "Ask anything, or just say what to log"))
-        .font(.system(size: 20, weight: .semibold)).foregroundColor(Palette.text)
-        .padding(.top, 24)
-      if !quick.isEmpty {
-        FlowRow(spacing: 8) { ForEach(quick, id: \.self) { q in quickChip(q) } }
+    VStack(alignment: .leading, spacing: 8) {
+      ForEach(quick, id: \.self) { q in
+        Button {
+          if q.photo { library = true; pendingQuick = q.text } else { chat.send(q.text) }
+        } label: {
+          HStack(spacing: 12) {
+            Icon(Self.icon(for: q), size: 18).foregroundColor(Palette.text2)
+            Text(q.text).font(Typo.body).foregroundColor(Palette.text).lineLimit(1)
+            Spacer(minLength: 8)
+            Icon(q.photo ? .image : .arrowUp, size: 16).foregroundColor(Palette.text3)
+          }
+          .padding(.vertical, 13).padding(.horizontal, 14)
+          .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.inSheet))
+        }
+        .buttonStyle(PressScale())
+        .disabled(chat.busy)
       }
     }
+    .padding(.top, 12)
+  }
+
+  /// A mark for a quick question, by what it is about (the lists are the router's; the words of both languages).
+  static func icon(for q: JarvisRouter.Quick) -> Icon.Name {
+    let t = q.text.lowercased()
+    if q.photo { return .camera }
+    // the questions are in the UI language, so are the words looked for
+    let marks: [(Icon.Name, [String])] = [
+      (.moon, [tr("睡", "sleep")]),
+      (.soup, [tr("吃", "eat"), tr("餐", "meal"), tr("蛋白", "protein"), tr("清单", "shopping")]),
+      (.calendarDays, [tr("周", "week")]),
+      (.dumbbell, [tr("练", "train"), tr("负荷", "strain")]),
+    ]
+    for (icon, words) in marks where words.contains(where: t.contains) { return icon }
+    return .messageCircle
+  }
+
+  /// A reading of today above the box: a tap puts its words into the message (nothing else is sent with it).
+  struct ContextChip: Hashable {
+    let icon: Icon.Name
+    let label: String
+    let text: String
+  }
+
+  @State private var context: [ContextChip] = []
+
+  /// Today's recovery, sleep score and strain as they are now on the phone; a reading without data has no chip.
+  static func contextChips(_ m: TodayModel) -> [ContextChip] {
+    var out: [ContextChip] = []
+    func ring(_ k: String) -> String? { m.rings.first { $0.key == k }?.value }
+    if let v = ring("recovery") { out.append(ContextChip(icon: .circleGauge, label: tr("恢复 \(v)%", "Recovery \(v)%"), text: tr("今天恢复 \(v)%", "today's recovery \(v)%"))) }
+    if let v = ring("sleep") { out.append(ContextChip(icon: .moon, label: tr("睡眠 \(v)", "Sleep \(v)"), text: tr("睡眠分 \(v)", "sleep score \(v)"))) }
+    if let v = ring("strain") { out.append(ContextChip(icon: .flame, label: tr("负荷 \(v)", "Strain \(v)"), text: tr("负荷 \(v)", "strain \(v)"))) }
+    return out
+  }
+
+  /// Adds a reading's words to the box, once.
+  static func adding(_ c: ContextChip, to draft: String) -> String {
+    let part = tr("（\(c.text)）", " (\(c.text))")
+    if draft.contains(part) { return draft }
+    return draft + part
+  }
+
+  private var contextRow: some View {
+    ScrollView(.horizontal, showsIndicators: false) {
+      HStack(spacing: 8) {
+        ForEach(context, id: \.self) { c in
+          Button {
+            chat.draft = Self.adding(c, to: chat.draft)
+            focused = true
+          } label: {
+            HStack(spacing: 5) { Icon(c.icon, size: 13); Text(c.label).font(Typo.label.monospacedDigit()) }
+              .foregroundColor(Palette.text)
+              .padding(.vertical, 7).padding(.horizontal, 11)
+              .overlay(Capsule().strokeBorder(Palette.text.opacity(0.25), lineWidth: 1))
+          }
+          .buttonStyle(PressScale())
+          .accessibilityHint(tr("把这个读数加进问题", "Adds this reading to the question"))
+        }
+      }
+      .padding(.horizontal, Metrics.gutter)
+    }
+    .padding(.vertical, 6)
   }
 
   private var quickRow: some View {

@@ -168,13 +168,19 @@ final class CockpitController: ObservableObject {
     switch key {
     case .template(let i):
       logTemplate(i)
-    case .photo, .mealPhoto:
+    case .photo:
       router.run(.photo)
-    case .ask:
+    case .mealPhoto:   // 16: the meal camera (the photo goes to the user's own AI)
+      if !router.ai.vision { router.show(tr("这个 AI 看不了图片", "This AI can't read pictures")); return }
+      router.present(.mealPhoto)
+    case .ask:   // 17: the chat, keyboard up
+      router.focusComposer = true
       router.run(.chat)
-    case .mealMore:
-      router.run(.quick)
-    case .trainStart, .trainBackfill, .trainPlan:
+    case .mealMore:   // 20: every quick meal
+      router.present(.templates)
+    case .trainPlan:   // 19: this week's plan
+      router.present(.plan)
+    case .trainStart, .trainBackfill:   // 18 (补记) is not built: no endpoint logs a cardio / ball session by hand yet
       router.open(page: "record.training")
     default:
       break
@@ -287,7 +293,7 @@ final class CockpitController: ObservableObject {
   }
 
   /// Waits for the chat's turn to end (at most 90 s) and returns its items.
-  private static func turn(_ chat: JarvisChat, from start: Int) async -> [JarvisChat.Item]? {
+  static func turn(_ chat: JarvisChat, from start: Int) async -> [JarvisChat.Item]? {
     let deadline = Date().addingTimeInterval(90)
     while chat.busy {
       if Date() > deadline || Task.isCancelled { return nil }
@@ -424,9 +430,7 @@ final class CockpitController: ObservableObject {
     let (verdict, sub) = CockpitText.verdict(from: text)
     var a = CockpitReply.Answer(question: question, verdict: verdict, sub: sub)
     if let session {
-      let today = TodayStore(session: session)
-      let m = today.model
-      today.stop()
+      let m = TodayStore.snapshot(session)
       if let r = m.rings.first(where: { $0.key == "recovery" }), let v = r.value {
         a.gauge = CockpitReply.Gauge(value: v, fraction: r.fraction, tone: r.tone)
       }
@@ -481,5 +485,16 @@ final class CockpitController: ObservableObject {
                                   set: CockpitText.set(weightKg: row.weightKg, reps: row.reps, seconds: row.durationS),
                                   index: after[ex.slug] ?? 1, planned: rows.count, done: s.doneSets, total: s.totalSets)
     return (ex.slug, log)
+  }
+}
+
+extension TodayStore {
+  /// Today's model as the phone has it now (one synchronous read, no observation left running).
+  @MainActor
+  static func snapshot(_ session: AccountSession) -> TodayModel {
+    let t = TodayStore(session: session)
+    let m = t.model
+    t.stop()
+    return m
   }
 }

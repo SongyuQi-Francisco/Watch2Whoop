@@ -95,6 +95,19 @@ struct JarvisLayer: View {
           .presentationDetents([.medium])
           .presentationDragIndicator(.visible)
       }
+    case .mealPhoto:
+      CockpitMealPhotoView(session: session, router: router) { router.sheet = nil }
+        .presentationDetents([.large])
+        .interactiveDismissDisabled()
+    case .templates:
+      CockpitTemplatesSheet(session: session) { router.sheet = nil }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    case .plan:
+      CockpitPlanSheet(session: session, close: { router.sheet = nil }, start: {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { router.open(page: "record.training") }
+      })
+      .presentationDetents([.large])
     case .camera:
       CameraPicker { img in
         router.sheet = nil
