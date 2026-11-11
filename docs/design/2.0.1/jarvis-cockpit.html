@@ -172,7 +172,15 @@ if(DEMO){ // scripted film: 1 voice question -> reply card; 2 记一餐 -> secon
   for(var x=0;x<t;x+=dt){while(k<ev.length&&x>=ev[k][0]){tap(ev[k][1],ev[k][2]);k++}step(dt)}
   S.cap=t<9100?'1 · 说话':t<15900?'2 · 记一餐':'3 · 记训练';draw()}
 else{var last=performance.now();(function loop(now){var d=Math.min(50,now-last);last=now;while(d>0){step(Math.min(8,d));d-=8}draw();requestAnimationFrame(loop)})(last);
-  document.getElementById('hud').addEventListener('click',function(ev){var r=this.getBoundingClientRect();S.nav=0;tap((ev.clientX-r.left)*402/r.width,(ev.clientY-r.top)*874/r.height)})}
+  // pointerdown, not click: the SVG is redrawn every frame, so the element under the pointer is replaced between
+  // mouse-down and mouse-up and the browser never fires a click.
+  // Fit the 402 x 874 screen into any window (a laptop window is shorter than the phone), centred.
+  var fit=function(){var k=Math.min(1,innerHeight/874,innerWidth/402),h=document.documentElement.style,b=document.body.style;
+    h.width='100%';h.height='100%';b.position='absolute';b.transformOrigin='0 0';b.transform='scale('+k+')';
+    b.left=Math.max(0,(innerWidth-402*k)/2)+'px';b.top=Math.max(0,(innerHeight-874*k)/2)+'px'};
+  fit();addEventListener('resize',fit);
+  var hud=document.getElementById('hud');
+  document.addEventListener('pointerdown',function(ev){var r=hud.getBoundingClientRect();S.nav=0;tap((ev.clientX-r.left)*402/r.width,(ev.clientY-r.top)*874/r.height)})}
 </script>
 </body>
 </html>
