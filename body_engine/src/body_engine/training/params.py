@@ -188,6 +188,23 @@ DURATION_THRESHOLDS = {
     "strength": ((75, "hard"), (40, "moderate")),
     "other": ((60, "moderate"),),
 }
+# ---------- manual workouts (training/manual.py: a cardio / ball-game session the user logs by hand) ----------
+MANUAL_SOURCE = "manual"   # workouts.source; not in SOURCE_RANK on purpose: unknown sources rank 9 = last, so a watch copy of the same session always wins
+# Types the picker offers: cardio and sports (strength sessions go through log_workout with their sets, so they are not listed).
+# Order = order of the picker. Every key is in TYPE_NAMES.
+MANUAL_TYPES = ("basketball", "swimming", "running", "walking", "cycling", "hiking", "badminton", "tennis", "table_tennis",
+                "soccer", "volleyball", "boxing", "martial_arts", "dance", "climbing", "jump_rope", "elliptical",
+                "rowing_machine", "stair_climbing", "treadmill", "indoor_cycling", "cardio_training", "yoga", "pilates",
+                "stretching", "other")
+# The level the user picks (light / medium / hard) is the intensity of the session as it is: there is no heart rate to grade,
+# and inventing a TRIMP would feed made-up physiology to strain and fitness. Sessions shorter than MIN_SESSION_MIN are still "light".
+MANUAL_INTENSITY = {"light": "light", "moderate": "moderate", "hard": "hard"}
+MANUAL_MIN_DURATION = 1
+MANUAL_MAX_DURATION = 600              # minutes; MAX_DURATION (12 h) is the hard limit of any workout
+MANUAL_MAX_PAST_DAYS = 366             # how far back a session may be logged
+MANUAL_UNTIMED_HOUR = 12               # no start time given: the record sits at 12:00 local time and is flagged `untimed`
+MANUAL_CLIENT_ID_MAX = 64
+
 MIN_SESSION_MIN = 5                    # records under 5 minutes (workouts started by accident) are still shown, but with intensity light
 
 HRR_TAIL = timedelta(minutes=3)

@@ -7,7 +7,7 @@ from .. import auth
 from ..rollout import flags
 from ..toolspec import DATE, DETAIL, USER, nullable, schema
 from . import catalog_data as CD
-from . import catalog, custom, day_overrides, goals, history, loads, muscle_load, overrides, params as P, plans, session_log
+from . import catalog, custom, day_overrides, goals, history, loads, manual, muscle_load, overrides, params as P, plans, session_log
 
 
 def _d(s: str | None) -> date | None:
@@ -16,6 +16,16 @@ def _d(s: str | None) -> date | None:
 
 _schema = schema
 _n = nullable
+
+
+def _log_cardio(conn, uid, a):
+    day = date.fromisoformat(a["date"])
+    start = None
+    if a.get("start"):
+        h, m = a["start"].split(":")
+        start = datetime(day.year, day.month, day.day, int(h), int(m))   # no zone = the user's time zone
+    return manual.add(conn, uid, type_=a["type"], duration_min=a["duration_min"], intensity=a["intensity"], day=day,
+                      start=start, avg_hr=a.get("avg_hr"), active_kcal=a.get("active_kcal"))
 
 PLAN_EX = _schema({
     "exercise": {"type": "string", "description": "slug 或动作名；「A + B」=超级组"},
@@ -316,6 +326,21 @@ TOOL_SPECS: list[dict] = [
         }),
         handler=lambda conn, uid, a: overrides.update_workout(conn, uid, a["workout_id"], a["type"], a["name"],
                                                               bool(a["apply_to_similar"])),
+        group="training", scope="training", writes=True,
+    ),
+    dict(
+        name="log_cardio_workout",
+        description="补记有氧 / 球类训练（力量用 log_workout）；手表已有同一次的以手表为准；记错用 rollback_write。",
+        input_schema=_schema({
+            "type": {"type": "string", "description": "basketball、swimming、running、cycling、badminton、yoga…"},
+            "date": DATE,
+            "start": _n("string", "HH:MM，不知道 null"),
+            "duration_min": {"type": "number"},
+            "intensity": {"type": "string", "enum": list(P.MANUAL_INTENSITY)},
+            "avg_hr": _n("number"),
+            "active_kcal": _n("number"),
+        }),
+        handler=lambda conn, uid, a: _log_cardio(conn, uid, a),
         group="training", scope="training", writes=True,
     ),
     dict(
