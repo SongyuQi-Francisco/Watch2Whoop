@@ -149,6 +149,7 @@ struct CockpitBackfillSheet: View {
 
   private var form: some View {
     VStack(alignment: .leading, spacing: 20) {
+      ScrollViewReader { proxy in
       ScrollView(.horizontal, showsIndicators: false) {
         HStack(spacing: 6) {
           ForEach(Self.days(today: today, back: options.maxPastDays), id: \.self) { d in
@@ -162,8 +163,11 @@ struct CockpitBackfillSheet: View {
             }
             .buttonStyle(PressScale())
             .accessibilityAddTraits(d == day ? .isSelected : [])
+            .id(d)
           }
         }
+      }
+      .onAppear { proxy.scrollTo(day, anchor: .trailing) }   // today (the newest) in view
       }
       FlowRow(spacing: 8) {
         ForEach(options.types, id: \.self) { k in

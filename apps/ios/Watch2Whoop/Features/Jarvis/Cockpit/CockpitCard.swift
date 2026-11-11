@@ -166,8 +166,8 @@ struct CockpitCardFrame: View {
       HStack(alignment: .firstTextBaseline) {
         Text(m.name).font(.system(size: 26 * k, weight: .semibold)).foregroundColor(CockpitPalette.ink).lineLimit(1).minimumScaleFactor(0.6)
         Spacer()
-        if let k = m.kcal {
-          Text(CockpitText.kcal(k)).font(.system(size: 26 * k, weight: .semibold)).foregroundColor(CockpitPalette.ink)
+        if let kcal = m.kcal {
+          Text(CockpitText.kcal(kcal)).font(.system(size: 26 * k, weight: .semibold)).foregroundColor(CockpitPalette.ink)
           Text("kcal").font(.system(size: 11 * k, weight: .medium)).foregroundColor(CockpitPalette.dim)
         }
       }
