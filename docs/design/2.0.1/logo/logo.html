@@ -46,6 +46,25 @@ var DRAW={
    return arc(360,0,.9999,10,t.track,'butt')+arc(360,0,V,56,t.good)+arc(236,0,.9999,10,t.track,'butt')+arc(236,0,.56,56,t.ink)},
  F:function(t){var k='#0B0B0C';                // B inverted: state colour as the ground
    return '<rect width="1024" height="1024" fill="'+t.good+'"/>'+arc(348,0,V,54,k)+'<g transform="translate(512 512) scale(15.5) translate(-12 -12)"><path d="'+ACT+'" fill="none" stroke="'+k+'" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></g>'},
+ H:function(t){var s=arc(292,0,.9999,10,t.track,'butt')+arc(292,0,V,44,t.good); // dial, scale outside the arc
+   for(var i=0;i<60;i++){var maj=(i%15===0);s+=tick(maj?352:366,400,i/60,maj?12:7,maj?t.ink:t.tick)}
+   return s},
+ I:function(t){var s='',n=60,lit=Math.round(V*n); // fine tick ring: 60 thin ticks
+   for(var i=0;i<n;i++)s+=tick(i===0?214:270,380,i/n,15,i===0?t.ink:(i<lit?t.good:t.dim));
+   return s},
+ J:function(t){var s='',n=40,lit=Math.round(V*n); // rising ticks: the lit ticks grow toward the value
+   for(var i=0;i<n;i++){var len=i<lit?70+110*i/(lit-1):56;s+=tick(384-len,384,i/n,24,i<lit?t.good:t.dim)}
+   return s},
+ K:function(t){var f0=.625,sp=.75,s=arc(352,f0,f0+sp,10,t.track,'butt')+arc(352,f0,f0+sp*V,50,t.good); // 270-degree gauge
+   for(var i=0;i<=36;i++){var maj=(i%9===0);s+=tick(maj?232:258,298,f0+sp*i/36,maj?12:8,maj?t.ink:t.tick)}
+   return s},
+ L:function(t){var s='',n=48,m=32,a=Math.round(V*n),b=Math.round(.56*m); // two tick rings: recovery outside, strain inside
+   for(var i=0;i<n;i++)s+=tick(316,388,i/n,20,i<a?t.good:t.dim);
+   for(var j=0;j<m;j++)s+=tick(196,254,j/m,20,j<b?t.ink:t.dim);
+   return s},
+ M:function(t){var s=arc(388,0,.9999,6,t.track,'butt')+arc(388,0,V,16,t.good),n=36,lit=Math.round(V*n); // hairline dial outside, bold ticks inside
+   for(var i=0;i<n;i++)s+=tick(i===0?196:236,336,i/n,28,i===0?t.ink:(i<lit?t.good:t.dim));
+   return s},
  G:function(t){var s=arc(372,0,.9999,22,t.ink,'butt'); // the core alone: ring, ticks, inverted triangle, one lit point
    for(var i=0;i<24;i++)s+=tick(296,330,i/24,12,t.tick);
    return s+tri(17.5,t.ink,2.2)+'<circle cx="512" cy="512" r="46" fill="'+t.good+'"/>'}
@@ -55,9 +74,9 @@ function box(c,theme,px){return '<span class="ic" style="width:'+px+'px;height:'
 var q=new URLSearchParams(location.search),one=q.get('c');
 if(one){document.body.className='one';document.body.innerHTML='<div style="width:1024px;height:1024px">'+icon(one,q.get('theme'))+'</div>'}
 else{
- var SET=q.get('set')==='2'?['D','E','F','G']:['A','B','C'];
- var N={D:['D · 表盘 + 核心','恢复环 + Jarvis 的倒三角核心'],E:['E · 双读数','外环恢复、内环负荷：今天页的两个读数'],F:['F · 绿底','B 的反色：绿色做底，主屏幕上最醒目'],G:['G · 核心','只有核心：环、刻度、倒三角、一个亮点'],A:['A · 表盘','今天页的恢复表盘：值弧 + 刻度'],B:['B · 表盘 + 脉搏','保留现在图标的脉搏线，换成新 UI 的黑底细环'],C:['C · 刻度环','刻度本身就是读数：亮起的刻度 = 恢复']};
- var h='<div class="board"'+(SET.length>3?' style="width:1500px"':'')+'><h1>WATCH2WHOOP · APP ICON · 2.0.1</h1><div class="row" style="grid-template-columns:repeat('+SET.length+',1fr)">';
+ var SET=q.get('set')==='3'?['H','I','J','K','L','M']:q.get('set')==='2'?['D','E','F','G']:['A','B','C'];
+ var N={H:['H · 表盘 · 刻度在外','A 的变体：刻度移到弧外，中心留空'],I:['I · 细刻度环','C 的变体：60 条细刻度'],J:['J · 渐长刻度','亮起的刻度一路变长，指向读数'],K:['K · 270° 仪表','开口向下的仪表盘：弧 + 内刻度'],L:['L · 双刻度环','外圈恢复、内圈负荷，都用刻度表示'],M:['M · 细环 + 粗刻度','A 和 C 合在一起：外面一条细值弧，里面粗刻度'],D:['D · 表盘 + 核心','恢复环 + Jarvis 的倒三角核心'],E:['E · 双读数','外环恢复、内环负荷：今天页的两个读数'],F:['F · 绿底','B 的反色：绿色做底，主屏幕上最醒目'],G:['G · 核心','只有核心：环、刻度、倒三角、一个亮点'],A:['A · 表盘','今天页的恢复表盘：值弧 + 刻度'],B:['B · 表盘 + 脉搏','保留现在图标的脉搏线，换成新 UI 的黑底细环'],C:['C · 刻度环','刻度本身就是读数：亮起的刻度 = 恢复']};
+ var h='<div class="board"'+(SET.length>4?' style="width:2100px"':SET.length>3?' style="width:1500px"':'')+'><h1>WATCH2WHOOP · APP ICON · 2.0.1</h1><div class="row" style="grid-template-columns:repeat('+SET.length+',1fr)">';
  SET.forEach(function(c){var L=SET.length>3?180:220,S=SET.length>3?88:104;h+='<div class="col"><h2>'+N[c][0]+'</h2><p>'+N[c][1]+'</p><div class="pair">'+box(c,'dark',L)+box(c,'light',S)+'</div><div class="small">'+box(c,'dark',60)+box(c,'dark',40)+box(c,'dark',29)+box(c,'light',60)+box(c,'light',40)+box(c,'light',29)+'</div></div>'});
  h+='</div>';
  ['dark','light'].forEach(function(th){h+='<div class="home'+(th==='light'?' l':'')+'">';

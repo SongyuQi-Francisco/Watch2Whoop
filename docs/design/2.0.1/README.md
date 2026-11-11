@@ -33,6 +33,8 @@ The design rules are in [direction.md](direction.md): one instrument per tab, sh
 - `body.js`: muscle bodies (`data-body`, `data-lit`) and the set ring (`data-sets`), drawn from the app's own `muscle-body-data.js` (MIT, see `THIRD_PARTY_NOTICES.md`).
 - `logo/`: app icon concepts for the redesign. `logo.html` draws three concepts (A dial, B dial + pulse, C tick ring) in dark and light; `logo-board.png` is the comparison board; `?set=2` draws the second round (D dial + core, E two readings, F green ground, G core) → `logo-board-2.png`; `icon-{A..G}-1024.png` are the 1024 px dark icons. Shapes are plain geometry from the app's own dial plus the Lucide `activity` and `triangle` glyphs (ISC).
 - `jarvis-key.html` → `jarvis-key-board.png`: versions of the Jarvis key glyph as an inverted-triangle core (Lucide `triangle` rotated 180°), next to the current `orbit` key.
+- `logo/logo.html?set=3` → `logo/logo-board-3.png`, `icon-{H..M}-1024.png`: third icon round, variants of the dial (A) and the tick ring (C).
+- `jarvis-cockpit.html` → `jarvis-cockpit-board.png`, `jarvis-cockpit.gif`: a moving prototype of the Jarvis key in a cockpit / HUD style (proposal, not approved). Open it in a browser and tap the key; `?s=idle|open|listen|think&t=ms` gives a still, `?demo=1&t=ms` a frame of the scripted demo, `?tone=ink` the version without glow. Plain geometry and Lucide icons only; the motion ideas (assemble, sweep, stagger) follow open-source sci-fi UI work such as Arwes (MIT), no code or artwork is copied.
 - `_template.html`: starting point for a new screen.
 - `render.sh`: renders a page at iPhone 17 Pro size (402 × 874 pt, @3x) with headless Chrome on macOS.
 
