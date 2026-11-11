@@ -73,8 +73,8 @@ def test_rollback_kinds_are_the_ones_before_the_move():
     """The rollback dispatch moved from one if / elif chain to handlers registered by kind (datalayer/writelog.py)."""
     from body_engine.assistant import writelog
     assert writelog.ROLLBACK_KINDS == {"food", "session", "sets", "weight", "workout", "lab", "merge", "template", "water",
-                                       "pantry", "profile", "observation", "memory_state"}   # memory_state: #113 phase 2
-    only = {"merge": "merge", "template": "create", "observation": "update"}
+                                       "pantry", "profile", "observation", "memory_state", "manual_workout"}   # memory_state: #113 phase 2; manual_workout: training/manual.py
+    only = {"merge": "merge", "template": "create", "observation": "update", "manual_workout": "create"}
     for kind in writelog.ROLLBACK_KINDS:
         for action in ("create", "update", "delete", "merge", "rollback"):
             assert writelog._can_roll(kind, action) == (action != "rollback" and only.get(kind, action) == action), (kind, action)

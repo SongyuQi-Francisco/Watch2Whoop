@@ -75,7 +75,7 @@ def test_key_tables_have_english_twins(zh, en):
 
 def test_value_tables_cover_every_label():
     assert set(GP.FLAG_LABELS.values()) | {"高嘌呤", "红肉"} <= set(GP.FLAGS_EN)
-    assert set(history.SOURCE_EN) == {"快捷指令", "Apple 健康"}
+    assert set(history.SOURCE_EN) == {"快捷指令", "Apple 健康", "手动记录"}
     for table in (GP.FLAGS_EN, history.SOURCE_EN, recipes.AUTO_TAGS_EN):
         no_cjk(*table.values())
     no_cjk(coach.RHR_APPLE_LABEL[1])

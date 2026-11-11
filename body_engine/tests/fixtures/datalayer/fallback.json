@@ -613,6 +613,13 @@
    "strict": true
   },
   {
+   "name": "log_cardio_workout",
+   "group": "training",
+   "scope": "training",
+   "writes": true,
+   "strict": true
+  },
+  {
    "name": "delete_workout",
    "group": "training",
    "scope": "training",
@@ -1197,6 +1204,7 @@
   "get_week_plan",
   "swap_exercise",
   "update_workout",
+  "log_cardio_workout",
   "delete_workout",
   "reschedule_day",
   "swap_days",

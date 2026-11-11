@@ -591,6 +591,12 @@ GET / PUT / DELETE 的返回都多一个 `settings`：存着的目标行（`stat
 - 导入的组进入训练历史（月历、单日、AI 的 `get_training_day` / `get_training_calendar`）、上次成绩和推荐重量（`loads.load_history`）、肌肉负荷（导入后立即重算受影响的天，每晚评分也带上）。不写进 SparkyFitness。
   - AI：提交后的训练照常从 `get_training_log` / `get_training_day` 读；还没提交的草稿在 `get_training_day` 的 `page_draft` 里。
 
+### 16.x 手动补记有氧 / 球类训练（2026-11-12）
+- 表还是 `workouts`，`source='manual'`（`training/manual.py`）。接口（self-only，token 要 write）：`GET /v1/users/me/training/manual-workouts/options`（可选类型 `P.MANUAL_TYPES` 和强度）、`POST …/manual-workouts`（`type`、`duration_min`、`intensity` light/moderate/hard，`date` 或 `start`，可选 `avg_hr`、`active_kcal`、`client_id`）、`DELETE …/manual-workouts/{id}`（只能删自己手动记的）。AI 工具 `log_cardio_workout`，记错用 `rollback_write`。
+- 去重：`manual` 不在 `SOURCE_RANK`（默认排最后），手表同一次训练保留，手动的挂 `dup_of`；只给日期时（12:00 占位，`flags.untimed`）找当天同类型训练，用 `flags.manual_dup` 挂上。幂等键 = `client_id`，否则 开始时间 + 类型。
+- 强度：没有心率，用户选的档就是强度（`P.MANUAL_INTENSITY`），`trimp` 留空，不把估算当测量值；短于 `MIN_SESSION_MIN` 仍记「轻」。
+- 手机（local-first）：手机去重用的 `others` 本来就是服务器上非 app 来源的训练，所以手动记录自然参与，不需要手机侧改动。
+
 ## 17. Watch2Whoop iOS app（2026-10-17，采集层 + 手机的单一入口）
 用户原话：「先用朋友的 Apple Developer 账号发 TestFlight，开始做 Watch2Whoop iOS app。」快捷指令限制太大（锁屏读不到、只能汇总、量大吃力），OW 官方 TestFlight 版（iOS SDK 0.14）首次同步会被打断（0.15 已修）。代码 `apps/watch2whoop/`（Flutter），给朋友的编译上传步骤（中英双语）在 `apps/watch2whoop/README.md`。
 

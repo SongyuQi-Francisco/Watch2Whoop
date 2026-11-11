@@ -71,6 +71,7 @@
    "get_week_plan",
    "swap_exercise",
    "update_workout",
+   "log_cardio_workout",
    "delete_workout",
    "reschedule_day",
    "swap_days",
@@ -454,6 +455,7 @@
    "get_week_plan",
    "swap_exercise",
    "update_workout",
+   "log_cardio_workout",
    "delete_workout",
    "reschedule_day",
    "swap_days",
@@ -562,6 +564,7 @@
    "get_week_plan",
    "swap_exercise",
    "update_workout",
+   "log_cardio_workout",
    "delete_workout",
    "reschedule_day",
    "swap_days",
@@ -695,6 +698,7 @@
     "get_week_plan",
     "swap_exercise",
     "update_workout",
+    "log_cardio_workout",
     "delete_workout",
     "reschedule_day",
     "swap_days",
@@ -3922,6 +3926,64 @@
      "type",
      "name",
      "apply_to_similar"
+    ],
+    "additionalProperties": false
+   },
+   "strict": true
+  },
+  "log_cardio_workout": {
+   "name": "log_cardio_workout",
+   "description": "补记有氧 / 球类训练（力量用 log_workout）；手表已有同一次的以手表为准；记错用 rollback_write。",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "type": {
+      "type": "string",
+      "description": "basketball、swimming、running、cycling、badminton、yoga…"
+     },
+     "date": {
+      "type": "string",
+      "description": "YYYY-MM-DD"
+     },
+     "start": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "HH:MM，不知道 null"
+     },
+     "duration_min": {
+      "type": "number"
+     },
+     "intensity": {
+      "type": "string",
+      "enum": [
+       "light",
+       "moderate",
+       "hard"
+      ]
+     },
+     "avg_hr": {
+      "type": [
+       "number",
+       "null"
+      ]
+     },
+     "active_kcal": {
+      "type": [
+       "number",
+       "null"
+      ]
+     }
+    },
+    "required": [
+     "type",
+     "date",
+     "start",
+     "duration_min",
+     "intensity",
+     "avg_hr",
+     "active_kcal"
     ],
     "additionalProperties": false
    },
@@ -12927,6 +12989,7 @@
    "get_week_plan",
    "swap_exercise",
    "update_workout",
+   "log_cardio_workout",
    "delete_workout",
    "reschedule_day",
    "swap_days",
@@ -13638,6 +13701,64 @@
      "type",
      "name",
      "apply_to_similar"
+    ],
+    "additionalProperties": false
+   },
+   "strict": true
+  },
+  "log_cardio_workout": {
+   "name": "log_cardio_workout",
+   "description": "补记有氧 / 球类训练（力量用 log_workout）；手表已有同一次的以手表为准；记错用 rollback_write。",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "type": {
+      "type": "string",
+      "description": "basketball、swimming、running、cycling、badminton、yoga…"
+     },
+     "date": {
+      "type": "string",
+      "description": "YYYY-MM-DD"
+     },
+     "start": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "HH:MM，不知道 null"
+     },
+     "duration_min": {
+      "type": "number"
+     },
+     "intensity": {
+      "type": "string",
+      "enum": [
+       "light",
+       "moderate",
+       "hard"
+      ]
+     },
+     "avg_hr": {
+      "type": [
+       "number",
+       "null"
+      ]
+     },
+     "active_kcal": {
+      "type": [
+       "number",
+       "null"
+      ]
+     }
+    },
+    "required": [
+     "type",
+     "date",
+     "start",
+     "duration_min",
+     "intensity",
+     "avg_hr",
+     "active_kcal"
     ],
     "additionalProperties": false
    },

@@ -71,8 +71,9 @@ def __getattr__(name: str):
 CORE_BUDGET_CHARS = 30000
 META_BUDGET_CHARS = 2500
 MCP_LIST_BUDGET_CHARS = 35000     # core + ALWAYS_CONFIRM + meta
-GROUP_BUDGET_CHARS = {"body": 12000, "training": 13000, "nutrition": 14000, "recipes": 7000, "grocery": 10700,
+GROUP_BUDGET_CHARS = {"body": 12000, "training": 13500, "nutrition": 14000, "recipes": 7000, "grocery": 10700,
                       "records": 10000, "memory": 4000, "feedback": 1500, "help": 1500, "home": 1000}
+# training 13000 -> 13500: log_cardio_workout (training/manual.py, about 650 chars)
 # grocery 9000 -> 9200: with the rollout flag mcp_web, MCP's find_tools(group="grocery") also returns web_search / web_fetch
 # (ai/web/mcp.py, about 400 chars; tests/test_mcp_web.py checks the group with them)
 # grocery 9200 -> 10700 (#291): save_product's nutrition goes from 7 to 14 items, there is a second table for the label's per-serving
