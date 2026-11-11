@@ -8,9 +8,12 @@ struct CockpitCardFrame: View {
   let widthShare: Double
   let heightShare: Double
   let reduceMotion: Bool
+  /// Dynamic Type: the card's text and height grow with the user's text size (capped so the card stays above the core).
+  @ScaledMetric(relativeTo: .body) private var scale: CGFloat = 1
 
+  private var k: CGFloat { min(max(scale, 0.85), 1.4) }
   private let W = CockpitGeometry.cardWidth
-  private var H: CGFloat { reply.height }
+  private var H: CGFloat { reply.height * k }
   /// The unfolded height now.
   private var h: CGFloat { reduceMotion ? H : max(0, H * CGFloat(heightShare)) }
   private var w: CGFloat { reduceMotion ? W : W * CGFloat(widthShare) }
@@ -37,13 +40,12 @@ struct CockpitCardFrame: View {
   }
 
   /// A row whose bottom sits `bottom` points below the card's top shows once the card is that tall.
-  private func rv(_ bottom: CGFloat) -> Double { min(1, max(0, Double((h - bottom) / 26))) }
+  private func rv(_ bottom: CGFloat) -> Double { min(1, max(0, Double((h - bottom * k) / 26))) }
 
   @ViewBuilder private var content: some View {
     switch reply {
     case .answer(let a): answer(a)
     case .meal(let m): meal(m)
-    case .set(let s): set(s)
     }
   }
 
@@ -54,15 +56,15 @@ struct CockpitCardFrame: View {
     return VStack(alignment: .leading, spacing: 0) {
       HStack(spacing: 8) {
         CockpitTriangle().stroke(CockpitPalette.accent, style: StrokeStyle(lineWidth: 1.4, lineJoin: .round)).frame(width: 12, height: 10)
-        Text(a.question.isEmpty ? "Jarvis" : a.question).font(.system(size: 12, weight: .medium)).foregroundColor(CockpitPalette.dim).lineLimit(1)
+        Text(a.question.isEmpty ? "Jarvis" : a.question).font(.system(size: 12 * k, weight: .medium)).foregroundColor(CockpitPalette.dim).lineLimit(1)
       }
       .frame(height: 20).padding(.top, 14).opacity(rv(28))
       HStack(alignment: .center, spacing: 12) {
         VStack(alignment: .leading, spacing: 6) {
-          Text(a.verdict).font(.system(size: 30, weight: .semibold)).foregroundColor(CockpitPalette.ink).lineLimit(1).minimumScaleFactor(0.6)
+          Text(a.verdict).font(.system(size: 30 * k, weight: .semibold)).foregroundColor(CockpitPalette.ink).lineLimit(1).minimumScaleFactor(0.6)
             .opacity(rv(78))
           if let sub = a.sub {
-            Text(sub).font(.system(size: 13, weight: .medium)).foregroundColor(CockpitPalette.dim).lineLimit(1).opacity(rv(102))
+            Text(sub).font(.system(size: 13 * k, weight: .medium)).foregroundColor(CockpitPalette.dim).lineLimit(1).opacity(rv(102))
           }
         }
         Spacer(minLength: 0)
@@ -72,7 +74,7 @@ struct CockpitCardFrame: View {
             Circle().trim(from: 0, to: CGFloat(g.fraction * rv(110)))
               .stroke(g.tone == .text ? CockpitPalette.good : g.tone.color, style: StrokeStyle(lineWidth: 4, lineCap: .round))
               .rotationEffect(.degrees(-90))
-            Text(g.value).font(.system(size: 17, weight: .semibold)).foregroundColor(CockpitPalette.ink).opacity(rv(80))
+            Text(g.value).font(.system(size: 17 * k, weight: .semibold)).foregroundColor(CockpitPalette.ink).opacity(rv(80))
           }
           .frame(width: 52, height: 52)
           .accessibilityElement(children: .ignore)
@@ -85,10 +87,11 @@ struct CockpitCardFrame: View {
         HStack(spacing: 0) {
           ForEach(Array(a.readings.prefix(3).enumerated()), id: \.offset) { _, r in
             HStack(alignment: .firstTextBaseline, spacing: 5) {
-              Text(r.value).font(.system(size: 17, weight: .semibold)).foregroundColor(CockpitPalette.ink)
-              Text(r.label).font(.system(size: 10.5, weight: .medium)).foregroundColor(CockpitPalette.dim)
+              Text(r.value).font(.system(size: 17 * k, weight: .semibold)).foregroundColor(CockpitPalette.ink)
+              Text(r.label).font(.system(size: 10.5 * k, weight: .medium)).foregroundColor(CockpitPalette.dim)
             }
-            .frame(width: 104, alignment: .leading)
+            .lineLimit(1).minimumScaleFactor(0.7)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
           }
           Spacer(minLength: 0)
@@ -96,10 +99,20 @@ struct CockpitCardFrame: View {
         .padding(.top, 10).opacity(rv(150))
       }
       Spacer(minLength: 8)
-      HStack {
+      HStack(spacing: 10) {
+        if a.undoText != nil {
+          Button { controller.undoReply() } label: {
+            HStack(spacing: 4) { Icon(.undo2, size: 12); Text(tr("撤销", "Undo")).font(.system(size: 13 * k, weight: .semibold)) }
+              .foregroundColor(CockpitPalette.ink)
+              .padding(.horizontal, 14).frame(minHeight: 32)
+              .overlay(Capsule().stroke(Color.white.opacity(0.25), lineWidth: 1))
+          }
+          .buttonStyle(PressScale())
+          .accessibilityHint(tr("在对话里确认后撤销", "Confirm in the chat to undo"))
+        }
         if let p = a.primary {
           Button { controller.openPrimary(p.page) } label: {
-            Text(p.title).font(.system(size: 13, weight: .semibold)).foregroundColor(CockpitPalette.accent)
+            Text(p.title).font(.system(size: 13 * k, weight: .semibold)).foregroundColor(CockpitPalette.accent)
               .frame(minWidth: 112, minHeight: 32).padding(.horizontal, 6)
               .background(Capsule().fill(CockpitPalette.accent.opacity(0.1)))
               .overlay(Capsule().stroke(CockpitPalette.accent.opacity(0.8 * rv(196)), lineWidth: 1))
@@ -108,7 +121,7 @@ struct CockpitCardFrame: View {
         }
         Spacer()
         Button { controller.openChat() } label: {
-          Text(tr("展开对话 ›", "Open chat ›")).font(.system(size: 12, weight: .medium)).foregroundColor(CockpitPalette.dim)
+          Text(tr("展开对话 ›", "Open chat ›")).font(.system(size: 12 * k, weight: .medium)).foregroundColor(CockpitPalette.dim)
             .frame(minHeight: 32).contentShape(Rectangle())
         }
         .buttonStyle(PressScale())
@@ -123,13 +136,13 @@ struct CockpitCardFrame: View {
   private func logged(_ title: String) -> some View {
     HStack(spacing: 6) {
       Icon(.circleCheck, size: 16).foregroundColor(CockpitPalette.good)
-      Text(title).font(.system(size: 12, weight: .medium)).foregroundColor(CockpitPalette.dim).lineLimit(1)
+      Text(title).font(.system(size: 12 * k, weight: .medium)).foregroundColor(CockpitPalette.dim).lineLimit(1)
       Spacer()
       if controller.canUndo {
         Button { controller.undoReply() } label: {
           HStack(spacing: 4) {
             Icon(.undo2, size: 12)
-            Text(tr("撤销", "Undo")).font(.system(size: 12, weight: .medium))
+            Text(tr("撤销", "Undo")).font(.system(size: 12 * k, weight: .medium))
           }
           .foregroundColor(CockpitPalette.ink)
           .frame(width: 66, height: 26)
@@ -151,11 +164,11 @@ struct CockpitCardFrame: View {
     VStack(alignment: .leading, spacing: 0) {
       logged(tr("已记到\(m.slot)", "Logged to \(m.slot)"))
       HStack(alignment: .firstTextBaseline) {
-        Text(m.name).font(.system(size: 26, weight: .semibold)).foregroundColor(CockpitPalette.ink).lineLimit(1).minimumScaleFactor(0.6)
+        Text(m.name).font(.system(size: 26 * k, weight: .semibold)).foregroundColor(CockpitPalette.ink).lineLimit(1).minimumScaleFactor(0.6)
         Spacer()
         if let k = m.kcal {
-          Text(CockpitText.kcal(k)).font(.system(size: 26, weight: .semibold)).foregroundColor(CockpitPalette.ink)
-          Text("kcal").font(.system(size: 11, weight: .medium)).foregroundColor(CockpitPalette.dim)
+          Text(CockpitText.kcal(k)).font(.system(size: 26 * k, weight: .semibold)).foregroundColor(CockpitPalette.ink)
+          Text("kcal").font(.system(size: 11 * k, weight: .medium)).foregroundColor(CockpitPalette.dim)
         }
       }
       .padding(.top, 8).opacity(rv(80))
@@ -163,8 +176,8 @@ struct CockpitCardFrame: View {
         ForEach(Array(m.macros.enumerated()), id: \.offset) { _, x in
           VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-              Text(x.label).font(.system(size: 10.5, weight: .medium)).foregroundColor(CockpitPalette.dim)
-              Text(x.grams.map { "\(RecordFormat.num($0)) g" } ?? "—").font(.system(size: 13, weight: .semibold)).foregroundColor(CockpitPalette.ink)
+              Text(x.label).font(.system(size: 10.5 * k, weight: .medium)).foregroundColor(CockpitPalette.dim)
+              Text(x.grams.map { "\(RecordFormat.num($0)) g" } ?? "—").font(.system(size: 13 * k, weight: .semibold)).foregroundColor(CockpitPalette.ink)
             }
             ZStack(alignment: .leading) {
               Capsule().fill(Color.white.opacity(0.12))
@@ -195,39 +208,8 @@ struct CockpitCardFrame: View {
       .frame(height: 4)
       Text(m.goal.map { tr("今天 \(CockpitText.kcal(m.dayAfter)) / \(CockpitText.kcal($0)) kcal", "Today \(CockpitText.kcal(m.dayAfter)) / \(CockpitText.kcal($0)) kcal") }
            ?? tr("今天 \(CockpitText.kcal(m.dayAfter)) kcal", "Today \(CockpitText.kcal(m.dayAfter)) kcal"))
-        .font(.system(size: 11, weight: .medium)).foregroundColor(CockpitPalette.dim)
+        .font(.system(size: 11 * k, weight: .medium)).foregroundColor(CockpitPalette.dim)
     }
-  }
-
-  // MARK: - 已记一组
-
-  private func set(_ s: CockpitReply.SetLog) -> some View {
-    VStack(alignment: .leading, spacing: 0) {
-      logged(s.session.isEmpty ? tr("已记一组", "Set logged") : tr("已记到 \(s.session)", "Logged to \(s.session)"))
-      HStack(alignment: .firstTextBaseline) {
-        Text(s.exercise).font(.system(size: 26, weight: .semibold)).foregroundColor(CockpitPalette.ink).lineLimit(1).minimumScaleFactor(0.6)
-        Spacer()
-        Text(s.set).font(.system(size: 20, weight: .semibold)).foregroundColor(CockpitPalette.ink)
-      }
-      .padding(.top, 8).opacity(rv(80))
-      HStack(spacing: 8) {
-        HStack(spacing: 8) {
-          ForEach(0..<max(s.planned, s.index), id: \.self) { i in
-            Circle()
-              .fill(i < s.index - 1 ? CockpitPalette.past.opacity(0.55) : i == s.index - 1 ? CockpitPalette.accent : Color.white.opacity(0.14))
-              .frame(width: 10, height: 10)
-              .opacity(rv(124 + CGFloat(i) * 4))
-          }
-        }
-        .accessibilityHidden(true)
-        Text(tr("第 \(s.index) 组", "Set \(s.index)")).font(.system(size: 12, weight: .medium)).foregroundColor(CockpitPalette.dim)
-        Spacer()
-        Text(tr("\(s.done) / \(s.total) 组", "\(s.done) / \(s.total) sets")).font(.system(size: 12, weight: .medium)).foregroundColor(CockpitPalette.dim)
-      }
-      .padding(.top, 22).opacity(rv(130))
-      Spacer(minLength: 0)
-    }
-    .padding(.horizontal, 20)
   }
 }
 

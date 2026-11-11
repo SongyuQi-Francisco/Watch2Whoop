@@ -99,10 +99,15 @@ final class JarvisVoice: ObservableObject {
   /// Asks for speech recognition and the microphone (only the first time), then listens.
   func start(lang: String, keepAudio: Bool) async throws {
     teardown()
+    // this start's number, taken before the first await: a cancel (teardown) or a newer start while the permission sheet is
+    // up moves `run` on, and this start then never turns the microphone on
+    run += 1
+    let r = run
     #if DEBUG && targetEnvironment(simulator)
     if JarvisDemo.scriptedVoice { scriptKeepsAudio = keepAudio; startScript(); return }
     #endif
     guard await Self.authorize() else { throw Failure.permission }
+    guard r == run, !Task.isCancelled else { throw CancellationError() }
     guard let loc = Self.locale(for: lang), let rec = SFSpeechRecognizer(locale: loc), rec.isAvailable else {
       throw Failure.unsupportedLang
     }
@@ -111,8 +116,6 @@ final class JarvisVoice: ObservableObject {
     req.requiresOnDeviceRecognition = true   // never to Apple's servers
     req.taskHint = .dictation
     req.addsPunctuation = true
-    run += 1
-    let r = run
     let sink = audio, engine = self.engine
     let ok: Bool = await withCheckedContinuation { c in
       audioQueue.async { [weak self] in

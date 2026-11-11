@@ -84,14 +84,14 @@ final class JarvisCockpitTests: XCTestCase {
 
   func testMealOpensTheSecondRingAndTheCrumbGoesBack() {
     var m = CockpitMachine()
-    m.meals = [(name: "鸡胸饭", kcal: 570), (name: "燕麦碗", kcal: 420)]
+    m.meals = [CockpitMeal(id: 31, name: "鸡胸饭", kcal: 570), CockpitMeal(id: 32, name: "燕麦碗", kcal: 420)]
     _ = m.tapCore()
     run(&m, 0.8)
     XCTAssertEqual(m.tap(at: panel(m, .meal), center: c), [])
     XCTAssertEqual(m.selected, 0, "lit while it waits")
     run(&m, CockpitTiming.select + CockpitTiming.subRing + 0.02)
     XCTAssertEqual(m.level, 2)
-    XCTAssertEqual(m.items.map(\.key), [.mealPhoto, .mealTalk, .template(0), .template(1), .mealMore])
+    XCTAssertEqual(m.items.map(\.key), [.mealPhoto, .mealTalk, .template(31), .template(32), .mealMore], "keys carry the template id")
     XCTAssertEqual(m.items[2].title, "鸡胸饭")
     XCTAssertEqual(m.items[2].sub, "570 kcal")
     XCTAssertEqual(m.crumbIcon, .soup)
@@ -118,8 +118,8 @@ final class JarvisCockpitTests: XCTestCase {
   }
 
   func testMealRingWithOneQuickMealLeavesItsPlaceEmpty() {
-    let ring = CockpitItem.mealRing([(name: "燕麦碗", kcal: nil)])
-    XCTAssertEqual(ring.map(\.key), [.mealPhoto, .mealTalk, .template(0), .mealMore])
+    let ring = CockpitItem.mealRing([CockpitMeal(id: 7, name: "燕麦碗", kcal: nil)])
+    XCTAssertEqual(ring.map(\.key), [.mealPhoto, .mealTalk, .template(7), .mealMore])
     XCTAssertNil(ring[2].sub)
   }
 
@@ -137,14 +137,15 @@ final class JarvisCockpitTests: XCTestCase {
 
   func testQuickMealThinksUntilTheCardIsReady() {
     var m = CockpitMachine()
-    m.meals = [(name: "鸡胸饭", kcal: 570)]
+    m.meals = [CockpitMeal(id: 31, name: "鸡胸饭", kcal: 570)]
     _ = m.tapCore()
     run(&m, 0.8)
     m.activate(.meal)
     run(&m, 0.8)
-    m.activate(.template(0))
+    m.activate(.template(31))
+    m.meals = [CockpitMeal(id: 40, name: "别的", kcal: 100)]   // the list changed before the tap acts
     let fx = run(&m, CockpitTiming.select + 0.02)
-    XCTAssertEqual(fx, [.run(.template(0))])
+    XCTAssertEqual(fx, [.run(.template(31))], "the tapped meal, by id")
     XCTAssertEqual(m.mode, .think)
     XCTAssertEqual(m.flow, .meal)
     m.showCard()
@@ -300,38 +301,12 @@ final class JarvisCockpitTests: XCTestCase {
     XCTAssertEqual(CockpitText.verdict(from: "  ").verdict, "…")
   }
 
-  func testSetText() {
-    XCTAssertEqual(CockpitText.set(weightKg: 60, reps: 8, seconds: nil), "60 kg × 8")
-    XCTAssertEqual(CockpitText.set(weightKg: 62.5, reps: 5, seconds: nil), "62.5 kg × 5")
-    XCTAssertEqual(CockpitText.set(weightKg: nil, reps: 12, seconds: nil), "× 12")
-    XCTAssertEqual(CockpitText.set(weightKg: nil, reps: nil, seconds: 45), "45 s")
-  }
-
   func testPrimaryActionFromCards() {
     let card = JSONValue.object(["type": .string("training"),
                                  "actions": .array([.object(["kind": .string("send"), "key": .string("adjust_training")]),
                                                     .object(["kind": .string("open"), "page": .string("record.training")])])])
-    XCTAssertEqual(CockpitController.primary([card])?.page, "record.training")
-    XCTAssertNil(CockpitController.primary([.object(["type": .string("metric")])]))
-  }
-
-  func testSetCardFindsTheExerciseThatGainedASet() throws {
-    let doc: [String: Any] = [
-      "sessions": [["name": "上肢 A", "exercises": [
-        ["slug": "bench", "name_zh": "卧推", "target": ["sets": 3, "reps": 8], "load": ["kg": 60]],
-        ["slug": "row", "name_zh": "划船", "target": ["sets": 3, "reps": 10]]]]],
-      "can_log": true,
-      "log": ["exercises": [["slug": "bench", "sets": [["reps": 8, "weight_kg": 60, "done": true], ["reps": 8, "weight_kg": 60, "done": true],
-                                                         ["reps": 8, "weight_kg": 60, "done": false]]]]],
-    ]
-    let s = try XCTUnwrap(TrainingSession.build(doc, day: "2026-11-12", pending: []))
-    let card = try XCTUnwrap(CockpitController.setCard(s, before: ["bench": 1]))
-    XCTAssertEqual(card.slug, "bench")
-    XCTAssertEqual(card.log.exercise, "卧推")
-    XCTAssertEqual(card.log.set, "60 kg × 8")
-    XCTAssertEqual(card.log.index, 2)
-    XCTAssertEqual(card.log.planned, 3)
-    XCTAssertNil(CockpitController.setCard(s, before: ["bench": 2]), "nothing new")
+    XCTAssertEqual(TurnReading.primary([card])?.page, "record.training")
+    XCTAssertNil(TurnReading.primary([.object(["type": .string("metric")])]))
   }
 
   func testMealCardShares() {
@@ -345,5 +320,143 @@ final class JarvisCockpitTests: XCTestCase {
     XCTAssertEqual(m.macros[0].fraction ?? 0, 0.75, accuracy: 0.001)
     XCTAssertEqual(m.macros[1].fraction ?? 0, 0.66, accuracy: 0.001)
     XCTAssertEqual(m.macros[2].fraction ?? 0, 0.4, accuracy: 0.001)
+  }
+
+  // MARK: - review fixes (2026-11-12)
+
+  /// Flag jarvis_voice_direct off: the pause does not send; the words wait (corrected) until 发送.
+  func testFlagOffWaitsForSend() {
+    var m = listening()
+    m.autoSend = false
+    m.heard("今天适合练腿吗")
+    run(&m, CockpitTiming.pause + 0.05)
+    XCTAssertEqual(m.mode, .confirm)
+    XCTAssertEqual(run(&m, 5), [], "nothing goes out by itself")
+    XCTAssertEqual(m.mode, .confirm)
+    m.correct("今天适合练腿吗？")
+    XCTAssertEqual(m.words, "今天适合练腿吗？", "the server's words replace the phone's while they wait")
+    XCTAssertEqual(m.mode, .confirm)
+    XCTAssertEqual(m.sendNow(), [.send(.qa)])
+    XCTAssertEqual(m.mode, .think)
+  }
+
+  func testCorrectionOnlyWhileWaiting() {
+    var m = listening()
+    m.heard("中午")
+    m.correct("别的")
+    XCTAssertEqual(m.words, "中午", "while listening the recogniser's words stand")
+  }
+
+  func testSixtySecondsStopsListening() {
+    var m = listening()
+    XCTAssertEqual(m.timeUp(), [.stopListening, .closed, .gaveUp], "no words: give up")
+    var n = listening()
+    n.heard("卧推")
+    XCTAssertEqual(n.timeUp(), [])
+    XCTAssertEqual(n.mode, .confirm, "words: as if the core was tapped")
+  }
+
+  /// A write that went out while the cockpit was closed still shows its result (with 撤销).
+  func testCardComesBackAfterClosingDuringThink() {
+    var m = CockpitMachine()
+    m.meals = [CockpitMeal(id: 31, name: "鸡胸饭", kcal: 570)]
+    _ = m.tapCore()
+    run(&m, 0.8)
+    m.activate(.meal)
+    run(&m, 0.8)
+    m.activate(.template(31))
+    run(&m, CockpitTiming.select + 0.02)
+    XCTAssertEqual(m.mode, .think)
+    XCTAssertEqual(m.tap(at: CGPoint(x: 30, y: 60), center: c), [.closed])
+    m.showCard()
+    XCTAssertEqual(m.mode, .card)
+    run(&m, 1.5)
+    XCTAssertGreaterThan(m.cardHeight.x, 0.95)
+  }
+
+  func testLanguageChip() {
+    var m = listening()
+    m.canSwitchLanguage = true
+    m.heard("hello")
+    let fx = m.tap(at: CGPoint(x: c.x + CockpitGeometry.langOffset, y: c.y), center: c)
+    XCTAssertEqual(fx, [.switchLanguage])
+    XCTAssertEqual(m.mode, .listen)
+    XCTAssertEqual(m.words, "", "starts again in the other language")
+    var n = listening()
+    XCTAssertEqual(n.tap(at: CGPoint(x: c.x + CockpitGeometry.langOffset, y: c.y), center: c), [.stopListening, .closed],
+                   "no chip when one language only: a tap outside")
+  }
+
+  func testIdleSettlesSoNothingRedraws() {
+    var m = CockpitMachine()
+    _ = m.tapCore()
+    run(&m, 0.4)
+    m.heard("x")
+    _ = m.close()
+    run(&m, 2)
+    XCTAssertFalse(m.isActive)
+  }
+
+  // MARK: - the controller
+
+  private func item(_ id: Int, _ k: JarvisChat.Item.Kind) -> JarvisChat.Item { JarvisChat.Item(id: id, kind: k) }
+
+  func testTurnReadingQuestion() {
+    var today = TodayModel(json: [:])
+    today.rings = [TodayModel.Ring(key: "recovery", label: "", value: "82", fraction: 0.82, tone: .good, action: .recovery),
+                   TodayModel.Ring(key: "sleep", label: "", value: "88", fraction: 0.88, tone: .sleep, action: .sleepDetail(nil))]
+    let r = TurnReading.read([item(1, .assistant("**可以练**，恢复在正常范围。"))], question: "今天适合练腿吗", flow: .qa, today: today)
+    guard case .answer(let a) = r else { return XCTFail("\(r)") }
+    XCTAssertEqual(a.verdict, "可以练")
+    XCTAssertEqual(a.gauge?.value, "82")
+    XCTAssertEqual(a.readings.map(\.label).count, 1)
+    XCTAssertNil(a.undoText, "nothing was logged")
+  }
+
+  /// What the AI logged: no ids, so no guessing; 撤销 asks the AI, and the day's total is the server's.
+  func testTurnReadingMealUndoGoesToTheAI() {
+    let card = JSONValue.object(["type": .string("meal"),
+                                 "totals": .object(["calories": .number(990)]), "goal": .object(["calories": .number(2300)]),
+                                 "actions": .array([.object(["kind": .string("send"), "key": .string("undo_meal")])])])
+    let r = TurnReading.read([item(1, .card(card)), item(2, .assistant("已记到午餐：鸡胸饭 570 kcal。"))], question: "中午吃了鸡胸饭",
+                             flow: .meal, today: nil)
+    guard case .answer(let a) = r else { return XCTFail("\(r)") }
+    XCTAssertEqual(a.verdict, "已记到午餐")
+    XCTAssertEqual(a.sub, "鸡胸饭 570 kcal")
+    XCTAssertEqual(a.readings.first?.value, "990 / 2,300 kcal")
+    XCTAssertEqual(a.undoText, JarvisCards.send("undo_meal", .object([:]))?.1)
+  }
+
+  /// 说一组: there is no tool that writes one set into today's session, so the card is the AI's words, nothing 「已记到」.
+  func testTurnReadingSetIsWordsOnly() {
+    let r = TurnReading.read([item(1, .assistant("卧推 60 kg × 8，第 5 组。"))], question: "卧推六十公斤八个", flow: .set, today: nil)
+    guard case .answer(let a) = r else { return XCTFail("\(r)") }
+    XCTAssertNil(a.undoText)
+    XCTAssertNil(a.gauge)
+    XCTAssertTrue(a.readings.isEmpty)
+  }
+
+  func testTurnReadingConfirmAndFailure() {
+    let call = PendingCall(.object(["call_id": .number(41), "tool": .string("undo_meal_log"), "summary": .string("x")]))!
+    XCTAssertEqual(TurnReading.read([item(1, .confirm(call, approved: nil))], question: "", flow: .meal, today: nil), .needsConfirm)
+    XCTAssertEqual(TurnReading.read([item(1, .note("额度用完了", warn: true, retry: false))], question: "", flow: .qa, today: nil),
+                   .failed("额度用完了"))
+  }
+
+  func testMealsKeepTheirIds() {
+    let t = [MealTemplate(id: 5, name: "燕麦碗", meal: .breakfast, totals: Macros(kcal: 420), items: "", todayLog: nil, pending: nil, uses30d: 2),
+             MealTemplate(id: 9, name: "鸡胸饭", meal: .lunch, totals: Macros(kcal: 570), items: "", todayLog: nil, pending: nil, uses30d: 7)]
+    XCTAssertEqual(CockpitController.meals(t), [CockpitMeal(id: 9, name: "鸡胸饭", kcal: 570), CockpitMeal(id: 5, name: "燕麦碗", kcal: 420)])
+  }
+
+  /// A frame's published state is read when it is applied: a change in between is not overwritten by the older frame.
+  func testFrameNeverPublishesAnOlderMode() async {
+    let ctl = CockpitController(voice: JarvisVoice())
+    _ = ctl.machine.tapCore()           // menu
+    ctl.frame(1)                        // schedules publishing
+    _ = ctl.machine.close()             // the user closed it before that ran
+    await Task.yield()
+    for _ in 0..<5 { await withCheckedContinuation { c in DispatchQueue.main.async { c.resume() } } }
+    XCTAssertEqual(ctl.mode, .idle)
   }
 }

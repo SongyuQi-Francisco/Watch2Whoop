@@ -22,6 +22,9 @@ struct CockpitView: View {
   let center: CGPoint
   let size: CGSize
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  /// Dynamic Type: the transcript grows with the user's text size (capped so it still fits above the core).
+  @ScaledMetric(relativeTo: .title2) private var wordsSize: CGFloat = 22
+  @ScaledMetric(relativeTo: .caption) private var hintSize: CGFloat = 11
 
   @State private var downAt: Date?
   @State private var downPoint: CGPoint = .zero
@@ -33,11 +36,12 @@ struct CockpitView: View {
   private var full: Bool { controller.mode != .idle }
 
   var body: some View {
-    TimelineView(.animation(minimumInterval: controller.active ? nil : 1.0 / 30, paused: !controller.active && reduceMotion)) { tl in
+    // nothing is redrawn while the cockpit is closed and still (the core's slow turn waits for the next touch)
+    TimelineView(.animation(minimumInterval: nil, paused: !controller.active)) { tl in
       let _ = controller.frame(tl.date.timeIntervalSinceReferenceDate)
       let m = controller.machine
       ZStack(alignment: .topLeading) {
-        CockpitCanvas(m: m, center: center, time: tl.date.timeIntervalSinceReferenceDate)
+        CockpitCanvas(m: m, center: center, time: tl.date.timeIntervalSinceReferenceDate, language: controller.languageLabel)
           .frame(width: size.width, height: size.height)
           .contentShape(CockpitHitShape(center: center, full: full))
           .gesture(touch)
@@ -46,8 +50,8 @@ struct CockpitView: View {
         if let r = controller.reply, m.cardWidth.x > 0.02 {
           CockpitCardFrame(reply: r, controller: controller, widthShare: m.cardWidth.unit, heightShare: m.cardHeight.x,
                            reduceMotion: m.reduceMotion)
-            .position(x: center.x, y: center.y - CockpitGeometry.cardGap - r.height / 2)
-            .frame(width: size.width, height: size.height, alignment: .topLeading)
+            // the card's bottom sits above the core whatever its height (Dynamic Type)
+            .frame(width: size.width, height: max(0, center.y - CockpitGeometry.cardGap), alignment: .bottom)
         }
       }
     }
@@ -65,27 +69,45 @@ struct CockpitView: View {
       let words = m.words
       let live = m.mode == .listen
       let cut = live ? max(0, words.count - 2) : words.count
+      let hold = !m.autoSend && m.mode == .confirm   // flag off: the words wait for 发送
       VStack(spacing: 10) {
         (Text(String(words.prefix(cut))).foregroundColor(CockpitPalette.ink)
          + Text(String(words.dropFirst(cut))).foregroundColor(CockpitPalette.accent.opacity(0.75)))
-          .font(.system(size: 22, weight: .semibold))
+          .font(.system(size: min(wordsSize, 34), weight: .semibold))
           .multilineTextAlignment(.center)
-          .lineLimit(2)
-          .frame(minHeight: 28)
-        Text(live ? tr("说完停一下，自动发送", "Pause when done; it sends itself") : tr("点文字可修改", "Tap the words to edit"))
-          .font(.system(size: 11, weight: .medium)).kerning(0.3)
+          .lineLimit(3)
+          .minimumScaleFactor(0.7)
+          .contentShape(Rectangle())
+          .onTapGesture { controller.editWords() }
+          .accessibilityLabel(words.isEmpty ? tr("在听", "Listening") : words)
+          .accessibilityHint(tr("点按可修改文字", "Tap to edit the words"))
+          .accessibilityAddTraits(.updatesFrequently)
+        Text(Self.hint(mode: m.mode, autoSend: m.autoSend))
+          .font(.system(size: min(hintSize, 17), weight: .medium)).kerning(0.3)
           .foregroundColor(CockpitPalette.dim)
+        if hold {
+          Button { controller.sendNow() } label: {
+            HStack(spacing: 6) { Icon(.arrowUp, size: 15); Text(tr("发送", "Send")).font(.system(size: min(hintSize + 3, 20), weight: .semibold)) }
+              .foregroundColor(CockpitPalette.onAccent)
+              .padding(.horizontal, 22).frame(minHeight: 40)
+              .background(Capsule().fill(CockpitPalette.accent))
+          }
+          .buttonStyle(PressScale())
+        }
       }
-      .frame(width: min(size.width - 48, 354))
-      .contentShape(Rectangle())
-      .onTapGesture { controller.editWords() }
+      .frame(width: min(size.width - 48, 354), height: 240, alignment: .bottom)
       .opacity(o)
       .offset(y: m.reduceMotion ? 0 : -10 * (1 - o))
-      .position(x: center.x, y: center.y - CockpitGeometry.transcriptRise + 6)
-      .accessibilityElement(children: .combine)
-      .accessibilityLabel(words.isEmpty ? tr("在听", "Listening") : words)
-      .accessibilityHint(tr("点按可修改文字", "Tap to edit the words"))
-      .accessibilityAddTraits(.updatesFrequently)
+      .position(x: center.x, y: center.y - CockpitGeometry.transcriptBottom - 120)
+    }
+  }
+
+  /// The line under the words.
+  static func hint(mode: CockpitMode, autoSend: Bool) -> String {
+    switch (mode, autoSend) {
+    case (.listen, true): return tr("说完停一下，自动发送", "Pause when done; it sends itself")
+    case (.listen, false): return tr("说完停一下", "Pause when done")
+    default: return tr("点文字可修改", "Tap the words to edit")
     }
   }
 
@@ -150,6 +172,12 @@ struct CockpitView: View {
         element(at: CGPoint(x: center.x + g.cancelOffset, y: center.y), size: 40, label: tr("取消", "Cancel"), hint: nil) {
           controller.close()
         }
+        if controller.machine.canSwitchLanguage {
+          element(at: CGPoint(x: center.x + g.langOffset, y: center.y), size: 40, label: tr("识别语言：\(controller.languageLabel)", "Language: \(controller.languageLabel)"),
+                  hint: tr("点按换成另一种语言", "Tap for the other language")) {
+            controller.tap(at: CGPoint(x: center.x + g.langOffset, y: center.y), center: center)
+          }
+        }
       }
     }
     .frame(width: size.width, height: size.height, alignment: .topLeading)
@@ -187,6 +215,8 @@ struct CockpitCanvas: View {
   let m: CockpitMachine
   let center: CGPoint
   let time: TimeInterval
+  /// The recognition language's short name (the chip right of the core while listening).
+  var language = ""
 
   private static let icons: [Icon.Name] = [.soup, .dumbbell, .mic, .camera, .messageCircle, .ellipsis, .zap, .clock, .calendarDays, .x]
 
@@ -375,7 +405,8 @@ struct CockpitCanvas: View {
       if cf > 0.01 {
         let r: CGFloat = 40
         g.stroke(Path(ellipseIn: CGRect(x: center.x - r, y: center.y - r, width: 2 * r, height: 2 * r)), with: .color(A.opacity(0.22 * cf)), lineWidth: 1)
-        let sweep = m.mode == .confirm ? max(0.5, 360 * cl(m.since / CockpitTiming.autoSend)) : 360
+        // flag off: a closed ring, nothing counts down
+        let sweep = m.mode == .confirm && m.autoSend ? max(0.5, 360 * cl(m.since / CockpitTiming.autoSend)) : 360
         stroke(&g, arcPath(r, 0, sweep), A, 2, 0.95 * cf)
       }
       // thinking: one arc going round
@@ -393,6 +424,13 @@ struct CockpitCanvas: View {
         g.fill(circle, with: .color(CockpitPalette.panel.opacity(tr)))
         g.stroke(circle, with: .color(Color.white.opacity(0.25 * tr)), lineWidth: 1)
         labels.append(Mark(symbol: Icon.Name.x.rawValue, at: p, rect: CGRect(x: p.x - 7.5, y: p.y - 7.5, width: 15, height: 15), opacity: tr))
+        if m.canSwitchLanguage {
+          let q = CGPoint(x: center.x + G.langOffset, y: center.y)
+          let chip = Path(ellipseIn: CGRect(x: q.x - r, y: q.y - r, width: 2 * r, height: 2 * r))
+          g.fill(chip, with: .color(CockpitPalette.panel.opacity(tr)))
+          g.stroke(chip, with: .color(Color.white.opacity(0.25 * tr)), lineWidth: 1)
+          labels.append(Mark(text: Text(language).font(.system(size: 12, weight: .semibold)).foregroundColor(CockpitPalette.ink), at: q, opacity: tr))
+        }
       }
       // the reply card's stem: a line leaves the core
       let cw = m.cardWidth.unit

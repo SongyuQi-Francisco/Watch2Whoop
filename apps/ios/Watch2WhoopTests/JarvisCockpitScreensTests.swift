@@ -67,13 +67,21 @@ final class JarvisCockpitScreensTests: XCTestCase {
 
   // MARK: - 16b 拍照结果
 
-  func testAmountKeepsTheLogsOwnUnit() {
-    let grams = FoodEntry(id: "1", date: "2026-11-12", time: nil, meal: .lunch, food: "鸡胸", quantity: 150, unit: "g", macros: Macros(kcal: 248))
-    XCTAssertEqual(CockpitMealPhoto.amount(grams).value, "150")
-    XCTAssertEqual(CockpitMealPhoto.amount(grams).unit, "g")
-    let servings = FoodEntry(id: "2", date: "2026-11-12", time: nil, meal: .lunch, food: "米饭", quantity: 1.5, unit: nil, macros: Macros(kcal: 300))
-    XCTAssertEqual(CockpitMealPhoto.amount(servings).value, "1.5")
-    XCTAssertFalse(CockpitMealPhoto.amount(servings).unit.isEmpty, "no unit: servings, never made-up grams")
+  /// The photo's result: the AI's words and the server's day total; 撤销 only when the AI's card offers undo_meal (it asks
+  /// the AI); nothing is worked out from the day's entries before and after.
+  func testPhotoResultFromTheTurn() throws {
+    let card = JSONValue.object(["type": .string("meal"), "totals": .object(["calories": .number(990)]),
+                                 "goal": .object(["calories": .number(2100)]),
+                                 "actions": .array([.object(["kind": .string("send"), "key": .string("undo_meal")])])])
+    let items = [JarvisChat.Item(id: 1, kind: .card(card)), JarvisChat.Item(id: 2, kind: .assistant("已记到午餐：鸡胸饭约 570 kcal。"))]
+    let r = try XCTUnwrap(CockpitMealPhoto.result(items))
+    XCTAssertEqual(r.answer.verdict, "已记到午餐")
+    XCTAssertEqual(r.dayEaten, 990)
+    XCTAssertEqual(r.dayGoal, 2100)
+    XCTAssertNotNil(r.answer.undoText)
+    let asked = try XCTUnwrap(CockpitMealPhoto.result([JarvisChat.Item(id: 1, kind: .assistant("看不清，这是什么？"))]))
+    XCTAssertNil(asked.answer.undoText, "nothing logged: no undo")
+    XCTAssertNil(asked.dayEaten)
   }
 
   // MARK: - 18 补记

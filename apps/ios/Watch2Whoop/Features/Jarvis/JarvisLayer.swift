@@ -96,7 +96,7 @@ struct JarvisLayer: View {
           .presentationDragIndicator(.visible)
       }
     case .mealPhoto:
-      CockpitMealPhotoView(session: session, router: router) { router.sheet = nil }
+      CockpitMealPhotoView(router: router) { router.sheet = nil }
         .presentationDetents([.large])
         .interactiveDismissDisabled()
     case .templates:

@@ -5,42 +5,46 @@ import UIKit
 
 /// Jarvis → 记一餐 → 拍照 (docs/design/2.0.1/16-photo.html, 16b-photo-result.html). A viewfinder whose shutter is the Jarvis
 /// core, the photo library on the left and the flash on the right. The photo goes to the user's own AI the way 拍照记一餐
-/// always went (JarvisChat.send with the picture; the AI reads it and logs the food with log_food); the result card shows the
-/// entries the day gained during that turn, with their amounts as the food log keeps them (quantity × unit: no grams are made
-/// up), each amount editable (FoodStore.setPortion), 撤销 (FoodStore.delete) and 再拍一张.
+/// always went (JarvisChat.send with the picture; the AI reads it and logs the food with log_food). The result shows what
+/// the AI answered and the day's total as the server counted it after the turn (its meal card). The app has no id of what
+/// the AI wrote, so nothing is guessed from before / after: 撤销 asks the AI, who undoes it after a yes in the conversation;
+/// amounts are changed there too (or on the 饮食 page).
 @MainActor
 final class CockpitMealPhoto: ObservableObject {
   enum Phase: Equatable {
     case viewfinder
     case working
-    case result
-    /// The AI answered without logging anything (it asked something, or could not read the picture): its words.
-    case answered(String)
+    case result(Result)
+  }
+
+  struct Result: Equatable {
+    var answer: CockpitReply.Answer
+    /// The day's kcal and goal from the turn's meal card (nil = the AI logged nothing the server counted).
+    var dayEaten: Double?
+    var dayGoal: Double?
   }
 
   @Published private(set) var phase = Phase.viewfinder
   @Published private(set) var photo: UIImage?
-  @Published private(set) var added: [FoodEntry] = []
-  @Published private(set) var dayBefore: Double = 0
   @Published var error: String?
 
-  let food: FoodStore
   private weak var router: JarvisRouter?
   private var work: Task<Void, Never>?
 
-  init(session: AccountSession, router: JarvisRouter) {
-    food = FoodStore(session: session, cardOnly: true)
+  init(router: JarvisRouter) {
     self.router = router
   }
 
-  /// The entries as they are now (an edited amount shows at once).
-  var entries: [FoodEntry] {
-    let ids = Set(added.map(\.id))
-    let now = (food.nutrition?.entries ?? []).filter { ids.contains($0.id) }
-    return now.isEmpty ? added : now
+  /// What a turn after a photo says (pure: tested).
+  static func result(_ items: [JarvisChat.Item]) -> Result? {
+    guard case .answer(let a) = TurnReading.read(items, question: "", flow: .meal, today: nil) else { return nil }
+    let card = items.reversed().compactMap { i -> JSONValue? in
+      if case .card(let c) = i.kind, c["type"]?.string == "meal" { return c } else { return nil }
+    }.first
+    var r = Result(answer: a, dayEaten: card?["totals"]?["calories"]?.double, dayGoal: card?["goal"]?["calories"]?.double)
+    r.answer.readings = []   // the day is drawn as a bar here
+    return r
   }
-
-  var total: Macros { entries.reduce(Macros(kcal: 0, protein: 0, carbs: 0, fat: 0)) { $0 + $1.macros } }
 
   func send(_ image: UIImage) {
     guard let router, let chat = router.chat else { return }
@@ -52,9 +56,6 @@ final class CockpitMealPhoto: ObservableObject {
     work?.cancel()
     work = Task { [weak self] in
       guard let self else { return }
-      await self.food.refreshToday()
-      let before = Set(self.food.nutrition?.entries.map(\.id) ?? [])
-      self.dayBefore = self.food.nutrition?.intake.kcal ?? 0
       let start = chat.items.count
       chat.page = "food"
       chat.send(tr("拍照记一餐", "Log this meal from the photo"), attachments: [a])
@@ -67,44 +68,20 @@ final class CockpitMealPhoto: ObservableObject {
         router.present(.chat)   // a yes is needed first: that happens in the conversation
         return
       }
-      await self.food.refreshToday()
-      let new = (self.food.nutrition?.entries ?? []).filter { !before.contains($0.id) && !$0.isLocal }
-      if new.isEmpty {
-        let text = items.reversed().compactMap { i -> String? in if case .assistant(let t) = i.kind { return t } else { return nil } }.first
-        self.phase = .answered(CockpitText.clean(text ?? tr("没有记上", "Nothing was logged")))
-      } else {
-        JarvisHaptics.notice.notificationOccurred(.success)
-        self.added = new
-        self.phase = .result
+      guard let r = Self.result(items) else {
+        self.phase = .viewfinder
+        self.error = tr("Jarvis 没有回应，稍后再试", "Jarvis didn't answer; try again later")
+        return
       }
+      if r.answer.undoText != nil { JarvisHaptics.notice.notificationOccurred(.success) }
+      self.phase = .result(r)
     }
   }
 
   func again() {
     work?.cancel()
-    added = []
     photo = nil
     phase = .viewfinder
-  }
-
-  /// 撤销: every entry this photo added.
-  func undo() async -> Bool {
-    var ok = true
-    for e in entries {
-      let out = await food.delete(e)
-      ok = ok && !out.failed && !out.conflict
-    }
-    return ok
-  }
-
-  func setAmount(_ e: FoodEntry, _ quantity: Double) async -> String? {
-    let out = await food.setPortion(e, quantity: quantity)
-    return out.sent || out.queued ? nil : out.message
-  }
-
-  /// `150 g`, `1.5 份`: the amount as the food log keeps it.
-  static func amount(_ e: FoodEntry) -> (value: String, unit: String) {
-    (RecordFormat.num(e.quantity, 1), e.unit ?? tr("份", "serving"))
   }
 }
 
@@ -185,30 +162,18 @@ struct CockpitMealPhotoView: View {
   @StateObject private var model: CockpitMealPhoto
   @StateObject private var camera = MealCamera()
   @State private var picked: PhotosPickerItem?
-  @State private var editing: FoodEntry?
-  @State private var amountText = ""
   @State private var toast: Toast?
   let close: () -> Void
 
-  init(session: AccountSession, router: JarvisRouter, close: @escaping () -> Void) {
-    _model = StateObject(wrappedValue: CockpitMealPhoto(session: session, router: router))
+  init(router: JarvisRouter, close: @escaping () -> Void) {
+    _model = StateObject(wrappedValue: CockpitMealPhoto(router: router))
     self.close = close
   }
 
   var body: some View {
     ZStack {
       Color.black.ignoresSafeArea()
-      switch model.phase {
-      case .viewfinder: viewfinder
-      case .working, .answered: shot
-      case .result: shot
-      }
-    }
-    .sheet(isPresented: Binding(get: { model.phase == .result }, set: { if !$0 && model.phase == .result { close() } })) {
-      result
-        .presentationDetents([.fraction(0.72), .large])
-        .presentationDragIndicator(.visible)
-        .interactiveDismissDisabled(false)
+      if model.phase == .viewfinder { viewfinder } else { shot }
     }
     .onChange(of: picked) { item in
       guard let item else { return }
@@ -289,12 +254,8 @@ struct CockpitMealPhotoView: View {
       switch model.phase {
       case .working:
         HStack(spacing: 10) { ProgressView().tint(Palette.text); Text(tr("在看这一餐", "Reading the meal")).font(Typo.caption).foregroundColor(Palette.text2) }
-      case .answered(let t):
-        Text(t).font(Typo.body).foregroundColor(Palette.text).lineLimit(4).padding(.horizontal, Metrics.gutter)
-        HStack(spacing: 10) {
-          capsule(.camera, tr("再拍一张", "Another photo")) { model.again() }
-          capsule(.messageCircle, tr("展开对话", "Open chat")) { close(); DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { JarvisRouter.current?.present(.chat) } }
-        }
+      case .result(let r):
+        result(r)
       default:
         EmptyView()
       }
@@ -304,109 +265,57 @@ struct CockpitMealPhotoView: View {
 
   // MARK: - 16b: the result
 
-  private var result: some View {
-    let t = model.total
-    let goal = model.food.nutrition?.goal.kcal
-    let day = model.food.nutrition?.intake.kcal ?? (model.dayBefore + (t.kcal ?? 0))
-    let slot = model.entries.first?.meal.title ?? ""
-    return ScrollView(.vertical, showsIndicators: false) {
-      VStack(alignment: .leading, spacing: 18) {
-        HStack {
-          HStack(spacing: 6) {
-            Icon(.circleCheck, size: 18).foregroundColor(Palette.good)
-            Text(tr("已记到\(slot)", "Logged to \(slot)")).font(.system(size: 17, weight: .semibold)).foregroundColor(Palette.text)
-          }
-          Spacer()
-          HStack(spacing: 4) { Icon(.sparkles, size: 12); Text(tr("AI 生成", "AI-made")).font(Typo.label) }
-            .foregroundColor(Palette.text2).padding(.vertical, 4).padding(.horizontal, 8)
-            .overlay(Capsule().stroke(Palette.hair, lineWidth: 1))
+  private func result(_ r: CockpitMealPhoto.Result) -> some View {
+    let a = r.answer
+    return VStack(alignment: .leading, spacing: 14) {
+      HStack {
+        HStack(spacing: 6) {
+          Icon(a.undoText != nil ? .circleCheck : .messageCircle, size: 18).foregroundColor(a.undoText != nil ? Palette.good : Palette.text2)
+          Text(a.verdict).font(Typo.heroWord).foregroundColor(Palette.text).lineLimit(1)
         }
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-          Text(t.kcal.map { RecordFormat.num($0) } ?? "—").font(.system(size: 44, weight: .semibold).monospacedDigit()).foregroundColor(Palette.text)
-          Text("kcal").font(Typo.unit).foregroundColor(Palette.text2)
-        }
-        MacroBar(macros: t).frame(height: 8)
-        HStack(spacing: 16) {
-          legend(tr("蛋白", "Protein"), t.protein, 1)
-          legend(tr("碳水", "Carbs"), t.carbs, 0.55)
-          legend(tr("脂肪", "Fat"), t.fat, 0.28)
-        }
-        VStack(spacing: 0) {
-          ForEach(model.entries) { e in
-            HStack {
-              Text(e.food).font(Typo.body).foregroundColor(Palette.text).lineLimit(1)
-              Spacer()
-              Button {
-                amountText = RecordFormat.num(e.quantity, 1)
-                editing = e
-              } label: {
-                let a = CockpitMealPhoto.amount(e)
-                HStack(alignment: .firstTextBaseline, spacing: 2) {
-                  Text(a.value).font(Typo.bodyStrong.monospacedDigit()).underline()
-                  Text(a.unit).font(Typo.unit)
-                }
-                .foregroundColor(Palette.text)
-              }
-              .accessibilityLabel(tr("改份量 \(e.food)", "Change amount of \(e.food)"))
-              .frame(width: 96, alignment: .trailing)
-              HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(e.macros.kcal.map { RecordFormat.num($0) } ?? "—").font(Typo.body.monospacedDigit())
-                Text("kcal").font(Typo.unit)
-              }
-              .foregroundColor(Palette.text2).frame(width: 80, alignment: .trailing)
-            }
-            .padding(.vertical, 10)
-            Divider().overlay(Palette.hair)
-          }
-        }
+        Spacer()
+        HStack(spacing: 4) { Icon(.sparkles, size: 12); Text(tr("AI 生成", "AI-made")).font(Typo.label) }
+          .foregroundColor(Palette.text2).padding(.vertical, 4).padding(.horizontal, 8)
+          .overlay(Capsule().stroke(Palette.hair, lineWidth: 1))
+      }
+      if let sub = a.sub { Text(sub).font(Typo.body).foregroundColor(Palette.text2).lineLimit(2) }
+      if let eaten = r.dayEaten {
         VStack(alignment: .leading, spacing: 8) {
           HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(tr("今天", "Today")).font(Typo.label).foregroundColor(Palette.text2)
-            Text(RecordFormat.num(day)).font(Typo.bodyStrong.monospacedDigit()).foregroundColor(Palette.text)
-            Text(goal.map { "/ \(CockpitText.kcal($0)) kcal" } ?? "kcal").font(Typo.unit).foregroundColor(Palette.text2)
+            Text(CockpitText.kcal(eaten)).font(Typo.bodyStrong.monospacedDigit()).foregroundColor(Palette.text)
+            Text(r.dayGoal.map { "/ \(CockpitText.kcal($0)) kcal" } ?? "kcal").font(Typo.unit).foregroundColor(Palette.text2)
           }
           GeometryReader { g in
-            let full = max(goal ?? day, day, 1)
+            let full = max(r.dayGoal ?? eaten, eaten, 1)
             ZStack(alignment: .leading) {
               Capsule().fill(Palette.inSheet)
-              Capsule().fill(Palette.text).frame(width: g.size.width * CGFloat(min(1, day / full)))
+              Capsule().fill(Palette.text).frame(width: g.size.width * CGFloat(min(1, eaten / full)))
             }
           }
           .frame(height: 6)
         }
-        HStack(spacing: 10) {
-          capsule(.undo2, tr("撤销", "Undo")) {
-            Task {
-              let ok = await model.undo()
-              toast = Toast(ok ? tr("已撤销", "Undone") : tr("撤销要联网，稍后再试", "Undo needs a connection, try again later"))
-              if ok { model.again() }
+      }
+      HStack(spacing: 10) {
+        if let undo = a.undoText {
+          capsule(.undo2, tr("撤销", "Undo")) {   // the AI undoes what it wrote, after a yes in the conversation
+            close()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+              JarvisRouter.current?.present(.chat)
+              JarvisRouter.current?.chat?.send(undo)
             }
           }
-          capsule(.camera, tr("再拍一张", "Another photo")) { model.again() }
+        }
+        capsule(.camera, tr("再拍一张", "Another photo")) { model.again() }
+        capsule(.messageCircle, tr("展开对话", "Open chat")) {
+          close()
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { JarvisRouter.current?.present(.chat) }
         }
       }
-      .padding(Metrics.gutter)
     }
-    .background(Palette.sheet.ignoresSafeArea())
-    .alert(tr("份量", "Amount"), isPresented: Binding(get: { editing != nil }, set: { if !$0 { editing = nil } })) {
-      TextField(editing.map { CockpitMealPhoto.amount($0).unit } ?? "", text: $amountText).keyboardType(.decimalPad)
-      Button(tr("取消", "Cancel"), role: .cancel) { editing = nil }
-      Button(tr("好", "OK")) {
-        guard let e = editing, let q = Double(amountText.replacingOccurrences(of: ",", with: ".")), q > 0 else { return }
-        editing = nil
-        Task { if let m = await model.setAmount(e, q) { toast = Toast(m) } }
-      }
-    }
-    .toast($toast)
-  }
-
-  private func legend(_ label: String, _ g: Double?, _ o: Double) -> some View {
-    HStack(spacing: 5) {
-      Capsule().fill(Palette.text.opacity(o)).frame(width: 10, height: 4)
-      Text(label).font(Typo.label).foregroundColor(Palette.text2)
-      Text(g.map { RecordFormat.num($0) } ?? "—").font(Typo.bodyStrong.monospacedDigit()).foregroundColor(Palette.text)
-      Text("g").font(Typo.unit).foregroundColor(Palette.text2)
-    }
+    .padding(Metrics.gutter)
+    .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.sheet))
+    .padding(.horizontal, 12)
   }
 
   private func capsule(_ icon: Icon.Name, _ title: String, _ action: @escaping () -> Void) -> some View {
