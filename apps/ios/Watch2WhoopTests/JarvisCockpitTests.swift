@@ -106,14 +106,16 @@ final class JarvisCockpitTests: XCTestCase {
     XCTAssertEqual(m.rot.x, 0, accuracy: 0.5)
   }
 
-  func testTrainRingHasFourKeys() {
+  /// 记训练 has no 说一组: no tool of the in-app AI writes one set into today's session.
+  func testTrainRingHasThreeKeys() {
     var m = CockpitMachine()
     _ = m.tapCore()
     run(&m, 0.8)
     m.activate(.train)
     run(&m, 0.7)
-    XCTAssertEqual(m.items.map(\.key), [.trainStart, .trainTalk, .trainBackfill, .trainPlan])
-    XCTAssertEqual(m.items.map(\.angle), [-54, -18, 18, 54])
+    XCTAssertEqual(m.items.map(\.key), [.trainStart, .trainBackfill, .trainPlan])
+    XCTAssertEqual(m.items.map(\.angle), [-36, 0, 36])
+    XCTAssertFalse(m.items.contains { $0.key == .trainTalk })
     XCTAssertEqual(m.crumbIcon, .dumbbell)
   }
 
@@ -163,6 +165,7 @@ final class JarvisCockpitTests: XCTestCase {
 
   private func listening(_ key: CockpitKey = .talk) -> CockpitMachine {
     var m = CockpitMachine()
+    m.autoSend = true   // flag on; the flag-off tests turn it off
     _ = m.tapCore()
     run(&m, 0.8)
     m.activate(key)
@@ -236,24 +239,17 @@ final class JarvisCockpitTests: XCTestCase {
     XCTAssertEqual(m.tapCore(), [.stopListening, .closed])
   }
 
-  func testSecondRingVoiceKeysPickTheirFlow() {
-    var m = CockpitMachine()
-    _ = m.tapCore()
-    run(&m, 0.8)
-    m.activate(.train)
-    run(&m, 1.2)
-    m.activate(.trainTalk)
-    XCTAssertEqual(run(&m, CockpitTiming.select + 0.02), [.listen(.set)])
-    m.heard("卧推六十公斤八个")
-    XCTAssertEqual(run(&m, CockpitTiming.pause + CockpitTiming.autoSend + 0.2), [.send(.set)])
-
+  func testMealVoiceKeyPicksItsFlow() {
     var n = CockpitMachine()
+    n.autoSend = true
     _ = n.tapCore()
     run(&n, 0.8)
     n.activate(.meal)
     run(&n, 1.2)
     n.activate(.mealTalk)
     XCTAssertEqual(run(&n, CockpitTiming.select + 0.02), [.listen(.meal)])
+    n.heard("中午吃了鸡胸饭")
+    XCTAssertEqual(run(&n, CockpitTiming.pause + CockpitTiming.autoSend + 0.2), [.send(.meal)])
   }
 
   func testHoldOnTheClosedCoreTalksAtOnce() {
@@ -458,5 +454,40 @@ final class JarvisCockpitTests: XCTestCase {
     await Task.yield()
     for _ in 0..<5 { await withCheckedContinuation { c in DispatchQueue.main.async { c.resume() } } }
     XCTAssertEqual(ctl.mode, .idle)
+  }
+
+  // MARK: - second review (2026-11-12)
+
+  /// An effect from an earlier frame is dropped when the user has overtaken it (× before the microphone started, a close
+  /// before the words went out).
+  func testOvertakenEffectsAreDropped() {
+    var m = listening()
+    XCTAssertTrue(CockpitController.stillValid(.listen(.qa), m))
+    _ = m.close()
+    XCTAssertFalse(CockpitController.stillValid(.listen(.qa), m), "closed before the frame's effect ran: no microphone")
+    XCTAssertFalse(CockpitController.stillValid(.switchLanguage, m))
+    XCTAssertFalse(CockpitController.stillValid(.send(.qa), m), "nothing goes out after a close")
+    XCTAssertTrue(CockpitController.stillValid(.stopListening, m))
+    XCTAssertTrue(CockpitController.stillValid(.closed, m))
+    var n = listening()
+    n.heard("今天适合练腿吗")
+    _ = n.sendNow()
+    XCTAssertTrue(CockpitController.stillValid(.send(.qa), n))
+    XCTAssertFalse(CockpitController.stillValid(.send(.meal), n), "another flow's send")
+    XCTAssertFalse(CockpitController.stillValid(.run(.template(3)), CockpitMachine()), "a quick meal only while it thinks")
+  }
+
+  /// The quick meal's 撤销 is bound to this write: the log id the server gave it, never an older one.
+  func testUndoIsBoundToThisWrite() {
+    XCTAssertEqual(CockpitController.thisWrite(before: nil, after: 51), 51)
+    XCTAssertNil(CockpitController.thisWrite(before: 51, after: 51), "an older logging of the template: not ours")
+    XCTAssertNil(CockpitController.thisWrite(before: nil, after: nil), "still queued: undone by its client id")
+    XCTAssertEqual(CockpitController.thisWrite(before: 50, after: 51), 51)
+  }
+
+  /// The flag gate: without the account's flags (unknown, not loaded) voice never sends by itself.
+  func testVoiceDirectUnknownMeansConfirmFirst() {
+    XCTAssertFalse(JarvisRouter().voiceDirect)
+    XCTAssertFalse(CockpitMachine().autoSend, "the machine waits for 发送 until the flag says otherwise")
   }
 }
