@@ -31,6 +31,7 @@ The design rules are in [direction.md](direction.md): one instrument per tab, sh
 - `kit.css`: tokens (dark default, light via `html[data-theme="light"]`), device chrome (status bar, iOS 26 tab bar, Jarvis key) and shared components.
 - `kit.js`: the Lucide 1.61.0 icons vendored in the app (ISC), `<i data-i="name">` → inline SVG, `?theme=light` support, and small drawing helpers (dial, gauge, bars, sparkline).
 - `body.js`: muscle bodies (`data-body`, `data-lit`) and the set ring (`data-sets`), drawn from the app's own `muscle-body-data.js` (MIT, see `THIRD_PARTY_NOTICES.md`).
+- `logo/`: app icon concepts for the redesign. `logo.html` draws three concepts (A dial, B dial + pulse, C tick ring) in dark and light; `logo-board.png` is the comparison board, `icon-{A,B,C}-1024.png` the 1024 px dark icons. A and C are plain geometry from the app's own dial; B's pulse is the Lucide `activity` glyph (ISC).
 - `_template.html`: starting point for a new screen.
 - `render.sh`: renders a page at iPhone 17 Pro size (402 × 874 pt, @3x) with headless Chrome on macOS.
 
