@@ -314,8 +314,11 @@ final class JarvisVoice: ObservableObject {
   // `stableSeconds`); Chinese also gives a WAV (silence of the same length) for /transcribe.
 
   private func startScript() {
-    let words = [tr("今天", "Slept"), tr("今天睡得", "Slept well"), tr("今天睡得不错", "Slept well, legs"),
+    let fallback = [tr("今天", "Slept"), tr("今天睡得", "Slept well"), tr("今天睡得不错", "Slept well, legs"),
                  tr("今天睡得不错，练腿", "Slept well, legs today"), tr("今天睡得不错，练腿四十分钟", "Slept well, legs for forty minutes")]
+    // a cockpit demo: its own words, two characters at a time
+    let phrase = JarvisDemo.cockpitPhrase.map { p in stride(from: 2, through: p.count + 1, by: 2).map { String(p.prefix($0)) } }
+    let words = phrase ?? fallback
     var tick = 0
     running = true
     startedAt = Date()

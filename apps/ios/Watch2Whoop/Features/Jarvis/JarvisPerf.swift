@@ -103,31 +103,26 @@ final class JarvisPerf: NSObject {
 #if DEBUG
 /// Debug builds only: drives Jarvis without touching the screen, for frame timing, screenshots and recordings
 /// (simulator, synthetic data). `SIMCTL_CHILD_W2W_JARVIS_DEMO=` …
-/// - `dial`: open / close the dial five times, then hold to talk three ways (slide to cancel, slide to lock + done,
-///   release), then print the frame summary;
+/// - `dial`: open / close the cockpit five times, then print the frame summary;
 /// - `script`: nothing but the scripted recogniser (UI tests drive the key with real touches);
-/// - `open`: open the dial and leave it open; `hold`: start holding and stay; `chat`: open the chat and ask a quick question;
+/// - `open`: open the cockpit and leave it open; `chat`: open the chat and ask a quick question;
+/// - the cockpit's flows (2.0.1): `cockpit-meal` / `cockpit-train` (second rings), `cockpit-back` (second ring, then back),
+///   `cockpit-interrupt` (tap the core again while the panels fan out), `cockpit-qa` / `cockpit-mealvoice` /
+///   `cockpit-set` (talk through 说话 / 记一餐 → 说 / 记训练 → 说一组 with scripted words, then the reply card),
+///   `cockpit-template` (a quick meal logged at once), `cockpit-undo` (the same, then 撤销);
 /// - `posture`: the chat with the posture sheet open; `posture-filled`: with three made-up photos in it;
 ///   `posture-send`: send three made-up photos and the prefilled question (flat colours, no person in them);
-/// - `voice`: talk three times through the key (hold, release) and three times through the chat's own microphone (完成),
-///   logging `voice-key-done-to-text` / `voice-chat-done-to-text` (the scripted recogniser behaves like the phone's: no
-///   final result, so `stop` waits as on a phone, and a Chinese WAV goes to /transcribe; the fake server's
-///   `W2W_FAKE_ASR_DELAY=<s>` stands in for the real recogniser's time).
-/// `W2W_JARVIS_MATERIAL=1` draws the pre-iOS 26 material keys on iOS 26 too (to compare).
+/// - `voice`: talk three times through the chat's own microphone (完成), logging `voice-chat-done-to-text` (the scripted
+///   recogniser behaves like the phone's: no final result, so `stop` waits as on a phone, and a Chinese WAV goes to
+///   /transcribe; the fake server's `W2W_FAKE_ASR_DELAY=<s>` stands in for the real recogniser's time).
 enum JarvisDemo {
-  struct Hooks {
-    let center: () -> CGPoint
-    let press: (CGPoint) -> Void
-    let move: (CGPoint) -> Void
-    let release: (CGPoint) -> Void
-  }
-
   static var mode: String? { ProcessInfo.processInfo.environment["W2W_JARVIS_DEMO"] }
   static var scriptedVoice: Bool { mode != nil }
-  static var forceMaterial: Bool { ProcessInfo.processInfo.environment["W2W_JARVIS_MATERIAL"] != nil }
   private static var ran = false
   /// The chat's own microphone, while the chat is open (start / 完成), for the `voice` demo.
   static var chatMic: (start: () -> Void, done: () -> Void)?
+  /// The words the scripted recogniser says in a cockpit demo (two characters at a time, then a pause).
+  static var cockpitPhrase: String?
 
   static func postureFlow() -> PostureFlow {
     var f = PostureFlow()
@@ -142,7 +137,7 @@ enum JarvisDemo {
   }
 
   @MainActor
-  static func run(router: JarvisRouter, layer h: Hooks) {
+  static func run(router: JarvisRouter, cockpit: CockpitController) {
     guard let mode, !ran else { return }
     ran = true
     let sec: (Double) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) }
@@ -152,7 +147,42 @@ enum JarvisDemo {
       case "script":   // only the scripted recogniser (UI tests drive the key with real touches)
         break
       case "open":
-        router.menuOpen = true
+        cockpit.tapCore()
+      case "cockpit-meal", "cockpit-train", "cockpit-back":
+        cockpit.tapCore()
+        await sec(0.9)
+        cockpit.activate(mode == "cockpit-train" ? .train : .meal)
+        if mode == "cockpit-back" {
+          await sec(2.5)
+          cockpit.back()
+        }
+      case "cockpit-interrupt":
+        cockpit.tapCore()
+        await sec(0.09)
+        cockpit.tapCore()
+      case "cockpit-qa":
+        cockpitPhrase = tr("今天适合练腿吗", "Should I train legs today")
+        cockpit.tapCore()
+        await sec(0.9)
+        cockpit.activate(.talk)
+      case "cockpit-mealvoice", "cockpit-set":
+        let meal = mode == "cockpit-mealvoice"
+        cockpitPhrase = meal ? tr("中午吃了鸡胸饭", "Chicken rice for lunch") : tr("卧推六十公斤八个", "Bench press sixty kilos eight reps")
+        cockpit.tapCore()
+        await sec(0.9)
+        cockpit.activate(meal ? .meal : .train)
+        await sec(1.2)
+        cockpit.activate(meal ? .mealTalk : .trainTalk)
+      case "cockpit-template", "cockpit-undo":
+        cockpit.tapCore()
+        await sec(0.9)
+        cockpit.activate(.meal)
+        await sec(1.2)
+        cockpit.activate(.template(0))
+        if mode == "cockpit-undo" {
+          await sec(3)
+          cockpit.undoReply()
+        }
       case "chat":
         router.present(.chat)
         await sec(1)
@@ -174,15 +204,6 @@ enum JarvisDemo {
         await sec(1)
         router.chat?.send(PostureFlow.question, attachments: postureFlow().attachments, purpose: PostureFlow.purpose)
       case "voice":
-        for _ in 0..<3 {
-          let c = h.center()
-          h.press(c)
-          await sec(2)
-          h.release(c)
-          await sec(7)
-          router.sheet = nil
-          await sec(1)
-        }
         router.present(.chat)
         await sec(1.5)
         for _ in 0..<3 {
@@ -193,49 +214,19 @@ enum JarvisDemo {
           router.chat?.draft = ""
           await sec(0.5)
         }
-        for name in ["voice-key-done-to-text", "voice-chat-done-to-text"] {
-          let ms = JarvisPerf.shared.marks.filter { $0.0 == name }.map(\.1)
-          guard !ms.isEmpty else { continue }
-          print(String(format: "W2W_PERF summary %@ n=%d avg=%.0fms max=%.0fms", name, ms.count, ms.reduce(0, +) / Double(ms.count), ms.max() ?? 0))
+        let ms = JarvisPerf.shared.marks.filter { $0.0 == "voice-chat-done-to-text" }.map(\.1)
+        if !ms.isEmpty {
+          print(String(format: "W2W_PERF summary voice-chat-done-to-text n=%d avg=%.0fms max=%.0fms", ms.count, ms.reduce(0, +) / Double(ms.count), ms.max() ?? 0))
         }
-      case "hold":
-        h.press(h.center())
-        await sec(1.5)
-        h.move(CGPoint(x: h.center().x - 30, y: h.center().y - 70))
-      default:
+      default:   // dial: open / close the cockpit
         for _ in 0..<5 {
-          router.menuOpen = true
+          cockpit.tapCore()
           await sec(1.2)
-          router.menuOpen = false
+          cockpit.tapCore()
           await sec(0.9)
         }
-        for (dx, tapAfter) in [(-JarvisLayer.targetDX, false), (JarvisLayer.targetDX, true), (0, false)] {
-          let c = h.center()
-          h.press(c)
-          await sec(JarvisLayer.holdSeconds + 0.15)
-          var p = c
-          if dx != 0 {
-            for k in 1...24 {
-              let f = CGFloat(k) / 24
-              p = CGPoint(x: c.x + dx * f, y: c.y - JarvisLayer.targetDY * f)
-              h.move(p)
-              await sec(1.0 / 60)
-            }
-          }
-          await sec(1.2)
-          h.release(p)
-          if tapAfter {
-            await sec(1.5)
-            h.press(c)
-            await sec(0.05)
-            h.release(c)
-          }
-          await sec(2.5)
-          router.sheet = nil
-          await sec(0.8)
-        }
         let all = JarvisPerf.shared.samples
-        for name in ["jarvis-open", "jarvis-close", "jarvis-hold"] {
+        for name in ["cockpit-open", "cockpit-listen"] {
           let s = all.filter { $0.name == name }
           guard !s.isEmpty else { continue }
           let fps = s.map(\.fps).reduce(0, +) / Double(s.count)
@@ -246,9 +237,5 @@ enum JarvisDemo {
       }
     }
   }
-}
-#else
-enum JarvisDemo {
-  static let forceMaterial = false
 }
 #endif
