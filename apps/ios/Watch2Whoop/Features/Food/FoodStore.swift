@@ -182,6 +182,13 @@ final class FoodStore: LocalPageStore {
     _ = await plan
   }
 
+  /// The day's intake and the quick meals again, now (the Jarvis cockpit, after a meal was logged by voice: the card shows
+  /// what the server added).
+  func refreshToday() async {
+    await send()
+    await refreshDay()
+  }
+
   /// Everything 采购 shows beyond the list (the page loads these when 采购 opens, too).
   func refreshShopping() async {
     shoppingOpen = true
@@ -266,6 +273,18 @@ final class FoodStore: LocalPageStore {
     } catch {
       return false
     }
+  }
+
+  /// Undo one logging of a quick meal, by that logging alone: its queued copy (`clientId`) or the server's log id. Never
+  /// "the template's logging today" (that may be another one, made elsewhere). A log already gone (404) counts as undone.
+  func undoMealLog(id: Int?, clientId: String?) async -> Bool {
+    guard id != nil || clientId != nil else { return false }
+    let ok = await undo(clientId: clientId) {
+      guard let id else { throw APIError.notFound }
+      do { _ = try await self.api.data(APIRequest(method: .delete, path: FoodAPI.mealLog(id))) } catch APIError.notFound {}
+    }
+    if ok { await refreshDay() }
+    return ok
   }
 
   func log(_ r: Recipe, servings: Double, meal: MealSlot, again: Bool = false) async -> WriteOutcome {

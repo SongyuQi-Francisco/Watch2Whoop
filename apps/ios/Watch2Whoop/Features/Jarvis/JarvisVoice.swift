@@ -99,10 +99,15 @@ final class JarvisVoice: ObservableObject {
   /// Asks for speech recognition and the microphone (only the first time), then listens.
   func start(lang: String, keepAudio: Bool) async throws {
     teardown()
+    // this start's number, taken before the first await: a cancel (teardown) or a newer start while the permission sheet is
+    // up moves `run` on, and this start then never turns the microphone on
+    run += 1
+    let r = run
     #if DEBUG && targetEnvironment(simulator)
     if JarvisDemo.scriptedVoice { scriptKeepsAudio = keepAudio; startScript(); return }
     #endif
     guard await Self.authorize() else { throw Failure.permission }
+    guard r == run, !Task.isCancelled else { throw CancellationError() }
     guard let loc = Self.locale(for: lang), let rec = SFSpeechRecognizer(locale: loc), rec.isAvailable else {
       throw Failure.unsupportedLang
     }
@@ -111,8 +116,6 @@ final class JarvisVoice: ObservableObject {
     req.requiresOnDeviceRecognition = true   // never to Apple's servers
     req.taskHint = .dictation
     req.addsPunctuation = true
-    run += 1
-    let r = run
     let sink = audio, engine = self.engine
     let ok: Bool = await withCheckedContinuation { c in
       audioQueue.async { [weak self] in
@@ -314,8 +317,11 @@ final class JarvisVoice: ObservableObject {
   // `stableSeconds`); Chinese also gives a WAV (silence of the same length) for /transcribe.
 
   private func startScript() {
-    let words = [tr("今天", "Slept"), tr("今天睡得", "Slept well"), tr("今天睡得不错", "Slept well, legs"),
+    let fallback = [tr("今天", "Slept"), tr("今天睡得", "Slept well"), tr("今天睡得不错", "Slept well, legs"),
                  tr("今天睡得不错，练腿", "Slept well, legs today"), tr("今天睡得不错，练腿四十分钟", "Slept well, legs for forty minutes")]
+    // a cockpit demo: its own words, two characters at a time
+    let phrase = JarvisDemo.cockpitPhrase.map { p in stride(from: 2, through: p.count + 1, by: 2).map { String(p.prefix($0)) } }
+    let words = phrase ?? fallback
     var tick = 0
     running = true
     startedAt = Date()

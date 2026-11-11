@@ -28,7 +28,6 @@ final class JarvisRouter: ObservableObject {
     var id: Self { self }
   }
 
-  @Published var menuOpen = false
   @Published var sheet: Sheet?
   /// A page a card opened over the chat (closing it comes back to the conversation).
   @Published var detail: JarvisDetail?
@@ -161,13 +160,12 @@ final class JarvisRouter: ObservableObject {
     tr("记下这张小票 / 价签的价格：逐行读商品、规格、价格、特价和原价，超市和日期也记上，一次记完。小票上的算我买了；读不准的行问我，别猜。", "Record the prices on this receipt / price tag: each line's product, size, price, special and original price, plus store and date, in one go. Receipt items count as bought; ask me about lines you can't read, don't guess.")
   }
 
-  /// A tap on the Jarvis key: the menu where the chat runs in the app, otherwise what the Today page's key does
-  /// (open the butler link, or say where this AI is used).
+  /// A tap on the Jarvis key where the chat does not run in the app: what the Today page's key does (open the butler link,
+  /// or say where this AI is used). In the app's own AI the key is the cockpit (CockpitController).
   func tapKey() {
-    if menuOpen { menuOpen = false; return }
     switch ai.mode {
     case .api, .fallback:
-      menuOpen = true
+      break
     case .butler:
       if let u = ai.assistantURL { UIApplication.shared.open(u) }
     case .mcp:
@@ -178,9 +176,8 @@ final class JarvisRouter: ObservableObject {
     }
   }
 
-  /// One of the four menu keys.
+  /// A cockpit key that opens one of the existing entries (the chat, 快记, the camera).
   func run(_ key: JarvisMenuKey) {
-    menuOpen = false
     guard let chat else { return }
     let go: () -> Void = { [weak self] in
       guard let self else { return }
@@ -191,7 +188,6 @@ final class JarvisRouter: ObservableObject {
         if !self.ai.vision { self.show(tr("这个 AI 看不了图片", "This AI can't read pictures")); return }
         self.photoPrompt = nil
         self.present(.camera)
-      case .voice: self.voiceRequested = true
       }
     }
     if ai.mode == .fallback && !ai.consent {
@@ -200,9 +196,6 @@ final class JarvisRouter: ObservableObject {
     }
     go()
   }
-
-  /// Set by the 语音 key: the layer starts a locked recording (no finger on the key).
-  @Published var voiceRequested = false
 
   /// Asked from inside another sheet (an explain sheet): that one goes first, then the chat comes up.
   private func presentOverOthers(_ s: Sheet) {
@@ -351,36 +344,8 @@ final class JarvisRouter: ObservableObject {
   }
 }
 
-/// The four keys of the Jarvis menu, left to right on the arc.
+/// The existing entries the cockpit's keys open (until their own screens are designed).
 enum JarvisMenuKey: String, CaseIterable, Identifiable {
-  case chat, voice, photo, quick
+  case chat, photo, quick
   var id: String { rawValue }
-
-  var title: String {
-    switch self {
-    case .chat: return tr("对话", "Chat")
-    case .voice: return tr("语音", "Voice")
-    case .photo: return tr("拍照", "Photo")
-    case .quick: return tr("快记", "Quick log")
-    }
-  }
-
-  var icon: Icon.Name {
-    switch self {
-    case .chat: return .botMessageSquare
-    case .voice: return .audioWaveform
-    case .photo: return .scanEye
-    case .quick: return .zap
-    }
-  }
-
-  /// Angle on the arc, 0 = 12 o'clock, clockwise (jarvis-entry.js KEYS thd).
-  var degrees: Double {
-    switch self {
-    case .chat: return -72
-    case .voice: return -36
-    case .photo: return 36
-    case .quick: return 72
-    }
-  }
 }
