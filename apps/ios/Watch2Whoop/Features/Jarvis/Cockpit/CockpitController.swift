@@ -3,17 +3,19 @@ import SwiftUI
 import UIKit
 
 /// Connects the cockpit's machine to what the app can already do (2.0.1):
-/// - voice: the phone's recogniser (JarvisVoice) with the live words above the core, then the chat (JarvisChat.sendVoice,
-///   the same path as the old hold-to-talk: the server's corrected words replace the phone's when they come in time);
-/// - 记一餐 → a quick meal: logged at once from the phone (FoodStore.log, the offline queue), undo = FoodStore.undoLog;
-/// - 记一餐 → 说: the AI logs it; the card shows the entries the day gained during the turn, undo deletes them;
-/// - 记训练 → 说一组: the AI logs it; the card shows the set today's session gained, undo unticks it;
-/// - the keys whose own screens are not designed yet open the app's existing entry (camera, chat, 快记, 记录 → 训练).
+/// - voice: the phone's recogniser (JarvisVoice) with the live words above the core (60 s at most, 中文 / English chip),
+///   then the chat. Flag `jarvis_voice_direct` on: a pause sends by itself after the one-second ring, the server's corrected
+///   words replace the phone's (JarvisChat.sendVoice), as the old hold-to-talk did. Off: the words wait above the core, are
+///   corrected there, and go out only when the user taps 发送 (or the core); tapping them edits them in the chat's box.
+/// - the reply: the AI's answer as a verdict card (TurnReading). What the AI logged has no id the app could undo by, so the
+///   card's 撤销 asks the AI to undo it (it asks for a yes in the conversation); nothing is guessed from before / after.
+/// - 记一餐 → a quick meal: logged from the phone (FoodStore.log), 撤销 = that logging's own id (FoodStore.undoLog).
+/// - the keys whose screens are not part of this change open the app's existing entry (camera, chat, 快记, 记录 → 训练).
 @MainActor
 final class CockpitController: ObservableObject {
   /// Stepped by the view every frame. Not published: the frames redraw from the timeline, not from this object.
   var machine = CockpitMachine()
-  /// Something moves: the view's timeline runs at the display's rate (otherwise a slow tick for the core's own turn).
+  /// Something moves: the view's timeline runs. When everything has settled it stops (nothing is redrawn while idle).
   @Published private(set) var active = false
   /// The mode, published when it changes (hit area, accessibility).
   @Published private(set) var mode: CockpitMode = .idle
@@ -26,10 +28,14 @@ final class CockpitController: ObservableObject {
   private weak var router: JarvisRouter?
   private weak var session: AccountSession?
   private var food: FoodStore?
-  private var training: TrainingStore?
   private var lastFrame: CFTimeInterval?
   private var undo: (() async -> Bool)?
-  private var work: Task<Void, Never>?
+  /// The recording (listen) and the turn (send → reply) run separately: closing the cockpit stops a recording, never a
+  /// write that already went out.
+  private var listening: Task<Void, Never>?
+  private var turn: Task<Void, Never>?
+  /// Flag off: the words taken at the pause, corrected while they wait for 发送.
+  private var waiting: JarvisVoice.Take?
   private var cancellables = Set<AnyCancellable>()
 
   init(voice: JarvisVoice) {
@@ -53,17 +59,16 @@ final class CockpitController: ObservableObject {
   // MARK: - frames and input
 
   /// One frame of the timeline. Runs inside the view's update: published values and side effects wait for the next turn
-  /// of the main queue.
+  /// of the main queue, and read the machine as it is then (a tap in between is never overwritten by this frame's state).
   func frame(_ now: CFTimeInterval) {
     let dt = lastFrame.map { now - $0 } ?? 0
     lastFrame = now
     machine.voiceLevel = voice.running ? (voice.levels.last ?? 0) : 0
     let fx = machine.step(dt)
-    let m = machine.mode, lv = machine.level, act = machine.isActive
-    if !fx.isEmpty || m != mode || lv != level || act != active {
+    if !fx.isEmpty || machine.mode != mode || machine.level != level || machine.isActive != active {
       DispatchQueue.main.async { [weak self] in
         guard let self else { return }
-        self.publish(mode: m, level: lv, active: act)
+        self.sync()
         self.handle(fx)
       }
     }
@@ -78,9 +83,10 @@ final class CockpitController: ObservableObject {
     apply(machine.tap(at: p, center: c))
   }
 
-  /// A long press on the closed core: talk at once (a question).
+  /// A long press on the closed core: talk at once (a question); for an AI outside the app, what a tap does.
   func holdCore() {
-    guard inApp, machine.mode == .idle else { return }
+    guard inApp else { router?.tapKey(); return }
+    guard machine.mode == .idle else { return }
     JarvisHaptics.medium.impactOccurred()
     apply(machine.startListening(.qa))
   }
@@ -93,27 +99,38 @@ final class CockpitController: ObservableObject {
     apply(machine.tapCore())
   }
 
+  /// 发送 in the confirm state (flag off).
+  func sendNow() { apply(machine.sendNow()) }
+
   /// From outside: the tab changed, the app went to the background.
   func close() { apply(machine.close()) }
 
   private func apply(_ fx: [CockpitEffect]) {
-    publish(mode: machine.mode, level: machine.level, active: true)
+    wake()
+    sync()
     handle(fx)
   }
 
-  /// The timeline is slow while idle: anything that starts a movement switches it to full rate first.
+  /// Anything that starts a movement restarts the timeline (it stops while idle); the first frame after a pause moves by 0.
   private func wake() {
-    if !active { active = true }
+    if !active {
+      lastFrame = nil
+      active = true
+    }
   }
 
-  private func publish(mode m: CockpitMode, level lv: Int, active act: Bool) {
+  /// The published values from the machine as it is now.
+  private func sync() {
+    let m = machine.mode
     if m != mode {
+      let was = mode
       mode = m
       if m != .card { reply = nil; undo = nil }
-      if m == .idle || m == .menu { work?.cancel() }
+      if m == .confirm && !machine.autoSend { prepareTake() }
+      if (was == .listen || was == .confirm) && m != .think { waiting = nil }
     }
-    if lv != level { level = lv }
-    if act != active { active = act }
+    if machine.level != level { level = machine.level }
+    if machine.isActive != active { active = machine.isActive || mode != .idle }
   }
 
   // MARK: - effects
@@ -130,9 +147,14 @@ final class CockpitController: ObservableObject {
       case .listen(let flow):
         JarvisHaptics.light.impactOccurred()
         startVoice(flow)
+      case .switchLanguage:
+        switchLanguage()
       case .stopListening:
+        listening?.cancel()
         voice.cancel()
+        waiting = nil
       case .gaveUp:
+        voice.cancel()
         router?.show(tr("没听清，再说一次", "Didn't catch that; try again"))
       case .send(let flow):
         JarvisHaptics.selection.selectionChanged()
@@ -143,22 +165,21 @@ final class CockpitController: ObservableObject {
     }
   }
 
-  /// The stores the second rings read, and the two quick meals of 记一餐.
+  /// The two quick meals of 记一餐, from the phone's copy now and again once the server's list is in.
   private func prepare() {
     guard let session else { return }
     if food == nil { food = FoodStore(session: session, cardOnly: true) }
-    if training == nil { training = TrainingStore(session: session) }
-    machine.meals = topMeals().map { (name: $0.name, kcal: $0.totals.kcal) }
-    Task { [weak self] in await self?.food?.refresh(); self?.refreshMeals() }
-  }
-
-  private func refreshMeals() {
-    machine.meals = topMeals().map { (name: $0.name, kcal: $0.totals.kcal) }
+    machine.meals = Self.meals(food?.templates ?? [])
+    Task { [weak self] in
+      await self?.food?.refresh()   // sends what is queued, then pulls the quick meals from the server
+      guard let self else { return }
+      self.machine.meals = Self.meals(self.food?.templates ?? [])
+    }
   }
 
   /// The two most used quick meals of the last 30 days.
-  private func topMeals() -> [MealTemplate] {
-    Array(MealTemplate.byUse(food?.templates ?? []).prefix(2))
+  static func meals(_ templates: [MealTemplate]) -> [CockpitMeal] {
+    MealTemplate.byUse(templates).prefix(2).map { CockpitMeal(id: $0.id, name: $0.name, kcal: $0.totals.kcal) }
   }
 
   // MARK: - keys with their own action
@@ -166,8 +187,8 @@ final class CockpitController: ObservableObject {
   private func run(_ key: CockpitKey) {
     guard let router else { return }
     switch key {
-    case .template(let i):
-      logTemplate(i)
+    case .template(let id):
+      logTemplate(id)
     case .photo, .mealPhoto:
       router.run(.photo)
     case .ask:
@@ -181,15 +202,17 @@ final class CockpitController: ObservableObject {
     }
   }
 
-  private func logTemplate(_ slot: Int) {
-    let meals = topMeals()
-    guard slot < meals.count, let food else { failed(nil); return }
-    let t = meals[slot]
-    work?.cancel()
-    work = Task { [weak self] in
+  /// A quick meal, by its id. Once the log is sent its result is shown even if the cockpit was closed meanwhile.
+  private func logTemplate(_ id: Int) {
+    guard let food, let t = food.templates.first(where: { $0.id == id }) else {
+      failed(tr("这份快捷餐找不到了", "That quick meal is gone"))
+      return
+    }
+    turn?.cancel()
+    turn = Task { [weak self] in
       let before = food.nutrition?.intake.kcal ?? 0
       let out = await food.log(t)
-      guard let self, !Task.isCancelled else { return }
+      guard let self else { return }
       if out.conflict {
         food.drop(out)
         self.failed(tr("今天已记过「\(t.name)」", "\(t.name) is already logged today"))
@@ -197,13 +220,12 @@ final class CockpitController: ObservableObject {
       }
       guard out.sent || out.queued else { self.failed(out.message); return }
       JarvisHaptics.notice.notificationOccurred(.success)
-      let day = food.nutrition
       self.undo = { [weak food] in
-        guard let food else { return false }
-        let cur = food.templates.first { $0.id == t.id } ?? t
+        // that logging's own id (or its queued copy): never anything else of the day
+        guard let food, let cur = food.templates.first(where: { $0.id == t.id }), cur.isLogged else { return false }
         return await food.undoLog(cur)
       }
-      self.show(.meal(Self.mealCard(slot: t.meal.title, name: t.name, added: t.totals, before: before, day: day)))
+      self.show(.meal(Self.mealCard(slot: t.meal.title, name: t.name, added: t.totals, before: before, day: food.nutrition)))
     }
   }
 
@@ -214,7 +236,7 @@ final class CockpitController: ObservableObject {
     let ai = router.ai
     if ai.mode == .fallback && !ai.consent {
       machine.close()
-      publish(mode: .idle, level: 1, active: true)
+      sync()
       router.run(.chat)   // the terms first (then the user tries again)
       return
     }
@@ -222,8 +244,16 @@ final class CockpitController: ObservableObject {
       failed(tr("这台手机不能本机识别语音：用键盘上的麦克风听写", "This phone can't recognise speech on device: use the keyboard's dictation"))
       return
     }
-    if flow == .set, training == nil, let session { training = TrainingStore(session: session) }
     if flow == .meal, food == nil, let session { food = FoodStore(session: session, cardOnly: true) }
+    machine.autoSend = router.voiceDirect
+    machine.canSwitchLanguage = JarvisVoice.supportedLangs.count > 1
+    waiting = nil
+    listen()
+  }
+
+  /// Starts (or restarts, after the language chip) the recogniser; at most JarvisVoice.maxSeconds, then it stops as if the
+  /// core had been tapped.
+  private func listen() {
     var lang = JarvisVoice.lang
     if !JarvisVoice.supportedLangs.contains(lang) { lang = JarvisVoice.supportedLangs[0] }
     #if DEBUG
@@ -231,63 +261,110 @@ final class CockpitController: ObservableObject {
     #else
     let keep = lang == "zh"
     #endif
-    work?.cancel()
-    work = Task { [weak self] in
+    listening?.cancel()
+    listening = Task { [weak self] in
       do {
         try await self?.voice.start(lang: lang, keepAudio: keep)
         JarvisPerf.shared.measure("cockpit-listen", seconds: 0.5)
+        try await Task.sleep(nanoseconds: UInt64(JarvisVoice.maxSeconds * 1_000_000_000))
+        guard let self, self.machine.mode == .listen else { return }
+        self.apply(self.machine.timeUp())
+      } catch is CancellationError {
+        return
       } catch let f as JarvisVoice.Failure {
-        self?.failed(f == .permission
-                     ? tr("麦克风或语音识别没打开：在系统设置里允许 Watch2Whoop", "Microphone or speech recognition is off: allow Watch2Whoop in Settings")
-                     : tr("语音识别暂时不可用，用键盘上的麦克风听写", "Speech recognition isn't available; use the keyboard's dictation"))
+        guard let self, self.machine.mode == .listen else { return }   // closed meanwhile: nothing to say
+        self.failed(f == .permission
+                    ? tr("麦克风或语音识别没打开：在系统设置里允许 Watch2Whoop", "Microphone or speech recognition is off: allow Watch2Whoop in Settings")
+                    : tr("语音识别暂时不可用，用键盘上的麦克风听写", "Speech recognition isn't available; use the keyboard's dictation"))
       } catch {
-        self?.failed(nil)
+        guard let self, self.machine.mode == .listen else { return }
+        self.failed(nil)
       }
+    }
+  }
+
+  private func switchLanguage() {
+    let next = JarvisVoice.lang == "zh" ? "en" : "zh"
+    JarvisVoice.lang = next
+    JarvisHaptics.selection.selectionChanged()
+    voice.cancel()
+    listen()
+  }
+
+  /// The short name of the language being recognised (the chip).
+  var languageLabel: String { JarvisVoice.lang == "en" ? "EN" : tr("中", "ZH") }
+
+  /// Flag off, at the pause: the words are taken now and corrected while they wait for 发送 (the user sees what goes out).
+  private func prepareTake() {
+    guard let chat = router?.chat else { return }
+    listening?.cancel()
+    Task { [weak self] in
+      guard let self, let take = await self.voice.finish() else { return }
+      self.waiting = take
+      guard let t = await chat.first(chat.voiceCorrection(take), within: JarvisChat.voiceBoxWait), !t.isEmpty,
+            self.machine.mode == .confirm, self.waiting != nil else { return }
+      self.machine.correct(t)
     }
   }
 
   private func send(_ flow: CockpitFlow) {
-    guard let chat = router?.chat else { failed(nil); return }
+    guard let router, let chat = router.chat else { failed(nil); return }
     let question = machine.words
-    work?.cancel()
-    work = Task { [weak self] in
+    let direct = machine.autoSend
+    let waited = waiting
+    waiting = nil
+    listening?.cancel()
+    turn?.cancel()
+    turn = Task { [weak self] in
       guard let self else { return }
-      guard var take = await self.voice.finish() else {
-        self.failed(tr("没听清，再说一次", "Didn't catch that; try again"))
-        return
-      }
-      var correction: Task<String?, Never>?
-      if take.text.isEmpty {   // nothing on the phone: the server's words, as the old hold-to-talk did
-        guard let t = await chat.first(chat.voiceCorrection(take), within: JarvisChat.voiceBoxWait), !t.isEmpty else {
-          self.failed(tr("没听清，再说一次", "Didn't catch that; try again"))
-          return
-        }
-        take = JarvisVoice.Take(text: t, seconds: take.seconds, wav: nil, final: Task { t })
-        correction = Task { nil }
-      }
-      guard !Task.isCancelled, self.machine.mode == .think else { return }
       if chat.busy {
         self.failed(tr("上一条还在回答，等它说完再发", "Still answering the last message; wait for it to finish"))
         return
       }
-      // what the turn may change, as it was before
-      let foodBefore = Set(self.food?.nutrition?.entries.map(\.id) ?? [])
-      let kcalBefore = self.food?.nutrition?.intake.kcal ?? 0
-      let setsBefore = Self.doneSets(self.training?.session)
-      let start = chat.items.count
-      chat.page = self.router?.page ?? chat.page
-      chat.sendVoice(take.text, seconds: take.seconds, correction: correction ?? chat.voiceCorrection(take))
-      guard let items = await Self.turn(chat, from: start), !Task.isCancelled, self.machine.mode == .think else {
-        if self.machine.mode == .think { self.failed(tr("Jarvis 没有回应，稍后再试", "Jarvis didn't answer; try again later")) }
+      var start = chat.items.count
+      chat.page = router.page
+      if direct {
+        guard var take = await self.voice.finish() else {
+          self.failed(tr("没听清，再说一次", "Didn't catch that; try again"))
+          return
+        }
+        var correction: Task<String?, Never>?
+        if take.text.isEmpty {   // nothing on the phone: the server's words, as the old hold-to-talk did
+          guard let t = await chat.first(chat.voiceCorrection(take), within: JarvisChat.voiceBoxWait), !t.isEmpty else {
+            self.failed(tr("没听清，再说一次", "Didn't catch that; try again"))
+            return
+          }
+          take = JarvisVoice.Take(text: t, seconds: take.seconds, wav: nil, final: Task { t })
+          correction = Task { nil }
+        }
+        start = chat.items.count
+        chat.sendVoice(take.text, seconds: take.seconds, correction: correction ?? chat.voiceCorrection(take))
+      } else {
+        // flag off: exactly the words the user saw and sent (corrected while they waited)
+        let words = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !words.isEmpty else { self.failed(tr("没听清，再说一次", "Didn't catch that; try again")); return }
+        chat.send(words, voiceSeconds: waited?.seconds ?? 1)
+      }
+      guard let items = await Self.turn(chat, from: start) else {
+        self.failed(tr("Jarvis 没有回应，稍后再试", "Jarvis didn't answer; try again later"))
         return
       }
-      await self.finishTurn(flow, question: question, items: items, foodBefore: foodBefore, kcalBefore: kcalBefore,
-                            setsBefore: setsBefore)
+      switch TurnReading.read(items, question: question, flow: flow, today: self.session.map(TodayStore.snapshot)) {
+      case .needsConfirm:   // the AI wants a yes first (a delete or an undo): that happens in the conversation
+        self.machine.close()
+        self.sync()
+        router.present(.chat)
+      case .failed(let m):
+        self.failed(m)
+      case .answer(let a):
+        if a.undoText != nil { JarvisHaptics.notice.notificationOccurred(.success) }
+        self.show(.answer(a))
+      }
     }
   }
 
   /// Waits for the chat's turn to end (at most 90 s) and returns its items.
-  private static func turn(_ chat: JarvisChat, from start: Int) async -> [JarvisChat.Item]? {
+  static func turn(_ chat: JarvisChat, from start: Int) async -> [JarvisChat.Item]? {
     let deadline = Date().addingTimeInterval(90)
     while chat.busy {
       if Date() > deadline || Task.isCancelled { return nil }
@@ -296,83 +373,25 @@ final class CockpitController: ObservableObject {
     return Array(chat.items.dropFirst(min(start, chat.items.count)))
   }
 
-  private func finishTurn(_ flow: CockpitFlow, question: String, items: [JarvisChat.Item], foodBefore: Set<String>,
-                          kcalBefore: Double, setsBefore: [String: Int]) async {
-    var text = "", cards: [JSONValue] = [], needsConfirm = false, notes: [String] = []
-    for it in items {
-      switch it.kind {
-      case .assistant(let t): text = t
-      case .card(let c): cards.append(c)
-      case .confirm(_, approved: nil): needsConfirm = true
-      case .note(let t, _, _): notes.append(t)
-      default: break
-      }
-    }
-    if needsConfirm {   // the AI wants a yes first (a delete or an undo): that happens in the conversation
-      machine.close()
-      publish(mode: .idle, level: 1, active: true)
-      router?.present(.chat)
-      return
-    }
-    if text.isEmpty && cards.isEmpty {
-      failed(notes.last ?? tr("Jarvis 没有回应，稍后再试", "Jarvis didn't answer; try again later"))
-      return
-    }
-    switch flow {
-    case .meal:
-      if let food {
-        await food.refreshToday()
-        let added = (food.nutrition?.entries ?? []).filter { !foodBefore.contains($0.id) && !$0.isLocal }
-        if !added.isEmpty {
-          JarvisHaptics.notice.notificationOccurred(.success)
-          let total = added.reduce(Macros(kcal: 0, protein: 0, carbs: 0, fat: 0)) { $0 + $1.macros }
-          let name = added.count == 1 ? added[0].food : tr("\(added[0].food) 等 \(added.count) 项", "\(added[0].food) + \(added.count - 1)")
-          undo = { [weak food] in
-            guard let food else { return false }
-            var ok = true
-            for e in added {
-              let out = await food.delete(e)
-              ok = ok && !out.failed && !out.conflict
-            }
-            return ok
-          }
-          show(.meal(Self.mealCard(slot: added[0].meal.title, name: name, added: total, before: kcalBefore, day: food.nutrition)))
-          return
-        }
-      }
-    case .set:
-      if let training {
-        await training.refresh()
-        if let card = Self.setCard(training.session, before: setsBefore) {
-          JarvisHaptics.notice.notificationOccurred(.success)
-          undo = { [weak training] in
-            guard let training else { return false }
-            training.edit(card.slug) { rows in
-              if let i = rows.lastIndex(where: \.done) { rows[i].done = false }
-            }
-            await training.flushDraft()
-            return true
-          }
-          show(.set(card.log))
-          return
-        }
-      }
-    case .qa:
-      break
-    }
-    show(.answer(answer(question: question, text: text, cards: cards)))
-  }
-
   // MARK: - cards
 
+  /// The result of a write is shown even when the cockpit was closed while it was on its way (the card comes back).
   private func show(_ r: CockpitReply) {
     reply = r
     machine.showCard()
-    publish(mode: machine.mode, level: machine.level, active: true)
+    wake()
+    sync()
   }
 
-  /// The card's 「撤销」.
+  /// The card's 「撤销」: the quick meal's own logging, or (for what the AI logged) the question to the AI, answered in the chat.
   func undoReply() {
+    if case .answer(let a)? = reply, let text = a.undoText {
+      close()
+      guard let router, let chat = router.chat else { return }
+      router.present(.chat)
+      chat.send(text)
+      return
+    }
     guard let undo, !undoing else { return }
     undoing = true
     Task { [weak self] in
@@ -385,7 +404,10 @@ final class CockpitController: ObservableObject {
     }
   }
 
-  var canUndo: Bool { undo != nil }
+  var canUndo: Bool {
+    if case .answer(let a)? = reply { return a.undoText != nil }
+    return undo != nil
+  }
 
   /// The words were tapped while listening: they go into the chat's box to be edited there (nothing is sent).
   func editWords() {
@@ -411,43 +433,12 @@ final class CockpitController: ObservableObject {
 
   private func failed(_ message: String?) {
     let fx = machine.close()
-    publish(mode: .idle, level: 1, active: true)
+    sync()
     if fx.contains(.stopListening) { voice.cancel() }
     if let message {
       JarvisHaptics.notice.notificationOccurred(.warning)
       router?.show(message)
     }
-  }
-
-  /// The verdict card: the answer's first words; today's recovery, sleep, strain and HRV from the phone's own copy.
-  private func answer(question: String, text: String, cards: [JSONValue]) -> CockpitReply.Answer {
-    let (verdict, sub) = CockpitText.verdict(from: text)
-    var a = CockpitReply.Answer(question: question, verdict: verdict, sub: sub)
-    if let session {
-      let today = TodayStore(session: session)
-      let m = today.model
-      today.stop()
-      if let r = m.rings.first(where: { $0.key == "recovery" }), let v = r.value {
-        a.gauge = CockpitReply.Gauge(value: v, fraction: r.fraction, tone: r.tone)
-      }
-      if let s = m.rings.first(where: { $0.key == "sleep" })?.value { a.readings.append(.init(value: s, label: tr("睡眠", "Sleep"))) }
-      if let s = m.rings.first(where: { $0.key == "strain" })?.value { a.readings.append(.init(value: s, label: tr("负荷", "Strain"))) }
-      if let h = m.detail.hrv { a.readings.append(.init(value: "\(Int(h.rounded())) ms", label: "HRV")) }
-    }
-    a.primary = Self.primary(cards)
-    return a
-  }
-
-  /// The first 「open」 action among the turn's cards.
-  static func primary(_ cards: [JSONValue]) -> CockpitReply.Primary? {
-    for c in cards {
-      for act in c["actions"]?.array ?? [] where act["kind"]?.string == "open" {
-        guard let page = act["page"]?.string else { continue }
-        let title = page == "record.training" ? tr("开始训练", "Start workout") : JarvisCards.openLabel(page)
-        if let title { return CockpitReply.Primary(title: title, page: page) }
-      }
-    }
-    return nil
   }
 
   static func mealCard(slot: String, name: String, added: Macros, before: Double, day: NutritionDay?) -> CockpitReply.Meal {
@@ -463,23 +454,78 @@ final class CockpitController: ObservableObject {
                CockpitReply.Macro(label: tr("脂肪", "Fat"), grams: added.fat, fraction: frac(added.fat, goal?.fat))],
       dayBefore: before, dayAfter: before + (added.kcal ?? 0), goal: goal?.kcal)
   }
+}
 
-  /// Done sets per exercise.
-  static func doneSets(_ s: TrainingSession?) -> [String: Int] {
-    var out: [String: Int] = [:]
-    for (slug, rows) in s?.rows ?? [:] { out[slug] = rows.filter { $0.done && $0.hasValue }.count }
-    return out
+/// What a chat turn says, for the cockpit's card (pure: tested in JarvisCockpitTests).
+enum TurnReading: Equatable {
+  /// The AI asked for a yes (a delete or an undo): the conversation shows it.
+  case needsConfirm
+  case failed(String)
+  case answer(CockpitReply.Answer)
+
+  static func read(_ items: [JarvisChat.Item], question: String, flow: CockpitFlow, today: TodayModel?) -> TurnReading {
+    var text = "", cards: [JSONValue] = [], notes: [String] = []
+    for it in items {
+      switch it.kind {
+      case .assistant(let t): text = t
+      case .card(let c): cards.append(c)
+      case .confirm(_, approved: nil): return .needsConfirm
+      case .note(let t, _, _): notes.append(t)
+      default: break
+      }
+    }
+    if text.isEmpty && cards.isEmpty {
+      return .failed(notes.last ?? tr("Jarvis 没有回应，稍后再试", "Jarvis didn't answer; try again later"))
+    }
+    let (verdict, sub) = CockpitText.verdict(from: text)
+    var a = CockpitReply.Answer(question: question, verdict: verdict, sub: sub)
+    let meal = cards.last { $0["type"]?.string == "meal" }
+    if let meal, let day = Self.day(meal) {
+      a.readings = [day]   // the day's food as the server counted it after this turn
+    } else if flow == .qa, let m = today {
+      if let r = m.rings.first(where: { $0.key == "recovery" }), let v = r.value {
+        a.gauge = CockpitReply.Gauge(value: v, fraction: r.fraction, tone: r.tone)
+      }
+      if let s = m.rings.first(where: { $0.key == "sleep" })?.value { a.readings.append(.init(value: s, label: tr("睡眠", "Sleep"))) }
+      if let s = m.rings.first(where: { $0.key == "strain" })?.value { a.readings.append(.init(value: s, label: tr("负荷", "Strain"))) }
+      if let h = m.detail.hrv { a.readings.append(.init(value: "\(Int(h.rounded())) ms", label: "HRV")) }
+    }
+    a.primary = primary(cards)
+    // the AI logged a meal (its card offers undo_meal): 撤销 goes back to the AI, who knows what it wrote
+    if cards.contains(where: { c in (c["actions"]?.array ?? []).contains { $0["key"]?.string == "undo_meal" } }) {
+      a.undoText = JarvisCards.send("undo_meal", .object([:]))?.1
+    }
+    return .answer(a)
   }
 
-  /// The set the turn added: the exercise whose done sets went up.
-  static func setCard(_ s: TrainingSession?, before: [String: Int]) -> (slug: String, log: CockpitReply.SetLog)? {
-    guard let s else { return nil }
-    let after = doneSets(s)
-    guard let ex = s.loggable.first(where: { (after[$0.slug] ?? 0) > (before[$0.slug] ?? 0) }),
-          let rows = s.rows[ex.slug], let row = rows.last(where: { $0.done && $0.hasValue }) else { return nil }
-    let log = CockpitReply.SetLog(session: s.title, exercise: ex.name,
-                                  set: CockpitText.set(weightKg: row.weightKg, reps: row.reps, seconds: row.durationS),
-                                  index: after[ex.slug] ?? 1, planned: rows.count, done: s.doneSets, total: s.totalSets)
-    return (ex.slug, log)
+  /// `990 / 2,300 kcal 今天` from a meal card.
+  static func day(_ card: JSONValue) -> CockpitReply.Reading? {
+    guard let eaten = card["totals"]?["calories"]?.double else { return nil }
+    let goal = card["goal"]?["calories"]?.double
+    let v = goal.map { "\(CockpitText.kcal(eaten)) / \(CockpitText.kcal($0))" } ?? CockpitText.kcal(eaten)
+    return CockpitReply.Reading(value: v + " kcal", label: tr("今天", "Today"))
+  }
+
+  /// The first 「open」 action among the turn's cards.
+  static func primary(_ cards: [JSONValue]) -> CockpitReply.Primary? {
+    for c in cards {
+      for act in c["actions"]?.array ?? [] where act["kind"]?.string == "open" {
+        guard let page = act["page"]?.string else { continue }
+        let title = page == "record.training" ? tr("开始训练", "Start workout") : JarvisCards.openLabel(page)
+        if let title { return CockpitReply.Primary(title: title, page: page) }
+      }
+    }
+    return nil
+  }
+}
+
+extension TodayStore {
+  /// Today's model as the phone has it now (one synchronous read, no observation left running).
+  @MainActor
+  static func snapshot(_ session: AccountSession) -> TodayModel {
+    let t = TodayStore(session: session)
+    let m = t.model
+    t.stop()
+    return m
   }
 }

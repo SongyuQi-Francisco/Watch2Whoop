@@ -36,12 +36,13 @@ enum CockpitGeometry {
   static let cancelOffset: CGFloat = -80
   static let cancelRadius: CGFloat = 17
   static let cancelHit: CGFloat = 24
+  /// Listening: the language chip right of the core (中文 / English), when the phone recognises both.
+  static let langOffset: CGFloat = 80
   /// The reply card: its bottom edge is this far above the core, its width at most `cardWidth`.
   static let cardGap: CGFloat = 99
   static let cardWidth: CGFloat = 354
-  /// The transcript's baseline and the hint under it, above the core.
-  static let transcriptRise: CGFloat = 145
-  static let hintRise: CGFloat = 117
+  /// The transcript block (words, hint, 发送) ends this far above the core.
+  static let transcriptBottom: CGFloat = 104
 
   /// The point at `radius` and `degrees` around `c`.
   static func point(_ radius: CGFloat, _ degrees: Double, around c: CGPoint) -> CGPoint {
@@ -90,7 +91,7 @@ enum CockpitKey: Hashable {
   case meal, train, talk, photo, ask
   // 记一餐
   case mealPhoto, mealTalk, mealMore
-  /// One of the two most used quick meals (the slot, 0 or 1), logged at once.
+  /// One of the two most used quick meals, by its template id (never by place: the order can change before the tap acts).
   case template(Int)
   // 记训练
   case trainStart, trainTalk, trainBackfill, trainPlan
@@ -112,12 +113,12 @@ struct CockpitItem: Equatable {
      CockpitItem(key: .ask, angle: 72, icon: .messageCircle, title: tr("提问", "Ask"))]
   }
 
-  /// `meals`: the two most used quick meals (name, kcal); a missing one leaves its place empty.
-  static func mealRing(_ meals: [(name: String, kcal: Double?)]) -> [CockpitItem] {
+  /// `meals`: the two most used quick meals (template id, name, kcal); a missing one leaves its place empty.
+  static func mealRing(_ meals: [CockpitMeal]) -> [CockpitItem] {
     var out = [CockpitItem(key: .mealPhoto, angle: -72, icon: .camera, title: tr("拍照", "Photo")),
                CockpitItem(key: .mealTalk, angle: -36, icon: .mic, title: tr("说", "Say"))]
     for (i, m) in meals.prefix(2).enumerated() {
-      out.append(CockpitItem(key: .template(i), angle: i == 0 ? 0 : 36, icon: nil, title: m.name,
+      out.append(CockpitItem(key: .template(m.id), angle: i == 0 ? 0 : 36, icon: nil, title: m.name,
                              sub: m.kcal.map { "\(Int($0.rounded())) kcal" }))
     }
     out.append(CockpitItem(key: .mealMore, angle: 72, icon: .ellipsis, title: tr("更多", "More")))
@@ -132,12 +133,21 @@ struct CockpitItem: Equatable {
   }
 }
 
+/// A quick meal on the 记一餐 ring.
+struct CockpitMeal: Equatable {
+  var id: Int
+  var name: String
+  var kcal: Double?
+}
+
 /// What the machine asks of the app (the controller does the real work).
 enum CockpitEffect: Equatable {
   /// The fan came out / everything went back into the key (haptics).
   case opened, closed
   /// Start the recogniser for this flow.
   case listen(CockpitFlow)
+  /// The language chip: recognise the other language from now on.
+  case switchLanguage
   /// Drop the recording (×, a tap outside, giving up).
   case stopListening
   /// Nothing was heard: stop and say so.
@@ -188,7 +198,12 @@ struct CockpitMachine {
   /// 「减弱动态效果」: no stagger, no turning, no spinning; the views fade instead of moving.
   var reduceMotion = false
   /// The two quick meals of the 记一餐 ring.
-  var meals: [(name: String, kcal: Double?)] = []
+  var meals: [CockpitMeal] = []
+  /// A pause sends by itself after the one-second ring (flag `jarvis_voice_direct`). Off: the words wait in the confirm
+  /// state until the user sends them (the core, or 发送) or edits them; nothing goes out by itself.
+  var autoSend = true
+  /// The language chip is shown (the phone recognises more than one language).
+  var canSwitchLanguage = false
 
   // springs (names as in the prototype)
   private(set) var on = CockpitSpring()
@@ -221,7 +236,8 @@ struct CockpitMachine {
   /// Something is moving: the view draws every frame (otherwise it can slow down).
   var isActive: Bool {
     mode != .idle || on.x > 0.002 || panels.contains { $0.x > 0.002 } || cardWidth.x > 0.002 || abs(press.x) > 0.002
-      || time - pulseAt < 0.6
+      || time - pulseAt < 0.6 || transcript.x > 0.002 || thinking.x > 0.002 || listening.x > 0.002 || crumb.x > 0.002
+      || abs(rot.x - rotTarget) > 0.05
   }
 
   /// The share of the fan that is out (the leading panel), 0…1.
@@ -235,6 +251,12 @@ struct CockpitMachine {
     if hypot(p.x - c.x, p.y - c.y) < g.coreHit { return tapCore() }
     if mode == .listen || mode == .confirm {
       if hypot(p.x - (c.x + g.cancelOffset), p.y - c.y) < g.cancelHit { return close() }
+      if canSwitchLanguage, hypot(p.x - (c.x + g.langOffset), p.y - c.y) < g.cancelHit {
+        words = ""
+        wordsAt = nil
+        set(.listen)
+        return [.switchLanguage]
+      }
     }
     if mode == .menu {
       if selected != nil { return [] }
@@ -302,10 +324,34 @@ struct CockpitMachine {
     if mode == .confirm && !t.isEmpty { set(.listen) }   // they went on talking: listen again
   }
 
-  /// The reply is ready (think → card).
+  /// The server's corrected words, while they wait for 发送 (flag off): replace what is shown, stay waiting.
+  mutating func correct(_ text: String) {
+    guard mode == .confirm else { return }
+    let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !t.isEmpty { words = t }
+  }
+
+  /// The reply is ready (think → card). Also from idle: the cockpit was closed while a write was on its way, and its result
+  /// (with 撤销) must still be seen.
   mutating func showCard() {
-    guard mode == .think else { return }
+    guard mode == .think || mode == .idle else { return }
+    fanOpen = false
+    selected = nil
     set(.card)
+  }
+
+  /// Listening for too long (the recogniser's 60 s): stop and go on as if the core was tapped.
+  mutating func timeUp() -> [CockpitEffect] {
+    guard mode == .listen else { return [] }
+    if words.isEmpty { return close() + [.gaveUp] }
+    set(.confirm)
+    return []
+  }
+
+  /// 发送 (the confirm state's button, and the core there).
+  mutating func sendNow() -> [CockpitEffect] {
+    guard mode == .confirm || (mode == .listen && !words.isEmpty) else { return [] }
+    return send()
   }
 
   /// A quick meal was logged at once (no voice): think until the card is ready.
@@ -363,7 +409,7 @@ struct CockpitMachine {
         out.append(.gaveUp)
       }
     case .confirm:
-      if since > CockpitTiming.autoSend { out += send() }
+      if autoSend && since > CockpitTiming.autoSend { out += send() }
     default:
       break
     }

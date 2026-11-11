@@ -76,15 +76,14 @@ def cockpit_answer(msg, zh):
         text = "已记到午餐：鸡胸饭 570 kcal。" if zh else "Logged to lunch: chicken rice, 570 kcal."
         return [("tool", {"name": "log_food", "status": "running"}), ("tool", {"name": "log_food", "status": "done"}),
                 ("card", {"card": {"v": 1, "type": "meal", "date": days(1)[0], "logged": True, "totals": nutrition(zh)["intake"],
-                                   "goal": GOAL, "entries": FOOD["entries"], "actions": [{"kind": "open", "page": "food"}]}, "call_id": 501}),
+                                   "goal": GOAL, "entries": FOOD["entries"],
+                                   "actions": [{"kind": "open", "page": "food"}, {"kind": "send", "key": "next_meal"},
+                                               {"kind": "send", "key": "undo_meal"}]}, "call_id": 501}),
                 ("text", {"delta": text})]
     if "卧推" in msg or "bench" in msg.lower():
-        i = next((k for k, x in enumerate(SETS["bench"]) if not x["done"]), None)
-        if i is not None:
-            SETS["bench"] = SETS["bench"][:i] + [{"reps": 8, "weight_kg": 60, "done": True}] + SETS["bench"][i + 1:]
-        text = "记好了：卧推 60 kg × 8。" if zh else "Logged: bench press 60 kg × 8."
-        return [("tool", {"name": "log_training_set", "status": "running"}), ("tool", {"name": "log_training_set", "status": "done"}),
-                ("text", {"delta": text})]
+        # the real AI has no tool that writes one set into today's session: it answers in words (the cockpit shows them as such)
+        text = "**卧推 60 kg × 8**，第 5 组，最后一组留 2 次余量。" if zh else "**Bench 60 kg × 8**, set 5; leave 2 reps in reserve."
+        return [("text", {"delta": text})]
     return None
 
 

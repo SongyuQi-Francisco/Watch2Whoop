@@ -6,14 +6,12 @@ import Foundation
 enum CockpitReply: Equatable {
   case answer(Answer)
   case meal(Meal)
-  case set(SetLog)
 
   /// The card's height before it unfolds (the prototype's CARDH).
   var height: CGFloat {
     switch self {
     case .answer(let a): return a.gauge == nil && a.readings.isEmpty ? 150 : 214
     case .meal: return 190
-    case .set: return 160
     }
   }
 
@@ -26,6 +24,9 @@ enum CockpitReply: Equatable {
     var readings: [Reading] = []
     /// One page the answer points to (from a card's 「open」 action).
     var primary: Primary?
+    /// The answer logged something the app has no id of (the AI's own write): 撤销 asks the AI, who undoes it after a yes
+    /// in the conversation. The sentence sent.
+    var undoText: String?
   }
 
   struct Gauge: Equatable {
@@ -60,17 +61,6 @@ enum CockpitReply: Equatable {
     var grams: Double?
     /// Of the day's goal for this macro (nil = no goal: no bar).
     var fraction: Double?
-  }
-
-  /// 「已记到 上肢 A」: the exercise, the set, the exercise's sets as dots, the session's sets.
-  struct SetLog: Equatable {
-    var session: String
-    var exercise: String
-    var set: String
-    var index: Int
-    var planned: Int
-    var done: Int
-    var total: Int
   }
 }
 
@@ -111,17 +101,6 @@ enum CockpitText {
   /// At most `n` characters, with an ellipsis when cut.
   static func short(_ s: String, _ n: Int) -> String {
     s.count > n ? String(s.prefix(n - 1)) + "…" : s
-  }
-
-  /// `60 kg × 8`, `45 s`, `× 12`.
-  static func set(weightKg: Double?, reps: Int?, seconds: Double?) -> String {
-    if let seconds, reps == nil { return "\(RecordFormat.num(seconds)) s" }
-    switch (weightKg, reps) {
-    case let (w?, r?): return "\(RecordFormat.num(w, 1)) kg × \(r)"
-    case let (nil, r?): return "× \(r)"
-    case let (w?, nil): return "\(RecordFormat.num(w, 1)) kg"
-    default: return "✓"
-    }
   }
 
   /// `990 / 2,300 kcal`.

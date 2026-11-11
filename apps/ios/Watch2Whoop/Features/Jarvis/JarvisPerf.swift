@@ -178,7 +178,7 @@ enum JarvisDemo {
         await sec(0.9)
         cockpit.activate(.meal)
         await sec(1.2)
-        cockpit.activate(.template(0))
+        if let id = cockpit.machine.meals.first?.id { cockpit.activate(.template(id)) }
         if mode == "cockpit-undo" {
           await sec(3)
           cockpit.undoReply()
