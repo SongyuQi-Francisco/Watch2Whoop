@@ -180,7 +180,17 @@ final class CockpitController: ObservableObject {
       router.present(.templates)
     case .trainPlan:   // 19: this week's plan
       router.present(.plan)
-    case .trainStart, .trainBackfill:   // 18 (补记) is not built: no endpoint logs a cardio / ball session by hand yet
+    case .trainBackfill:   // 18: a session logged by hand; a server without the endpoint yet → 记录 → 训练
+      guard let session else { return }
+      let api = ManualWorkoutAPI(api: session.api)
+      Task { [weak router] in
+        do {
+          if let o = try await api.options() { router?.present(.backfill(o)) } else { router?.open(page: "record.training") }
+        } catch {
+          router?.show(TrainingStore.message(error))
+        }
+      }
+    case .trainStart:
       router.open(page: "record.training")
     default:
       break

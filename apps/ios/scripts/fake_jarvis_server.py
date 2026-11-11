@@ -34,6 +34,9 @@ TEMPLATES = [{"id": 3, "name": "鸡胸饭", "meal": "lunch", "uses_30d": 12, "en
               "totals": {"calories": 570, "protein_g": 45, "carbs_g": 66, "fat_g": 14}},
              {"id": 4, "name": "燕麦碗", "meal": "breakfast", "uses_30d": 8, "en": "Oat bowl",
               "totals": {"calories": 420, "protein_g": 18, "carbs_g": 62, "fat_g": 11}}]
+MANUAL = {"next": 300, "by_key": {}}   # 补记: client_id -> workout id
+MANUAL_TYPES = [("basketball", "篮球", "Basketball"), ("swim", "游泳", "Swimming"), ("incline_walk", "爬坡", "Incline walk"),
+                ("run", "跑步", "Running"), ("cycling", "骑车", "Cycling"), ("other", "其他", "Other")]
 GOAL = {"calories": 2300, "protein_g": 60, "carbs_g": 100, "fat_g": 35}
 SETS = {"bench": [{"reps": 8, "weight_kg": 60, "done": True}] * 4 + [{"reps": 8, "weight_kg": 60, "done": False}],
         "row": [{"reps": 10, "weight_kg": 50, "done": False}] * 4, "press": [{"reps": 10, "weight_kg": 20, "done": False}] * 4,
@@ -66,6 +69,32 @@ def session(zh):
         {"slug": slug, "name_zh": n, "name_en": en, "status": "active", "modality": "weight_reps",
          "target": {"sets": len(SETS[slug]), "reps": SETS[slug][0]["reps"]}, "load": {"kg": kg}} for slug, n, en, kg in ex]}],
         "can_log": True, "log": {"status": "draft", "exercises": [{"slug": k, "sets": v} for k, v in SETS.items()]}}
+
+
+def week(zh):
+    """/training/week: a 4-day plan around today (Mon..Sun), the built-in splits on offer."""
+    import datetime
+    today = datetime.date.today()
+    monday = today - datetime.timedelta(days=today.weekday())
+    names = {1: ("上肢 A", "Upper A"), 2: ("下肢 A", "Lower A"), 4: ("上肢 B", "Upper B"), 5: ("下肢 B", "Lower B")}
+    sets = {1: 18, 2: 16, 4: 17, 5: 16}
+    days = []
+    for k in range(7):
+        d = monday + datetime.timedelta(days=k)
+        dow = k + 1
+        if dow in names:
+            n = names[dow][0 if zh else 1]
+            days.append({"date": d.isoformat(), "planned": [{"name": n, "day_of_week": dow, "exercises": [
+                {"slug": "x%d" % i, "name": "动作 %d" % i, "status": "active", "sets_text": "%d × 8" % s}
+                for i, s in enumerate([4, 4, 4, 3, 3][: 5 if sets[dow] > 16 else 4] + ([2] if sets[dow] == 18 else []))]}]})
+        else:
+            days.append({"date": d.isoformat(), "rest_day": True, "planned": []})
+    def split(t, zhn, en, dows):
+        return {"split_type": t, "name": zhn, "name_en": en, "summary": "", "days": [{"day_of_week": x, "name": "D%d" % x, "exercise_count": 5} for x in dows]}
+    return {"days": days, "plan": {"name": "上下肢四分化" if zh else "Upper / lower, 4 days", "split_type": "4_day_upper_lower"},
+            "available_splits": [split("3_day_full_body", "全身三分化", "Full body, 3 days", [1, 3, 5]),
+                                 split("4_day_upper_lower", "上下肢四分化", "Upper / lower, 4 days", [1, 2, 4, 5]),
+                                 split("5_day_ppl", "推拉腿五分化", "Push / pull / legs, 5 days", [1, 2, 3, 4, 5])]}
 
 
 def cockpit_answer(msg, zh):
@@ -239,6 +268,13 @@ class H(BaseHTTPRequestHandler):
             return self.json({"date": d, "user": {"timezone": "Australia/Sydney"}, "nutrition": nutrition(self.zh),
                               "scores": {"today": {"recovery": 82, "sleep_score": 88, "hrv": 64}, "yesterday": {"strain": 2.8},
                                          "recovery_zone": "green"}})
+        if p == "/v1/users/me/training/manual-workouts/options":
+            lv = [("light", "轻", "Light"), ("moderate", "中", "Moderate"), ("hard", "强", "Hard")]
+            return self.json({"types": [{"type": t, "name": zh, "name_en": en} for t, zh, en in MANUAL_TYPES],
+                              "intensities": [{"key": k, "label": zh if self.zh else en} for k, zh, en in lv],
+                              "max_duration_min": 600, "max_past_days": 7})
+        if p == "/v1/users/me/training/week":
+            return self.json(week(self.zh))
         if p == "/v1/users/me/training/session":
             return self.json(session(self.zh))
         return self.json({"detail": "not here"}, 404)
@@ -283,6 +319,18 @@ class H(BaseHTTPRequestHandler):
             lid = 900 + FOOD["next"]
             FOOD["logs"][lid] = (tid, add_entry(t["name"] if self.zh else t["en"], t["meal"], t["totals"]))
             return self.json({"log_id": lid, "entry_ids": [FOOD["logs"][lid][1]]})
+        if p == "/v1/users/me/training/manual-workouts":
+            key = b.get("client_id") or str(MANUAL["next"])
+            created = key not in MANUAL["by_key"]
+            if created:
+                MANUAL["by_key"][key] = MANUAL["next"]
+                MANUAL["next"] += 1
+            name = next((zh if self.zh else en) for t, zh, en in MANUAL_TYPES if t == b.get("type"))
+            day = b.get("date") or (b.get("start") or "")[:10]
+            # W2W_FAKE_DUPLICATE=1: the watch already has it (duplicate_of)
+            dup = {"id": 12, "source": "apple", "name": name, "date": day, "duration_min": 62} if os.environ.get("W2W_FAKE_DUPLICATE") else None
+            return self.json({"created": created, "workout": {"id": MANUAL["by_key"][key], "name": name, "date": day,
+                                                                 "duration_min": b.get("duration_min")}, "duplicate_of": dup})
         if p == "/v1/users/me/ai-fallback/consent":
             STATE["consent"] = True
             return self.json({"consent": True})
@@ -296,6 +344,8 @@ class H(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         p = self.path.split("?")[0]
+        if p.startswith("/v1/users/me/training/manual-workouts/"):
+            return self.json({"deleted": True})
         if p.startswith("/v1/users/me/meal-logs/"):
             _, eid = FOOD["logs"].pop(int(p.rsplit("/", 1)[1]), (None, None))
             FOOD["entries"] = [e for e in FOOD["entries"] if e["id"] != eid]
