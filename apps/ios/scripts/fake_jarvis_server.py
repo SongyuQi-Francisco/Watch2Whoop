@@ -27,6 +27,66 @@ CUT = {"left": int(os.environ.get("W2W_FAKE_CUT") or 0)}
 # conversation id -> the events of its latest turn (body_engine ai/runs.py keeps only that one per conversation)
 RUNS = {}
 STATE = {"choice": "fallback", "consent": True, "conversations": []}
+# The cockpit's flows (2.0.1): the day's food log, two quick meals, today's session (made-up numbers; the nickname is 小林)
+FOOD = {"entries": [{"id": "e1", "time": "08:10", "meal_type": "breakfast", "food": "燕麦碗", "quantity": 1, "unit": "份",
+                     "calories": 420, "protein_g": 18, "carbs_g": 62, "fat_g": 11}], "next": 2, "logs": {}}
+TEMPLATES = [{"id": 3, "name": "鸡胸饭", "meal": "lunch", "uses_30d": 12, "en": "Chicken rice",
+              "totals": {"calories": 570, "protein_g": 45, "carbs_g": 66, "fat_g": 14}},
+             {"id": 4, "name": "燕麦碗", "meal": "breakfast", "uses_30d": 8, "en": "Oat bowl",
+              "totals": {"calories": 420, "protein_g": 18, "carbs_g": 62, "fat_g": 11}}]
+GOAL = {"calories": 2300, "protein_g": 60, "carbs_g": 100, "fat_g": 35}
+SETS = {"bench": [{"reps": 8, "weight_kg": 60, "done": True}] * 4 + [{"reps": 8, "weight_kg": 60, "done": False}],
+        "row": [{"reps": 10, "weight_kg": 50, "done": False}] * 4, "press": [{"reps": 10, "weight_kg": 20, "done": False}] * 4,
+        "curl": [{"reps": 12, "weight_kg": 12, "done": False}] * 5}
+
+
+def nutrition(zh):
+    tot = {k: sum(e.get(k) or 0 for e in FOOD["entries"]) for k in GOAL}
+    return {"goal": GOAL, "intake": tot, "entries": FOOD["entries"], "logged": bool(FOOD["entries"])}
+
+
+def add_entry(name, meal, totals):
+    eid = "e%d" % FOOD["next"]
+    FOOD["next"] += 1
+    FOOD["entries"].append({"id": eid, "time": "12:30", "meal_type": meal, "food": name, "quantity": 1, "unit": "份", **totals})
+    return eid
+
+
+def templates(zh):
+    today_logs = {tid: lid for lid, (tid, _) in FOOD["logs"].items()}
+    return [{"id": t["id"], "name": t["name"] if zh else t["en"], "meal": t["meal"], "uses_30d": t["uses_30d"], "totals": t["totals"],
+             "items": [{"food": t["name"] if zh else t["en"], "grams": 350, **t["totals"]}],
+             **({"today_log": {"log_id": today_logs[t["id"]]}} if t["id"] in today_logs else {})} for t in TEMPLATES]
+
+
+def session(zh):
+    ex = [("bench", "卧推", "Bench press", 60), ("row", "杠铃划船", "Barbell row", 50), ("press", "哑铃推举", "Dumbbell press", 20),
+          ("curl", "哑铃弯举", "Dumbbell curl", 12)]
+    return {"sessions": [{"name": "上肢 A" if zh else "Upper A", "exercises": [
+        {"slug": slug, "name_zh": n, "name_en": en, "status": "active", "modality": "weight_reps",
+         "target": {"sets": len(SETS[slug]), "reps": SETS[slug][0]["reps"]}, "load": {"kg": kg}} for slug, n, en, kg in ex]}],
+        "can_log": True, "log": {"status": "draft", "exercises": [{"slug": k, "sets": v} for k, v in SETS.items()]}}
+
+
+def cockpit_answer(msg, zh):
+    """The cockpit's voice flows: a meal or a set is logged (the server side of log_food / the session log), then a card."""
+    if "鸡胸饭" in msg or "chicken" in msg.lower():
+        t = TEMPLATES[0]
+        add_entry(t["name"] if zh else t["en"], "lunch", t["totals"])
+        text = "已记到午餐：鸡胸饭 570 kcal。" if zh else "Logged to lunch: chicken rice, 570 kcal."
+        return [("tool", {"name": "log_food", "status": "running"}), ("tool", {"name": "log_food", "status": "done"}),
+                ("card", {"card": {"v": 1, "type": "meal", "date": days(1)[0], "logged": True, "totals": nutrition(zh)["intake"],
+                                   "goal": GOAL, "entries": FOOD["entries"], "actions": [{"kind": "open", "page": "food"}]}, "call_id": 501}),
+                ("text", {"delta": text})]
+    if "卧推" in msg or "bench" in msg.lower():
+        i = next((k for k, x in enumerate(SETS["bench"]) if not x["done"]), None)
+        if i is not None:
+            SETS["bench"] = SETS["bench"][:i] + [{"reps": 8, "weight_kg": 60, "done": True}] + SETS["bench"][i + 1:]
+        text = "记好了：卧推 60 kg × 8。" if zh else "Logged: bench press 60 kg × 8."
+        return [("tool", {"name": "log_training_set", "status": "running"}), ("tool", {"name": "log_training_set", "status": "done"}),
+                ("text", {"delta": text})]
+    return None
+
 
 
 def ai():
@@ -79,6 +139,9 @@ def answer(msg, zh):
     if msg.strip() == "cards":   # W2W_JARVIS_DEMO=cards: one card of every server type (the unit tests' fixture)
         fixture = pathlib.Path(__file__).resolve().parent.parent / "Watch2WhoopTests" / "Fixtures" / "jarvis_cards.json"
         return [("card", {"card": c, "call_id": 200 + i}) for i, c in enumerate(json.loads(fixture.read_text()))]
+    c = cockpit_answer(msg, zh)
+    if c:
+        return c
     if any(w in msg for w in ("删", "delete", "undo", "撤销")):
         return [("text", {"delta": "要删掉的是今天 12:30 记的那条午饭。" if zh else "That is the lunch logged at 12:30 today."}),
                 ("confirm", {"conversation_id": 1, "calls": [{"call_id": 41, "tool": "undo_meal_log", "args": {"id": 9},
@@ -170,11 +233,22 @@ class H(BaseHTTPRequestHandler):
                 {"id": 2, "role": "assistant", "text": "这周练了 4 次，平均恢复 68%。" if self.zh else "4 sessions this week, recovery averaged 68%.",
                  "images": 0, "tools": [], "cards": [cards(self.zh)[0]]}]})
         if p == "/v1/users/me/meal-templates":
-            return self.json([{"id": 3, "name": "燕麦酸奶碗" if self.zh else "Oat yoghurt bowl", "uses_30d": 12},
-                              {"id": 4, "name": "鸡胸沙拉" if self.zh else "Chicken salad", "uses_30d": 8}])
+            return self.json(templates(self.zh))
+        if p == "/v1/users/me/today":
+            d = (self.path.split("date=")[1:] or [days(1)[0]])[0].split("&")[0]
+            return self.json({"date": d, "user": {"timezone": "Australia/Sydney"}, "nutrition": nutrition(self.zh),
+                              "scores": {"today": {"recovery": 82, "sleep_score": 88, "hrv": 64}, "yesterday": {"strain": 2.8},
+                                         "recovery_zone": "green"}})
+        if p == "/v1/users/me/training/session":
+            return self.json(session(self.zh))
         return self.json({"detail": "not here"}, 404)
 
     def do_PUT(self):
+        if self.path.startswith("/v1/users/me/training/session/"):   # the session draft (undo of a set)
+            for e in self.body().get("exercises", []):
+                if e.get("slug") in SETS:
+                    SETS[e["slug"]] = e.get("sets", SETS[e["slug"]])
+            return self.json(session(self.zh))
         if self.path.startswith("/v1/users/me/ai-choice"):
             STATE["choice"] = self.body().get("key", "fallback")
             return self.json({"options": options(), "ai": ai(), "assistant_url": None})
@@ -201,6 +275,14 @@ class H(BaseHTTPRequestHandler):
             return self.sse([("tool", {"name": "undo_meal_log", "status": "done" if ok else "rejected", "call_id": 41}),
                              ("text", {"delta": ("好，已经撤销。" if ok else "好，没有删。") if self.zh else ("Done, undone." if ok else "OK, kept it.")}),
                              ("done", {"conversation_id": 1})])
+        if p.startswith("/v1/users/me/meal-templates/") and p.endswith("/log"):
+            tid = int(p.split("/")[5])
+            if tid in [x for x, _ in FOOD["logs"].values()] and not b.get("allow_duplicates"):
+                return self.json({"detail": {"code": "duplicate", "message": "already logged today"}}, 409)
+            t = next(x for x in TEMPLATES if x["id"] == tid)
+            lid = 900 + FOOD["next"]
+            FOOD["logs"][lid] = (tid, add_entry(t["name"] if self.zh else t["en"], t["meal"], t["totals"]))
+            return self.json({"log_id": lid, "entry_ids": [FOOD["logs"][lid][1]]})
         if p == "/v1/users/me/ai-fallback/consent":
             STATE["consent"] = True
             return self.json({"consent": True})
@@ -213,6 +295,15 @@ class H(BaseHTTPRequestHandler):
         return self.json({"detail": "not here"}, 404)
 
     def do_DELETE(self):
+        p = self.path.split("?")[0]
+        if p.startswith("/v1/users/me/meal-logs/"):
+            _, eid = FOOD["logs"].pop(int(p.rsplit("/", 1)[1]), (None, None))
+            FOOD["entries"] = [e for e in FOOD["entries"] if e["id"] != eid]
+            return self.json({"deleted": True})
+        if p.startswith("/v1/users/me/nutrition/entries/"):
+            eid = p.rsplit("/", 1)[1]
+            FOOD["entries"] = [e for e in FOOD["entries"] if e["id"] != eid]
+            return self.json({"deleted": True})
         if not self.path.startswith("/v1/assistant/conversations/"):
             return self.json({"detail": "not here"}, 404)
         self.send_response(204)
