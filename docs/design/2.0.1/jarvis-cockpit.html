@@ -5,13 +5,14 @@
 <meta name="viewport" content="width=402">
 <title>Jarvis · cockpit interaction prototype</title>
 <style>
-/* Moving prototype of the Jarvis key in a cockpit / HUD style (2.0.1 proposal, not approved).
+/* Moving prototype of the Jarvis key in a cockpit style, second pass: same style, far fewer lines (2.0.1 proposal).
+   Idle is key K1 (one inverted triangle on the glass key). Opened: one arc and five nodes, nothing else.
    Everything is drawn by one function of time, so a still or a film frame is reproducible:
      ?s=idle|open|listen|think&t=<ms in that state>   one still
      ?demo=1&t=<ms>                                   a frame of the scripted demo (idle -> open -> listen -> think -> idle)
-     ?tone=ice (default) | ink                        ice = HUD accent with glow; ink = the app's own white + green, no glow
+     ?tone=ice (default) | ink                        ice = accent with a soft glow; ink = white, no glow
    No query = interactive: tap the key to open or close, tap the mic node to listen.
-   Geometry only (circles, arcs, ticks, an inverted triangle); icons are Lucide (ISC) from kit.js. No third-party artwork. */
+   Geometry only (circle, arc, inverted triangle); icons are Lucide (ISC). No third-party artwork. */
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{width:402px;height:874px;overflow:hidden;background:#000;font-family:system-ui;-webkit-font-smoothing:antialiased}
 #bg{position:absolute;left:0;top:0;width:402px;height:874px}
@@ -25,89 +26,63 @@ text{font-family:system-ui;user-select:none}
 <script src="kit.js"></script>
 <script>
 var q=new URLSearchParams(location.search),TONE=q.get('tone')||'ice';
-var A=TONE==='ink'?'#F4F4F6':'#8FDCFF',INK='#F4F4F6',DIMT='#8D8D94',GOOD='#72BF8E',GLOW=TONE!=='ink';
-var CX=201,CY=751,R2=120;
+var A=TONE==='ink'?'#F4F4F6':'#8FDCFF',INK='#F4F4F6',GLOW=TONE!=='ink';
+var CX=201,CY=751,R2=118;
+var TRI="M13.73 4a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"; // Lucide "triangle" (ISC), drawn rotated 180 deg
 var NODES=[{a:-72,i:'soup',l:'记一餐',o:2},{a:-36,i:'dumbbell',l:'记训练',o:1},{a:0,i:'mic',l:'说话',o:0},{a:36,i:'camera',l:'拍照',o:1},{a:72,i:'message-circle',l:'提问',o:2}];
-var S={mode:'idle',hud:0,n:0,l:0,k:0,T:0,since:0};
+var S={mode:'idle',hud:0,n:0,l:0,k:0,T:0,since:0,tl:2600,tk:2200};
 function cl(x){return x<0?0:x>1?1:x}
 function e(x){x=cl(x);return 1-Math.pow(1-x,3)}
+function sm(x){x=cl(x);return x*x*(3-2*x)}
+function back(x){x=cl(x);var c=1.25;return 1+(c+1)*Math.pow(x-1,3)+c*Math.pow(x-1,2)}
 function P(r,d){var a=d*Math.PI/180;return [CX+r*Math.sin(a),CY-r*Math.cos(a)]}
 function f(n){return n.toFixed(2)}
-function arc(r,a0,a1){if(a1-a0>=359.9)return 'M'+f(CX-r)+' '+CY+'a'+r+' '+r+' 0 1 0 '+(2*r)+' 0a'+r+' '+r+' 0 1 0 '+(-2*r)+' 0';
-  var p=P(r,a0),b=P(r,a1);return 'M'+f(p[0])+' '+f(p[1])+'A'+r+' '+r+' 0 '+((a1-a0)>180?1:0)+' 1 '+f(b[0])+' '+f(b[1])}
-function path(d,c,w,o,extra){return '<path d="'+d+'" fill="none" stroke="'+c+'" stroke-width="'+w+'" stroke-linecap="round" opacity="'+f(o)+'" '+(extra||'')+'/>'}
-function ln(r0,r1,d,c,w,o){var p=P(r0,d),b=P(r1,d);return '<line x1="'+f(p[0])+'" y1="'+f(p[1])+'" x2="'+f(b[0])+'" y2="'+f(b[1])+'" stroke="'+c+'" stroke-width="'+w+'" stroke-linecap="round" opacity="'+f(o)+'"/>'}
-function tri(r,rot){var a=P(r,60+rot),b=P(r,180+rot),c=P(r,300+rot);return 'M'+f(a[0])+' '+f(a[1])+'L'+f(b[0])+' '+f(b[1])+'L'+f(c[0])+' '+f(c[1])+'Z'}
-function txt(x,y,s,size,c,o,anchor,ls,w){return '<text x="'+f(x)+'" y="'+f(y)+'" font-size="'+size+'" fill="'+c+'" opacity="'+f(o)+'" text-anchor="'+(anchor||'middle')+'" letter-spacing="'+(ls||0)+'" font-weight="'+(w||500)+'">'+s+'</text>'}
+function arc(r,a0,a1){var p=P(r,a0),b=P(r,a1);return 'M'+f(p[0])+' '+f(p[1])+'A'+r+' '+r+' 0 '+((a1-a0)>180?1:0)+' 1 '+f(b[0])+' '+f(b[1])}
+function path(d,c,w,o){return '<path d="'+d+'" fill="none" stroke="'+c+'" stroke-width="'+w+'" stroke-linecap="round" opacity="'+f(o)+'"/>'}
+function txt(x,y,s,size,c,o){return '<text x="'+f(x)+'" y="'+f(y)+'" font-size="'+size+'" fill="'+c+'" opacity="'+f(o)+'" text-anchor="middle" letter-spacing=".5" font-weight="500">'+s+'</text>'}
+function wave(r0,amp,ph){var d='';for(var i=0;i<=120;i++){var th=i*3,x=th*Math.PI/180,r=r0+amp*(Math.sin(3*x+ph)*Math.sin(ph*.7)+.6*Math.sin(5*x-ph*1.4)),p=P(r,th);d+=(i?'L':'M')+f(p[0])+' '+f(p[1])}return d+'Z'}
 
-function draw(){var T=S.T,h=S.hud,s='';
-  // 1 scrim
-  s+='<rect width="402" height="874" fill="#000" opacity="'+f(.82*e(h/300))+'"/>';
-  var g='';
-  // 3 HUD arcs (deploy from the top of the core outwards, both sides)
-  if(h>0){
-    var s1=180*e((h-60)/420);if(s1>1)g+=path(arc(58,-s1,s1),A,1,.35,'stroke-dasharray="2 5"');
-    var s2=104*e((h-140)/460);if(s2>1)g+=path(arc(R2,-s2,s2),A,1,.32);
-    var s3=84*e((h-240)/520);
-    if(s3>1){var mk=62*Math.sin(T/1500);
-      for(var d=-84;d<=84;d+=3){if(Math.abs(d)>s3)continue;var maj=(d%15===0),near=Math.abs(d-mk)<8;
-        g+=ln(maj?170:174,180,d,near?INK:A,maj?1.4:1,near?.95:(maj?.7:.38))}
-      var w=4*Math.sin(T/2100);
-      g+=path(arc(194,-80+w,-22+w),A,2,.5*e((h-420)/300))+path(arc(194,22-w,80-w),A,2,.5*e((h-420)/300));
-      g+=path(arc(200,-6,6),INK,2,.8*e((h-520)/300));}
-    // scan line, once, while deploying
-    var sc=(h-80)/520;if(sc>0&&sc<1){var y=CY-30-220*sc;g+='<line x1="24" x2="378" y1="'+f(y)+'" y2="'+f(y)+'" stroke="'+A+'" stroke-width="1" opacity="'+f(.35*(1-sc))+'"/>'}
-    // readouts: the two readings of Today, as cockpit side data
-    var ro=e((h-520)/300);
-    if(ro>0){var st=S.l>.5?'在听':S.k>.5?'思考中':'就绪';
-      g+=txt(CX,CY-226,'JARVIS',12,A,ro,'middle',5,600)+txt(CX,CY-208,st,11,DIMT,ro,'middle',2);
-      g+=path('M24 512v-8h8',A,1,.6*ro)+txt(30,524,'恢复',10,DIMT,ro,'start',1)+txt(30,546,'82',20,INK,ro,'start',0,300);
-      g+=path('M378 512v-8h-8',A,1,.6*ro)+txt(372,524,'负荷',10,DIMT,ro,'end',1)+txt(372,546,'2.8',20,INK,ro,'end',0,300);}
-  }
-  // 4 nodes: spoke, ring drawn by sweep, brackets, icon, label
-  if(S.n>0.01&&h>0){NODES.forEach(function(n,i){var p=e((h-300-n.o*80)/320)*S.n;if(p<=0)return;
-    var c=P(R2,n.a),hot=(S.flash===i);
-    g+=ln(36,36+58*p,n.a,A,1,.4*p);
-    var C=2*Math.PI*25;
-    g+='<circle cx="'+f(c[0])+'" cy="'+f(c[1])+'" r="25" fill="'+(hot?A:'#0A0C0F')+'" fill-opacity="'+f(hot?.9:.92*p)+'" stroke="'+A+'" stroke-width="1.2" opacity="'+f(cl(p*1.5))+'" stroke-dasharray="'+f(C*p)+' '+f(C)+'" transform="rotate(-90 '+f(c[0])+' '+f(c[1])+')"/>';
-    var br=T/50+i*40;
-    g+='<g transform="translate('+f(c[0]-CX)+' '+f(c[1]-CY)+')" opacity="'+f(.75*p)+'">'+path(arc(30,br,br+38),A,1.4,1)+path(arc(30,br+180,br+218),A,1.4,1)+'</g>';
-    var ic=window.LUCIDE[n.i];
-    g+='<g transform="translate('+f(c[0]-11)+' '+f(c[1]-11)+') scale('+f(22/24)+')" fill="none" stroke="'+(hot?'#000':INK)+'" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" opacity="'+f(p*p)+'">'+ic.d+'</g>';
-    var lp=Math.abs(n.a)>60?[c[0],c[1]+44]:P(R2+37,n.a);g+=txt(lp[0],lp[1]+4,n.l,11,INK,.85*p*p,'middle',.5)});}
-  // 5 listening: radial level bars round the core
-  if(S.l>0.01){for(var i=0;i<56;i++){var v=Math.abs(Math.sin(i*1.7+T/95)*Math.sin(i*.37+T/270))+.25*Math.abs(Math.sin(i*.9-T/160));
-    g+=ln(40,40+(4+24*v)*S.l,i*360/56,A,2,.85*S.l)}}
-  // 6 thinking: three arcs at three speeds
-  if(S.k>0.01){var a1=T*.21,a2=-T*.33,a3=T*.5;
-    g+=path(arc(40,a1,a1+110),A,2,.9*S.k)+path(arc(40,a1+180,a1+290),A,2,.9*S.k)+path(arc(48,a2,a2+70),A,1.5,.7*S.k)+path(arc(48,a2+180,a2+250),A,1.5,.7*S.k)+path(arc(56,a3,a3+40),INK,1.5,.6*S.k);}
-  // 2 the core key
-  var pu=h/350;if(pu>0&&pu<1)g+='<circle cx="'+CX+'" cy="'+CY+'" r="'+f(29+30*e(pu))+'" fill="none" stroke="'+A+'" stroke-width="1.5" opacity="'+f(.8*(1-pu))+'"/>';
-  var on=cl(h/300),sp=1+5*S.k+1.5*on;
-  g+='<circle cx="'+CX+'" cy="'+CY+'" r="29" fill="#08090B" stroke="'+A+'" stroke-width="1" stroke-opacity="'+f(.45+.45*on)+'"/>';
-  var ra=T*.02*sp;for(var j=0;j<24;j++)g+=ln(22,j%6===0?26.5:25,ra+j*15,A,1,j%6===0?.95:.5);
-  var rb=-T*.035*sp;for(var m=0;m<3;m++)g+=path(arc(17.5,rb+m*120,rb+m*120+84),A,1.5,.85);
-  var br2=.6+.4*Math.sin(T/700);
-  g+='<path d="'+tri(11.5,0)+'" fill="none" stroke="'+INK+'" stroke-width="1.6" stroke-linejoin="round"/>';
-  g+='<path d="'+tri(4.6,0)+'" fill="'+(TONE==='ink'?GOOD:A)+'" opacity="'+f(br2)+'" stroke="'+(TONE==='ink'?GOOD:A)+'" stroke-width="1" stroke-linejoin="round"/>';
-  s+='<g'+(GLOW?' style="filter:drop-shadow(0 0 5px '+A+'99) drop-shadow(0 0 14px '+A+'44)"':'')+'>'+g+'</g>';
+function draw(){var T=S.T,h=S.hud,s='',g='',on=sm(h/260);
+  s+='<rect width="402" height="874" fill="#000" opacity="'+f(.84*on)+'"/>';
+  // one arc: the rail the nodes sit on
+  var n=S.n,sw=92*e((h-60)/520)*sm(n);
+  if(sw>1)g+=path(arc(+f(R2*(.5+.5*sm(n))),-sw,sw),A,1,.28*sm(n*2-1));
+  // nodes fly out of the core, centre first
+  if(n>0.01&&h>0){NODES.forEach(function(nd,i){var p=cl((h-90-nd.o*70)/420),k=back(p)*sm(n),o=cl(p*2.2)*sm(n);if(o<=0)return;
+    var c=P(R2*k,nd.a),hot=(S.flash===i);
+    g+='<circle cx="'+f(c[0])+'" cy="'+f(c[1])+'" r="'+f(25*(.6+.4*cl(k)))+'" fill="'+(hot?A:'#0B0D10')+'" stroke="'+A+'" stroke-width="1" stroke-opacity=".8" opacity="'+f(o)+'"/>';
+    g+='<g transform="translate('+f(c[0]-11)+' '+f(c[1]-11)+') scale('+f(22/24)+')" fill="none" stroke="'+(hot?'#000':INK)+'" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" opacity="'+f(o)+'">'+window.LUCIDE[nd.i].d+'</g>';
+    var lo=sm((p-.55)/.45)*sm(n*4-3),lp=Math.abs(nd.a)>60?[c[0],c[1]+44]:P(R2*k+37,nd.a);
+    if(lo>0)g+=txt(lp[0],lp[1]+4,nd.l,11,INK,.8*lo)});}
+  // listening: one soft ring that moves with the voice
+  if(S.l>0.01){var l=sm(S.l);g+=path(wave(40,5.5*l,T/260),A,1.6,.95*l)+path(wave(47,4*l,-T/340+2),A,1,.4*l)}
+  // thinking: one arc going round
+  if(S.k>0.01){var k2=sm(S.k),a1=T*.36;g+='<circle cx="'+CX+'" cy="'+CY+'" r="40" fill="none" stroke="'+A+'" stroke-width="1" opacity="'+f(.22*k2)+'"/>'+path(arc(40,a1,a1+96),A,2,.95*k2)}
+  // press feedback: one ring leaving the key
+  var pu=h/420;if(pu>0&&pu<1)g+='<circle cx="'+CX+'" cy="'+CY+'" r="'+f(29+34*e(pu))+'" fill="none" stroke="'+A+'" stroke-width="1.2" opacity="'+f(.7*(1-pu)*(1-pu))+'"/>';
+  // the key: K1, one inverted triangle on the glass key
+  g+='<circle cx="'+CX+'" cy="'+CY+'" r="29" fill="rgb(24,24,27)" stroke="'+(on>0?A:'#FFFFFF')+'" stroke-width="1" stroke-opacity="'+f(.14+.66*on)+'"/>';
+  var br=1+.035*Math.sin(T/900)*on;
+  g+='<g transform="translate('+CX+' '+CY+') rotate(180) scale('+f(1.08*br)+') translate(-12 -14.4)"><path d="'+TRI+'" fill="none" stroke="'+INK+'" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></g>';
+  var ga=Math.round(on*110+16).toString(16);
+  s+='<g'+(GLOW&&on>0?' style="filter:drop-shadow(0 0 6px '+A+ga+')"':'')+'>'+g+'</g>';
   document.getElementById('hud').innerHTML=s}
 
 function step(dt){S.T+=dt;S.since+=dt;var m=S.mode,up=m!=='idle';
-  S.hud=up?Math.min(900,S.hud+dt):Math.max(0,S.hud-dt*2.6);
-  function mv(v,on){return cl(v+(on?dt:-dt)/260)}
-  S.n=mv(S.n,m==='open');S.l=mv(S.l,m==='listen');S.k=mv(S.k,m==='think');
-  if(m==='listen'&&S.since>2600&&S.auto)set('think');else if(m==='think'&&S.since>2200&&S.auto)set('idle');
-  if(S.flash!=null&&S.since>220&&m==='open'){var i=S.flash;S.flash=null;if(NODES[i].i==='mic'){S.auto=true;set('listen')}else set('idle')}}
+  S.hud=up?Math.min(900,S.hud+dt):Math.max(0,S.hud-dt*2.4);
+  function mv(v,on,ms){return cl(v+(on?dt:-dt)/ms)}
+  S.n=mv(S.n,m==='open',300);S.l=mv(S.l,m==='listen',380);S.k=mv(S.k,m==='think',380);
+  if(m==='listen'&&S.since>S.tl&&S.auto)set('think');else if(m==='think'&&S.since>S.tk&&S.auto)set('idle');
+  if(S.flash!=null&&S.since>200&&m==='open'){var i=S.flash;S.flash=null;if(NODES[i].i==='mic'){S.auto=true;set('listen')}else set('idle')}}
 function set(m){S.mode=m;S.since=0}
 
 var still=q.get('s'),t=+q.get('t')||0;
-if(q.get('demo')){ // scripted film: idle 0.7 s -> open -> (2.9 s) tap mic -> listen -> think -> idle
-  var ev=[[700,function(){set('open')}],[2900,function(){S.flash=2;S.since=0}]],k=0;
-  for(var x=0;x<t;x+=16){while(k<ev.length&&x>=ev[k][0]){ev[k][1]();k++}step(16)}draw()}
+if(q.get('demo')){ // scripted film: idle 0.5 s -> open -> (2.2 s) tap mic -> listen 2 s -> think 1.6 s -> idle
+  S.tl=2000;S.tk=1600;var ev=[[500,function(){set('open')}],[2200,function(){S.flash=2;S.since=0}]],k=0,dt=1000/120;
+  for(var x=0;x<t;x+=dt){while(k<ev.length&&x>=ev[k][0]){ev[k][1]();k++}step(dt)}draw()}
 else if(still){S.T=4000+t;S.mode=still;if(still!=='idle'){S.hud=Math.min(900,still==='open'?t:900)}
   S.n=still==='open'?1:0;S.l=still==='listen'?1:0;S.k=still==='think'?1:0;draw()}
-else{var last=performance.now();(function loop(now){step(Math.min(50,now-last));last=now;draw();requestAnimationFrame(loop)})(last);
+else{var last=performance.now();(function loop(now){step(Math.min(34,now-last));last=now;draw();requestAnimationFrame(loop)})(last);
   document.getElementById('hud').addEventListener('click',function(ev){var r=this.getBoundingClientRect(),x=(ev.clientX-r.left)*402/r.width,y=(ev.clientY-r.top)*874/r.height;
     if(Math.hypot(x-CX,y-CY)<34){S.auto=false;set(S.mode==='idle'?'open':'idle');return}
     if(S.mode==='open'){for(var i=0;i<NODES.length;i++){var c=P(R2,NODES[i].a);if(Math.hypot(x-c[0],y-c[1])<30){S.flash=i;S.since=0;return}}set('idle')}
