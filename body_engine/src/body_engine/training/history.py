@@ -120,6 +120,8 @@ def source_label(w: dict) -> str:
         return "快捷指令"
     if w["source"] == "hevy":
         return "Hevy"
+    if w["source"] == P.MANUAL_SOURCE:
+        return "手动记录"
     if "watch" in (w.get("device") or "").lower():
         return "Apple Watch"
     if w.get("origin") and w["origin"] != "apple_health_xml":
@@ -137,8 +139,9 @@ def _from_workout(w: dict, tz: ZoneInfo) -> dict:
             "distance_km": None if w["distance_km"] is None else round(w["distance_km"], 2),
             "avg_hr": _r(w["avg_hr"]), "max_hr": _r(w["max_hr"]), "hr_zone_min": w["hr_zone_min"], "trimp": w["trimp"],
             "hr_max": w["hr_max_used"], "device": w.get("device"),
-            "flags": {k: v for k, v in (w["flags"] or {}).items() if k not in ("computed", "basal_kcal", "note")},
+            "flags": {k: v for k, v in (w["flags"] or {}).items() if k not in ("computed", "basal_kcal", "note", "manual_intensity", "untimed", "manual_dup")},
             "exercises": [], "volume_kg": None, "working_sets": None, "notes": None, "sparky_id": None,
+            "_manual_level": P.MANUAL_INTENSITY.get((w["flags"] or {}).get("manual_intensity")) if w["source"] == P.MANUAL_SOURCE else None,
             "_cat": _category(w["type"])}
 
 
@@ -227,7 +230,9 @@ def classify(sess: dict, hr_max: float | None) -> None:
     """Decide a workout's intensity (written in place: intensity / intensity_label / intensity_basis / intensity_value)."""
     basis, value, level = None, None, None
     hr_max = sess.get("hr_max") or hr_max
-    if sess.get("trimp") is not None:
+    if sess.get("_manual_level"):   # a manual workout: the level the user picked (no heart rate to grade)
+        level, basis, value = sess["_manual_level"], "manual", None
+    elif sess.get("trimp") is not None:
         level, basis, value = _level(sess["trimp"], P.TRIMP_THRESHOLDS), "trimp", sess["trimp"]
     elif sess.get("avg_hr") and hr_max and sess.get("duration_min"):
         est = avg_hr_trimp(sess["avg_hr"], sess["duration_min"], hr_max) * P.AVG_HR_TRIMP_FACTOR
@@ -247,15 +252,15 @@ def classify(sess: dict, hr_max: float | None) -> None:
                 intensity_value=value)
 
 
-BASIS_ZH = {"trimp": "按心率（TRIMP）", "avg_hr": "按平均心率估", "volume": "按力量训练量", "duration": "按时长", "none": "没有数据"}
-BASIS_EN = {"trimp": "By heart rate (TRIMP)", "avg_hr": "Estimated from average HR", "volume": "By strength volume",
+BASIS_ZH = {"manual": "按你选的强度", "trimp": "按心率（TRIMP）", "avg_hr": "按平均心率估", "volume": "按力量训练量", "duration": "按时长", "none": "没有数据"}
+BASIS_EN = {"manual": "By the level you picked", "trimp": "By heart rate (TRIMP)", "avg_hr": "Estimated from average HR", "volume": "By strength volume",
             "duration": "By duration", "none": "No data"}
 
 # ---------------------------------------------------------------- display language (issue #42)
 # Stored names stay Chinese (name_zh, AI tools); an English request gets the type part of a name in English. A name that is
 # not a type name (a user's override, a SparkyFitness session or exercise name) is the user's own text and stays as is.
 _TYPE_OF_ZH = {zh: t for t, zh in P.TYPE_NAMES.items()}
-SOURCE_EN = {"快捷指令": "Shortcut", "Apple 健康": "Apple Health"}
+SOURCE_EN = {"快捷指令": "Shortcut", "Apple 健康": "Apple Health", "手动记录": "Logged by hand"}
 
 
 def intensity_label(level: str) -> str:
@@ -414,6 +419,7 @@ def compute(data: dict, start: date, end: date, today: date) -> dict:
                 s["exercises"] = [{"name": e.get("name"), "category": e.get("category")} for e in s["exercises"]]
             s["intensity_basis_label"] = (BASIS_EN if is_en() else BASIS_ZH).get(s["intensity_basis"])
             s.pop("_cat", None)
+            s.pop("_manual_level", None)
             _localize(s)
         m, sc = metrics.get(d, {}), scores.get(d) or {}
         intensity = _max_level(*(s["intensity"] for s in sessions)) or "rest"
