@@ -34,7 +34,7 @@ from .records import lab_catalog
 from .records.tools import TOOL_SPECS as RECORD_TOOL_SPECS
 from .rules.tools import TOOL_SPECS as RULE_TOOL_SPECS
 from .toolspec import OPTIONAL_DEFAULTS
-from .training import overrides
+from .training import manual as manual_workouts, overrides
 from .training.tools import TOOL_SPECS as TRAINING_TOOL_SPECS
 from .ui.tools import TOOL_SPECS as UI_TOOL_SPECS
 from .water import store as water_store
@@ -60,7 +60,7 @@ reg.tools(UI_TOOL_SPECS, legacy=True)  # the AI-first page: my Today and the foc
 reg.tools(FEEDBACK_TOOL_SPECS, legacy=True)  # root rules: bugs and feature requests to the developers
 reg.tools(SCENE_TOOL_SPECS, legacy=True)  # scene context tools + playbooks (issue #100)
 
-for module in (sparky_write, food_combine, overrides, lab_catalog, water_store, pantry_auto, memory, memory_review):
+for module in (sparky_write, food_combine, overrides, manual_workouts, lab_catalog, water_store, pantry_auto, memory, memory_review):
     module.register_rollbacks(reg)
 
 # What the fallback AI reaches (ai/fallback.py): its whitelist, or with the rollout flag ai_parity everything but what its

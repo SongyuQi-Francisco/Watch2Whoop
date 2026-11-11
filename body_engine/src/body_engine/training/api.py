@@ -9,7 +9,7 @@ Authorization:
 - Remove a planned exercise (`/plan/remove-exercise`, `/plan/restore-exercise`, issue #172; no flag) is self-only.
 - Write endpoints (`PUT /plan`, `POST /plan/swap`) are self-only and require `write` token scope (plus `X-Body-Web: 1` for cookie sessions, enforced globally).
 """
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -20,7 +20,7 @@ from .. import auth, sparky_client
 from ..records.api import _owner, _self, current_user, get_conn
 from ..i18n import L
 from ..rollout import flags
-from . import catalog, custom, goals, hevy_import, history, loads, muscle_load, plan_add, plan_remove, plans, session_log
+from . import catalog, custom, goals, hevy_import, history, loads, manual, muscle_load, plan_add, plan_remove, plans, session_log
 from . import params as P
 
 router = APIRouter(prefix="/v1/users/{user}/training", tags=["training"])
@@ -95,6 +95,59 @@ def training_calendar(user: str, month: str | None = None, start: date | None = 
 def training_day(user: str, day: date, conn=Depends(get_conn), viewer=Depends(current_user)):
     """Each workout of one day (watch + SparkyFitness merged): time, duration, energy, heart-rate zones, TRIMP, intensity, exercises and sets; that day's daily metrics."""
     return history.day(conn, viewer["id"], _owner(conn, viewer, user, "training"), day)
+
+
+# ---------------------------------------------------------------- manual workouts (manual.py): cardio / ball games logged by hand
+_Day = date   # the field below is called `date`
+
+
+class ManualWorkoutIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    type: str = Field(min_length=1, max_length=40)
+    duration_min: float = Field(ge=P.MANUAL_MIN_DURATION, le=P.MANUAL_MAX_DURATION)
+    intensity: Literal["light", "moderate", "hard"]
+    date: _Day | None = None          # the user's local date; without start the record is untimed (12:00, linked to a same-type watch workout of that day)
+    start: datetime | None = None     # ISO 8601; without a zone = the user's time zone
+    avg_hr: float | None = Field(default=None, ge=30, le=230)
+    active_kcal: float | None = Field(default=None, ge=0, le=10000)
+    client_id: str | None = Field(default=None, min_length=1, max_length=P.MANUAL_CLIENT_ID_MAX)   # idempotency key; the same key = the same record
+
+
+@router.get("/manual-workouts/options")
+def manual_workout_options(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """The types and intensity levels the manual-workout form offers (any logged-in user)."""
+    _self_or_read(viewer, user)
+    return {"types": manual.type_options(), "intensities": manual.intensity_options(),
+            "max_duration_min": P.MANUAL_MAX_DURATION, "max_past_days": P.MANUAL_MAX_PAST_DAYS}
+
+
+@router.post("/manual-workouts")
+def add_manual_workout(user: str, body: ManualWorkoutIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Log one cardio / ball-game session by hand. Self-only, token scope write. Idempotent by client_id (else start + type).
+    A watch copy of the same session wins: duplicate_of says which one this record was linked to (it then counts nowhere)."""
+    uid = _self(viewer, user)
+    try:
+        return manual.add(conn, uid, type_=body.type, duration_min=body.duration_min, intensity=body.intensity, day=body.date,
+                          start=body.start, avg_hr=body.avg_hr, active_kcal=body.active_kcal, client_id=body.client_id)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+@router.delete("/manual-workouts/{workout_id}")
+def delete_manual_workout(user: str, workout_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Delete a workout the user logged by hand (never a watch one). Self-only, token scope write."""
+    uid = _self(viewer, user)
+    try:
+        return manual.delete(conn, uid, workout_id)
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    except PermissionError as e:
+        raise HTTPException(409, str(e))
+
+
+def _self_or_read(viewer: dict, user: str) -> None:
+    if user not in ("me", str(viewer["id"])):
+        raise HTTPException(403, L("只能看自己的", "Your own only"))
 
 
 @router.get("/exercises")
