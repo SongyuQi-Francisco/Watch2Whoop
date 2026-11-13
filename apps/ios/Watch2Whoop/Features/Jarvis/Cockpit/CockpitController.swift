@@ -209,13 +209,21 @@ final class CockpitController: ObservableObject {
     switch key {
     case .template(let id):
       logTemplate(id)
-    case .photo, .mealPhoto:
+    case .photo:
       router.run(.photo)
-    case .ask:
+    case .mealPhoto:   // 16: the meal camera (the photo goes to the user's own AI)
+      if !router.ai.vision { router.show(tr("这个 AI 看不了图片", "This AI can't read pictures")); return }
+      router.present(.mealPhoto)
+    case .ask:   // 17: the chat, keyboard up
+      router.focusComposer = true
       router.run(.chat)
-    case .mealMore:
-      router.run(.quick)
-    case .trainStart, .trainBackfill, .trainPlan:
+    case .mealMore:   // 20: every quick meal
+      router.present(.templates)
+    case .trainPlan:   // 19: this week's plan
+      router.present(.plan)
+    case .trainBackfill:   // 18: opens at once and loads the server's types inside (no endpoint yet → 记录 → 训练)
+      router.present(.backfill)
+    case .trainStart:
       router.open(page: "record.training")
     default:
       break

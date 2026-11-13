@@ -109,7 +109,8 @@ final class JarvisPerf: NSObject {
 /// - the cockpit's flows (2.0.1): `cockpit-meal` / `cockpit-train` (second rings), `cockpit-back` (second ring, then back),
 ///   `cockpit-interrupt` (tap the core again while the panels fan out), `cockpit-qa` / `cockpit-mealvoice` /
 ///   `cockpit-set` (talk through 说话 / 记一餐 → 说 / 记训练 → 说一组 with scripted words, then the reply card),
-///   `cockpit-template` (a quick meal logged at once), `cockpit-undo` (the same, then 撤销);
+///   `cockpit-template` (a quick meal logged at once), `cockpit-undo` (the same, then 撤销); the screens behind the keys:
+///   `cockpit-photo`, `cockpit-ask`, `cockpit-plan`, `cockpit-backfill`, `cockpit-templates`;
 /// - `posture`: the chat with the posture sheet open; `posture-filled`: with three made-up photos in it;
 ///   `posture-send`: send three made-up photos and the prefilled question (flat colours, no person in them);
 /// - `voice`: talk three times through the chat's own microphone (完成), logging `voice-chat-done-to-text` (the scripted
@@ -182,6 +183,16 @@ enum JarvisDemo {
         if mode == "cockpit-undo" {
           await sec(3)
           cockpit.undoReply()
+        }
+      case "cockpit-photo", "cockpit-templates", "cockpit-plan", "cockpit-backfill", "cockpit-ask":
+        // the screens behind the keys (16–20), opened through the cockpit itself
+        let path: [CockpitKey] = ["cockpit-photo": [.meal, .mealPhoto], "cockpit-templates": [.meal, .mealMore],
+                                  "cockpit-plan": [.train, .trainPlan], "cockpit-backfill": [.train, .trainBackfill],
+                                  "cockpit-ask": [.ask]][mode] ?? []
+        cockpit.tapCore()
+        for k in path {
+          await sec(1.1)
+          cockpit.activate(k)
         }
       case "chat":
         router.present(.chat)

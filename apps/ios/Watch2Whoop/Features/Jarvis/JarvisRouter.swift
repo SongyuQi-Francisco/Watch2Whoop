@@ -25,10 +25,15 @@ final class JarvisRouter: ObservableObject {
 
   enum Sheet: Identifiable, Equatable {
     case chat, quick, camera
+    /// The cockpit's screens (2.0.1): 记一餐 → 拍照 / 更多, 记训练 → 计划 / 补记.
+    case mealPhoto, templates, plan
+    case backfill
     var id: Self { self }
   }
 
   @Published var sheet: Sheet?
+  /// The chat opens with the keyboard up (the cockpit's 提问).
+  var focusComposer = false
   /// A page a card opened over the chat (closing it comes back to the conversation).
   @Published var detail: JarvisDetail?
   /// A short message over the tab bar (copied, needs a connection, …); clears itself.
