@@ -21,7 +21,6 @@ struct TickDial<Center: View>: View, Equatable {
   let side: CGFloat
   @ViewBuilder var center: () -> Center
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @State private var shown = 0.0
 
   var body: some View {
     let arcW: CGFloat = 5, r = side / 2 - arcW / 2
@@ -49,21 +48,16 @@ struct TickDial<Center: View>: View, Equatable {
           .rotationEffect(.degrees(-90))
           .frame(width: (r - 6) * 2, height: (r - 6) * 2)
       }
-      if fraction > 0 {
-        Circle().trim(from: 0, to: shown)
-          .stroke(tone.color, style: StrokeStyle(lineWidth: arcW, lineCap: .round))
-          .rotationEffect(.degrees(-90))
-          .frame(width: r * 2, height: r * 2)
-      }
+      // the arc grows from 12 o'clock to the value (spring); with Reduce Motion it is simply there
+      Circle().trim(from: 0, to: fraction)
+        .stroke(tone.color, style: StrokeStyle(lineWidth: arcW, lineCap: .round))
+        .rotationEffect(.degrees(-90))
+        .frame(width: r * 2, height: r * 2)
+        .opacity(fraction > 0 ? 1 : 0)
+        .animation(reduceMotion ? nil : .spring(response: 0.6, dampingFraction: 0.9), value: fraction)
       center()
     }
     .frame(width: side, height: side)
-    .onAppear { draw() }
-    .onChange(of: fraction) { _ in draw() }
-  }
-
-  private func draw() {
-    if reduceMotion { shown = fraction } else { withAnimation(.spring(response: 0.6, dampingFraction: 0.9)) { shown = fraction } }
   }
 }
 

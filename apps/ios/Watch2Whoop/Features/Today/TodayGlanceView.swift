@@ -73,7 +73,6 @@ struct TodayGlancePage: View, Equatable {
       if !isPast { TodaySyncCapsule(card: model.sync, tap: run.syncTap, center: run.syncCenter) }
     }
     .frame(height: 44)
-    .padding(.top, 10)
   }
 
   private var dateTitle: String { Self.dateTitle(model.date) }
@@ -217,8 +216,11 @@ struct TodayMoreFaces: View, Equatable {
       HStack(spacing: 8) {
         if let t = model.training {
           Button(action: run.training) {
+            // logged exercises, else the sessions planned for the day, else a rest day
+            let planned = t.logged.isEmpty && !t.planned.isEmpty
             Face(icon: .dumbbell, label: tr("训练", "Training"),
-                 number: t.restDay ? tr("休息", "Rest") : "\(t.logged.count)", unit: t.restDay ? nil : tr("个动作", "moves")) { Color.clear }
+                 number: t.restDay ? tr("休息", "Rest") : "\(planned ? t.planned.count : t.logged.count)",
+                 unit: t.restDay ? nil : (planned ? tr("项计划", "planned") : tr("个动作", "moves"))) { Color.clear }
           }
           .buttonStyle(PressScale())
         }
@@ -314,8 +316,9 @@ struct TodayFoodFace: View {
         let kcal = n.intake.kcal ?? 0, goal = n.goal.kcal ?? 0
         Button(action: open) {
           Face(icon: .soup, label: tr("饮食", "Food"), number: RecordFormat.num(n.intake.kcal), unit: "kcal") {
-            BulletGauge(value: kcal, max: max(goal * 1.2, kcal, 1), target: goal > 0 ? goal...goal : nil,
-                        step: max(goal * 1.2, kcal, 1) / 5, tone: .text)
+            // no goal: a fixed 2,500 kcal scale (the design's), never a bar that is always full
+            let top = goal > 0 ? max(goal * 1.2, kcal) : max(2500, kcal * 1.2)
+            BulletGauge(value: kcal, max: top, target: goal > 0 ? goal...goal : nil, step: top / 5, tone: .text)
           }
         }
         .buttonStyle(PressScale())

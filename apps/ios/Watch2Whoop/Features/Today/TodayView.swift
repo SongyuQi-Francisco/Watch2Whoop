@@ -112,11 +112,14 @@ struct TodayView: View {
             .onAppear { if store.hasData { PerfProbe.shared.ringsShown() } }
             .onChange(of: store.hasData) { if $0 { PerfProbe.shared.ringsShown() } }
           // below the fold (vertical scroll only): 训练 · 今晚 · 提醒, then the sync nudges and the slim look's quote
-          TodayMoreFaces(model: store.model, run: glanceActions).equatable().padding(.top, 49)
+          // the first glance ends with the face row; the key sits in the gap under it, so this row starts below the fold
+          TodayMoreFaces(model: store.model, run: glanceActions).equatable().padding(.top, 150)
           if !store.model.isPast {
             SyncNudges(card: store.model.sync, coverage: store.model.coverage) { await store.refresh() }.padding(.top, 16)
           }
           if showsQuote { dailyQuote.padding(.top, 16) }
+          // scrolled to the end, nothing sits under the Jarvis key (direction.md 2.4)
+          Color.clear.frame(height: 140)
           Color.clear.frame(height: 1).id("bottom")
         }
         .padding(.horizontal, Metrics.gutter)
@@ -137,6 +140,10 @@ struct TodayView: View {
         #if DEBUG
         PerfScript.today = PerfScript.TodayHooks(sheet: { sheet = $0 }, push: { r in if let r { path.append(r) } else { path.removeAll() } })
         DevShot.apply(proxy: proxy, sheet: { sheet = $0 }, push: { path.append($0) }, day: { store.select($0) })
+        // `SIMCTL_CHILD_W2W_DEV_L1=recovery|strain|sleep`: opens that L1 sheet (2.0.1 screenshots)
+        if let k = ProcessInfo.processInfo.environment["W2W_DEV_L1"].flatMap(TodayL1.init(rawValue:)) {
+          DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { l1 = k }
+        }
         if aiFirst { DevShot.applyHome { go($0) } }
         #endif
       }
