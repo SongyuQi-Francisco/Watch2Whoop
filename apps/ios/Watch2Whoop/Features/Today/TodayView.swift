@@ -170,7 +170,9 @@ struct TodayView: View {
       syncCenter: { app.route = .syncCenter },
       recoveryNext: runRecoveryNext,
       food: {
-        recordSegment = .food   // 饮食 is a segment of 记录 (2.0.1)
+        // 饮食 is a segment of 记录 (2.0.1): saved for a 记录 page still to be built, sent to one already there
+        recordSegment = .food
+        JarvisPageLink.shared.segment = .food
         tab = .record
       },
       circles: { tab = .circles },

@@ -17,6 +17,8 @@ struct TodayInputs {
   var sync: [String: Any]?
   /// `GET /v1/friends/overview` (N7 owns the page; Today only shows the entry).
   var circles: [String: Any]?
+  /// `GET /sync/missing-days`: the days of the last 30 without a core kind on the server.
+  var missing: [String: Any]?
   /// Rows the phone computed (origin `app`) for the day and the day before, used only where the server has no number.
   var localDay: DailyScore?
   var localPrev: DailyScore?
@@ -136,6 +138,8 @@ struct TodayModel: Equatable {
     var issueLabel: String?
     /// Minutes since the server's latest data (`minutes_ago`), for the stale state.
     var minutes: Int?
+    /// Days missing on the server among the recent ones (`TodayParams.missingRecentDays`), for 「缺N天」.
+    var missingDays: Int?
   }
 
   struct Circles: Equatable {
@@ -372,6 +376,9 @@ struct TodayModel: Equatable {
       sync = SyncCard(state: state, label: s["label"] as? String ?? "", tone: tone, ago: mins.map(Self.ago),
                       issueCode: issue?["code"] as? String, issueLabel: issue?["label"] as? String, minutes: mins)
       coverage = BackfillCoverage(s["coverage"] as? [String: Any])
+      if let j = inp.missing, let day = date {
+        sync?.missingDays = TodayGlanceRules.recentMissing(MissingDays(j).days.map(\.date), today: day)
+      }
     }
 
     glance = TodayGlance(model: self, scores: sc, today: t, sleepScore: sleepScore, trends: day, daily: daily)

@@ -131,8 +131,10 @@ struct TodayGlancePage: View, Equatable {
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(dialLabel)
     .accessibilityAddTraits(.isButton)
-    .accessibilityAction(named: Text(tr("前一天", "Previous day"))) { run.step(-1) }
-    .accessibilityAction(named: Text(tr("后一天", "Next day"))) { if isPast { run.step(1) } }
+    .accessibilityActions {
+      Button(tr("前一天", "Previous day")) { run.step(-1) }
+      if isPast { Button(tr("后一天", "Next day")) { run.step(1) } }   // today has no next day
+    }
   }
 
   private var dialLabel: String {
@@ -185,9 +187,11 @@ struct TodayGlancePage: View, Equatable {
   private var faces: some View {
     HStack(spacing: 8) {
       TodaySlotOne(model: model, sync: session.sync, run: run)
-      TodayFoodFace(session: session, day: day, open: run.food)
+      TodayFoodFace(session: session, day: day, sync: session.sync, open: run.food, syncNow: run.syncTap)
       if circlesOn && !isPast { TodayCirclesFace(session: session, open: run.circles) }
     }
+    // the circles are read here, on the row that is always there: the face itself is not drawn until they are known
+    .task(id: circlesOn && !isPast) { if circlesOn && !isPast { await CirclesStore.shared(for: session).refresh() } }
   }
 }
 
@@ -319,15 +323,20 @@ struct Lollipops: View {
   }
 }
 
-/// The 饮食 face: eaten today against the goal (ink gauge, target tick at the goal). No share or no log: no face.
+/// The 饮食 face: eaten today against the goal (ink gauge, target tick at the goal). No share or no log: no face. Offline
+/// it is the cached copy and says so (kit-states stale; a tap syncs).
 struct TodayFoodFace: View {
   let day: String?
+  @ObservedObject var sync: SyncCoordinator
   let open: () -> Void
+  let syncNow: () -> Void
   @StateObject private var store: FoodStore
 
-  init(session: AccountSession, day: String?, open: @escaping () -> Void) {
+  init(session: AccountSession, day: String?, sync: SyncCoordinator, open: @escaping () -> Void, syncNow: @escaping () -> Void) {
     self.day = day
+    self.sync = sync
     self.open = open
+    self.syncNow = syncNow
     _store = StateObject(wrappedValue: FoodStore(session: session, cardOnly: true))
   }
 
@@ -335,8 +344,10 @@ struct TodayFoodFace: View {
     Group {
       if let n = store.nutrition, n.error == nil {
         let kcal = n.intake.kcal ?? 0, goal = n.goal.kcal ?? 0
-        Button(action: open) {
-          Face(icon: .soup, label: tr("饮食", "Food"), number: RecordFormat.num(n.intake.kcal), unit: "kcal") {
+        // the food log has no sync time of its own: only an offline page makes it stale
+        let age = TodayGlanceRules.staleAge(page: sync.status, card: nil)
+        Button { age != nil ? syncNow() : open() } label: {
+          Face(icon: .soup, label: tr("饮食", "Food"), number: RecordFormat.num(n.intake.kcal), unit: "kcal", dimmed: age != nil, age: age) {
             // no goal: a fixed 2,500 kcal scale (the design's), never a bar that is always full
             let top = goal > 0 ? max(goal * 1.2, kcal) : max(2500, kcal * 1.2)
             BulletGauge(value: kcal, max: top, target: goal > 0 ? goal...goal : nil, step: top / 5, tone: .text)
@@ -369,10 +380,7 @@ struct TodayCirclesFace: View {
     let others = store.overview?.members ?? []
     let trained = others.filter { $0.trained == true }.count
     let mode = CirclesFaceMode.of(listLoaded: store.list != nil, hasCircles: store.hasCircles, overviewLoaded: store.overview != nil)
-    Group {
-      if mode != .hidden { face(mode: mode, others: others, trained: trained) }
-    }
-    .task { await store.refresh() }
+    if mode != .hidden { face(mode: mode, others: others, trained: trained) }
   }
 
   private func face(mode: CirclesFaceMode, others: [MemberCard], trained: Int) -> some View {

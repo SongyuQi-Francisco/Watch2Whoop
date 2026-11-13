@@ -13,6 +13,10 @@ enum TodayParams {
   /// the design's stale example (kit-states 「6时前」) and two missed rounds of the Shortcut's three daytime runs
   /// (docs/shortcut-sync-spec.md); background app sync normally lands within an hour.
   static let syncStaleMinutes = 360
+  /// The capsule says 「缺N天」 only for the days just before today with nothing on the server: a gap the next sync or a
+  /// re-sync can still fill (the Shortcut and the app re-send the last 7 days). Older gaps stay in the sync center's list
+  /// (30 days) and never keep the capsule yellow.
+  static let missingRecentDays = 7
   /// Deep sleep within ±10 % of the 30-night average reads as usual (ink); further out it takes a colour. Nightly deep sleep
   /// varies by about 10–15 % within a person (Ohayon et al. 2004 meta-analysis); not a health threshold.
   static let deepUsualShare = 0.10

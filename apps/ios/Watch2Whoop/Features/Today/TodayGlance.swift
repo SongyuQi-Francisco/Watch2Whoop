@@ -202,6 +202,7 @@ enum SyncCapsuleState: Equatable {
   static func of(overall: SyncDiagnosis.Overall, page: SyncCoordinator.Status, card: TodayModel.SyncCard?,
                  staleAfter: Int = TodayParams.syncStaleMinutes) -> SyncCapsuleState {
     if overall == .syncing || overall == .processing || page == .syncing { return .busy }
+    // sync off wins over offline: the page being offline changes nothing until sync is turned on (sync center)
     if overall == .off { return .off }
     if case .failed = page { return .failed }
     if let card, card.state == "issue", card.tone == .bad { return .failed }
@@ -209,6 +210,7 @@ enum SyncCapsuleState: Equatable {
     if page == .offline { return .stale(tr("离线", "Offline")) }
     if overall == .attention || card?.state == "issue" { return .behind(card?.ago ?? tr("需处理", "Check")) }
     if let age = TodayGlanceRules.staleAge(page: page, card: card, staleAfter: staleAfter) { return .stale(age) }
+    if let n = card?.missingDays, n > 0 { return .behind(tr("缺\(n)天", "\(n) d missing")) }
     return .ok(ago: card?.ago)
   }
 }
@@ -221,6 +223,12 @@ extension TodayGlanceRules {
     if page == .offline { return tr("离线", "Offline") }
     if let m = card?.minutes, m >= staleAfter { return card?.ago ?? TodayModel.ago(m) }
     return nil
+  }
+
+  /// Days missing on the server among the `TodayParams.missingRecentDays` before `today` (today itself is still coming in).
+  static func recentMissing(_ dates: [String], today: String, window: Int = TodayParams.missingRecentDays) -> Int {
+    let from = LocalDay.add(today, -window)
+    return Set(dates.filter { $0 >= from && $0 < today }).count
   }
 
   /// The two edges of a range for drawing, once when they are the same value (a range of one value has one edge).

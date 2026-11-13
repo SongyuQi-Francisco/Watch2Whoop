@@ -145,6 +145,32 @@ final class TodayGlanceTests: XCTestCase {
     XCTAssertFalse(SyncCapsuleState.failed.opensCenter)
   }
 
+  /// Sync off and offline at once: 「未开同步」 (nothing comes in until sync is on; the center is where to turn it on).
+  func testSyncOffWinsOverOffline() {
+    XCTAssertEqual(SyncCapsuleState.of(overall: .off, page: .offline, card: nil), .off)
+  }
+
+  /// 「缺N天」: days just before today with nothing on the server; older gaps stay in the sync center's list.
+  func testMissingDaysAreTheRecentOnes() {
+    let dates = ["2026-01-09", "2026-01-08", "2026-01-08", "2026-01-02", "2025-12-20"]
+    XCTAssertEqual(TodayGlanceRules.recentMissing(dates, today: "2026-01-10"), 2)
+    XCTAssertEqual(TodayGlanceRules.recentMissing(["2026-01-10"], today: "2026-01-10"), 0)   // today is still coming in
+    XCTAssertEqual(TodayGlanceRules.recentMissing(["2026-01-03"], today: "2026-01-10"), 1)   // 7 days back is in
+    XCTAssertEqual(TodayGlanceRules.recentMissing(["2026-01-02"], today: "2026-01-10"), 0)
+    var card = TodayModel.SyncCard(state: "ok", label: "", tone: .good, ago: "2 分钟前", minutes: 2)
+    card.missingDays = 2
+    let st = SyncCapsuleState.of(overall: .ok, page: .idle, card: card)
+    XCTAssertEqual(st, .behind("缺2天"))
+    XCTAssertTrue(st.opensCenter)   // the sync center has the list and the re-sync
+    card.missingDays = 0
+    XCTAssertEqual(SyncCapsuleState.of(overall: .ok, page: .idle, card: card), .ok(ago: "2 分钟前"))
+    // read from the documents
+    let m = TodayModel(TodayInputs(today: ["date": "2026-01-10"], sync: ["state": "ok", "minutes_ago": 5],
+                                   missing: ["days": [["date": "2026-01-09", "kinds": ["sleep"]], ["date": "2025-12-01", "kinds": ["steps"]]]],
+                                   userToday: "2026-01-10"))
+    XCTAssertEqual(m.sync?.missingDays, 1)
+  }
+
   /// Offline or old data never looks like the latest: the capsule and the faces say how old it is.
   func testStaleDataSaysSo() {
     let fresh = TodayModel.SyncCard(state: "ok", label: "", tone: .good, ago: "2 分钟前", minutes: 2)
@@ -189,35 +215,88 @@ final class TodayGlanceTests: XCTestCase {
     XCTAssertEqual(CirclesFaceMode.of(listLoaded: true, hasCircles: false, overviewLoaded: false), .invite)
   }
 
-  /// The dial's middle (verdict, reason, bars) follows its content, not only the arc: another day or another reason with the
-  /// same arc draws again.
-  @MainActor func testTheDialRedrawsItsMiddle() throws {
+  // MARK: - the page in a window
+
+  @MainActor private func session(flags: Set<String>) throws -> AccountSession {
+    let cfg = AccountConfig(server: "https://body.example.com", userId: 7, displayName: "小林")
+    return AccountSession(config: cfg, api: PathStub.client(), db: try AppDatabase.inMemory(), flags: flags)
+  }
+
+  private static let noop = TodayGlanceActions(
+    l1: { _ in }, sheet: { _ in }, open: { _ in }, calendar: {}, backToToday: {}, step: { _ in }, syncTap: {}, syncCenter: {},
+    recoveryNext: { _ in }, food: {}, circles: {}, training: {})
+
+  /// A day without a recovery score and with `flag` as the reason.
+  private static func noScore(_ flag: String) -> TodayModel {
+    TodayModel(TodayInputs(today: ["date": "2026-01-02", "scores": ["today": ["flags": [flag: true]], "yesterday": [String: Any]()]],
+                           userToday: "2026-01-02"))
+  }
+
+  @MainActor private func window(_ view: AnyView) throws -> (UIWindow, UIHostingController<AnyView>) {
     guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else {
       throw XCTSkip("no window scene in this test host")
     }
-    func dial(_ word: String) -> AnyView {
-      AnyView(TickDial(fraction: 0, tone: .text, side: 200) { Text(word).font(.system(size: 28)).foregroundColor(.white) }
-        .frame(width: 220, height: 220).background(Color.black))
-    }
-    let host = UIHostingController(rootView: dial("昨晚没戴表"))
+    let host = UIHostingController(rootView: view)
     let window = UIWindow(windowScene: scene)
-    window.frame = CGRect(x: 0, y: 0, width: 220, height: 220)
+    window.frame = CGRect(x: 0, y: 0, width: 390, height: 600)
     window.rootViewController = host
     window.isHidden = false
-    defer { window.isHidden = true; window.rootViewController = nil }
+    return (window, host)
+  }
+
+  /// The picture once it has stopped changing.
+  @MainActor private func settled(_ view: UIView) -> Data? {
     func shot() -> Data? {
-      RunLoop.main.run(until: Date().addingTimeInterval(0.3))
-      return UIGraphicsImageRenderer(size: CGSize(width: 220, height: 220)).image { _ in
-        host.view.drawHierarchy(in: host.view.bounds, afterScreenUpdates: true)
+      UIGraphicsImageRenderer(size: CGSize(width: 390, height: 600)).image { _ in
+        view.drawHierarchy(in: view.bounds, afterScreenUpdates: true)
       }.pngData()
     }
-    let a = shot()
-    host.rootView = dial("缺 HRV")
-    let b = shot()
-    host.rootView = dial("昨晚没戴表")
-    let c = shot()
-    XCTAssertNotEqual(a, b, "a new reason must be drawn")
+    var last = shot(), same = 0
+    for _ in 0..<40 where same < 3 {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+      let now = shot()
+      same = now == last ? same + 1 : 0
+      last = now
+    }
+    return last
+  }
+
+  /// The dial's middle follows the day: another reason with the same (empty) arc is drawn on the same page. A dial that
+  /// compared only its arc (the first version) kept the old words here.
+  @MainActor func testTheDialRedrawsItsMiddle() throws {
+    PathStub.replies = [:]
+    let s = try session(flags: [])
+    func page(_ m: TodayModel) -> AnyView {
+      AnyView(TodayGlancePage(model: m, isPast: false, circlesOn: false, day: nil, session: s, run: Self.noop)
+        .environmentObject(s).environmentObject(AppModel()))
+    }
+    let notWorn = Self.noScore("no_sleep"), noHRV = Self.noScore("hrv_missing")
+    XCTAssertEqual(notWorn.glance.recovery.reason, "昨晚没戴表")
+    XCTAssertEqual(noHRV.glance.recovery.reason, "缺 HRV")
+    let (window, host) = try window(page(notWorn))
+    defer { window.isHidden = true; window.rootViewController = nil }
+    let a = settled(host.view)
+    host.rootView = page(noHRV)
+    let b = settled(host.view)
+    host.rootView = page(notWorn)
+    let c = settled(host.view)
+    XCTAssertNotEqual(a, b, "a new reason must be drawn in the dial")
     XCTAssertEqual(a, c)
+  }
+
+  /// Circles are a core feature: with nothing cached the face is not drawn yet, and the page still asks for the circles (the
+  /// first version asked from inside the face, so it never asked and the face never came).
+  @MainActor func testThePageAsksForTheCirclesWithNothingCached() throws {
+    PathStub.replies = [:]
+    PathStub.paths = []
+    let s = try session(flags: ["friends"])
+    XCTAssertNil(CirclesStore.shared(for: s).list)
+    let view = AnyView(TodayGlancePage(model: Self.noScore("no_sleep"), isPast: false, circlesOn: true, day: nil, session: s,
+                                       run: Self.noop).environmentObject(s).environmentObject(AppModel()))
+    let (window, _) = try window(view)
+    defer { window.isHidden = true; window.rootViewController = nil }
+    for _ in 0..<50 where !PathStub.paths.contains(Endpoint.Circles.list) { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) }
+    XCTAssertTrue(PathStub.paths.contains(Endpoint.Circles.list), "\(PathStub.paths)")
   }
 
   // MARK: - the glance built from the documents
