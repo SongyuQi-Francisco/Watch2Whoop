@@ -7,6 +7,18 @@ import Foundation
 /// Baselines are the server's (trends/series.py `baseline_band`: mean ± 1 SD of the 60 days before the day, at least 14
 /// readings); for a metric without a band the same window is computed on the phone from the cached series (`DayBaseline`).
 enum TodayParams {
+  // MARK: - 2.0.1 Today: stale data and the sleep sheet's rows
+
+  /// The page's data counts as stale (sync capsule and faces say so) once the server's latest data is this old. Six hours:
+  /// the design's stale example (kit-states 「6时前」) and two missed rounds of the Shortcut's three daytime runs
+  /// (docs/shortcut-sync-spec.md); background app sync normally lands within an hour.
+  static let syncStaleMinutes = 360
+  /// Deep sleep within ±10 % of the 30-night average reads as usual (ink); further out it takes a colour. Nightly deep sleep
+  /// varies by about 10–15 % within a person (Ohayon et al. 2004 meta-analysis); not a health threshold.
+  static let deepUsualShare = 0.10
+  /// Sleep regularity within ±3 points of the 30-night figure reads as usual (the score's own night-to-night noise).
+  static let regularityUsualPoints = 3.0
+
   // MARK: - which day the documents describe
 
   /// Days of the `/trends` document behind Trends' 「今天」 and the Today tab's new blocks: the 60 days before the day

@@ -3,10 +3,12 @@ import SwiftUI
 /// What a tap on the Today page opens (2.0.1): the three L1 sheets of the hero and its readings.
 enum TodayL1: String, Identifiable {
   case recovery, strain, sleep
+  /// The attention face: what is off on the day, and the way to 体征 (the health monitor).
+  case attention
   var id: String { rawValue }
 
   /// Height of the half sheet (design: recovery 444, strain / sleep a little taller for their fourth row).
-  var height: CGFloat { self == .recovery ? 444 : 500 }
+  var height: CGFloat { self == .recovery || self == .attention ? 444 : 500 }
 }
 
 /// What the page asks of `TodayView` (the page's state stays there).
@@ -16,6 +18,8 @@ struct TodayGlanceActions {
   var open: (TodayOpen) -> Void
   var calendar: () -> Void
   var backToToday: () -> Void
+  /// One day back (−1) or forward (+1): the swipe, and the dial's VoiceOver actions.
+  var step: (Int) -> Void
   var syncTap: () -> Void
   var syncCenter: () -> Void
   var recoveryNext: (RecoveryNext.Action) -> Void
@@ -70,7 +74,7 @@ struct TodayGlancePage: View, Equatable {
         Button(action: run.backToToday) { Chip(label: tr("回到今天", "Today")) }.buttonStyle(PressScale())
       }
       Spacer(minLength: 0)
-      if !isPast { TodaySyncCapsule(card: model.sync, tap: run.syncTap, center: run.syncCenter) }
+      TodaySyncCapsule(card: model.sync, page: session.sync, tap: run.syncTap, center: run.syncCenter)
     }
     .frame(height: 44)
   }
@@ -117,7 +121,6 @@ struct TodayGlancePage: View, Equatable {
         }
         .frame(width: side * 0.66)
       }
-      .equatable()
     }
     .buttonStyle(PressScale())
     .frame(maxWidth: .infinity)
@@ -128,6 +131,8 @@ struct TodayGlancePage: View, Equatable {
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(dialLabel)
     .accessibilityAddTraits(.isButton)
+    .accessibilityAction(named: Text(tr("前一天", "Previous day"))) { run.step(-1) }
+    .accessibilityAction(named: Text(tr("后一天", "Next day"))) { if isPast { run.step(1) } }
   }
 
   private var dialLabel: String {
@@ -179,25 +184,41 @@ struct TodayGlancePage: View, Equatable {
 
   private var faces: some View {
     HStack(spacing: 8) {
-      slotOne
+      TodaySlotOne(model: model, sync: session.sync, run: run)
       TodayFoodFace(session: session, day: day, open: run.food)
       if circlesOn && !isPast { TodayCirclesFace(session: session, open: run.circles) }
     }
   }
+}
 
-  /// Slot 1: the attention face when something is off on the day, else 体征 (the health monitor), else nothing.
-  @ViewBuilder private var slotOne: some View {
+/// Slot 1: the attention face when something is off on the day (tap = the attention sheet, which also leads to 体征), else
+/// 体征 (the health monitor), else nothing. When the page shows old data it says so (kit-states stale: refresh-cw, the
+/// number in text2, the age in mid; a tap syncs).
+struct TodaySlotOne: View {
+  let model: TodayModel
+  @ObservedObject var sync: SyncCoordinator
+  let run: TodayGlanceActions
+
+  var body: some View {
+    let age = TodayGlanceRules.staleAge(page: sync.status, card: model.sync)
+    let g = model.glance
     if let a = model.attention.first {
-      Button { run.open(a.open) } label: {
-        Face(icon: .circleAlert, label: a.label, number: a.value, unit: a.unit, dot: a.tone) {
+      Button { age != nil ? run.syncTap() : run.l1(.attention) } label: {
+        Face(icon: .circleAlert, label: a.label, number: a.value, unit: a.unit, dimmed: age != nil, dot: age == nil ? a.tone : nil, age: age) {
           if !g.attentionWeek.isEmpty { Lollipops(values: g.attentionWeek, tone: a.tone) } else { Color.clear }
         }
       }
       .buttonStyle(PressScale())
+      .contextMenu {
+        Button { run.l1(.attention) } label: { Text(tr("看详情", "Details")) }
+        if !model.vitals.isEmpty { Button { run.sheet(.monitor) } label: { Text(tr("体征", "Vitals")) } }
+      }
     } else if !model.vitals.isEmpty {
       let c = TodayGlanceRules.vitalsCount(model.vitals)
-      Button { run.sheet(.monitor) } label: {
-        Face(icon: .heartPulse, label: tr("体征", "Vitals"), number: "\(c.ok)/\(c.total)") { VitalPills(vitals: model.vitals) }
+      Button { age != nil ? run.syncTap() : run.sheet(.monitor) } label: {
+        Face(icon: .heartPulse, label: tr("体征", "Vitals"), number: "\(c.ok)/\(c.total)", dimmed: age != nil, age: age) {
+          VitalPills(vitals: model.vitals)
+        }
       }
       .buttonStyle(PressScale())
     }
@@ -347,8 +368,16 @@ struct TodayCirclesFace: View {
   var body: some View {
     let others = store.overview?.members ?? []
     let trained = others.filter { $0.trained == true }.count
+    let mode = CirclesFaceMode.of(listLoaded: store.list != nil, hasCircles: store.hasCircles, overviewLoaded: store.overview != nil)
+    Group {
+      if mode != .hidden { face(mode: mode, others: others, trained: trained) }
+    }
+    .task { await store.refresh() }
+  }
+
+  private func face(mode: CirclesFaceMode, others: [MemberCard], trained: Int) -> some View {
     Button(action: open) {
-      if store.hasCircles || store.list == nil {
+      if mode == .count {
         Face(icon: .users, label: tr("圈子", "Circles"), number: "\(trained)", unit: tr("人练了", "trained"),
              dot: store.unread > 0 ? .bad : nil) {
           HStack(spacing: -6) {
@@ -371,20 +400,22 @@ struct TodayCirclesFace: View {
       }
     }
     .buttonStyle(PressScale())
-    .task { await store.refresh() }
   }
 }
 
 /// The header's sync capsule, observing the sync service on its own (the page around it stays Equatable on its model).
 struct TodaySyncCapsule: View {
   let card: TodayModel.SyncCard?
+  /// The page's own refresh (offline = the page is the cached copy).
+  @ObservedObject var page: SyncCoordinator
   let tap: () -> Void
   let center: () -> Void
   @ObservedObject private var sync = HealthSyncService.shared
 
   var body: some View {
-    SyncCapsule(state: SyncCapsuleState.of(overall: sync.diagnosis.overall, card: card, missingDays: nil))
-      .onTapGesture(perform: tap)
+    let state = SyncCapsuleState.of(overall: sync.diagnosis.overall, page: page.status, card: card)
+    SyncCapsule(state: state)
+      .onTapGesture { state.opensCenter ? center() : tap() }
       .onLongPressGesture(perform: center)
       .accessibilityAddTraits(.isButton)
       .accessibilityAction(named: Text(tr("同步中心", "Sync center")), center)

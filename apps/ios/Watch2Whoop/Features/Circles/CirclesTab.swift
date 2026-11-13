@@ -239,7 +239,9 @@ private struct CircleRouting: ViewModifier {
     case .circles?, .circleJoin?:
       if session.circlesTab { selection = .circles } else { app.route = nil }
     case .tab(let t)?:
-      selection = t.landing(circles: session.circlesTab)
+      let d = t.destination(circles: session.circlesTab)
+      if let seg = d.segment { JarvisPageLink.shared.segment = seg }   // 饮食 is a segment of 记录
+      selection = d.tab
       app.route = nil
     default:
       break

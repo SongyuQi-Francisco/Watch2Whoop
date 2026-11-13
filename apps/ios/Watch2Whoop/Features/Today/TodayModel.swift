@@ -134,6 +134,8 @@ struct TodayModel: Equatable {
     /// The overview's `issue`, when the server sees sync stuck (SyncStuck).
     var issueCode: String?
     var issueLabel: String?
+    /// Minutes since the server's latest data (`minutes_ago`), for the stale state.
+    var minutes: Int?
   }
 
   struct Circles: Equatable {
@@ -368,7 +370,7 @@ struct TodayModel: Equatable {
       let mins = (s["minutes_ago"] as? NSNumber)?.intValue
       let issue = s["issue"] as? [String: Any]
       sync = SyncCard(state: state, label: s["label"] as? String ?? "", tone: tone, ago: mins.map(Self.ago),
-                      issueCode: issue?["code"] as? String, issueLabel: issue?["label"] as? String)
+                      issueCode: issue?["code"] as? String, issueLabel: issue?["label"] as? String, minutes: mins)
       coverage = BackfillCoverage(s["coverage"] as? [String: Any])
     }
 

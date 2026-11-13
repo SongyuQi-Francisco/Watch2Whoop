@@ -176,27 +176,74 @@ enum TodayGlanceRules {
   }
 }
 
-/// The capsule at the top right of every tab root (kit-states: ok / syncing / behind / failed).
+/// The capsule at the top right of every tab root (kit-states: ok / syncing / behind / failed, plus stale and off). What is
+/// on screen must never look newer than it is (sync is P0): an offline page or old data says so.
 enum SyncCapsuleState: Equatable {
   case ok(ago: String?)
   case busy
+  /// The page shows old data (offline, or the latest data is older than `TodayParams.syncStaleMinutes`): refresh-cw + age.
+  case stale(String)
+  /// Something needs the user (permission, a stuck sync): alert + a short label.
   case behind(String)
+  /// Health sync is not set up or turned off.
+  case off
   case failed
 
-  /// From the sync service's overall state and the server's overview card. `behind` names the missing days when the
-  /// overview's coverage says so, else the age.
-  static func of(overall: SyncDiagnosis.Overall, card: TodayModel.SyncCard?, missingDays: Int?) -> SyncCapsuleState {
-    switch overall {
-    case .syncing, .processing: return .busy
-    case .attention:
-      if let card, card.state == "issue", card.tone == .bad { return .failed }
-      return .behind(missingDays.map { tr("缺\($0)天", "\($0) d missing") } ?? card?.ago ?? tr("需处理", "Check"))
-    case .ok, .off:
-      if let card, card.state == "issue" {
-        return card.tone == .bad ? .failed : .behind(card.ago ?? tr("需处理", "Check"))
-      }
-      return .ok(ago: card?.ago)
+  /// A tap opens the sync center (it needs the user, or there is nothing to start); otherwise a tap syncs now / retries.
+  var opensCenter: Bool {
+    switch self {
+    case .busy, .behind, .off: return true
+    case .ok, .stale, .failed: return false
     }
+  }
+
+  /// From the phone's sync (`HealthSyncService.diagnosis.overall`), the page's own refresh (`SyncCoordinator.status`) and
+  /// the server's overview card (`minutes_ago`, issue).
+  static func of(overall: SyncDiagnosis.Overall, page: SyncCoordinator.Status, card: TodayModel.SyncCard?,
+                 staleAfter: Int = TodayParams.syncStaleMinutes) -> SyncCapsuleState {
+    if overall == .syncing || overall == .processing || page == .syncing { return .busy }
+    if overall == .off { return .off }
+    if case .failed = page { return .failed }
+    if let card, card.state == "issue", card.tone == .bad { return .failed }
+    // offline first: the phone's own check also flags attention then, and 「离线」 says what is going on
+    if page == .offline { return .stale(tr("离线", "Offline")) }
+    if overall == .attention || card?.state == "issue" { return .behind(card?.ago ?? tr("需处理", "Check")) }
+    if let age = TodayGlanceRules.staleAge(page: page, card: card, staleAfter: staleAfter) { return .stale(age) }
+    return .ok(ago: card?.ago)
+  }
+}
+
+extension TodayGlanceRules {
+  /// The age to show on faces and the capsule when the page shows old data: 「离线」 when the refresh could not reach the
+  /// server (the page is the cached copy), the server's age of the latest data when it is past `staleAfter` minutes; nil = fresh.
+  static func staleAge(page: SyncCoordinator.Status, card: TodayModel.SyncCard?,
+                       staleAfter: Int = TodayParams.syncStaleMinutes) -> String? {
+    if page == .offline { return tr("离线", "Offline") }
+    if let m = card?.minutes, m >= staleAfter { return card?.ago ?? TodayModel.ago(m) }
+    return nil
+  }
+
+  /// The two edges of a range for drawing, once when they are the same value (a range of one value has one edge).
+  static func edges(_ r: ClosedRange<Double>) -> [Double] {
+    r.lowerBound == r.upperBound ? [r.lowerBound] : [r.lowerBound, r.upperBound]
+  }
+}
+
+/// What the 圈子 face shows: nothing until the circles are known (never a made-up 「0 人练了」), the count once the member
+/// overview is there, an invite when the list says there is no circle.
+enum CirclesFaceMode: Equatable {
+  case hidden, count, invite
+
+  static func of(listLoaded: Bool, hasCircles: Bool, overviewLoaded: Bool) -> CirclesFaceMode {
+    if hasCircles { return overviewLoaded ? .count : .hidden }
+    return listLoaded ? .invite : .hidden
+  }
+}
+
+extension AppTab {
+  /// Where a link or a saved tab lands, with the 记录 segment to open: 饮食 lands on 记录 → 饮食 (2.0.1).
+  func destination(circles: Bool) -> (tab: AppTab, segment: RecordTab.Segment?) {
+    self == .food ? (.record, .food) : (landing(circles: circles), nil)
   }
 }
 

@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import Watch2Whoop
 
@@ -113,19 +114,110 @@ final class TodayGlanceTests: XCTestCase {
     XCTAssertNil(TodayGlanceRules.vitalPosition(list[2]))
   }
 
-  // MARK: - sync capsule
+  // MARK: - sync capsule (sync visibility is P0)
 
   func testSyncCapsuleStates() {
-    let ok = TodayModel.SyncCard(state: "ok", label: "", tone: .good, ago: "2 分钟前")
-    XCTAssertEqual(SyncCapsuleState.of(overall: .ok, card: ok, missingDays: nil), .ok(ago: "2 分钟前"))
-    XCTAssertEqual(SyncCapsuleState.of(overall: .syncing, card: ok, missingDays: nil), .busy)
-    XCTAssertEqual(SyncCapsuleState.of(overall: .attention, card: ok, missingDays: 2), .behind("缺2天"))
+    let ok = TodayModel.SyncCard(state: "ok", label: "", tone: .good, ago: "2 分钟前", minutes: 2)
+    XCTAssertEqual(SyncCapsuleState.of(overall: .ok, page: .idle, card: ok), .ok(ago: "2 分钟前"))
+    XCTAssertEqual(SyncCapsuleState.of(overall: .syncing, page: .idle, card: ok), .busy)
+    XCTAssertEqual(SyncCapsuleState.of(overall: .ok, page: .syncing, card: ok), .busy)
+    XCTAssertEqual(SyncCapsuleState.of(overall: .attention, page: .idle, card: ok), .behind("2 分钟前"))
     let bad = TodayModel.SyncCard(state: "issue", label: "", tone: .bad, ago: "6 小时前", issueCode: "x")
-    XCTAssertEqual(SyncCapsuleState.of(overall: .ok, card: bad, missingDays: nil), .failed)
-    XCTAssertEqual(SyncCapsuleState.of(overall: .attention, card: bad, missingDays: nil), .failed)
+    XCTAssertEqual(SyncCapsuleState.of(overall: .ok, page: .idle, card: bad), .failed)
+    XCTAssertEqual(SyncCapsuleState.of(overall: .attention, page: .idle, card: bad), .failed)
+    XCTAssertEqual(SyncCapsuleState.of(overall: .ok, page: .failed("x"), card: ok), .failed)
     let mid = TodayModel.SyncCard(state: "issue", label: "", tone: .mid, ago: "6 小时前")
-    XCTAssertEqual(SyncCapsuleState.of(overall: .ok, card: mid, missingDays: nil), .behind("6 小时前"))
-    XCTAssertEqual(SyncCapsuleState.of(overall: .ok, card: nil, missingDays: nil), .ok(ago: nil))
+    XCTAssertEqual(SyncCapsuleState.of(overall: .ok, page: .idle, card: mid), .behind("6 小时前"))
+    XCTAssertEqual(SyncCapsuleState.of(overall: .ok, page: .idle, card: nil), .ok(ago: nil))
+  }
+
+  /// Sync turned off is never 「已同步」, and a tap opens the sync center instead of syncing.
+  func testSyncOffIsItsOwnStateAndOpensTheCenter() {
+    let ok = TodayModel.SyncCard(state: "ok", label: "", tone: .good, ago: "2 分钟前", minutes: 2)
+    let off = SyncCapsuleState.of(overall: .off, page: .idle, card: ok)
+    XCTAssertEqual(off, .off)
+    XCTAssertTrue(off.opensCenter)
+    XCTAssertEqual(SyncCapsuleState.of(overall: .off, page: .idle, card: nil), .off)
+    XCTAssertTrue(SyncCapsuleState.busy.opensCenter)
+    XCTAssertTrue(SyncCapsuleState.behind("x").opensCenter)
+    XCTAssertFalse(SyncCapsuleState.ok(ago: nil).opensCenter)
+    XCTAssertFalse(SyncCapsuleState.stale("x").opensCenter)
+    XCTAssertFalse(SyncCapsuleState.failed.opensCenter)
+  }
+
+  /// Offline or old data never looks like the latest: the capsule and the faces say how old it is.
+  func testStaleDataSaysSo() {
+    let fresh = TodayModel.SyncCard(state: "ok", label: "", tone: .good, ago: "2 分钟前", minutes: 2)
+    let old = TodayModel.SyncCard(state: "ok", label: "", tone: .good, ago: "7 小时前", minutes: 420)
+    XCTAssertEqual(SyncCapsuleState.of(overall: .ok, page: .offline, card: fresh), .stale("离线"))
+    XCTAssertEqual(SyncCapsuleState.of(overall: .attention, page: .offline, card: fresh), .stale("离线"))
+    XCTAssertEqual(SyncCapsuleState.of(overall: .ok, page: .idle, card: old), .stale("7 小时前"))
+    XCTAssertEqual(SyncCapsuleState.of(overall: .ok, page: .idle, card: fresh), .ok(ago: "2 分钟前"))
+    XCTAssertEqual(TodayGlanceRules.staleAge(page: .offline, card: nil), "离线")
+    XCTAssertEqual(TodayGlanceRules.staleAge(page: .idle, card: old), "7 小时前")
+    XCTAssertNil(TodayGlanceRules.staleAge(page: .idle, card: fresh))
+    XCTAssertNil(TodayGlanceRules.staleAge(page: .idle, card: nil))
+    let edge = TodayModel.SyncCard(state: "ok", label: "", tone: .good, ago: nil, minutes: TodayParams.syncStaleMinutes)
+    XCTAssertEqual(TodayGlanceRules.staleAge(page: .idle, card: edge), TodayModel.ago(TodayParams.syncStaleMinutes))
+    // the server's card is read with its minutes
+    let m = TodayModel(TodayInputs(today: ["date": "2026-01-02"], sync: ["state": "ok", "minutes_ago": 420], userToday: "2026-01-02"))
+    XCTAssertEqual(m.sync?.minutes, 420)
+  }
+
+  // MARK: - drawing, links, faces
+
+  func testARangeOfOneValueHasOneEdge() {
+    XCTAssertEqual(TodayGlanceRules.edges(5...5), [5])
+    XCTAssertEqual(TodayGlanceRules.edges(2...7), [2, 7])
+  }
+
+  func testAFoodLinkOpensTheFoodSegment() {
+    XCTAssertEqual(AppTab.food.destination(circles: true).tab, .record)
+    XCTAssertEqual(AppTab.food.destination(circles: true).segment, .food)
+    XCTAssertEqual(AppTab.food.destination(circles: false).segment, .food)
+    XCTAssertEqual(AppTab.trends.destination(circles: true).tab, .trends)
+    XCTAssertNil(AppTab.trends.destination(circles: true).segment)
+    XCTAssertEqual(AppTab.circles.destination(circles: false).tab, .today)
+  }
+
+  /// No circles data yet: no face (never 「0 人练了」 before the members are known).
+  func testTheCirclesFaceWaitsForItsData() {
+    XCTAssertEqual(CirclesFaceMode.of(listLoaded: false, hasCircles: false, overviewLoaded: false), .hidden)
+    XCTAssertEqual(CirclesFaceMode.of(listLoaded: true, hasCircles: true, overviewLoaded: false), .hidden)
+    XCTAssertEqual(CirclesFaceMode.of(listLoaded: true, hasCircles: true, overviewLoaded: true), .count)
+    XCTAssertEqual(CirclesFaceMode.of(listLoaded: false, hasCircles: true, overviewLoaded: true), .count)
+    XCTAssertEqual(CirclesFaceMode.of(listLoaded: true, hasCircles: false, overviewLoaded: false), .invite)
+  }
+
+  /// The dial's middle (verdict, reason, bars) follows its content, not only the arc: another day or another reason with the
+  /// same arc draws again.
+  @MainActor func testTheDialRedrawsItsMiddle() throws {
+    guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else {
+      throw XCTSkip("no window scene in this test host")
+    }
+    func dial(_ word: String) -> AnyView {
+      AnyView(TickDial(fraction: 0, tone: .text, side: 200) { Text(word).font(.system(size: 28)).foregroundColor(.white) }
+        .frame(width: 220, height: 220).background(Color.black))
+    }
+    let host = UIHostingController(rootView: dial("昨晚没戴表"))
+    let window = UIWindow(windowScene: scene)
+    window.frame = CGRect(x: 0, y: 0, width: 220, height: 220)
+    window.rootViewController = host
+    window.isHidden = false
+    defer { window.isHidden = true; window.rootViewController = nil }
+    func shot() -> Data? {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+      return UIGraphicsImageRenderer(size: CGSize(width: 220, height: 220)).image { _ in
+        host.view.drawHierarchy(in: host.view.bounds, afterScreenUpdates: true)
+      }.pngData()
+    }
+    let a = shot()
+    host.rootView = dial("缺 HRV")
+    let b = shot()
+    host.rootView = dial("昨晚没戴表")
+    let c = shot()
+    XCTAssertNotEqual(a, b, "a new reason must be drawn")
+    XCTAssertEqual(a, c)
   }
 
   // MARK: - the glance built from the documents

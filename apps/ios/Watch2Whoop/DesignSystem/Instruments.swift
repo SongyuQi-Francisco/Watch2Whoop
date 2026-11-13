@@ -5,12 +5,9 @@ import SwiftUI
 // colour, scales as ticks. No axes, no grid, no gradients. Plain shapes and Canvas (iOS 16).
 
 /// The hero dial: a 1.5 pt track, a 5 pt arc from 12 o'clock, a tick scale inside (long ticks = origin and zone edges),
-/// your usual as a grey lane between the arc and the ticks. The content (number, label, verdict) sits in the middle.
-struct TickDial<Center: View>: View, Equatable {
-  static func == (a: TickDial, b: TickDial) -> Bool {
-    a.fraction == b.fraction && a.tone == b.tone && a.usual == b.usual && a.zones == b.zones && a.side == b.side
-  }
-
+/// your usual as a grey lane between the arc and the ticks. The content (number, label, verdict) sits in the middle. Not
+/// Equatable on purpose: the middle (verdict, reason, the 7 bars) changes with the day and the language, not only the arc.
+struct TickDial<Center: View>: View {
   /// 0…1 of the scale; 0 = no arc (no data).
   let fraction: Double
   let tone: Tone
@@ -103,7 +100,7 @@ struct BulletGauge: View, Equatable {
         if let t = target {
           Rectangle().fill(tone.color.opacity(0.22)).frame(width: Swift.max(1, x(t.upperBound) - x(t.lowerBound)), height: 10)
             .offset(x: x(t.lowerBound), y: 1)
-          ForEach([t.lowerBound, t.upperBound], id: \.self) { v in
+          ForEach(Array(TodayGlanceRules.edges(t).enumerated()), id: \.offset) { _, v in
             Rectangle().fill(tone.color).frame(width: 1.5, height: 12).offset(x: x(v) - 0.75, y: 0)
           }
         }
@@ -209,7 +206,10 @@ struct SyncCapsule: View {
           guard !reduceMotion else { return }
           withAnimation(.linear(duration: 1.1).repeatForever(autoreverses: false)) { turning = true }
         }
+        .onDisappear { turning = false }   // the next sync turns it again
+    case .stale: Icon(.refreshCw, size: 15).foregroundColor(Palette.mid)
     case .behind: Icon(.circleAlert, size: 15).foregroundColor(Palette.mid)
+    case .off: Icon(.circleAlert, size: 15).foregroundColor(Palette.text2)
     case .failed: Icon(.circleAlert, size: 15).foregroundColor(Palette.bad)
     }
   }
@@ -218,7 +218,9 @@ struct SyncCapsule: View {
     switch state {
     case .ok(let ago): return ago ?? tr("已同步", "Synced")
     case .busy: return tr("同步中", "Syncing")
+    case .stale(let s): return s
     case .behind(let s): return s
+    case .off: return tr("未开同步", "Sync off")
     case .failed: return tr("重试", "Retry")
     }
   }
@@ -227,7 +229,8 @@ struct SyncCapsule: View {
     switch state {
     case .ok: return Palette.text2
     case .busy: return Palette.text2
-    case .behind: return Palette.mid
+    case .stale, .behind: return Palette.mid
+    case .off: return Palette.text2
     case .failed: return Palette.bad
     }
   }
@@ -280,7 +283,7 @@ struct UsualBars: View, Equatable {
       ZStack(alignment: .topLeading) {
         if let u = usual {
           Rectangle().fill(Palette.band).frame(width: w, height: Swift.max(1, y(u.lowerBound) - y(u.upperBound))).offset(y: y(u.upperBound))
-          ForEach([u.lowerBound, u.upperBound], id: \.self) { v in
+          ForEach(Array(TodayGlanceRules.edges(u).enumerated()), id: \.offset) { _, v in
             Path { p in p.move(to: CGPoint(x: 0, y: y(v))); p.addLine(to: CGPoint(x: w, y: y(v))) }
               .stroke(Palette.bandLine, style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
           }

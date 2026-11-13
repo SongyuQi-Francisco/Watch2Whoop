@@ -22,15 +22,10 @@ struct TodayView: View {
   @SceneStorage("w2w.record.segment") private var recordSegment: RecordTab.Segment = .training
   @State private var trainingOpen = false
   @State private var l1: TodayL1?
-  // Flag `ui_ai_first` (#279, TodayHome.swift). With it off the store never starts and `content` below is the whole page.
-  @StateObject private var home = TodayHomeStore()
-  @State private var homeSheet: TodayHomeSheet?
-  @State private var afterHomeSheet: TodayHomeDest?
   // Flag `slim_mode` (#126, DailyQuote.swift). Off, or with the normal look, nothing of it is drawn.
   @StateObject private var quotes = DailyQuoteStore()
   @State private var quoteLink: QuoteLink?
 
-  private var aiFirst: Bool { TodayHome.isOn(session.flags) }
   private var showsQuote: Bool { session.appearance?.showsQuote == true }
 
   init(session: AccountSession) {
@@ -48,14 +43,11 @@ struct TodayView: View {
           TodayL1Sheet(kind: k, model: store.model, session: session, close: { l1 = nil },
                        explain: { key, title in after { sheet = .explain(kind: "metric", key: key, title: title) } },
                        load: { after { sheet = .load } },
+                       openItem: { o in after { open(o) } },
+                       monitor: { after { sheet = .monitor } },
                        allMetrics: { k in after { allMetrics(k) } })
             .environmentObject(session)
             .l1Detents(k.height)
-        }
-        .sheet(item: $homeSheet, onDismiss: afterHomeSheetClosed) { s in
-          TodayHomeSheetView(sheet: s, model: store.model, flags: session.flags, circles: session.circlesTab, store: home,
-                             close: { homeSheet = nil }, go: { afterHomeSheet = $0; homeSheet = nil })
-            .environmentObject(session)
         }
     }
     .sheet(item: $sheet) { s in
@@ -86,18 +78,8 @@ struct TodayView: View {
     .onReceive(HealthSyncService.shared.$consentRequired.removeDuplicates().dropFirst()) { required in
       if !required { Task { await store.refresh() } }
     }
-    .task(id: aiFirst) { await runHome() }
     .task(id: showsQuote) { if showsQuote { await quotes.refresh(session.api) } }
     .sheet(item: $quoteLink) { SafariView(url: $0.url) { quoteLink = nil }.ignoresSafeArea() }
-    .onChange(of: home.home) { _ in maybeOverview() }
-    .onChange(of: store.hasData) { _ in maybeOverview() }
-    .onChange(of: sheet) { _ in maybeOverview() }
-    .onChange(of: tab) { _ in maybeOverview() }
-    .onReceive(TodayHomeLink.shared.$pending) { d in
-      guard let d else { return }
-      TodayHomeLink.shared.pending = nil
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { go(d) }
-    }
   }
 
   private var page: some View {
@@ -129,10 +111,7 @@ struct TodayView: View {
       }
       .background(Palette.bg.ignoresSafeArea())
       .statusBarCover()
-      .refreshable {
-        await store.refresh()
-        if aiFirst { await home.refresh() }
-      }
+      .refreshable { await store.refresh() }
       .toast($toast)
       .modifier(DaySwipe { store.step($0) })
       .onAppear {
@@ -144,7 +123,6 @@ struct TodayView: View {
         if let k = ProcessInfo.processInfo.environment["W2W_DEV_L1"].flatMap(TodayL1.init(rawValue:)) {
           DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { l1 = k }
         }
-        if aiFirst { DevShot.applyHome { go($0) } }
         #endif
       }
       .onChange(of: store.hasData) { has in if has && PerfProbe.autoScroll { autoScroll(proxy) } }
@@ -187,13 +165,14 @@ struct TodayView: View {
       open: open,
       calendar: { sheet = .calendar },
       backToToday: { store.select(nil) },
-      syncTap: {
-        if HealthSyncService.shared.diagnosis.overall == .syncing { app.route = .syncCenter; return }
-        Task { _ = await HealthSyncService.shared.syncNow(); await store.refresh() }
-      },
+      step: { store.step($0) },
+      syncTap: { Task { _ = await HealthSyncService.shared.syncNow(); await store.refresh() } },
       syncCenter: { app.route = .syncCenter },
       recoveryNext: runRecoveryNext,
-      food: { go(.food) },
+      food: {
+        recordSegment = .food   // 饮食 is a segment of 记录 (2.0.1)
+        tab = .record
+      },
       circles: { tab = .circles },
       training: { trainingOpen = true })
   }
@@ -252,63 +231,6 @@ struct TodayView: View {
     case .explainMetric(let k, let t): sheet = .explain(kind: "metric", key: k, title: t)
     case .explainStatus(let k, let t): sheet = .explain(kind: "status", key: k, title: t)
     }
-  }
-
-  // MARK: - flag ui_ai_first: its links and sheets still land here (the page itself is the 2.0.1 glance)
-
-  private func go(_ d: TodayHomeDest) {
-    switch d {
-    case .sheet(let s): tab = .today; sheet = s
-    case .sleepDetail: tab = .today; path.append(SleepRoute(date: store.model.sleepDate))
-    case .trends(let mode):
-      TrendsLink.shared.open(mode: mode)
-      tab = .trends
-    case .record(let segment):
-      recordSegment = segment
-      tab = .record
-    case .food:
-      recordSegment = .food   // 饮食 is a segment of 记录 (2.0.1)
-      tab = .record
-    case .circles: tab = .circles
-    case .me: tab = .me
-    case .bodyStatus: tab = .today; homeSheet = .bodyStatus
-    case .bedtimeGoal: tab = .today; homeSheet = .bedtimeGoal
-    case .focus: tab = .today; homeSheet = .focus
-    case .allFeatures: tab = .today; homeSheet = .allFeatures
-    }
-  }
-
-  private func afterHomeSheetClosed() {
-    if let d = afterHomeSheet {
-      afterHomeSheet = nil
-      go(d)
-    }
-    maybeOverview()
-  }
-
-  /// Follows the flag: on = the account's document and, once, the first screen; off = nothing.
-  private func runHome() async {
-    guard aiFirst else { home.stop(); return }
-    home.start(session)
-    maybeOverview()
-    await home.refresh()
-    // the sign-in flows may still be over the page: try again for a moment (afterwards any change on this page tries)
-    for _ in 0..<5 where !home.overviewOpened && home.home?.overview != nil {
-      maybeOverview()
-      try? await Task.sleep(nanoseconds: 2_000_000_000)
-    }
-  }
-
-  /// The first screen (design 4.6), once: on today's Today, with the data there, when nothing else is on screen; right away, or
-  /// when that closes (web: ui-ai-first.js maybeOverview). Seen as soon as it opens.
-  private func maybeOverview() {
-    guard aiFirst, tab == .today, store.date == nil, store.hasData, sheet == nil, homeSheet == nil, !home.overviewOpened,
-          let o = home.home?.overview else { return }
-    let root = UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.rootViewController
-    guard root?.presentedViewController == nil else { return }
-    home.overviewOpened = true
-    homeSheet = .overview(o)
-    home.overviewSeen()
   }
 
   /// `W2W_PERF_SCROLL=1`: scroll down and up three times while the frame meter counts (PerfProbe).
@@ -530,12 +452,6 @@ enum DevShot {
     }
   }
 
-  /// Flag `ui_ai_first`: `SIMCTL_CHILD_W2W_DEV_HOME=all|focus|status|bedtime` opens that sheet of the page.
-  static func applyHome(go: @escaping (TodayHomeDest) -> Void) {
-    let dest: [String: TodayHomeDest] = ["all": .allFeatures, "focus": .focus, "status": .bodyStatus, "bedtime": .bedtimeGoal]
-    guard let d = ProcessInfo.processInfo.environment["W2W_DEV_HOME"].flatMap({ dest[$0] }) else { return }
-    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { go(d) }
-  }
 }
 #endif
 

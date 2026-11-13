@@ -67,8 +67,16 @@ struct MainTabView: View {
     .onChange(of: session.circlesTab) { on in
       if selection == .circles && !on { selection = .today }
     }
-    .onChange(of: selection) { s in if s == .food { selection = .record } }   // a saved or linked 饮食 → 记录
-    .onAppear { if selection == .food { selection = .record } }
+    .onChange(of: selection) { _ in leaveFood() }   // a saved or linked 饮食 → 记录 → 饮食
+    .onAppear(perform: leaveFood)
+  }
+
+  /// 饮食 is not a tab (2.0.1): a saved or linked `.food` opens 记录 on its 饮食 segment.
+  private func leaveFood() {
+    guard selection == .food else { return }
+    let d = AppTab.food.destination(circles: session.circlesTab)
+    if let seg = d.segment { JarvisPageLink.shared.segment = seg }
+    selection = d.tab
   }
 
   /// `SIMCTL_CHILD_W2W_DEV_MEMBER=<user id>[:today|trends|sleep|food|record|health]` (Debug, simulator screenshots): opens that

@@ -10,6 +10,9 @@ struct TodayL1Sheet: View {
   /// A row: the metric's explain sheet (key, title); the training state row opens the load sheet.
   let explain: (String, String) -> Void
   let load: () -> Void
+  /// The attention sheet: one of its items, and 体征 (the health monitor).
+  let openItem: (TodayOpen) -> Void
+  let monitor: () -> Void
   /// 全部指标.
   let allMetrics: (TodayL1) -> Void
   @Environment(\.askAI) private var askAI
@@ -23,6 +26,7 @@ struct TodayL1Sheet: View {
           case .recovery: recovery
           case .strain: strain
           case .sleep: TodaySleepL1(session: session, date: model.sleepDate, explain: explain)
+          case .attention: attention
           }
           exits.padding(.top, 16)
         }
@@ -39,6 +43,7 @@ struct TodayL1Sheet: View {
     case .recovery: return tr("恢复", "Recovery")
     case .strain: return tr("负荷", "Strain")
     case .sleep: return tr("睡眠", "Sleep")
+    case .attention: return tr("关注", "Attention")
     }
   }
 
@@ -107,6 +112,29 @@ struct TodayL1Sheet: View {
     rows(model.glance.strainRows).padding(.top, 12)
   }
 
+  // MARK: attention: what is off on the day (worst first), then 体征
+
+  @ViewBuilder private var attention: some View {
+    AttentionList(items: model.attention) { openItem($0.open) }.padding(.top, 8)
+    if !model.vitals.isEmpty {
+      let c = TodayGlanceRules.vitalsCount(model.vitals)
+      Button(action: monitor) {
+        HStack(spacing: 10) {
+          Icon(.heartPulse, size: 16).foregroundColor(Palette.text2)
+          Text(tr("体征", "Vitals")).font(.system(size: 15, weight: .medium)).foregroundColor(Palette.text2)
+          Spacer()
+          Text("\(c.ok)/\(c.total)").font(Typo.row).foregroundColor(Palette.text)
+          Icon(.chevronRight, size: 13).foregroundColor(Palette.text3)
+        }
+        .frame(minHeight: 46)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(PressScale())
+      .overlay(alignment: .bottom) { Rectangle().fill(Palette.hair).frame(height: 1) }
+      .padding(.top, 8)
+    }
+  }
+
   // MARK: rows and exits
 
   private func rows(_ list: [TodayGlance.Row]) -> some View {
@@ -151,6 +179,7 @@ struct TodayL1Sheet: View {
       let v = model.glance.strain.text ?? "—"
       return tr("我今天负荷 \(v)，接下来怎么练合适？", "My strain is \(v) today. How should I train for the rest of the day?")
     case .sleep: return tr("帮我看看昨晚睡得怎么样", "How did I sleep last night?")
+    case .attention: return tr("帮我看看今天需要注意的指标", "Which of my numbers need attention today?")
     }
   }
 }
@@ -286,13 +315,13 @@ struct TodaySleepL1: View {
     if let d = m.deepMin {
       out.append(.init(id: "deep", label: tr("深睡", "Deep"), value: TodayModel.hm(d), unit: nil,
                        delta: TodayGlanceRules.delta(d, mid: m.deepAvg30, digits: 0),
-                       deltaTone: TodayGlanceRules.deltaTone(d, usual: m.deepAvg30.map { ($0 * 0.9)...($0 * 1.1) }, better: 1),
+                       deltaTone: TodayGlanceRules.deltaTone(d, usual: m.deepAvg30.map { ($0 * (1 - TodayParams.deepUsualShare))...($0 * (1 + TodayParams.deepUsualShare)) }, better: 1),
                        explain: ("stages", tr("深睡", "Deep sleep"))))
     }
     if let r = m.regularity7 {
       out.append(.init(id: "regularity", label: tr("规律性", "Regularity"), value: TodayModel.fmt(r), unit: "%",
                        delta: TodayGlanceRules.delta(r, mid: m.regularity30, digits: 0),
-                       deltaTone: TodayGlanceRules.deltaTone(r, usual: m.regularity30.map { ($0 - 3)...($0 + 3) }, better: 1),
+                       deltaTone: TodayGlanceRules.deltaTone(r, usual: m.regularity30.map { ($0 - TodayParams.regularityUsualPoints)...($0 + TodayParams.regularityUsualPoints) }, better: 1),
                        explain: ("sleep_consistency", tr("睡眠规律性", "Sleep regularity"))))
     }
     if let v = m.vitals.first(where: { $0.key == "rhr" }) {
