@@ -157,7 +157,7 @@ struct InviteCard: View {
         .textSelection(.enabled)
       Text(expires == nil ? tr("永久有效", "Never expires") : FeedFormat.timeLeft(expires))
         .font(.system(size: 12)).foregroundColor(Palette.text3)
-      Text(tr("打开 Watch2Whoop → 朋友 → 用邀请码加入", "Open Watch2Whoop → Friends → Join with a code"))
+      Text(tr("打开 Watch2Whoop → 圈子 → 用邀请码加入", "Open Watch2Whoop → Circles → Join with a code"))
         .font(.system(size: 12)).foregroundColor(Palette.text2).multilineTextAlignment(.center)
     }
     .frame(maxWidth: .infinity)

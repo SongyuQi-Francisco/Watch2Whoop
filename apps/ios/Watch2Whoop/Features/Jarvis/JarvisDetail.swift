@@ -139,7 +139,7 @@ final class JarvisPageLink: ObservableObject {
     case .trends(let mode): TrendsLink.shared.open(mode: mode)
     case .training: segment = .training
     case .food(let page):
-      if circles { segment = .food }
+      segment = .food   // 2.0.1: 饮食 is always a segment of 记录
       food = page
     }
   }

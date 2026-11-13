@@ -53,8 +53,8 @@ final class NotifyAndLinksTests: XCTestCase {
   }
 
   func testTabALinkLandsOn() {
-    XCTAssertEqual(AppTab.food.landing(circles: true), .record)     // 饮食 lives inside 记录 while 朋友 has its place
-    XCTAssertEqual(AppTab.food.landing(circles: false), .food)
+    XCTAssertEqual(AppTab.food.landing(circles: true), .record)     // 2.0.1: 饮食 always lives inside 记录
+    XCTAssertEqual(AppTab.food.landing(circles: false), .record)
     XCTAssertEqual(AppTab.circles.landing(circles: false), .today)
     XCTAssertEqual(AppTab.circles.landing(circles: true), .circles)
     XCTAssertEqual(AppTab.me.landing(circles: true), .me)

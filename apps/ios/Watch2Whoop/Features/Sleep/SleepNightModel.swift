@@ -64,6 +64,8 @@ struct SleepNightModel: Equatable {
   var need: Double?, actual: Double?, debt: Double?, performance: Double?
   var compare: [Compare] = []
   var regularity7: Double?, regularity30: Double?
+  /// Deep sleep of the night and its 30-night average, in minutes (the Today sleep sheet's row).
+  var deepMin: Double?, deepAvg30: Double?
   var vitals: [Vital] = []
   var notes: [Note] = []
   var aiPrompt: String?
@@ -114,6 +116,7 @@ struct SleepNightModel: Equatable {
     let pct = { (v: Any?) in n(v).map { "\(TodayModel.fmt($0))%" } ?? "—" }
     let txt = { (v: Any?) in (v as? String) ?? "—" }
     if hasMain, let m = json["main"] as? [String: Any] {
+      if staged { deepMin = n(m["deep_min"]); deepAvg30 = n(a30["deep_min"]) }
       compare = [
         Compare(label: tr("睡着", "Asleep"), night: hm(m["asleep_min"]), avg7: hm(a7["asleep_min"]), avg30: hm(a30["asleep_min"])),
         Compare(label: tr("入睡", "Bedtime"), night: start, avg7: txt(a7["bedtime"]), avg30: txt(a30["bedtime"])),

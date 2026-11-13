@@ -292,9 +292,9 @@ final class TodayHomeFlagOffTests: XCTestCase {
     XCTAssertFalse(store.overviewOpened)
   }
 
-  /// The kill switch on a live page: pixel by pixel the same as before the flag came on. Only the top of the page: the line
-  /// under it shows the state of the refresh, which has nothing to do with the flag.
-  func testTheFlagGoingOffDrawsTheSamePageAgain() throws {
+  /// 2.0.1 has one Today (docs/design/2.0.1 direction.md 4.2): the flag no longer changes the first glance, on or off it is
+  /// pixel by pixel the same page. Only the top of the page.
+  func testTheFlagDoesNotChangeTheFirstGlance() throws {
     let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
     guard let scene else { throw XCTSkip("no window scene in this test host") }
     let s = try session(flags: [])
@@ -313,7 +313,7 @@ final class TodayHomeFlagOffTests: XCTestCase {
     let off = settled(host.view)
     XCTAssertNotNil(off)
     s.flags = [TodayHome.flag]
-    XCTAssertNotEqual(settled(host.view), off, "the flag must change the page")
+    XCTAssertEqual(settled(host.view), off, "one Today: the flag must not change the first glance")
     s.flags = []
     XCTAssertEqual(settled(host.view), off, "with the flag off again the page must be what it was")
   }

@@ -5,12 +5,11 @@ struct SleepRoute: Hashable {
   var date: String?
 }
 
-/// The Today tab (#340 N3): three rings side by side (sleep score | recovery, centred and bigger | yesterday's strain),
-/// then 需要注意 (only what is off on the day) and 今日核心 (strain target, recovery vs strain, stress, illness, body
-/// battery, HRV status, training status; #357), the core numbers, health monitor, 「全部指标 →」 (Trends' 今天 for the same
-/// day), body status, reminders, sync and circles. Everything is read
-/// from the local database (first frame from the cache), refreshed through the sync layer; numbers and short labels
-/// only — the words are in the explain sheets. The date on top looks back at any day.
+/// The Today tab, 2.0.1 (docs/design/2.0.1 `01-today`–`04-sleep-open`, `kit-states`): one recovery dial, two readings
+/// (sleep, strain), one row of faces (体征 or 关注, 饮食, 圈子); below the fold 训练 · 今晚 · 提醒 and the sync nudges.
+/// The dial and the readings open L1 half sheets (`TodayL1Sheet`); their rows open the explain sheets, 「全部指标」 leads to
+/// 身体 (or the sleep night page). Everything is read from the local database (first frame from the cache), refreshed
+/// through the sync layer; numbers and short labels only. The date on top looks back at any day, a swipe changes it.
 struct TodayView: View {
   @EnvironmentObject private var session: AccountSession
   @EnvironmentObject private var app: AppModel
@@ -22,6 +21,7 @@ struct TodayView: View {
   @SceneStorage("w2w.tab") private var tab: AppTab = .today
   @SceneStorage("w2w.record.segment") private var recordSegment: RecordTab.Segment = .training
   @State private var trainingOpen = false
+  @State private var l1: TodayL1?
   // Flag `ui_ai_first` (#279, TodayHome.swift). With it off the store never starts and `content` below is the whole page.
   @StateObject private var home = TodayHomeStore()
   @State private var homeSheet: TodayHomeSheet?
@@ -43,6 +43,14 @@ struct TodayView: View {
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(for: SleepRoute.self) { r in
           SleepDetailView(initialDate: r.date) { key, title in sheet = .explain(kind: "metric", key: key, title: title) }
+        }
+        .sheet(item: $l1) { k in
+          TodayL1Sheet(kind: k, model: store.model, session: session, close: { l1 = nil },
+                       explain: { key, title in after { sheet = .explain(kind: "metric", key: key, title: title) } },
+                       load: { after { sheet = .load } },
+                       allMetrics: { k in after { allMetrics(k) } })
+            .environmentObject(session)
+            .l1Detents(k.height)
         }
         .sheet(item: $homeSheet, onDismiss: afterHomeSheetClosed) { s in
           TodayHomeSheetView(sheet: s, model: store.model, flags: session.flags, circles: session.circlesTab, store: home,
@@ -97,12 +105,18 @@ struct TodayView: View {
       ScrollView(.vertical, showsIndicators: false) {
         // Lazy: the first frame builds only what is on screen (rings and the first tiles)
         LazyVStack(alignment: .leading, spacing: 0) {
-          header.id("top")
+          TodayGlancePage(model: store.model, isPast: store.model.isPast, circlesOn: session.circlesTab, day: store.date,
+                          session: session, run: glanceActions)
+            .equatable()
+            .id("top")
+            .onAppear { if store.hasData { PerfProbe.shared.ringsShown() } }
+            .onChange(of: store.hasData) { if $0 { PerfProbe.shared.ringsShown() } }
+          // below the fold (vertical scroll only): 训练 · 今晚 · 提醒, then the sync nudges and the slim look's quote
+          TodayMoreFaces(model: store.model, run: glanceActions).equatable().padding(.top, 49)
           if !store.model.isPast {
-            SyncNudges(card: store.model.sync, coverage: store.model.coverage) { await store.refresh() }
+            SyncNudges(card: store.model.sync, coverage: store.model.coverage) { await store.refresh() }.padding(.top, 16)
           }
-          if showsQuote { dailyQuote }
-          if aiFirst { homePage } else { content }
+          if showsQuote { dailyQuote.padding(.top, 16) }
           Color.clear.frame(height: 1).id("bottom")
         }
         .padding(.horizontal, Metrics.gutter)
@@ -147,38 +161,6 @@ struct TodayView: View {
     }
   }
 
-  // MARK: - header: date (opens the look-back calendar) and title
-
-  private var header: some View {
-    HStack(alignment: .bottom) {
-      Button { sheet = .calendar } label: {
-        VStack(alignment: .leading, spacing: 1) {
-          HStack(spacing: 4) {
-            Text(overline).font(Typo.overline)
-            Icon(.calendar, size: 12)
-          }
-          .foregroundColor(Palette.text2)
-          Text(store.model.isPast ? TodayModel.shortDay(store.model.date) : tr("今天", "Today"))
-            .font(Typo.title).titleTracking().foregroundColor(Palette.text)
-        }
-      }
-      .buttonStyle(PressScale())
-      .accessibilityLabel(tr("选择日期", "Pick a day"))
-      Spacer()
-      if store.date != nil {
-        Button { store.select(nil) } label: { Chip(label: tr("回到今天", "Back to today")) }.buttonStyle(PressScale())
-      }
-      DayNavButtons(canGoNext: store.date != nil) { store.step($0) }
-      SyncHeaderButton()
-    }
-    .padding(.top, 10).padding(.bottom, 8)
-  }
-
-  private var overline: String {
-    guard let d = store.model.date ?? store.userToday else { return " " }
-    return "\(Self.weekday(d)) \(TodayModel.shortDay(d))"
-  }
-
   static func weekday(_ iso: String) -> String {
     let utc = TimeZone(identifier: "UTC")!
     guard let d = LocalDay.parse(iso, utc) else { return "" }
@@ -189,34 +171,40 @@ struct TodayView: View {
     return zh[max(0, min(6, i))]
   }
 
-  // MARK: - content
+  // MARK: - what the page's taps do
 
-  @ViewBuilder private var content: some View {
-    let m = store.model
-    TodayDayCards(model: m, hasData: store.hasData, onRingsShown: { PerfProbe.shared.ringsShown() }, handle: handle, open: open, show: { sheet = $0 },
-                  openStatus: { it in
-                    if it.key == "weight" { sheet = .weight }
-                    else if let lab = it.labKey { sheet = .detail(.lab(key: lab, title: it.label)) }
-                    else { sheet = .explain(kind: "status", key: it.key, title: it.label) }
-                  },
-                  allMetrics: {
-                    TrendsLink.shared.open(day: store.date)
-                    tab = .trends
-                  },
-                  recoveryNext: runRecoveryNext, openTraining: { trainingOpen = true }, openHistory: openTraining,
-                  foodCard: AnyView(TodayFoodCard(session: session, day: store.date, toast: $toast).id("n3.food")))
-
-    if let s = m.sync {
-      SyncCardView(card: s, sync: session.sync, open: { app.route = .syncCenter }) {
+  private var glanceActions: TodayGlanceActions {
+    TodayGlanceActions(
+      l1: { l1 = $0 },
+      sheet: { sheet = $0 },
+      open: open,
+      calendar: { sheet = .calendar },
+      backToToday: { store.select(nil) },
+      syncTap: {
+        if HealthSyncService.shared.diagnosis.overall == .syncing { app.route = .syncCenter; return }
         Task { _ = await HealthSyncService.shared.syncNow(); await store.refresh() }
-      }
-      .padding(.top, 22)
-    }
-    if m.circles != nil { CircleSummaryCard { tab = .circles }.padding(.top, 22) }
+      },
+      syncCenter: { app.route = .syncCenter },
+      recoveryNext: runRecoveryNext,
+      food: { go(.food) },
+      circles: { tab = .circles },
+      training: { trainingOpen = true })
+  }
 
-    Button { app.route = .syncCenter } label: { SyncStatusLine(sync: session.sync, hasData: store.hasData) }
-      .buttonStyle(.plain)
-      .padding(.top, 18)
+  /// After the L1 sheet has gone: one sheet at a time.
+  private func after(_ f: @escaping () -> Void) {
+    l1 = nil
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: f)
+  }
+
+  /// 「全部指标」 of an L1 sheet: 身体 for the day (recovery, strain), the sleep night page (sleep).
+  private func allMetrics(_ k: TodayL1) {
+    if k == .sleep {
+      path.append(SleepRoute(date: store.model.sleepDate))
+    } else {
+      TrendsLink.shared.open(day: store.date)
+      tab = .trends
+    }
   }
 
   /// 记录 → 训练 (the muscle card, 训练历史, 逐组记录).
@@ -259,26 +247,7 @@ struct TodayView: View {
     }
   }
 
-  // MARK: - flag ui_ai_first: the page, and what it asks of this view
-
-  private var homePage: some View {
-    TodayHomePage(
-      model: store.model, home: home.home ?? .fallback, flags: session.flags, circlesTab: session.circlesTab, store: home,
-      sync: session.sync, hasData: store.hasData,
-      foodCard: AnyView(TodayFoodCard(session: session, day: store.date, toast: $toast)),
-      run: TodayHomeActions(
-        action: handle, open: open, sheet: { sheet = $0 }, go: go,
-        refresh: { Task { await store.refresh(); await home.refresh() } },
-        allMetrics: {
-          TrendsLink.shared.open(day: store.date)
-          tab = .trends
-        },
-        circles: { tab = .circles },
-        training: { trainingOpen = true },
-        recoveryNext: runRecoveryNext,
-        syncCenter: { app.route = .syncCenter },
-        syncNow: { Task { _ = await HealthSyncService.shared.syncNow(); await store.refresh() } }))
-  }
+  // MARK: - flag ui_ai_first: its links and sheets still land here (the page itself is the 2.0.1 glance)
 
   private func go(_ d: TodayHomeDest) {
     switch d {
@@ -291,8 +260,8 @@ struct TodayView: View {
       recordSegment = segment
       tab = .record
     case .food:
-      // 饮食 is a segment of 记录 while 朋友 has its place in the tab bar
-      if session.circlesTab { recordSegment = .food; tab = .record } else { tab = .food }
+      recordSegment = .food   // 饮食 is a segment of 记录 (2.0.1)
+      tab = .record
     case .circles: tab = .circles
     case .me: tab = .me
     case .bodyStatus: tab = .today; homeSheet = .bodyStatus

@@ -196,6 +196,8 @@ struct TodayModel: Equatable {
   var training: TodayTraining?
   var muscle: MuscleLoad?
   var detail = Detail()
+  /// The 2.0.1 Today: dial, readings and the L1 sheets' numbers (TodayGlance.swift).
+  var glance = TodayGlance()
   var error: String?
   /// Server's hrv kind and the user's zone (for the phone's own computation).
   var hrvKind: String?
@@ -369,6 +371,8 @@ struct TodayModel: Equatable {
                       issueCode: issue?["code"] as? String, issueLabel: issue?["label"] as? String)
       coverage = BackfillCoverage(s["coverage"] as? [String: Any])
     }
+
+    glance = TodayGlance(model: self, scores: sc, today: t, sleepScore: sleepScore, trends: day, daily: daily)
 
     if inp.circlesOn && !isPast {
       let members = (inp.circles?["members"] as? [Any])?.count ?? 0

@@ -129,7 +129,7 @@ private struct CirclesScreen: View {
         } else if store.refreshing && store.list == nil {
           Text(tr("正在更新", "Updating")).font(Typo.overline).foregroundColor(Palette.text2)
         }
-        Text(tr("朋友", "Friends")).font(Typo.title).titleTracking().foregroundColor(Palette.text)
+        Text(tr("圈子", "Circles")).font(Typo.title).titleTracking().foregroundColor(Palette.text)
       }
       Spacer()
       iconButton(.userPlus, tr("邀请朋友", "Invite friends")) { sheet = (store.list?.circles.contains(where: \.isOwner) ?? false) ? .invite(nil) : .create }

@@ -125,7 +125,7 @@ struct TrendsView: View {
             Icon(.calendar, size: 12)
           }
           .foregroundColor(Palette.text2)
-          Text(tr("趋势", "Trends")).font(Typo.title).titleTracking().foregroundColor(Palette.text)
+          Text(tr("身体", "Body")).font(Typo.title).titleTracking().foregroundColor(Palette.text)
         }
       }
       .buttonStyle(PressScale())

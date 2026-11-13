@@ -33,6 +33,40 @@ enum Palette {
   static let onAccent = dynamic(0xFFFFFF, 0x000000).slim(0xFFFFFF, 0x0A0A0B)
   static let chrome = dynamic(0xFFFFFF, 0x000000, lightAlpha: 0.86, darkAlpha: 0.82).slim(0xFBFAF7, 0x0A0A0B, lightAlpha: 0.86, darkAlpha: 0.82)
 
+  // 2.0.1 instrument tokens (docs/design/2.0.1 kit.css, direction.md 2.1): opacities of text / text2, no new hex. The
+  // slim look takes the same opacities of its own text / text2.
+  /// 1.5 pt tracks of the dial, the gauges and rings (text a.16 / a.12).
+  static let track = derived(.text, lightAlpha: 0.12, darkAlpha: 0.16)
+  /// Minor scale ticks (text2 a.55 / a.50).
+  static let tick = derived(.text2, lightAlpha: 0.55, darkAlpha: 0.50)
+  /// Origin, zone edges, major ticks (text a.85 / a.72).
+  static let tickMajor = derived(.text, lightAlpha: 0.85, darkAlpha: 0.72)
+  /// The usual range as a line beside a scale (text2 a.62).
+  static let bandLine = derived(.text2, lightAlpha: 0.62, darkAlpha: 0.62)
+  /// The usual range as an area behind a chart (text2 a.16 / a.24).
+  static let band = derived(.text2, lightAlpha: 0.16, darkAlpha: 0.24)
+  /// History bars; only today takes colour (text2 a.34 / a.42).
+  static let past = derived(.text2, lightAlpha: 0.34, darkAlpha: 0.42)
+  /// Sparkline stroke (text a.55 / a.62).
+  static let spark = derived(.text, lightAlpha: 0.55, darkAlpha: 0.62)
+  /// Chart baseline (black a.14 / white a.14).
+  static let hairStrong = dynamic(0x000000, 0xFFFFFF, lightAlpha: 0.14, darkAlpha: 0.14).slim(0x15140F, 0xFFFFFF, lightAlpha: 0.14, darkAlpha: 0.14)
+
+  /// The ink a derived token is an opacity of.
+  enum Ink { case text, text2 }
+
+  /// An opacity of text or text2, in both looks (the hex values are those of `text` / `text2` above).
+  static func derived(_ ink: Ink, lightAlpha: CGFloat, darkAlpha: CGFloat) -> Color {
+    switch ink {
+    case .text:
+      return dynamic(0x111113, 0xF4F4F6, lightAlpha: lightAlpha, darkAlpha: darkAlpha)
+        .slim(0x15140F, 0xF6F4EE, lightAlpha: lightAlpha, darkAlpha: darkAlpha)
+    case .text2:
+      return dynamic(0x6C6C73, 0x8D8D94, lightAlpha: lightAlpha, darkAlpha: darkAlpha)
+        .slim(0x625F55, 0x9A978C, lightAlpha: lightAlpha, darkAlpha: darkAlpha)
+    }
+  }
+
   /// The raw values, for tests and for UIKit appearance proxies.
   static func uiColor(_ light: UInt32, _ dark: UInt32, lightAlpha: CGFloat = 1, darkAlpha: CGFloat = 1, slim: Slim? = nil) -> UIColor {
     UIColor { t in
