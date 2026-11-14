@@ -22,6 +22,8 @@ enum TodayParams {
   static let deepUsualShare = 0.10
   /// Sleep regularity within ±3 points of the 30-night figure reads as usual (the score's own night-to-night noise).
   static let regularityUsualPoints = 3.0
+  /// Nights of the deep sleep / regularity lines on the sleep sheet (`sleep/night?series_nights=`, server range 0–90).
+  static let sleepSeriesNights = 30
 
   // MARK: - which day the documents describe
 

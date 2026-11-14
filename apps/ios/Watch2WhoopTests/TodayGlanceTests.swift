@@ -376,3 +376,115 @@ final class TodayGlanceTests: XCTestCase {
     XCTAssertTrue(m.glance.recoveryRows.isEmpty)
   }
 }
+
+/// The L1 sheets' server data from #448: the strain coach's `day_curve` / `forecast` and the sleep night's `series`.
+/// Older servers send neither, so every field is optional. Every number is made up.
+final class TodayL1DataTests: XCTestCase {
+  override func setUp() {
+    super.setUp()
+    Lang.override = "zh"
+  }
+
+  override func tearDown() {
+    Lang.override = nil
+    super.tearDown()
+  }
+
+  private func coach(curve: [String: Any]?, forecast: [String: Any]? = nil) -> [String: Any] {
+    var c: [String: Any] = ["target_low": 10, "target_high": 14, "current_strain": 6.5]
+    if let curve { c["day_curve"] = curve }
+    if let forecast { c["forecast"] = forecast }
+    return c
+  }
+
+  func testTheCurveAndTheForecast() throws {
+    let c = coach(curve: ["step_min": 60, "values": [0, 0, 0.4, 1.3, 6.5], "reason": NSNull(), "computed_at": "x"],
+                  forecast: ["sessions": ["下肢 B"], "strain": 12.8, "n": 3, "of": 4, "dates": ["2026-01-01"]])
+    let d = try XCTUnwrap(TodayGlanceRules.strainDay(c, current: 6.5, isPast: false))
+    XCTAssertEqual(d.values, [0, 0, 0.4, 1.3, 6.5])
+    XCTAssertNil(d.reason)
+    XCTAssertEqual(d.forecast, 12.8)
+    XCTAssertEqual(TodayGlanceRules.forecastCount(d), "3 次")
+    // the expected strain never sits below what is already done
+    XCTAssertEqual(TodayGlanceRules.strainDay(c, current: 15.2, isPast: false)?.forecast, 15.2)
+    // a full set of sessions needs no count
+    let full = coach(curve: ["values": [1.0]], forecast: ["strain": 12.8, "n": 4, "of": 4])
+    XCTAssertNil(TodayGlanceRules.forecastCount(try XCTUnwrap(TodayGlanceRules.strainDay(full, current: 1, isPast: false))))
+  }
+
+  func testNoForecastWithoutAPlanASessionOrOnAPastDay() {
+    XCTAssertNil(TodayGlanceRules.strainDay(coach(curve: ["values": [1.0]]), current: 1, isPast: false)?.forecast)
+    let none = coach(curve: ["values": [1.0]], forecast: ["strain": NSNull(), "n": 0, "of": 4])
+    XCTAssertNil(TodayGlanceRules.strainDay(none, current: 1, isPast: false)?.forecast)
+    let some = coach(curve: ["values": [1.0]], forecast: ["strain": 12.0, "n": 2, "of": 4])
+    XCTAssertNil(TodayGlanceRules.strainDay(some, current: 1, isPast: true)?.forecast)
+  }
+
+  func testAnOlderServerKeepsTheGauge() {
+    XCTAssertNil(TodayGlanceRules.strainDay(coach(curve: nil), current: 6.5, isPast: false))
+    XCTAssertNil(TodayGlanceRules.strainDay(nil, current: nil, isPast: false))
+    XCTAssertNil(TodayGlanceRules.strainDay(["day_curve": "garbage"], current: nil, isPast: false))
+  }
+
+  func testNoCurveSaysWhyAndDrawsNothing() throws {
+    let raw = try XCTUnwrap(TodayGlanceRules.strainDay(coach(curve: ["values": [Any](), "reason": "no_raw_hr"]), current: nil, isPast: false))
+    XCTAssertEqual(raw.values, [])
+    XCTAssertEqual(TodayGlanceRules.curveReason(raw.reason), "没有心率")
+    XCTAssertEqual(TodayGlanceRules.curveReason("no_scores"), "没有评分")
+    XCTAssertEqual(TodayGlanceRules.curveReason("not_computed"), "曲线未算")
+    let unknown = try XCTUnwrap(TodayGlanceRules.strainDay(coach(curve: ["values": [Any]()]), current: nil, isPast: false))
+    XCTAssertEqual(TodayGlanceRules.curveReason(unknown.reason), "曲线未算")
+  }
+
+  func testTheTodayModelCarriesTheCurve() {
+    let m = TodayModel(TodayInputs(today: ["date": "2026-01-02"], coach: coach(curve: ["values": [0.5, 6.5]]),
+                                   userToday: "2026-01-02"))
+    XCTAssertEqual(m.glance.strainDay?.values, [0.5, 6.5])
+  }
+
+  /// The phone's own strain coach (M4 primary) has no curve: the server's curve and forecast are laid over it.
+  func testThePhonesCoachTakesTheServersCurve() {
+    let local: [String: Any] = ["target_low": 9, "target_high": 13, "current_strain": 7.1]
+    let server = coach(curve: ["values": [Any](), "reason": "not_computed"], forecast: ["strain": 12.0, "n": 4, "of": 4])
+    let c = TodayDocs.coach(local: local, server: server)
+    XCTAssertEqual(c?["target_low"] as? Int, 9)
+    XCTAssertEqual((c?["day_curve"] as? [String: Any])?["reason"] as? String, "not_computed")
+    XCTAssertNotNil(c?["forecast"])
+    XCTAssertEqual(TodayDocs.coach(local: nil, server: server)?["target_low"] as? Int, 10)
+    XCTAssertNil(TodayDocs.coach(local: local, server: nil)?["day_curve"])
+  }
+
+  func testTheSleepSeriesKeepsItsGaps() throws {
+    let json: [String: Any] = [
+      "date": "2026-01-02",
+      "main": ["start": "23:40", "end": "07:30", "staged": true, "deep_min": 72, "asleep_min": 440],
+      "baseline": ["regularity_pct_7d": 76, "regularity_pct_30d": 80, "avg30": ["deep_min": 84]],
+      "series": ["nights": 4, "dates": ["2025-12-30", "2025-12-31", "2026-01-01", "2026-01-02"],
+                 "deep_min": ["values": [88, NSNull(), 95, 72], "n": 3, "mean": 85],
+                 "regularity_pct_7d": ["values": [81, 83, NSNull(), 76], "n": 3]],
+    ]
+    let m = SleepNightModel(json: json)
+    XCTAssertEqual(m.deepSeries, [88, nil, 95, 72])
+    XCTAssertEqual(m.regularitySeries, [81, 83, nil, 76])
+    let rows = TodaySleepL1.rows(m)
+    XCTAssertEqual(rows.first { $0.id == "deep" }?.spark, [88, nil, 95, 72])
+    XCTAssertNotNil(rows.first { $0.id == "deep" }?.usual)
+    XCTAssertEqual(rows.first { $0.id == "regularity" }?.spark, [81, 83, nil, 76])
+    // an older server: no series, no line, the numbers stay
+    var old = json
+    old.removeValue(forKey: "series")
+    let o = SleepNightModel(json: old)
+    XCTAssertEqual(o.deepSeries, [])
+    let orow = try XCTUnwrap(TodaySleepL1.rows(o).first { $0.id == "deep" })
+    XCTAssertEqual(orow.spark, [])
+    XCTAssertEqual(orow.value, TodayModel.hm(72))
+    XCTAssertNotEqual(m, o)
+  }
+
+  func testTheNightIsAskedWithItsSeries() {
+    let r = Endpoint.sleepNight("2026-01-02")
+    XCTAssertTrue(r.query.contains(URLQueryItem(name: "series_nights", value: "30")))
+    XCTAssertTrue(r.query.contains(URLQueryItem(name: "date", value: "2026-01-02")))
+    XCTAssertFalse(Endpoint.sleepNight(nil).query.contains { $0.name == "date" })
+  }
+}

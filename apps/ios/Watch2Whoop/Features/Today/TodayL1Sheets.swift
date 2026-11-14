@@ -101,14 +101,27 @@ struct TodayL1Sheet: View {
       }
     }
     .padding(.top, 4)
-    BulletGauge(value: s.value, max: s.max, target: s.target, step: 1, majors: s.majors, tone: s.tone).padding(.top, 14)
-    HStack {
-      ForEach(["0", "7", "14", "21"], id: \.self) { l in
-        Text(l).font(Typo.axis).foregroundColor(Palette.text2)
-        if l != "21" { Spacer() }
+    if let day = model.glance.strainDay {
+      if let f = day.forecast {
+        HStack(spacing: 4) {
+          Spacer()
+          Text(tr("预计", "Expected")).font(Typo.label).foregroundColor(Palette.text2)
+          Text(TodayModel.fmt(f, digits: 1)).font(.system(size: 15, weight: .medium).monospacedDigit()).foregroundColor(Palette.text)
+          if let n = TodayGlanceRules.forecastCount(day) { Text(n).font(Typo.label).foregroundColor(Palette.text2) }
+        }
+        .padding(.top, 2)
       }
+      StrainDayChart(day: day, target: s.target, max: s.max, majors: s.majors).frame(height: 132).padding(.top, 10)
+    } else {
+      BulletGauge(value: s.value, max: s.max, target: s.target, step: 1, majors: s.majors, tone: s.tone).padding(.top, 14)
+      HStack {
+        ForEach(["0", "7", "14", "21"], id: \.self) { l in
+          Text(l).font(Typo.axis).foregroundColor(Palette.text2)
+          if l != "21" { Spacer() }
+        }
+      }
+      .padding(.top, 4)
     }
-    .padding(.top, 4)
     rows(model.glance.strainRows).padding(.top, 12)
   }
 
@@ -181,6 +194,65 @@ struct TodayL1Sheet: View {
     case .sleep: return tr("帮我看看昨晚睡得怎么样", "How did I sleep last night?")
     case .attention: return tr("帮我看看今天需要注意的指标", "Which of my numbers need attention today?")
     }
+  }
+}
+
+/// The strain sheet's day (docs/design/2.0.1 `03-strain-open`): cumulative strain from 00:00 to 24:00 on the 0–21 scale,
+/// today's target as a band, the latest point as 「现在」 and a dashed line from it to the expected strain at 24:00. No curve
+/// (`values` empty): the axes and a short reason, never a made-up line.
+struct StrainDayChart: View {
+  let day: TodayGlance.StrainDay
+  let target: ClosedRange<Double>?
+  let max: Double
+  let majors: [Double]
+
+  var body: some View {
+    VStack(spacing: 4) {
+      GeometryReader { g in
+        let w = g.size.width, h = g.size.height
+        let x = { (hour: Double) in CGFloat(hour / 24) * w }
+        let y = { (v: Double) in h - CGFloat(Swift.min(Swift.max(v, 0), max) / max) * h }
+        ZStack(alignment: .topLeading) {
+          if let t = target {
+            Rectangle().fill(Palette.band).frame(width: w, height: Swift.max(1, y(t.lowerBound) - y(t.upperBound)))
+              .offset(y: y(t.upperBound))
+          }
+          ForEach(majors, id: \.self) { m in
+            Rectangle().fill(Palette.tick).frame(width: w, height: 1).offset(y: y(m))
+          }
+          Rectangle().fill(Palette.hairStrong).frame(width: w, height: 1).offset(y: h - 1)
+          if day.values.isEmpty {
+            Text(TodayGlanceRules.curveReason(day.reason)).font(Typo.label).foregroundColor(Palette.text2)
+              .frame(width: w, height: h)
+          } else {
+            let pts = [CGPoint(x: 0, y: y(0))] + day.values.enumerated().map { CGPoint(x: x(Double($0.offset + 1)), y: y($0.element)) }
+            let now = pts.last!
+            if let f = day.forecast, day.values.count < 24 {
+              Path { p in p.move(to: now); p.addLine(to: CGPoint(x: w, y: y(f))) }
+                .stroke(Palette.text2, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [4, 4]))
+            }
+            Path { p in p.addLines(pts) }
+              .stroke(Palette.train, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+            Circle().fill(Palette.text).frame(width: 7, height: 7).offset(x: now.x - 3.5, y: now.y - 3.5)
+          }
+        }
+      }
+      HStack {
+        ForEach(["0:00", "6:00", "12:00", "18:00", "24:00"], id: \.self) { l in
+          Text(l).font(Typo.axis).foregroundColor(Palette.text2)
+          if l != "24:00" { Spacer() }
+        }
+      }
+    }
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(label)
+  }
+
+  private var label: String {
+    guard let last = day.values.last else { return TodayGlanceRules.curveReason(day.reason) }
+    let v = TodayModel.fmt(last, digits: 1)
+    if let f = day.forecast { return tr("负荷曲线，现在 \(v)，预计 \(TodayModel.fmt(f, digits: 1))", "Strain curve, now \(v), expected \(TodayModel.fmt(f, digits: 1))") }
+    return tr("负荷曲线，\(v)", "Strain curve, \(v)")
   }
 }
 
@@ -313,15 +385,19 @@ struct TodaySleepL1: View {
                        explain: ("sleep_need", tr("睡眠需求", "Sleep need"))))
     }
     if let d = m.deepMin {
+      let usual = m.deepAvg30.map { ($0 * (1 - TodayParams.deepUsualShare))...($0 * (1 + TodayParams.deepUsualShare)) }
       out.append(.init(id: "deep", label: tr("深睡", "Deep"), value: TodayModel.hm(d), unit: nil,
+                       spark: m.deepSeries, usual: m.deepSeries.isEmpty ? nil : usual,
                        delta: TodayGlanceRules.delta(d, mid: m.deepAvg30, digits: 0),
-                       deltaTone: TodayGlanceRules.deltaTone(d, usual: m.deepAvg30.map { ($0 * (1 - TodayParams.deepUsualShare))...($0 * (1 + TodayParams.deepUsualShare)) }, better: 1),
+                       deltaTone: TodayGlanceRules.deltaTone(d, usual: usual, better: 1),
                        explain: ("stages", tr("深睡", "Deep sleep"))))
     }
     if let r = m.regularity7 {
+      let usual = m.regularity30.map { ($0 - TodayParams.regularityUsualPoints)...($0 + TodayParams.regularityUsualPoints) }
       out.append(.init(id: "regularity", label: tr("规律性", "Regularity"), value: TodayModel.fmt(r), unit: "%",
+                       spark: m.regularitySeries, usual: m.regularitySeries.isEmpty ? nil : usual,
                        delta: TodayGlanceRules.delta(r, mid: m.regularity30, digits: 0),
-                       deltaTone: TodayGlanceRules.deltaTone(r, usual: m.regularity30.map { ($0 - TodayParams.regularityUsualPoints)...($0 + TodayParams.regularityUsualPoints) }, better: 1),
+                       deltaTone: TodayGlanceRules.deltaTone(r, usual: usual, better: 1),
                        explain: ("sleep_consistency", tr("睡眠规律性", "Sleep regularity"))))
     }
     if let v = m.vitals.first(where: { $0.key == "rhr" }) {

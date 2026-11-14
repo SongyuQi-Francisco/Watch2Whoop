@@ -253,10 +253,14 @@ struct BandSpark: View, Equatable {
         let r = CGRect(x: 0, y: y(u.upperBound), width: size.width, height: Swift.max(1, y(u.lowerBound) - y(u.upperBound)))
         ctx.fill(Path(roundedRect: r, cornerRadius: 2), with: .color(Palette.band))
       }
+      // a missing day breaks the line (never drawn across); a value alone between gaps is a dot
+      let at = { (i: Int, v: Double) in CGPoint(x: CGFloat(i) / n * (size.width - 3), y: y(v)) }
       var p = Path()
       for (k, (i, v)) in pts.enumerated() {
-        let pt = CGPoint(x: CGFloat(i) / n * (size.width - 3), y: y(v))
-        if k == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
+        let joined = k > 0 && pts[k - 1].0 == i - 1
+        if joined { p.addLine(to: at(i, v)) } else { p.move(to: at(i, v)) }
+        let next = k + 1 < pts.count && pts[k + 1].0 == i + 1
+        if !joined && !next { p.addEllipse(in: CGRect(x: at(i, v).x - 1, y: at(i, v).y - 1, width: 2, height: 2)) }
       }
       ctx.stroke(p, with: .color(Palette.spark), style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
       if let last = pts.last, last.0 == values.count - 1 {

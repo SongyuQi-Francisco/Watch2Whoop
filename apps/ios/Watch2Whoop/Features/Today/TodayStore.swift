@@ -6,6 +6,13 @@ import GRDB
 enum TodayDocs {
   static func activity(_ day: String) -> String { "today.activity:\(day)" }
   static func coach(_ day: String) -> String { "today.coach:\(day)" }
+  /// The strain coach a page draws: the phone's when computed (M4 primary), with the server's day curve and forecast,
+  /// which only the server has (#448; for days the phone scored the curve says `not_computed`).
+  static func coach(local: [String: Any]?, server: [String: Any]?) -> [String: Any]? {
+    guard var l = local else { return server }
+    for k in ["day_curve", "forecast"] { if let v = server?[k] { l[k] = v } }
+    return l
+  }
   static func monitor(_ day: String) -> String { "today.monitor:\(day)" }
   static func sleepCoach(_ day: String) -> String { "today.sleepcoach:\(day)" }
   static let memory = "memory:me"
@@ -154,7 +161,7 @@ final class TodayStore: ObservableObject {
     }
     let inp = TodayInputs(
       today: today, activity: s.day.flatMap { s.docs[TodayDocs.activity($0)]?.json },
-      coach: (local?["strain_coach"] as? [String: Any]) ?? s.day.flatMap { s.docs[TodayDocs.coach($0)]?.json },
+      coach: TodayDocs.coach(local: local?["strain_coach"] as? [String: Any], server: s.day.flatMap { s.docs[TodayDocs.coach($0)]?.json }),
       monitor: (local?["health_monitor"] as? [String: Any]) ?? s.day.flatMap { s.docs[TodayDocs.monitor($0)]?.json },
       memory: s.docs[TodayDocs.memory]?.json, sync: s.docs[TodayDocs.sync]?.json, circles: s.docs[TodayDocs.circles]?.json,
       missing: s.docs[TodayDocs.missing]?.json,

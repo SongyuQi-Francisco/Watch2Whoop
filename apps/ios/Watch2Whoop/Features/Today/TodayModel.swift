@@ -382,6 +382,7 @@ struct TodayModel: Equatable {
     }
 
     glance = TodayGlance(model: self, scores: sc, today: t, sleepScore: sleepScore, trends: day, daily: daily)
+    glance.strainDay = TodayGlanceRules.strainDay(inp.coach, current: glance.strain.value, isPast: isPast)
 
     if inp.circlesOn && !isPast {
       let members = (inp.circles?["members"] as? [Any])?.count ?? 0

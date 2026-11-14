@@ -68,12 +68,58 @@ struct TodayGlance: Equatable {
   var monthDates: [String] = []
   var recoveryRows: [Row] = []
   var strainRows: [Row] = []
+  /// Strain L1's curve of the day (nil = the server has no curve field yet: the sheet keeps the gauge).
+  var strainDay: StrainDay?
+
+  /// `strain-coach` `day_curve` + `forecast` (#448): cumulative strain at the end of every local hour, and the expected
+  /// strain of the day from the last sessions of today's planned type.
+  struct StrainDay: Equatable {
+    /// values[h] = strain accumulated up to (h + 1):00; the last one is the day's strain.
+    var values: [Double]
+    /// Why there is no curve (`no_scores`, `no_raw_hr`, `not_computed`) when `values` is empty.
+    var reason: String?
+    /// Expected strain at 24:00 (max of the forecast and the strain so far); nil = nothing planned or no past session.
+    var forecast: Double?
+    /// Sessions the forecast averages, of how many it wants (n < of: fewer than usual).
+    var forecastN: Int?
+    var forecastOf: Int?
+  }
   /// The attention face's last 7 days (its metric's series), when it has one.
   var attentionWeek: [Double?] = []
 }
 
 /// The rules behind the glance (tested in TodayGlanceTests). Thresholds are the design's (direction.md 2.5, 3, 7).
 enum TodayGlanceRules {
+  /// The strain sheet's curve from the strain coach document; nil when the document has no `day_curve` (an older server).
+  static func strainDay(_ coach: [String: Any]?, current: Double?, isPast: Bool) -> TodayGlance.StrainDay? {
+    guard let c = coach, let dc = c["day_curve"] as? [String: Any] else { return nil }
+    let values = ((dc["values"] as? [Any]) ?? []).compactMap { TodayModel.num($0) }
+    var out = TodayGlance.StrainDay(values: Array(values.prefix(24)),
+                                    reason: values.isEmpty ? (dc["reason"] as? String ?? "not_computed") : nil)
+    if !isPast, let f = c["forecast"] as? [String: Any], let s = TodayModel.num(f["strain"]),
+       let n = TodayModel.num(f["n"]).map({ Int($0) }), n > 0 {
+      out.forecast = Swift.max(s, current ?? values.last ?? 0)
+      out.forecastN = n
+      out.forecastOf = TodayModel.num(f["of"]).map { Int($0) }
+    }
+    return out
+  }
+
+  /// The empty curve's short label.
+  static func curveReason(_ reason: String?) -> String {
+    switch reason {
+    case "no_scores": return tr("没有评分", "No score")
+    case "no_raw_hr": return tr("没有心率", "No heart rate")
+    default: return tr("曲线未算", "Not computed")
+    }
+  }
+
+  /// 「4 次」 next to the forecast when fewer sessions than usual went into it.
+  static func forecastCount(_ d: TodayGlance.StrainDay) -> String? {
+    guard let n = d.forecastN, let of = d.forecastOf, n < of else { return nil }
+    return tr("\(n) 次", "\(n)×")
+  }
+
   /// Zone edges of the recovery dial (long ticks) and of the strain scale.
   static let recoveryZones: [Double] = [34, 67]
   static let strainMajors: [Double] = [10, 14, 18]
