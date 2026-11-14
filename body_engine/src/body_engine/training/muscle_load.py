@@ -45,11 +45,18 @@ def weekly_range(muscle: str) -> tuple[int, int]:
     return P.WEEKLY_SETS_RANGE.get(muscle, P.WEEKLY_SETS_RANGE_DEFAULT)
 
 
-def status_for(muscle: str, sets: float) -> str:
-    """none (no set) / low (< low) / ok (low..high) / high (> high) against the weekly effective-set range."""
+def range_4w(muscle: str) -> tuple[int, int]:
+    """The weekly range scaled to the 4-week window (params.MUSCLE_LOAD_4W_DAYS / 7 weeks)."""
+    low, high = weekly_range(muscle)
+    weeks = P.MUSCLE_LOAD_4W_DAYS / 7
+    return round(low * weeks), round(high * weeks)
+
+
+def status_for(muscle: str, sets: float, rng: tuple[int, int] | None = None) -> str:
+    """none (no set) / low (< low) / ok (low..high) / high (> high) against the weekly effective-set range (or `rng`)."""
     if sets <= 0:
         return "none"
-    low, high = weekly_range(muscle)
+    low, high = rng or weekly_range(muscle)
     return "low" if sets < low else "high" if sets > high else "ok"
 
 
@@ -60,6 +67,7 @@ def week_start(day: date) -> date:
 def windows(today: date) -> dict[str, tuple[date, date]]:
     mon = week_start(today)
     return {"today": (today, today), "week": (mon, today), "last7": (today - timedelta(days=6), today),
+            "last28": (today - timedelta(days=P.MUSCLE_LOAD_4W_DAYS - 1), today),
             "prev_week": (mon - timedelta(days=7), mon - timedelta(days=1))}
 
 
@@ -318,7 +326,7 @@ class DictIndex:
 
 def start_of(today: date) -> date:
     """The first day the map reads (the 'last trained' look-back and the previous week)."""
-    return min(today - timedelta(days=P.MUSCLE_LOAD_BASELINE_DAYS - 1), windows(today)["prev_week"][0])
+    return min(today - timedelta(days=max(P.MUSCLE_LOAD_BASELINE_DAYS, P.MUSCLE_LOAD_4W_DAYS) - 1), windows(today)["prev_week"][0])
 
 
 def load(conn: psycopg.Connection, owner_id: int, today: date | None = None) -> dict:
@@ -363,6 +371,7 @@ def compute_from(data: dict, today: date) -> tuple[dict, dict]:
     for key in CD.MUSCLE_ZH:
         st, lst = agg["stats"][key], agg["last"].get(key)
         low, high = weekly_range(key)
+        r4 = range_4w(key)
         eq = sp["sets"][key]
 
         def total(w: str) -> float:   # logged sets + the equivalent sets of the workouts (one scale)
@@ -376,16 +385,67 @@ def compute_from(data: dict, today: date) -> tuple[dict, dict]:
                           "volume_kg": round(st["prev_week"]["volume_kg"])},
             "delta_sets": _r(week - prev),
             "target": {"low": low, "high": high},
-            "status": {"week": status_for(key, week), "last7": status_for(key, total("last7"))},
+            "target_4w": {"low": r4[0], "high": r4[1]},
+            "status": {"week": status_for(key, week), "last7": status_for(key, total("last7")),
+                       "last28": status_for(key, total("last28"), r4)},
             "trained_today": total("today") > 0,
             "sport_min": {w: round(sp["stats"][key][w]) for w in P.MUSCLE_RANGES},
             "last": lst and {"date": lst["date"].isoformat(),
                              "exercises": [{k: v for k, v in e.items() if v is not None} for e in lst["exercises"]][:8]},
         })
     return {"version": P.MUSCLE_LOAD_VERSION, "today": today.isoformat(), "week_start": win["week"][0].isoformat(),
+            "last28_start": win["last28"][0].isoformat(),
             "sex": sex if sex in ("male", "female") else None,
             "source": {"sparky": sparky_state, "imported_days": len(imported)},
             "unmatched": agg["unmatched"], "sports": sp["overall"], "muscles": muscles}, sp["by_muscle"]
+
+
+def by_day(conn: psycopg.Connection, owner_id: int, start: date, end: date) -> dict[date, dict]:
+    """The main muscles and muscle groups trained each day of [start, end] (training calendar cards, UI 2.0.1): effective
+    sets per muscle with the map's weighting (logged sets, plus the workouts' equivalent sets the same way the map counts
+    them), muscles with at least params.CALENDAR_MUSCLE_MIN_SETS. Server only: the phone has no exercise catalog yet."""
+    sessions, _state = _sparky(conn, owner_id, start, end)
+    index = loads.Index(conn, owner_id)
+    per: dict[date, dict[str, float]] = {}
+    logged_days: set[date] = set()
+    for w in [*sessions, *_imported(conn, owner_id, start, end)]:
+        day = date.fromisoformat(w["date"][:10])
+        if not start <= day <= end:
+            continue
+        for ex in w["exercises"]:
+            if (ex.get("category") or "strength") in NOT_STRENGTH:
+                continue
+            n = sum(1 for x in ex.get("sets") or [] if _is_set(x))
+            if not n:
+                continue
+            prim, sec, slug = _muscles_of(index, ex)
+            if slug and (index.rows[slug].get("category") or "strength") in NOT_STRENGTH:
+                continue
+            for muscles, factor in ((prim, P.PRIMARY_FACTOR), (sec, P.SECONDARY_FACTOR)):
+                for m in muscles:
+                    per.setdefault(day, {})[m] = per.get(day, {}).get(m, 0.0) + n * factor
+            if prim or sec:
+                logged_days.add(day)
+    targets = _plan_targets(conn, owner_id)
+    for s in _sports(conn, owner_id, start, end):
+        key = sport_muscles.normalize(s["type"])
+        if s["date"] in logged_days and key in _COUNTED_BY_SETS:
+            continue
+        load = sport_load(s, targets(s["date"]) if key in sport_muscles.STRENGTH_LIKE else None)
+        for m, (sets, _primary) in load["muscles"].items():
+            if m in CD.MUSCLE_ZH:
+                per.setdefault(s["date"], {})[m] = per.get(s["date"], {}).get(m, 0.0) + sets
+    out = {}
+    for day, sets in per.items():
+        main = sorted(((m, v) for m, v in sets.items() if v >= P.CALENDAR_MUSCLE_MIN_SETS), key=lambda kv: (-kv[1], kv[0]))
+        groups: dict[str, float] = {}
+        for m, v in main:
+            g = CD.MUSCLE_GROUP.get(m)
+            if g:
+                groups[g] = groups.get(g, 0.0) + v
+        out[day] = {"muscles": [m for m, _ in main][:P.CALENDAR_MAX_MUSCLES],
+                    "muscle_groups": [g for g, _ in sorted(groups.items(), key=lambda kv: (-kv[1], kv[0]))][:P.CALENDAR_MAX_GROUPS]}
+    return out
 
 
 def detail(conn: psycopg.Connection, owner_id: int, muscle: str, today: date | None = None) -> dict:

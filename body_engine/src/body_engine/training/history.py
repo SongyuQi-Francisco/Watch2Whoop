@@ -507,11 +507,33 @@ def calendar(conn: psycopg.Connection, viewer_id: int, owner_id: int, month: str
     return calendar_view(build(conn, viewer_id, owner_id, start, end), start, end, label)
 
 
+def add_muscles(conn: psycopg.Connection, owner_id: int, cal: dict) -> None:
+    """Each calendar day's main muscles / muscle groups (muscle_load.by_day; server only, so not in the pure calendar_view).
+    Never fails the calendar: on any trouble the fields are null and `muscles_error` says so."""
+    from . import muscle_load
+    try:
+        per = muscle_load.by_day(conn, owner_id, cal["start"], cal["end"])
+    except Exception as e:  # noqa: BLE001 the calendar must still load
+        per, cal["muscles_error"] = None, type(e).__name__
+    for d in cal["days"]:
+        x = per.get(d["date"], {"muscles": [], "muscle_groups": []}) if per is not None else {"muscles": None, "muscle_groups": None}
+        d["muscles"], d["muscle_groups"] = x["muscles"], x["muscle_groups"]
+
+
+def day_zone_min(sessions: list[dict]) -> list[float] | None:
+    """Minutes per heart-rate zone (zone 1..5) summed over the day's sessions; None when no session has zones."""
+    z = [s["hr_zone_min"] for s in sessions if s.get("hr_zone_min")]
+    if not z:
+        return None
+    return [round(sum(x[i] or 0 if i < len(x) else 0 for x in z), 1) for i in range(max(len(x) for x in z))]
+
+
 def calendar_view(res: dict, start: date, end: date, label: str | None) -> dict:
     """The calendar's answer from build's (pure; the phone's `trainingCalendar`)."""
     days = []
     for d in res["days"]:
         row = {k: d[k] for k in CALENDAR_DAY_KEYS}
+        row["hr_zone_min"] = day_zone_min(d["sessions"])
         row["sessions"] = [{"id": s["id"], "name": s["name"], "type": s["type"], "start": s["start"],
                             "duration_min": s["duration_min"], "active_kcal": s["active_kcal"],
                             "intensity": s["intensity"], "source": s["source"]} for s in d["sessions"]]

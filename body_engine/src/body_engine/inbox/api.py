@@ -1,7 +1,7 @@
 """The inbox behind 「我 → 消息」 (inbox/store.py, issue #359 P1). Every endpoint is behind the flag `inbox` (404 while it is off for
 the person) and is about oneself only (`me` or one's own id; anyone else: 403). Writes need write scope.
 
-  GET    /v1/users/{user}/inbox?since=&before=&limit=     {items, unread, more, next, now, keep_days}; since = ISO 8601 with a zone
+  GET    /v1/users/{user}/inbox?since=&before=&limit=     {items, unread, unread_from, more, next, now, keep_days}; since = ISO 8601 with a zone
   POST   /v1/users/{user}/inbox/read {ids} | {all: true}  {marked, unread}
   DELETE /v1/users/{user}/inbox/items/{id}                hide one item (notice:3, invite:12 …)
   POST   /v1/users/{user}/inbox/invites/{id}/accept       join with the circle's default scopes; the circle as /v1/friends/join

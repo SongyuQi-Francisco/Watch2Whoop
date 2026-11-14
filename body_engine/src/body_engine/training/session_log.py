@@ -15,11 +15,11 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date
+from datetime import date, datetime, time, timedelta, timezone
 
 import psycopg
 
-from .. import auth, sparky_client
+from .. import auth, queries, sparky_client
 from ..assistant import briefing, sparky_write
 from ..i18n import L
 from . import catalog, combo, loads, params as P, plans
@@ -42,7 +42,11 @@ def _log_out(row: dict | None) -> dict | None:
         return None
     return {"status": row["status"], "exercises": row["exercises"] or [], "notes": row.get("notes"),
             "submitted_at": row.get("submitted_at"), "updated_at": row["updated_at"],
-            "changed_since_submit": bool(row.get("sparky_entry_id")) and row["status"] == "draft"}
+            "changed_since_submit": bool(row.get("sparky_entry_id")) and row["status"] == "draft",
+            # when the training started (UI 2.0.1 timer): the first ticked set, else the draft's first save; None before 2.0.1
+            "created_at": row.get("created_at"), "first_set_at": row.get("first_set_at"),
+            "started_at": row.get("first_set_at") or row.get("created_at"),
+            "started_from": "first_set" if row.get("first_set_at") else "draft" if row.get("created_at") else None}
 
 
 def _target(item: dict, set_factor: float) -> dict:
@@ -236,16 +240,36 @@ def _check_day(conn: psycopg.Connection, user_id: int, day: date) -> None:
                            f"Only workouts of the last {sparky_write.MAX_BACKDATE_DAYS} days can be logged"))
 
 
-def save_draft(conn: psycopg.Connection, user_id: int, day: date, exercises: list[dict], notes: str | None = None) -> dict:
+def first_set_time(conn: psycopg.Connection, user_id: int, day: date, sent: datetime | None,
+                   now: datetime | None = None) -> datetime | None:
+    """When the first set was ticked: the time the app sent (a naive one is in the user's time zone) when it lies on that
+    day and not in the future, else now for today; None for an earlier day without a usable time (unknown)."""
+    now = now or datetime.now(timezone.utc)
+    tz = queries.user_tz(conn, user_id)
+    if sent is not None:
+        sent = sent if sent.tzinfo else sent.replace(tzinfo=tz)
+        lo = datetime.combine(day, time(0), tz)
+        if lo <= sent <= min(now, lo + timedelta(days=1)) + timedelta(minutes=1):
+            return min(sent, now)
+    return now if day == now.astimezone(tz).date() else None
+
+
+def save_draft(conn: psycopg.Connection, user_id: int, day: date, exercises: list[dict], notes: str | None = None,
+               started_at: datetime | None = None) -> dict:
+    """started_at: when the app saw the first set ticked (optional; an offline save arrives later). Kept from the first save
+    that has a ticked set on; unticking does not clear it."""
     _check_day(conn, user_id, day)
     ex = clean_exercises(exercises)
+    ticked = any(x.get("done") for e in ex for x in e["sets"])
+    first = first_set_time(conn, user_id, day, started_at) if ticked else None
     row = conn.execute(
-        """INSERT INTO training_session_logs (user_id, date, exercises, notes, status)
-           VALUES (%s, %s, %s::jsonb, %s, 'draft')
+        """INSERT INTO training_session_logs (user_id, date, exercises, notes, status, first_set_at)
+           VALUES (%s, %s, %s::jsonb, %s, 'draft', %s)
            ON CONFLICT (user_id, date, source) DO UPDATE SET exercises = EXCLUDED.exercises, notes = EXCLUDED.notes,
-             status = 'draft', updated_at = now()
+             status = 'draft', updated_at = now(),
+             first_set_at = COALESCE(training_session_logs.first_set_at, EXCLUDED.first_set_at)
            RETURNING *""",
-        (user_id, day, json.dumps(ex, ensure_ascii=False), (notes or "").strip()[:500] or None),
+        (user_id, day, json.dumps(ex, ensure_ascii=False), (notes or "").strip()[:500] or None, first),
     ).fetchone()
     return {"log": _log_out(row)}
 
