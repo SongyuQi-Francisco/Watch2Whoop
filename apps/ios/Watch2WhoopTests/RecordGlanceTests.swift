@@ -106,6 +106,15 @@ final class RecordGlanceTests: XCTestCase {
     let week = try XCTUnwrap(TrainingWeek.build(w, calendar: cal, monday: "2026-11-09"))
     let dots = RecordGlance.weekDots(week, today: "2026-11-12")
     XCTAssertEqual(dots, [.trained, .none, .none, .today, .planned, .none, .none])
+    XCTAssertEqual(RecordGlance.weekTarget(week), 1)   // one trained, one planned
+  }
+
+  func testWeekTargetHiddenWhenThePlanStartedMidWeek() throws {
+    let w: [String: Any] = ["days": [["date": "2026-11-15", "planned": [["name": "上肢 A"]]]]]
+    let cal: [[String: Any]] = [["date": "2026-11-09", "sessions_count": 1, "intensity": "hard"],
+                                ["date": "2026-11-10", "sessions_count": 1, "intensity": "light"]]
+    let week = try XCTUnwrap(TrainingWeek.build(w, calendar: cal, monday: "2026-11-09"))
+    XCTAssertNil(RecordGlance.weekTarget(week))
   }
 
   // MARK: - weekly muscle map

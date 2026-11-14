@@ -109,7 +109,7 @@ struct TrainingSessionPage: View {
         HStack(spacing: 4) {
           if superset { Icon(.link, size: 13).foregroundColor(Palette.text2) }
           if e.banned { Icon(.ban, size: 14).foregroundColor(Palette.bad) } else if e.caution { Icon(.triangleAlert, size: 14).foregroundColor(Palette.mid) }
-          Text(e.name).font(.system(size: 17, weight: .medium)).foregroundColor(e.banned || allDone(sets) ? Palette.text2 : Palette.text)
+          Text(TrainingWeek.shortPlan(e.name)).font(.system(size: 17, weight: .medium)).foregroundColor(e.banned || allDone(sets) ? Palette.text2 : Palette.text)
             .strikethrough(e.banned, color: Palette.text3).lineLimit(1).minimumScaleFactor(0.8)
         }
         Spacer(minLength: 6)

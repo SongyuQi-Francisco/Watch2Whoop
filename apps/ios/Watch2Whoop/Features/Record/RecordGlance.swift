@@ -108,6 +108,12 @@ enum RecordGlance {
     }
   }
 
+  /// The week reading's denominator: the planned training days, only when they are at least the days already trained (a plan
+  /// started mid-week has fewer planned days than trained ones, and 「4/1」 would read as wrong).
+  static func weekTarget(_ w: TrainingWeek) -> Int? {
+    w.plannedDays > 0 && w.plannedDays >= w.trainedDays ? w.plannedDays : nil
+  }
+
   // MARK: - weekly muscle map (13)
 
   /// One body area of the weekly map: its sets, the summed weekly range of its muscles and where it stands.

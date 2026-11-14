@@ -24,7 +24,7 @@ struct TrainingRoot: View {
       hero.padding(.top, 24)
       readings.padding(.top, 36)
       faces.padding(.top, 40)
-      below.padding(.top, 150)
+      below.padding(.top, 200)
     }
     .task {
       await store.refresh()
@@ -110,8 +110,8 @@ struct TrainingRoot: View {
       VStack(alignment: .leading, spacing: 8) {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
           Text(w.map { "\($0.trainedDays)" } ?? "—").font(Typo.reading).foregroundColor(w == nil ? Palette.text2 : Palette.text)
-          if let w, w.plannedDays > 0 {
-            Text("/\(w.plannedDays)").font(.system(size: 17, weight: .regular).monospacedDigit()).foregroundColor(Palette.text2)
+          if let w, let target = RecordGlance.weekTarget(w) {
+            Text("/\(target)").font(.system(size: 17, weight: .regular).monospacedDigit()).foregroundColor(Palette.text2)
           }
           Text(tr("本周", "this week")).font(Typo.label).foregroundColor(Palette.text2).padding(.leading, 2)
         }

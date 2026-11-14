@@ -176,7 +176,7 @@ struct FoodContent: View {
           }
         }
       }
-      .padding(.top, 150)
+      .padding(.top, 200)
       .id("n5.meals")
     }
   }
