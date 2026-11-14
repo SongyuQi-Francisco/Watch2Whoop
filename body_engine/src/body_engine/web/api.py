@@ -34,6 +34,7 @@ from .. import auth
 from ..avatars import urls as avatar_urls
 from ..training import catalog as tr_catalog
 from . import activation, boot, login_codes, login_limit, me_links, session, views
+from ..i18n import L
 from ..records.defaults import with_label
 from ..rollout import api as rollout_api, flags as rollout_flags
 from ..appearance import store as appearance
@@ -274,12 +275,21 @@ def web_me(request: Request, response: Response, conn=Depends(get_conn), viewer=
     if links:   # rows a plugin adds to the native Me page; no key at all otherwise
         look["me_links"] = links
     return {"me": me, "viewable": views.viewable(conn, viewer),
+            "audience": views.audience(conn, viewer),   # who can see my data (UI 2.0.1 Me share face); mine only
             "assistant_url": ai.get("assistant_url"), "ai": ai,
             "today": views.local_today(conn, viewer["id"]),
             **rollout_api.for_user(conn, viewer["id"]),   # feature flags on for me, my A/B variants (rollout/)
             **look,
             "upgrade": upgrade_policy.for_request(conn, request, viewer),   # R2: none / notice / block (client/policy.py)
             "version": {"web": WEB_VERSION, "api": api.app.version}}
+
+
+@router.get("/v1/users/{user}/audience")
+def my_audience(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Everyone who can see my data right now and what (the full list behind /v1/web/me `audience`). Own only."""
+    if user not in ("me", str(viewer["id"])):
+        raise HTTPException(403, L("只能看自己的", "Your own only"))
+    return views.audience(conn, viewer, limit=None)
 
 
 @router.post("/v1/web/me-links/{key}/open")

@@ -411,7 +411,7 @@ def test_sports_layer_from_workouts(conn, world, sessions):
         _workout(conn, a, "yg1", "core_training", today, 30)
         full = ML.compute(conn, a, today)
         m = {x["key"]: x for x in full["muscles"]}
-        assert m["quadriceps"]["sport_min"] == {"today": 74, "week": 74, "last7": 74}
+        assert m["quadriceps"]["sport_min"] == {"today": 74, "week": 74, "last7": 74, "last28": 74}
         assert m["hamstrings"]["sport_min"]["week"] == 37 and m["lats"]["sport_min"]["week"] == 0
         res = P.SPORT_MUSCLES["basketball"][2]
         q = m["quadriceps"]["ranges"]["today"]

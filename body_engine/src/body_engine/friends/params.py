@@ -135,3 +135,6 @@ HIDDEN_NAME = ("已隐藏的用户", "Hidden user")
 # flag is on for the person. Raise the version when the text (docs/legal/community-rules*.md) changes: everyone is asked again.
 RULES_FLAG = "circle_rules"
 RULES_VERSION = "2026-10-31"
+
+# UI 2.0.1: how many people an unread count names (inbox and circle feed faces); the count itself covers everyone.
+UNREAD_FROM_MAX = 3

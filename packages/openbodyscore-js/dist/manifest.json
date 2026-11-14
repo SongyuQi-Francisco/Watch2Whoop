@@ -2,8 +2,8 @@
   "name": "openbodyscore-js",
   "version": "0.2.0",
   "file": "openbodyscore.js",
-  "sha256": "b42dab3ac47557d3f424161d723b937babe29a67dc352627e37e7350dde19eeb",
-  "size": 505521,
+  "sha256": "d572b51bda02f45f9d33e32c440f35a269ea45c31d56c20037cd68b677a4d535",
+  "size": 506648,
   "algo_versions": {
     "scores": "v1.2-2026-10-27",
     "healthspan": "hs-v1.2-2026-10-23",
@@ -19,7 +19,5 @@
     "rules": "v1.4-2026-10-22",
     "explain": "explain-1"
   },
-  "global": "OpenBodyScore",
-  "signature": "80tUZQ32/oQM8QKZtsQqSIbfUSzlg/FDLgWXG+4EQNi7tiJ6cToql9og1CseLbVShtgHfeXTIch+NwB1GO5fBQ==",
-  "key_id": "51e37b7c14053032"
+  "global": "OpenBodyScore"
 }

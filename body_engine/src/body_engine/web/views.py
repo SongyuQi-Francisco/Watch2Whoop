@@ -81,6 +81,35 @@ def viewable(conn, viewer: dict) -> list[dict]:
     return out
 
 
+AUDIENCE_FACES = 5   # people shown as initials / pictures on the Me page's share face (UI 2.0.1); the count covers everyone
+
+
+def audience(conn, viewer: dict, limit: int | None = AUDIENCE_FACES) -> dict:
+    """Who can see my data right now (the reverse of `viewable`), for my own eyes only: everyone with a hand-made grant that has
+    not expired or a circle grant while circles are on for both (auth.granted_scopes). Each person: id, name (my private
+    remark first), initial, picture when we share a circle, and the scopes they get. `count` covers everyone; `people` at
+    most `limit` (None = all)."""
+    from ..friends import blocks
+    rows = [dict(r) for r in conn.execute(
+        """SELECT s.viewer_id AS id, u.display_name FROM shares s JOIN users u ON u.id = s.viewer_id
+           WHERE s.owner_id = %s AND s.viewer_id <> %s ORDER BY u.display_name, s.viewer_id""", (viewer["id"], viewer["id"]))]
+    people = []
+    for r in rows:
+        scopes = auth.granted_scopes(conn, r["id"], viewer["id"])
+        if scopes:
+            people.append({**r, "scopes": sorted(scopes)})
+    blocks.mask_rows(conn, viewer["id"], people)   # a profile hidden by moderation shows as such
+    shown = people if limit is None else people[:limit]
+    avatars = avatar_urls.urls_for(conn, viewer["id"], [p["id"] for p in shown])
+    nick = remarks.for_viewer(conn, viewer["id"], [p["id"] for p in shown])
+    out = []
+    for p in shown:
+        name = nick.get(p["id"]) or p["display_name"] or ""
+        out.append({"id": p["id"], "name": name, "initial": name.strip()[:1].upper() or "?", "scopes": p["scopes"],
+                    **({"avatar": avatars[p["id"]]} if p["id"] in avatars else {})})
+    return {"count": len(people), "people": out, "more": len(people) - len(out)}
+
+
 # ---------------------------------------------------------------- scores
 def reasons(row: dict | None, fields=SCORE_FIELDS) -> dict[str, str]:
     """Each empty score -> its reason (the explanation in flags)."""
@@ -664,8 +693,11 @@ weights = trend_series.weights   # also used by explain/personal.py
 
 
 def trends(conn, viewer: dict, owner_id: int, end: date | None = None, days: int = 90) -> dict:
+    from ..trends import sessions as trend_sessions
     today = local_today(conn, owner_id)
-    return trend_series.build(conn, viewer, owner_id, end or today, days, today, user_tz(conn, owner_id))
+    doc = trend_series.build(conn, viewer, owner_id, end or today, days, today, user_tz(conn, owner_id))
+    trend_sessions.add(conn, viewer["id"], owner_id, doc)   # per-day session counts, as the weekly report counts them
+    return doc
 
 
 # ---------------------------------------------------------------- look-back calendar: which days of a month have data
