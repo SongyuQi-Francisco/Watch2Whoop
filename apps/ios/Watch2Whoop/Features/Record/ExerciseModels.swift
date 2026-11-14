@@ -122,6 +122,9 @@ struct LibraryExercise: Equatable, Identifiable {
   var status: String
   var custom: Bool
   var subtitle: String
+  /// Catalog muscle keys, for the row's small body (2.0.1 library).
+  var primary: [String] = []
+  var secondary: [String] = []
   var id: String { slug }
 
   static func parse(_ j: [String: Any]) -> LibraryExercise? {
@@ -129,7 +132,8 @@ struct LibraryExercise: Equatable, Identifiable {
     let muscles = ExerciseVocab.muscles(keys: (j["primary_muscles"] as? [String]) ?? [], zh: (j["primary_muscles_zh"] as? [String]) ?? [])
     let gear = ExerciseVocab.equipment(keys: (j["equipment"] as? [String]) ?? [], zh: (j["equipment_zh"] as? [String]) ?? [])
     return LibraryExercise(slug: slug, name: ExerciseNames.exercise(j) ?? slug, status: j["status"] as? String ?? "active",
-                           custom: (j["source"] as? String) == "user_custom", subtitle: (muscles + gear).joined(separator: " · "))
+                           custom: (j["source"] as? String) == "user_custom", subtitle: (muscles + gear).joined(separator: " · "),
+                           primary: (j["primary_muscles"] as? [String]) ?? [], secondary: (j["secondary_muscles"] as? [String]) ?? [])
   }
 
   static func list(_ j: [String: Any]?) -> [LibraryExercise] {

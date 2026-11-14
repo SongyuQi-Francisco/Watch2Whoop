@@ -21,6 +21,10 @@ struct MissingDays: Equatable {
   var kinds: [Kind] = []
   var days: [Day] = []
   var windowDays = 30
+  /// Last day of the window (the server's yesterday) and the first day with any data (nil = none yet); the 2.0.1 sync
+  /// dial draws the window from these. Older servers leave them out.
+  var end: String?
+  var since: String?
 
   init(kinds: [Kind] = [], days: [Day] = [], windowDays: Int = 30) {
     self.kinds = kinds
@@ -38,6 +42,8 @@ struct MissingDays: Equatable {
       return Day(date: date, kinds: (d["kinds"] as? [Any] ?? []).compactMap { $0 as? String })
     }
     windowDays = (j["window_days"] as? NSNumber)?.intValue ?? 30
+    end = (j["end"] as? String).map { String($0.prefix(10)) }
+    since = (j["since"] as? String).map { String($0.prefix(10)) }
   }
 
   func label(_ key: String) -> String { kinds.first { $0.key == key }?.label ?? key }
