@@ -8,6 +8,8 @@ struct RootView: View {
     NavigationStack {
       screen
         .background(W.bg)
+        // the title sits in the status row beside the clock (mockups), never over the progress pills
+        .navigationBarTitleDisplayMode(.inline)
     }
   }
 
@@ -59,7 +61,6 @@ struct StartScreen: View {
 struct SetScreen: View {
   @EnvironmentObject var m: WatchModel
   var s: SetSession
-  @State private var confirmEnd = false
   @State private var crownAt: Date?
 
   var body: some View {
@@ -77,16 +78,7 @@ struct SetScreen: View {
       PrimaryButton(label: tr("完成", "Done"), icon: "checkmark", height: 50) { m.primary() }
     }
     .navigationTitle(ex?.name ?? "")
-    .toolbar {
-      ToolbarItem(placement: .topBarLeading) {
-        Button { confirmEnd = true } label: { Image(systemName: "stop.fill") }
-          .accessibilityLabel(tr("结束训练", "End workout"))
-      }
-    }
-    .confirmationDialog(tr("结束训练？", "End the workout?"), isPresented: $confirmEnd) {
-      Button(tr("结束", "End"), role: .destructive) { m.end() }
-      Button(tr("继续练", "Keep going"), role: .cancel) {}
-    }
+    .endWorkoutButton { m.end() }
     .crownSteps { n in
       crownAt = Date()
       m.crown(n)
@@ -99,7 +91,7 @@ struct SetScreen: View {
 
   /// The underline shows which number the crown changes, while it is being turned or after a tap on the weight.
   private var showFocus: Bool {
-    s.focus == .weight || (crownAt.map { m.now.timeIntervalSince($0) < 1.5 } ?? false)
+    s.focus == .weight || m.demoShowFocus || (crownAt.map { m.now.timeIntervalSince($0) < 1.5 } ?? false)
   }
 
   @ViewBuilder private func numbers(_ ex: WatchExercise?) -> some View {
@@ -153,6 +145,30 @@ struct SetScreen: View {
   }
 }
 
+/// The stop key in the top corner (set and rest screens): ending takes two taps, the key and its confirmation (plan 2.1).
+private struct EndWorkoutButton: ViewModifier {
+  var end: () -> Void
+  @State private var confirm = false
+
+  func body(content: Content) -> some View {
+    content
+      .toolbar {
+        ToolbarItem(placement: .topBarLeading) {
+          Button { confirm = true } label: { Image(systemName: "stop.fill") }
+            .accessibilityLabel(tr("结束训练", "End workout"))
+        }
+      }
+      .confirmationDialog(tr("结束训练？", "End the workout?"), isPresented: $confirm) {
+        Button(tr("结束", "End"), role: .destructive, action: end)
+        Button(tr("继续练", "Keep going"), role: .cancel) {}
+      }
+  }
+}
+
+extension View {
+  fileprivate func endWorkoutButton(_ end: @escaping () -> Void) -> some View { modifier(EndWorkoutButton(end: end)) }
+}
+
 // MARK: - T5 logged
 
 struct LoggedScreen: View {
@@ -198,9 +214,10 @@ struct RestScreen: View {
     let done = s.plan.exercises.first { $0.slug == l?.slug }
     VStack(spacing: 4 * W.k) {
       SetPills(total: done?.sets ?? 1, done: (l?.setIndex ?? 0) + 1, current: nil)
+      // the ring takes what is left between the pills and the heart-rate row (never pushes the title row)
       ring
-        .frame(width: 108 * W.k, height: 108 * W.k)
-        .frame(maxHeight: .infinity)
+        .frame(maxWidth: 112 * W.k, minHeight: 0, maxHeight: .infinity)
+        .layoutPriority(-1)
         .onTapGesture { amending = true }
       HStack {
         HeartRate(bpm: m.lightMode ? nil : s.heartRate)
@@ -217,38 +234,47 @@ struct RestScreen: View {
       }
       PrimaryButton(label: tr("跳过", "Skip"), kind: .quiet, height: 42) { m.primary() }
     }
-    .navigationTitle(done?.name ?? "")
+    // the ring is this screen's subject: no title row (the pills say which exercise's sets these are)
+    .toolbar(.hidden, for: .navigationBar)
     .crownSteps { m.crown($0) }
     .sheet(isPresented: $amending) {
       if let l { AmendScreen(set: l, weighted: done?.weighted ?? false, step: done?.weightStepKg ?? WatchParams.defaultWeightStepKg) }
     }
   }
 
+  /// Ticks, track, the countdown arc and the clock; everything scales with the space the screen leaves for it.
   private var ring: some View {
     let left = timer.remaining(at: m.now)
-    return ZStack {
-      Canvas { ctx, size in
-        let c = CGPoint(x: size.width / 2, y: size.height / 2)
-        let r = min(size.width, size.height) / 2
-        for k in 0..<36 {
-          let a = Double(k) * 10 * .pi / 180
-          let major = k % 9 == 0
-          var p = Path()
-          p.move(to: CGPoint(x: c.x + (r - 4.5) * sin(a), y: c.y - (r - 4.5) * cos(a)))
-          p.addLine(to: CGPoint(x: c.x + (major ? r : r - 2) * sin(a), y: c.y - (major ? r : r - 2) * cos(a)))
-          ctx.stroke(p, with: .color(major ? W.tickMajor : W.tick), lineWidth: 1)
+    return GeometryReader { g in
+      let d = min(g.size.width, g.size.height)
+      let inset = d * 0.085
+      ZStack {
+        Canvas { ctx, size in
+          let c = CGPoint(x: size.width / 2, y: size.height / 2)
+          let r = min(size.width, size.height) / 2
+          for k in 0..<36 {
+            let a = Double(k) * 10 * .pi / 180
+            let major = k % 9 == 0
+            var p = Path()
+            p.move(to: CGPoint(x: c.x + (r - 4.5) * sin(a), y: c.y - (r - 4.5) * cos(a)))
+            p.addLine(to: CGPoint(x: c.x + (major ? r : r - 2) * sin(a), y: c.y - (major ? r : r - 2) * cos(a)))
+            ctx.stroke(p, with: .color(major ? W.tickMajor : W.tick), lineWidth: 1)
+          }
+        }
+        Circle().stroke(W.track, lineWidth: 1.5).padding(inset)
+        Circle().trim(from: 0, to: timer.fraction(at: m.now))
+          .stroke(W.train, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+          .rotationEffect(.degrees(-90))
+          .padding(inset)
+        VStack(spacing: 0) {
+          Text(tr("休息", "Rest")).font(.system(size: d * 0.11, weight: .medium)).foregroundStyle(W.text2)
+          Text(RestTimer.clock(left)).font(.system(size: d * 0.30, weight: .light).monospacedDigit())
+          Text(nextLine).font(.system(size: d * 0.105, weight: .medium)).foregroundStyle(W.text2).lineLimit(1)
+            .minimumScaleFactor(0.7).frame(maxWidth: d * 0.72)
         }
       }
-      Circle().stroke(W.track, lineWidth: 1.5).padding(9 * W.k)
-      Circle().trim(from: 0, to: timer.fraction(at: m.now))
-        .stroke(W.train, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-        .rotationEffect(.degrees(-90))
-        .padding(9 * W.k)
-      VStack(spacing: 0) {
-        Text(tr("休息", "Rest")).font(W.font(11)).foregroundStyle(W.text2)
-        Text(RestTimer.clock(left)).font(W.font(34, .light))
-        Text(nextLine).font(W.font(11)).foregroundStyle(W.text2).lineLimit(1).frame(maxWidth: 80 * W.k)
-      }
+      .frame(width: d, height: d)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
   }
 
@@ -361,6 +387,7 @@ struct SummaryScreen: View {
         PrimaryButton(label: tr("完成", "Done"), icon: "checkmark") { m.primary() }
       }
     }
+    .defaultScrollAnchor(m.demoFacts ? .bottom : .top)
     .navigationTitle(s.plan.title)
   }
 

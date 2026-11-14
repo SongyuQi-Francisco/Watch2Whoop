@@ -10,6 +10,9 @@ final class WatchModel: ObservableObject {
   @Published private(set) var queue: WatchEventQueue
   @Published private(set) var reachable = false
   @Published private(set) var now = Date()
+  /// Screenshots only: the set screen shows which number the crown changes (T3) / the summary opens on its facts (T10).
+  @Published private(set) var demoShowFocus = false
+  @Published private(set) var demoFacts = false
 
   private let link = WatchLinkClient()
   private let workout = WorkoutController()
@@ -29,6 +32,10 @@ final class WatchModel: ObservableObject {
   func start() {
     guard !started else { return }
     started = true
+    #if DEBUG
+    // simulator screenshots: `SIMCTL_CHILD_W2W_WATCH_DEMO=t6` shows that screen with synthetic data, frozen in time
+    if let id = ProcessInfo.processInfo.environment["W2W_WATCH_DEMO"], !id.isEmpty { demo(id); return }
+    #endif
     link.onContext = { [weak self] c in self?.received(c) }
     link.onReachable = { [weak self] r in
       self?.reachable = r
@@ -176,4 +183,117 @@ final class WatchModel: ObservableObject {
   }
 
   private func saveQueue() { defaults.set(queue.data(), forKey: Self.queueKey) }
+
+  #if DEBUG
+  /// The mockups' screens (docs/design/watch, T1–T10 and S1–S9) with a synthetic plan (nickname 小林); no phone, no
+  /// HealthKit, the clock stopped. Debug builds only.
+  private func demo(_ id: String) {
+    let t0 = Date().addingTimeInterval(-3 * 3600)
+    func ex(_ slug: String, _ name: String, _ sets: Int, _ kg: Double?, _ reps: Int, _ last: String) -> WatchExercise {
+      WatchExercise(slug: slug, name: name, sets: sets, done: 0, reps: reps, weightKg: kg, durationS: nil, weighted: kg != nil,
+                    restSec: 90, weightStepKg: 2.5, last: Array(repeating: last, count: sets))
+    }
+    let plan = WatchPlan(day: "", title: tr("上肢 A", "Upper A"), exercises: [
+      ex("bench", tr("卧推", "Bench"), 4, 60, 8, "60×7"), ex("ohp", tr("肩推", "OH press"), 3, 25, 10, "22.5×10"),
+      ex("row", tr("划船", "Row"), 4, 60, 10, "57.5×10"), ex("pulldown", tr("下拉", "Pulldown"), 3, 50, 10, "50×10"),
+      ex("curl", tr("弯举", "Curl"), 2, 12, 12, "12×12"), ex("pushdown", tr("下压", "Pushdown"), 2, 20, 12, "20×13"),
+    ])
+    var p = plan
+    p.day = today
+    var q = WatchEventQueue()
+    q.heard(at: Date().addingTimeInterval(-120))
+    var ctx: WatchContext? = WatchContext(signedIn: true, plan: p, lang: Lang.code, sentAt: Date())
+    var s = SetSession(plan: p)
+    var clock = t0
+    func at(_ dt: TimeInterval) -> Date { clock = clock.addingTimeInterval(dt); return clock }
+    /// one set: optional crown change, log, receipt, rest; `skip` = leave the rest after 95 s
+    func set(hr: Int, crown: Int = 0, restHr: Int? = nil) {
+      s.recordHeartRate(hr)
+      s.crown(crown)
+      _ = s.primary(at: at(45))
+      _ = s.tick(at: at(1.3))
+      if let restHr { s.recordHeartRate(restHr) }
+      _ = s.primary(at: at(93))
+    }
+    func event(_ id: String) -> WatchSetEvent {
+      WatchSetEvent(id: id, kind: .set, day: p.day, slug: "bench", setIndex: 0, reps: 8, weightKg: 60, durationS: nil,
+                    at: Date(), hrEnd: nil, restBeforeS: nil)
+    }
+    var frozen = Date()
+    var keepSession = true
+    switch id {
+    case "t2", "t3", "t4", "s4":
+      _ = s.primary(at: at(0))
+      set(hr: 140, restHr: 112)
+      s.recordHeartRate(132)
+      if id == "t3" { s.crown(1); demoShowFocus = true }
+      if id == "t4" { s.select(.weight); s.crown(1) }
+      if id == "s4" {
+        s.recordHeartRate(128)
+        for i in 0..<6 { q.enqueue(event("q\(i)")) }
+        reachable = false
+      }
+    case "t5":
+      _ = s.primary(at: at(0))
+      s.recordHeartRate(132)
+      s.crown(1)
+      _ = s.primary(at: at(45))
+      frozen = clock.addingTimeInterval(0.6)
+    case "t6":
+      _ = s.primary(at: at(0))
+      set(hr: 138, restHr: 110)
+      s.recordHeartRate(132)
+      _ = s.primary(at: at(45))
+      _ = s.tick(at: at(1.3))
+      s.recordHeartRate(118)
+      frozen = clock.addingTimeInterval(16.7)
+    case "t7":
+      _ = s.primary(at: at(0))
+      for _ in 0..<4 { set(hr: 135, restHr: 115) }
+      s.recordHeartRate(124)
+    case "t9", "t10":
+      _ = s.primary(at: at(0))
+      let hrs = [138, 142, 145, 140, 131, 133, 136, 128, 130, 134, 137, 126, 129, 131, 120, 123, 118, 121]
+      for (i, h) in hrs.enumerated() {
+        if i == hrs.count - 1 {
+          s.recordHeartRate(h)
+          _ = s.primary(at: at(45))
+          _ = s.tick(at: at(1.3))
+        } else {
+          set(hr: h + 6, crown: i % 5 == 0 ? 1 : 0, restHr: h - 10)
+        }
+      }
+      demoFacts = id == "t10"
+      frozen = clock
+    case "s2":
+      keepSession = false
+      q.enqueue(event("a"))
+      _ = q.takePending()
+      reachable = true
+    case "s5":
+      keepSession = false
+      for i in 0..<6 { q.enqueue(event("q\(i)")) }
+      _ = q.takePending()
+      for i in 0..<4 { q.markDelivered("q\(i)", at: Date()) }
+      reachable = true
+    case "s6":
+      keepSession = false
+      q.enqueue(event("a"))
+      _ = q.takePending()
+      q.markFailed("a")
+    case "s8":
+      keepSession = false
+      ctx = nil
+    case "s9":
+      keepSession = false
+      ctx = WatchContext(signedIn: true, plan: nil, lang: Lang.code, sentAt: Date())
+    default:   // t1, s1
+      keepSession = false
+    }
+    context = ctx
+    queue = q
+    session = keepSession ? s : nil
+    now = keepSession ? frozen : Date()
+  }
+  #endif
 }
