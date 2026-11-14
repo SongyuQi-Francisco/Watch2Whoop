@@ -178,6 +178,7 @@ final class AppModel: ObservableObject {
       _ = try? await api.data(APIRequest(method: .post, path: Endpoint.accountLogout, idempotent: false, timeout: 10))
     }
     await HealthSyncService.shared.detach()
+    PhoneWatchBridge.shared.detach()
     AccountRuntime.close()
     if let cfg = store.config, let uid = cfg.userId { try? AppDatabase.deleteAccount(server: cfg.server, userId: uid) }
     let server = store.config?.server
@@ -320,6 +321,7 @@ final class AppModel: ObservableObject {
       }
     }
     Task { await PushRegistration.shared.renew(api: api) }   // the APNs token can change between starts
+    PhoneWatchBridge.shared.attach(s)   // today's plan to the watch, the watch's sets into the day (watch-app-plan 4.6)
   }
 
   /// `/v1/web/me`: user id (names the database), display name, flags.

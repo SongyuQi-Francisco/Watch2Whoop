@@ -7,7 +7,9 @@
    and the dark block) has the same hex value, so the native app and the page cannot drift apart. The same for the
    tokens' `.slim(...)` values against slim.js (`html[data-theme="slim"]`, alpha included), and the accent of the normal
    look must be --text on --bg, so that the normal look does not change.
-3. Licences: Resources/licenses.json (the app's 开源许可 page) names every pinned SPM package of project.yml at its
+3. Watch colours: every token of the Apple Watch app (Watch2WhoopWatch/WatchTokens.swift, always dark) has the DARK
+   value of the iPhone token of the same name in Palette.swift (rule 1 also covers the watch app and WatchShared/).
+4. Licences: Resources/licenses.json (the app's 开源许可 page) names every pinned SPM package of project.yml at its
    version, and every entry has a licence text.
 
     python3 apps/ios/scripts/check_sources.py
@@ -19,6 +21,8 @@ import sys
 HERE = pathlib.Path(__file__).resolve().parent.parent
 REPO = HERE.parent.parent
 APP = HERE / "Watch2Whoop"
+# Swift sources whose UI strings must be bilingual: the iPhone app, the Apple Watch app and the code they share
+SWIFT_DIRS = [APP, HERE / "Watch2WhoopWatch", HERE / "WatchShared"]
 CSS = REPO / "body_engine" / "src" / "body_engine" / "web" / "static" / "app.css"
 SLIM_JS = CSS.with_name("slim.js")
 HAN = re.compile(r"[一-鿿]")
@@ -43,7 +47,7 @@ def strip_comments(line: str) -> str:
 
 def check_i18n() -> list[str]:
     errors = []
-    for f in sorted(APP.rglob("*.swift")):
+    for f in sorted(p for d in SWIFT_DIRS if d.exists() for p in d.rglob("*.swift")):
         if f.name in SKIP:
             continue
         for n, raw in enumerate(f.read_text().splitlines(), 1):
@@ -132,6 +136,24 @@ def check_slim_tokens() -> list[str]:
     return errors
 
 
+def check_watch_tokens() -> list[str]:
+    tokens = HERE / "Watch2WhoopWatch" / "WatchTokens.swift"
+    if not tokens.exists():
+        return []
+    swift = (APP / "DesignSystem" / "Palette.swift").read_text()
+    errors = []
+    found = re.findall(r"static let (\w+) = hex\(0x([0-9A-Fa-f]{6})\)", tokens.read_text())
+    if not found:
+        errors.append("WatchTokens.swift: no hex(...) tokens found")
+    for name, value in found:
+        m = re.search(rf"static let {name} = dynamic\(0x[0-9A-Fa-f]{{6}}, 0x([0-9A-Fa-f]{{6}})", swift)
+        if not m:
+            errors.append(f"WatchTokens.swift {name}: no token of that name in Palette.swift")
+        elif m.group(1).lower() != value.lower():
+            errors.append(f"WatchTokens.swift {name} is #{value.lower()}, Palette.swift {name} (dark) is #{m.group(1).lower()}")
+    return errors
+
+
 def check_licences() -> list[str]:
     import json
     data = json.loads((APP / "Resources" / "licenses.json").read_text())
@@ -148,7 +170,7 @@ def check_licences() -> list[str]:
 
 
 def main() -> int:
-    errors = check_i18n() + check_tokens() + check_slim_tokens() + check_licences()
+    errors = check_i18n() + check_tokens() + check_slim_tokens() + check_watch_tokens() + check_licences()
     for e in errors:
         print(e)
     print("ok" if not errors else f"{len(errors)} problem(s)")

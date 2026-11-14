@@ -1,0 +1,3 @@
+/* Permission texts of the watch app (same meaning as project.yml and zh-Hans.lproj) */
+"NSHealthShareUsageDescription" = "Watch2Whoop reads your heart rate during a workout you start on this watch, to show it between sets.";
+"NSHealthUpdateUsageDescription" = "Watch2Whoop saves the strength workout you record on this watch to Health, so its heart rate and energy count in your strain.";

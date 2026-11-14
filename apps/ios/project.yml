@@ -6,6 +6,7 @@ options:
   bundleIdPrefix: org.watch2whoop
   deploymentTarget:
     iOS: "16.0"
+    watchOS: "11.0"
   createIntermediateGroups: true
   generateEmptyDirectories: false
   developmentLanguage: zh-Hans
@@ -40,6 +41,8 @@ targets:
         excludes:
           - "**/*.md"
           - "PrivacyInfo.xcprivacy"
+      # Shared with the Apple Watch app (plain Foundation: plan, events, set session, queue; docs/watch-app-plan.md 4.1)
+      - path: WatchShared
       # The privacy manifest (required-reason APIs, collected data types; App Store submission)
       - path: Watch2Whoop/PrivacyInfo.xcprivacy
         buildPhase: resources
@@ -134,6 +137,57 @@ targets:
     dependencies:
       - target: Watch2Whoop
 
+  # Apple Watch app, phase 1 (docs/watch-app-plan.md 5: logging sets). Its own scheme, NOT embedded in the iPhone app
+  # yet: the iPhone build, its tests and TestFlight stay exactly as they were (plan 4.10 V1). Installed on a watch from
+  # Xcode with development signing; embedding it for TestFlight is a later step (apps/ios/Watch2WhoopWatch/README.md).
+  Watch2WhoopWatch:
+    type: application
+    platform: watchOS
+    deploymentTarget: "11.0"
+    sources:
+      - path: Watch2WhoopWatch
+        excludes:
+          - "**/*.md"
+      - path: WatchShared
+      # tr("中文", "English") and the language choice, the same file as the iPhone app's
+      - path: Watch2Whoop/Localization/I18n.swift
+    info:
+      path: Watch2WhoopWatch/Info.plist
+      properties:
+        CFBundleDisplayName: $(W2W_DISPLAY_NAME)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: zh-Hans
+        CFBundleAllowMixedLocalizations: true
+        CFBundleLocalizations: [zh-Hans, en]
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: $(W2W_BUNDLE_ID)
+        # Installable on its own from Xcode while it is not embedded in the iPhone app; it still talks to the iPhone app.
+        WKRunsIndependentlyOfCompanionApp: true
+        WKBackgroundModes: [workout-processing]
+        # English here and in en.lproj, Chinese in zh-Hans.lproj/InfoPlist.strings (keep the three equal in meaning)
+        NSHealthShareUsageDescription: "Watch2Whoop reads your heart rate during a workout you start on this watch, to show it between sets."
+        NSHealthUpdateUsageDescription: "Watch2Whoop saves the strength workout you record on this watch to Health, so its heart rate and energy count in your strain."
+    entitlements:
+      path: Watch2WhoopWatch/Watch2WhoopWatch.entitlements
+      properties:
+        com.apple.developer.healthkit: true
+        com.apple.developer.healthkit.access: []
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(W2W_BUNDLE_ID).watchkitapp
+        PRODUCT_NAME: Watch2WhoopWatch
+        DEVELOPMENT_TEAM: $(W2W_TEAM_ID)
+        CODE_SIGN_STYLE: Automatic
+        MARKETING_VERSION: $(W2W_MARKETING_VERSION)
+        CURRENT_PROJECT_VERSION: $(W2W_BUILD_NUMBER)
+        TARGETED_DEVICE_FAMILY: "4"
+        WATCHOS_DEPLOYMENT_TARGET: "11.0"
+        ENABLE_PREVIEWS: YES
+        SKIP_INSTALL: YES
+    dependencies:
+      - sdk: HealthKit.framework
+
 schemes:
   Watch2Whoop:
     build:
@@ -147,5 +201,13 @@ schemes:
       gatherCoverageData: false
       targets:
         - Watch2WhoopTests
+    archive:
+      config: Release
+  Watch2WhoopWatch:
+    build:
+      targets:
+        Watch2WhoopWatch: all
+    run:
+      config: Debug
     archive:
       config: Release
