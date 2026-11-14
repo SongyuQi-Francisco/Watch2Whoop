@@ -7,10 +7,10 @@ struct MeAIFace: Equatable {
   var fallback = false
   /// The fallback AI's allowance left this month, 0–100 (`/ai-providers` → fallback.remaining_pct).
   var remainingPct: Int?
-  /// The fallback AI's money this month (2.1.0: `spent_cny` / `quota_cny` of the ai-choice option or of fallback); both
-  /// or neither, so the face shows 「¥1.2 / ¥3」 or the percentage of an older server.
-  var spentCny: Double? = nil
-  var quotaCny: Double? = nil
+  /// The share of this month's allowance used, 0–100 (2.1.0: `spent_cny` / `quota_cny` of the ai-choice option or of
+  /// fallback). Users see a percentage only, never the money (owner, 2.1.0 acceptance); nil = an older server, the face
+  /// then shows `remainingPct`.
+  var usedPct: Int? = nil
 
   /// Pure (unit-tested in `MeGlanceTests`).
   static func of(choice: AIChoice?, list: AIProviderList?) -> MeAIFace? {
@@ -20,23 +20,19 @@ struct MeAIFace: Equatable {
     var face = MeAIFace(name: cur.label, fallback: true, remainingPct: list?.fallback?.remainingPct)
     let spent = cur.spentCny ?? list?.fallback?.spentCny
     let quota = cur.quotaCny ?? list?.fallback?.quotaCny
-    if let spent, let quota, quota > 0 {
-      face.spentCny = spent
-      face.quotaCny = quota
-    }
+    face.usedPct = usedPct(spent: spent, quota: quota)
     return face
   }
 
-  /// 「¥1.2」, 「¥3」 (one decimal, none when whole).
-  static func money(_ v: Double) -> String {
-    let r = (v * 10).rounded() / 10
-    if r == r.rounded() { return "¥\(Int(r))" }
-    return String(format: "¥%.1f", r)
+  /// spent / quota as a whole percentage, capped to 0–100; nil without both or with no quota.
+  static func usedPct(spent: Double?, quota: Double?) -> Int? {
+    guard let spent, let quota, quota > 0 else { return nil }
+    return max(0, min(100, Int((100 * spent / quota).rounded())))
   }
 
   /// Little left (under a fifth): the gauge turns `mid`.
   var low: Bool {
-    if let spentCny, let quotaCny { return quotaCny - spentCny < quotaCny * 0.2 }
+    if let usedPct { return usedPct > 80 }
     return (remainingPct ?? 100) < 20
   }
 }
@@ -141,9 +137,9 @@ struct MeGlance: View {
       }
       if let ai {
         Button(action: run.ai) {
-          if let spent = ai.spentCny, let quota = ai.quotaCny {
-            Face(icon: .orbit, label: tr("AI 额度", "AI allowance"), number: MeAIFace.money(spent), unit: "/ \(MeAIFace.money(quota))") {
-              BulletGauge(value: min(spent, quota), max: quota, step: quota / 4, majors: [quota / 2], tone: ai.low ? .mid : .text)
+          if let used = ai.usedPct {
+            Face(icon: .orbit, label: tr("AI 额度", "AI allowance"), number: "\(used)", unit: tr("% 已用", "% used")) {
+              BulletGauge(value: Double(used), max: 100, step: 25, majors: [50], tone: ai.low ? .mid : .text)
             }
           } else if let pct = ai.remainingPct {
             Face(icon: .orbit, label: tr("AI 额度", "AI allowance"), number: "\(pct)", unit: tr("% 剩余", "% left")) {
