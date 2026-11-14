@@ -27,6 +27,22 @@ def test_auto_cards_only_for_known_write_tools():
     assert cards.auto_spec("get_scores", {}) is None
 
 
+def test_written_ids_of_food_writes():
+    """issue #445: the meal card after an AI food write carries what was written, so the app undoes it itself."""
+    res = {"created": [{"id": "e1", "date": "2026-10-20", "food": "米饭"}, {"id": 7, "date": "2026-10-20", "food": "蛋"}],
+           "skipped_duplicates": [], "warnings": []}
+    assert cards.written("log_food", res) == {"tool": "log_food", "date": "2026-10-20", "entry_ids": ["e1", "7"],
+                                              "log_id": None}
+    meal = {"log_id": 12, "date": "2026-10-21", "entries": [{"id": "e3", "food": "燕麦"}]}
+    assert cards.written("log_meal_template", meal) == {"tool": "log_meal_template", "date": "2026-10-21",
+                                                        "entry_ids": ["e3"], "log_id": 12}
+    assert cards.written("log_recipe", {**meal, "log_id": 13})["log_id"] == 13
+    assert cards.written("log_food", {"created": [], "skipped_duplicates": [{"food": "米饭"}]}) is None   # nothing written
+    assert cards.written("log_weight", {"date": "2026-10-20"}) is None
+    assert cards.written("log_food", None) is None and cards.written("log_food", "text") is None
+    assert set(cards.WRITTEN) <= set(cards.AUTO)
+
+
 def test_actions_are_sanitized():
     card = cards.build(None, 1, {"type": "actions", "buttons": [
         {"label": "x" * 50, "text": "y" * 500}, {"label": "", "text": "空的不要"}, {"label": "b", "text": "c"},

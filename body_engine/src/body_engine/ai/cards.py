@@ -456,6 +456,25 @@ def auto_spec(tool: str, args: dict, v2: bool = False, reads: bool = False) -> d
     return None if extra is None else {"type": kind, "date": None, **extra}
 
 
+# write tool -> the ids a meal card carries for undo (issue #445): log_food's entries, a quick meal's / recipe's log
+WRITTEN = ("log_food", "log_meal_template", "log_recipe")
+
+
+def written(tool: str, res) -> dict | None:
+    """What a successful food write wrote, for the app's own undo without asking the AI again:
+    {"tool", "date", "entry_ids", "log_id"}. log_id (quick meal / recipe) undoes the whole logging
+    (DELETE /v1/users/me/meal-logs/{log_id}); otherwise each entry id goes to DELETE /nutrition/entries/{id}?date=.
+    None for other tools, an empty write (everything skipped as a duplicate) or a result without ids."""
+    if tool not in WRITTEN or not isinstance(res, dict):
+        return None
+    rows = res.get("created") if tool == "log_food" else res.get("entries")
+    ids = [str(r["id"]) for r in rows or [] if isinstance(r, dict) and r.get("id") is not None]
+    if not ids:
+        return None
+    day = res.get("date") or next((r.get("date") for r in rows if isinstance(r, dict) and r.get("date")), None)
+    return {"tool": tool, "date": day, "entry_ids": ids, "log_id": res.get("log_id")}
+
+
 def spec_key(a: dict) -> tuple:
     """What makes two cards the same within a turn (show_card arguments or an automatic spec)."""
     return tuple((a or {}).get(k) for k in ("type", "date", "metric", "id", "slot", "range"))
