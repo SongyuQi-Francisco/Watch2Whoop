@@ -273,7 +273,7 @@ final class JarvisRouter: ObservableObject {
   /// `card`: the card or the row the button is on (a lab's key, a night's date, a recipe's id). The page keys are
   /// cards.OPEN_PAGES plus `explain.<metric>` from a card's own title.
   static func route(page p: String, card: JSONValue?, circles: Bool) -> Route {
-    let foodTab: AppTab = circles ? .record : .food
+    let foodTab: AppTab = .record   // 2.0.1: 饮食 is a segment of 记录 (AppTab.landing)
     if p.hasPrefix("explain.") {
       return .detail(.explain(key: String(p.dropFirst(8)), title: card?["title"]?.string ?? ""))
     }

@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// The five tabs, same order and names as the Today page's tab bar (index.html `.tabbar`):
-/// 今天 · 趋势 · 饮食 · 记录 · 我; with the `friends` flag on, 朋友 (circles) takes 饮食's place and 饮食 moves into 记录
-/// (app.js applyTabs). Circles always stay a top-level tab (memory "Circles is a core feature").
+/// The tab bar of 2.0.1 (docs/design/2.0.1 direction.md 4): 今天 · 身体 · 记录 · 圈子 · 我, plus the Jarvis key. 身体 is the
+/// trends page (`trends`), 记录 holds 训练 and 饮食 (饮食 is a segment of it, never a tab of its own), 圈子 is a top-level
+/// tab while the `friends` flag is on (off: four tabs). `food` stays only so old links and saved state still land: it
+/// always lands on 记录 (`landing`).
 enum AppTab: String, CaseIterable, Identifiable {
   case today, trends, circles, food, record, me
   var id: String { rawValue }
@@ -10,8 +11,8 @@ enum AppTab: String, CaseIterable, Identifiable {
   var title: String {
     switch self {
     case .today: return tr("今天", "Today")
-    case .trends: return tr("趋势", "Trends")
-    case .circles: return tr("朋友", "Friends")
+    case .trends: return tr("身体", "Body")
+    case .circles: return tr("圈子", "Circles")
     case .food: return tr("饮食", "Food")
     case .record: return tr("记录", "Log")
     case .me: return tr("我", "Me")
@@ -21,7 +22,7 @@ enum AppTab: String, CaseIterable, Identifiable {
   var icon: Icon.Name {
     switch self {
     case .today: return .circleGauge
-    case .trends: return .chartLine
+    case .trends: return .activity
     case .circles: return .users
     case .food: return .soup
     case .record: return .squarePlus
@@ -31,7 +32,7 @@ enum AppTab: String, CaseIterable, Identifiable {
 
   /// The tabs shown, left to right.
   static func visible(circles: Bool) -> [AppTab] {
-    [.today, .trends, circles ? .circles : .food, .record, .me]
+    circles ? [.today, .trends, .record, .circles, .me] : [.today, .trends, .record, .me]
   }
 }
 
@@ -65,8 +66,17 @@ struct MainTabView: View {
     .task { await perfScript() }
     .onChange(of: session.circlesTab) { on in
       if selection == .circles && !on { selection = .today }
-      if selection == .food && on { selection = .record }
     }
+    .onChange(of: selection) { _ in leaveFood() }   // a saved or linked 饮食 → 记录 → 饮食
+    .onAppear(perform: leaveFood)
+  }
+
+  /// 饮食 is not a tab (2.0.1): a saved or linked `.food` opens 记录 on its 饮食 segment.
+  private func leaveFood() {
+    guard selection == .food else { return }
+    let d = AppTab.food.destination(circles: session.circlesTab)
+    if let seg = d.segment { JarvisPageLink.shared.segment = seg }
+    selection = d.tab
   }
 
   /// `SIMCTL_CHILD_W2W_DEV_MEMBER=<user id>[:today|trends|sleep|food|record|health]` (Debug, simulator screenshots): opens that

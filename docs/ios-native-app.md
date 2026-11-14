@@ -601,7 +601,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 - 启动环境变量 `W2W_PERF=1` 时开帧计数器；`W2W_PERF_SCROLL=1` 时今天页自己上下滚三次，并报告掉帧。看结果：`xcrun simctl launch --console-pty … | grep W2W_PERF`。
 - `W2W_PERF_SCRIPT=tabs`（Debug，`App/PerfScript.swift`）：自动把每个 tab 切两遍（第一次 / 再次），再在今天页开关一个弹层、推入和退出睡眠页，有 app 内 AI 时再开关一次对话；每一步记 `first`（从这一步到下一帧，即主线程被它占了多久）、`worst`、`dropped`。改性能前后用同一套步骤比较。
 - 今天页用 `LazyVStack`，首帧只建屏幕上的部分。
-- 2.0.1：今天页的数据模型（解析本地文档的 JSON、算整页的数）在数据库观察的后台队列里建，只有首帧那一份同步建；卡片区 `TodayDayCards`（还有 `TodayHomePage`、趋势页的 `TrendsMetricsContent`）按模型做 `Equatable`，不比较闭包：开弹层、推入子页面、切 tab 只改页面自己的状态，不再把整页卡片重建、重排一遍。
+- 2.0.1：今天页的数据模型（解析本地文档的 JSON、算整页的数）在数据库观察的后台队列里建，只有首帧那一份同步建；卡片区 `TodayDayCards`（还有 2.0.1 的 `TodayGlancePage`、趋势页的 `TrendsMetricsContent`）按模型做 `Equatable`，不比较闭包：开弹层、推入子页面、切 tab 只改页面自己的状态，不再把整页卡片重建、重排一遍。
 - Debug 版截图用的环境变量：`W2W_DEV_SHEET`、`W2W_DEV_SLEEP`、`W2W_DEV_DATE`、`W2W_DEV_SCROLL`（`TodayView.swift` 的 `DevShot`；滚动锚点 `n3.food` 到饮食卡）、`W2W_DEV_TODAYFOOD=day`（打开饮食卡的明细）。
 
 ### 9.2 N7 圈子：数据从哪来、写怎么走

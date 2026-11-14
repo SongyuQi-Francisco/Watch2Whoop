@@ -192,7 +192,7 @@ struct FoodContent: View {
 
   /// Back to 训练 / 日记 inside 记录 (leaving for another tab, the layer sets that tab's page).
   private func leaveJarvisPage() {
-    guard store.circlesTab, let r = JarvisRouter.current, r.page.hasPrefix("food") else { return }
+    guard let r = JarvisRouter.current, r.page.hasPrefix("food") else { return }
     r.page = AppTab.record.rawValue
   }
 

@@ -6,10 +6,19 @@ import GRDB
 enum TodayDocs {
   static func activity(_ day: String) -> String { "today.activity:\(day)" }
   static func coach(_ day: String) -> String { "today.coach:\(day)" }
+  /// The strain coach a page draws: the phone's when computed (M4 primary), with the server's day curve and forecast,
+  /// which only the server has (#448; for days the phone scored the curve says `not_computed`).
+  static func coach(local: [String: Any]?, server: [String: Any]?) -> [String: Any]? {
+    guard var l = local else { return server }
+    for k in ["day_curve", "forecast"] { if let v = server?[k] { l[k] = v } }
+    return l
+  }
   static func monitor(_ day: String) -> String { "today.monitor:\(day)" }
   static func sleepCoach(_ day: String) -> String { "today.sleepcoach:\(day)" }
   static let memory = "memory:me"
   static let sync = "sync:overview"
+  /// `GET /sync/missing-days` (the sync center's 「缺 N 天」 list), for the capsule's 「缺N天」.
+  static let missing = "sync:missing"
   static let circles = "circles:overview"
   static func days(_ month: String) -> String { "days:\(month)" }
   static func sleepNight(_ day: String?) -> String { "sleep:night:\(day ?? "latest")" }
@@ -29,6 +38,7 @@ enum TodayDocs {
     if isToday {
       f.append(DocFetch(memory, Endpoint.memory()))
       f.append(DocFetch(sync, Endpoint.syncOverview()))
+      f.append(DocFetch(missing, .get(Endpoint.syncMissingDays)))
       f.append(DocFetch(BedtimeGoal.serverKey, Endpoint.sleepGoal()))   // its `settings` feed the phone's sleep coach
       if circles { f.append(DocFetch(TodayDocs.circles, Endpoint.friendsOverview)) }
       if muscle { f.append(DocFetch(RecordDocs.muscle, RecordAPI.muscle)) }   // the small muscle map (flag muscle_load)
@@ -50,7 +60,7 @@ struct TodaySnapshot: Equatable {
     let mainKey = date.map(DocKey.today) ?? DocKey.todayCurrent
     if let main = try DocRecord.fetchOne(db, key: mainKey) { s.docs[mainKey] = main }
     s.day = date ?? (s.docs[mainKey].flatMap(Self.dateOf))
-    var keys = [TodayDocs.memory, TodayDocs.sync, TodayDocs.circles, RecordDocs.muscle]
+    var keys = [TodayDocs.memory, TodayDocs.sync, TodayDocs.missing, TodayDocs.circles, RecordDocs.muscle]
     if let d = s.day { keys += [TodayDocs.activity(d), TodayDocs.coach(d), TodayDocs.monitor(d), TodayDocs.sleepCoach(d), TrendsLocal.docKey(d)] }
     for r in try DocRecord.fetchAll(db, keys: keys) { s.docs[r.key] = r }
     // the 61-day Trends document under its server key: the phone's own when package `series` is primary (M3)
@@ -151,9 +161,10 @@ final class TodayStore: ObservableObject {
     }
     let inp = TodayInputs(
       today: today, activity: s.day.flatMap { s.docs[TodayDocs.activity($0)]?.json },
-      coach: (local?["strain_coach"] as? [String: Any]) ?? s.day.flatMap { s.docs[TodayDocs.coach($0)]?.json },
+      coach: TodayDocs.coach(local: local?["strain_coach"] as? [String: Any], server: s.day.flatMap { s.docs[TodayDocs.coach($0)]?.json }),
       monitor: (local?["health_monitor"] as? [String: Any]) ?? s.day.flatMap { s.docs[TodayDocs.monitor($0)]?.json },
       memory: s.docs[TodayDocs.memory]?.json, sync: s.docs[TodayDocs.sync]?.json, circles: s.docs[TodayDocs.circles]?.json,
+      missing: s.docs[TodayDocs.missing]?.json,
       localDay: s.local, localPrev: s.localPrev, userToday: userToday, circlesOn: circlesOn,
       trends: s.docs[TrendsDocs.trends(TodayParams.trendsDays, end: date)]?.json,
       trendsLocal: s.day.flatMap { s.docs[TrendsLocal.docKey($0)]?.json },

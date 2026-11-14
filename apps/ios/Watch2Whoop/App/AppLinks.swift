@@ -50,11 +50,11 @@ enum AppLink: Equatable {
 }
 
 extension AppTab {
-  /// The tab a link lands on, given what the tab bar shows: 饮食 is inside 记录 while 朋友 has its place (`visible`).
+  /// The tab a link lands on, given what the tab bar shows: 饮食 is inside 记录 (2.0.1), 圈子 only with the flag (`visible`).
   func landing(circles: Bool) -> AppTab {
     switch self {
     case .circles: return circles ? .circles : .today
-    case .food: return circles ? .record : .food
+    case .food: return .record
     default: return self
     }
   }

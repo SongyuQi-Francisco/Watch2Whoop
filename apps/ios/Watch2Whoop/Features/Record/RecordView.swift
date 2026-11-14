@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// 记录: 训练 · 日记, plus 饮食 while the `friends` flag puts 朋友 in the tab bar in its place (app.js applyTabs()).
+/// 记录: 训练 · 日记 · 饮食 (2.0.1: 饮食 always lives here, the tab bar has no 饮食 tab).
 struct RecordTab: View {
-  let circles: Bool
   @SceneStorage("w2w.record.segment") private var segment: Segment = .training
   @StateObject private var training: TrainingStore
   @StateObject private var journal: JournalStore
@@ -13,13 +12,12 @@ struct RecordTab: View {
   enum Segment: String, Hashable { case training, journal, food }
 
   init(session: AccountSession) {
-    circles = session.circlesTab
     _training = StateObject(wrappedValue: TrainingStore(session: session))
     _journal = StateObject(wrappedValue: JournalStore(session: session))
     _food = StateObject(wrappedValue: FoodStore(session: session))
   }
 
-  private var shown: Segment { segment == .food && !circles ? .training : segment }
+  private var shown: Segment { segment }
 
   var body: some View {
     NavigationStack {
@@ -68,9 +66,7 @@ struct RecordTab: View {
   }
 
   private var items: [(Segment, String)] {
-    var out: [(Segment, String)] = [(.training, tr("训练", "Training")), (.journal, tr("日记", "Journal"))]
-    if circles { out.append((.food, tr("饮食", "Food"))) }
-    return out
+    [(.training, tr("训练", "Training")), (.journal, tr("日记", "Journal")), (.food, tr("饮食", "Food"))]
   }
 }
 

@@ -261,10 +261,10 @@ final class JarvisCardsTests: XCTestCase {
     XCTAssertEqual(R.route(page: "healthspan", card: nil, circles: false), .detail(.bodyAge))
     XCTAssertEqual(R.route(page: "trends.report", card: nil, circles: true), .tab(.trends, .trends(.report)))
     XCTAssertEqual(R.route(page: "record.training", card: nil, circles: true), .tab(.record, .training))
-    // food is a segment of 记录 with the friends flag, its own tab without it
+    // food is a segment of 记录 (2.0.1), with or without the friends flag
     XCTAssertEqual(R.route(page: "food", card: nil, circles: true), .tab(.record, .food(.diet)))
-    XCTAssertEqual(R.route(page: "food", card: nil, circles: false), .tab(.food, .food(.diet)))
-    XCTAssertEqual(R.route(page: "food.shopping", card: nil, circles: false), .tab(.food, .food(.shopping)))
+    XCTAssertEqual(R.route(page: "food", card: nil, circles: false), .tab(.record, .food(.diet)))
+    XCTAssertEqual(R.route(page: "food.shopping", card: nil, circles: false), .tab(.record, .food(.shopping)))
     XCTAssertEqual(R.route(page: "food.recipes", card: nil, circles: true), .tab(.record, .food(.recipes)))
     XCTAssertEqual(R.route(page: "recipe", card: json(#"{"id":12}"#), circles: true), .tab(.record, .food(.recipe(id: "12"))))
   }
@@ -277,8 +277,9 @@ final class JarvisCardsTests: XCTestCase {
     link.segment = nil
     link.food = nil
     link.ask(.food(.diet), circles: false)
-    XCTAssertNil(link.segment)
+    XCTAssertEqual(link.segment, .food)
     XCTAssertEqual(link.food, .diet)
+    link.segment = nil
     link.food = nil
     link.ask(.training, circles: true)
     XCTAssertEqual(link.segment, .training)

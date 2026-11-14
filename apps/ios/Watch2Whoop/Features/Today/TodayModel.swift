@@ -17,6 +17,8 @@ struct TodayInputs {
   var sync: [String: Any]?
   /// `GET /v1/friends/overview` (N7 owns the page; Today only shows the entry).
   var circles: [String: Any]?
+  /// `GET /sync/missing-days`: the days of the last 30 without a core kind on the server.
+  var missing: [String: Any]?
   /// Rows the phone computed (origin `app`) for the day and the day before, used only where the server has no number.
   var localDay: DailyScore?
   var localPrev: DailyScore?
@@ -134,6 +136,10 @@ struct TodayModel: Equatable {
     /// The overview's `issue`, when the server sees sync stuck (SyncStuck).
     var issueCode: String?
     var issueLabel: String?
+    /// Minutes since the server's latest data (`minutes_ago`), for the stale state.
+    var minutes: Int?
+    /// Days missing on the server among the recent ones (`TodayParams.missingRecentDays`), for 「缺N天」.
+    var missingDays: Int?
   }
 
   struct Circles: Equatable {
@@ -196,6 +202,8 @@ struct TodayModel: Equatable {
   var training: TodayTraining?
   var muscle: MuscleLoad?
   var detail = Detail()
+  /// The 2.0.1 Today: dial, readings and the L1 sheets' numbers (TodayGlance.swift).
+  var glance = TodayGlance()
   var error: String?
   /// Server's hrv kind and the user's zone (for the phone's own computation).
   var hrvKind: String?
@@ -366,9 +374,15 @@ struct TodayModel: Equatable {
       let mins = (s["minutes_ago"] as? NSNumber)?.intValue
       let issue = s["issue"] as? [String: Any]
       sync = SyncCard(state: state, label: s["label"] as? String ?? "", tone: tone, ago: mins.map(Self.ago),
-                      issueCode: issue?["code"] as? String, issueLabel: issue?["label"] as? String)
+                      issueCode: issue?["code"] as? String, issueLabel: issue?["label"] as? String, minutes: mins)
       coverage = BackfillCoverage(s["coverage"] as? [String: Any])
+      if let j = inp.missing, let day = date {
+        sync?.missingDays = TodayGlanceRules.recentMissing(MissingDays(j).days.map(\.date), today: day)
+      }
     }
+
+    glance = TodayGlance(model: self, scores: sc, today: t, sleepScore: sleepScore, trends: day, daily: daily)
+    glance.strainDay = TodayGlanceRules.strainDay(inp.coach, current: glance.strain.value, isPast: isPast)
 
     if inp.circlesOn && !isPast {
       let members = (inp.circles?["members"] as? [Any])?.count ?? 0

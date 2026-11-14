@@ -33,11 +33,9 @@ final class SleepNightStore: ObservableObject {
     error = nil
     let key = TodayDocs.sleepNight(date)
     // the phone's night (M4, `sleepnight.local:<day>`) when package `coach` is primary, else the server's
-    cancellable = ValueObservation.tracking { db in try CoachLocal.shownNight(db, serverKey: key, day: date) }
-      .removeDuplicates()
-      .start(in: session.db.writer, scheduling: .immediate, onError: { _ in }, onChange: { [weak self] rec in
-        guard let json = rec?.json else { return }
-        let m = SleepNightModel(json: json)
+    cancellable = ValueObservation.tracking { db in try CoachLocal.shownNightJSON(db, serverKey: key, day: date).map(SleepNightModel.init(json:)) }
+      .start(in: session.db.writer, scheduling: .immediate, onError: { _ in }, onChange: { [weak self] m in
+        guard let m else { return }
         if self?.model != m { self?.model = m }
       })
     if model?.date != date { model = (try? session.db.doc(key))?.json.map(SleepNightModel.init(json:)) }

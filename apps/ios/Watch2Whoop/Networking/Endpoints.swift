@@ -25,7 +25,10 @@ enum Endpoint {
   static func syncOverview(user: String = "me") -> APIRequest { .get("/v1/users/\(user)/sync/overview", ["in_app": "1"]) }
   static func monthDays(_ month: String, user: String = "me") -> APIRequest { .get("/v1/users/\(user)/days", ["month": month]) }
   static func sleepNight(_ day: String?, user: String = "me") -> APIRequest {
-    .get("/v1/users/\(user)/sleep/night", day.map { ["date": $0] } ?? [:])
+    // series_nights: the deep sleep / regularity lines of the Today sleep sheet (#448; older servers ignore it)
+    var q = ["series_nights": String(TodayParams.sleepSeriesNights)]
+    if let day { q["date"] = day }
+    return .get("/v1/users/\(user)/sleep/night", q)
   }
   static func explain(_ kind: String, _ key: String, day: String?, user: String = "me") -> APIRequest {
     let k = key.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? key

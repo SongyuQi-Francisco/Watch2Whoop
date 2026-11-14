@@ -236,7 +236,7 @@ struct StatusTileView: View {
   }
 }
 
-/// The 「问 Jarvis」 bar (flag `ui_ai_first`): a typed question goes out at once, as from the Today page's field (`TodayHomeAI`).
+/// The 「问 Jarvis」 bar (flag `ui_ai_first`): a typed question goes out at once to the Jarvis chat.
 struct AskJarvisBar: View {
   let example: String
   @State private var text = ""
@@ -256,7 +256,7 @@ struct AskJarvisBar: View {
   private func send() {
     let q = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !q.isEmpty else { return }
-    TodayHomeAI.ask(q)
+    JarvisRouter.current?.send(prompt: q)
     text = ""
   }
 }

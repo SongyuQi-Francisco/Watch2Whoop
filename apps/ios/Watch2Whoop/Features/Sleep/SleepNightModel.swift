@@ -64,11 +64,23 @@ struct SleepNightModel: Equatable {
   var need: Double?, actual: Double?, debt: Double?, performance: Double?
   var compare: [Compare] = []
   var regularity7: Double?, regularity30: Double?
+  /// Deep sleep of the night and its 30-night average, in minutes (the Today sleep sheet's row).
+  var deepMin: Double?, deepAvg30: Double?
+  /// Deep minutes and 7-night regularity of the last nights, oldest first, nil = no night (`series`, #448; empty on an
+  /// older server).
+  var deepSeries: [Double?] = []
+  var regularitySeries: [Double?] = []
   var vitals: [Vital] = []
   var notes: [Note] = []
   var aiPrompt: String?
 
   /// The stage timeline's lanes top to bottom (the Apple Watch sleep page's order); unspecified sleep is drawn as core.
+  /// One `series` line's values; JSON null (and anything not a number) stays a gap.
+  static func line(_ v: Any?) -> [Double?] {
+    guard let vs = (v as? [String: Any])?["values"] as? [Any] else { return [] }
+    return vs.map { $0 is NSNull ? nil : TodayModel.num($0) }
+  }
+
   static let lanes = ["awake", "rem", "core", "deep"]
 
   init(json: [String: Any]) {
@@ -114,6 +126,7 @@ struct SleepNightModel: Equatable {
     let pct = { (v: Any?) in n(v).map { "\(TodayModel.fmt($0))%" } ?? "—" }
     let txt = { (v: Any?) in (v as? String) ?? "—" }
     if hasMain, let m = json["main"] as? [String: Any] {
+      if staged { deepMin = n(m["deep_min"]); deepAvg30 = n(a30["deep_min"]) }
       compare = [
         Compare(label: tr("睡着", "Asleep"), night: hm(m["asleep_min"]), avg7: hm(a7["asleep_min"]), avg30: hm(a30["asleep_min"])),
         Compare(label: tr("入睡", "Bedtime"), night: start, avg7: txt(a7["bedtime"]), avg30: txt(a30["bedtime"])),
@@ -131,6 +144,9 @@ struct SleepNightModel: Equatable {
       }
     }
     regularity7 = n(b["regularity_pct_7d"]); regularity30 = n(b["regularity_pct_30d"])
+    let series = json["series"] as? [String: Any] ?? [:]
+    deepSeries = Self.line(series["deep_min"])
+    regularitySeries = Self.line(series["regularity_pct_7d"])
     // label, digits, which direction is worse (−1 lower, 1 higher, 0 either way), threshold for colouring the delta
     let spec: [String: (String, Int, Double, Double)] = [
       "hrv": ("HRV", 0, -1, 5), "rhr": (tr("最低心率", "Lowest HR"), 0, 1, 3), "resp_rate": (tr("呼吸", "Breathing"), 1, 1, 1),
@@ -172,5 +188,6 @@ struct SleepNightModel: Equatable {
   static func == (a: SleepNightModel, b: SleepNightModel) -> Bool {
     a.date == b.date && a.stages == b.stages && a.score == b.score && a.compare == b.compare && a.vitals == b.vitals
       && a.asleep == b.asleep && a.prev == b.prev && a.next == b.next && a.parts == b.parts && a.notes == b.notes
+      && a.deepSeries == b.deepSeries && a.regularitySeries == b.regularitySeries
   }
 }

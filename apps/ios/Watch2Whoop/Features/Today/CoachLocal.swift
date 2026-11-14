@@ -45,6 +45,16 @@ enum CoachLocal {
     return try DocRecord.fetchOne(db, key: serverKey)
   }
 
+  /// The night a page draws as JSON: `shownNight`, with the server's `series` (the deep sleep / regularity lines, #448)
+  /// when the phone's night is shown, since only the server has the nights before.
+  static func shownNightJSON(_ db: Database, serverKey: String, day: String?) throws -> [String: Any]? {
+    guard let rec = try shownNight(db, serverKey: serverKey, day: day), var json = rec.json else { return nil }
+    if json["series"] == nil, rec.key != serverKey, let s = try DocRecord.fetchOne(db, key: serverKey)?.json?["series"] {
+      json["series"] = s
+    }
+    return json
+  }
+
   static func currentMode(db: AppDatabase, api: APIClient) async -> ComputeState.Mode {
     if let d = try? db.doc(LocalCompute.stateDoc), Date().timeIntervalSince1970 - d.fetchedAt < SeriesLocal.stateMaxAge {
       return ComputeState.decode(d.body).mode(package)

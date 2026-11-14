@@ -51,7 +51,6 @@ private struct MeScreen: View {
       PageScaffold(title: tr("我", "Me")) {
         VStack(alignment: .leading, spacing: 18) {
           header
-          if TodayHome.isOn(session.flags) { TodayHomeMeEntry() }   // flag ui_ai_first
           ForEach(Array(groups.enumerated()), id: \.offset) { i, g in
             if i == groups.count - 1 && !session.meLinks.isEmpty { links }   // the server's rows, before the last group
             MeRowGroup(group: g, menu: menu, perform: perform).id(i == groups.count - 1 ? "me-end" : "me-\(i)")
