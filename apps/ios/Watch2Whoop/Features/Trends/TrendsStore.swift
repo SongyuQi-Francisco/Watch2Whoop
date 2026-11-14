@@ -147,8 +147,9 @@ final class TrendsStore: ObservableObject {
 
   private var cancellable: AnyDatabaseCancellable?
   private weak var session: AccountSession?
-  /// The range picked in this run of the app (#357: kept while the app runs, a fresh launch starts on 「今天」).
-  static var sessionRange: TrendRange = .today
+  /// The range picked in this run of the app (kept while the app runs). 2.0.1: a fresh launch starts on 30 days, the
+  /// range of the 身体 hero (`05-body`, 「近 30 天」); 「全部指标」 on Today still switches to 「今天」 (#357).
+  static var sessionRange: TrendRange = .month
 
   init(session: AccountSession? = nil) {
     range = Self.sessionRange

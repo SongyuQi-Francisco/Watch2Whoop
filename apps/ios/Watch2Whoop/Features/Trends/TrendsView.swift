@@ -45,8 +45,10 @@ struct TrendsView: View {
   }
 
   @EnvironmentObject private var session: AccountSession
+  @EnvironmentObject private var app: AppModel
   @StateObject private var store: TrendsStore
   @State private var sheet: TrendsSheet?
+  @State private var showReport = false
   @State private var path: [SleepRoute] = []
   @SceneStorage("w2w.trends.mode") private var mode: Mode = .metrics
 
@@ -66,6 +68,17 @@ struct TrendsView: View {
       TrendsSheetView(sheet: s, page: store.page, end: store.end, store: store, close: { sheet = nil })
         .environmentObject(session)
     }
+    .sheet(isPresented: $showReport) {
+      SheetContainer(title: tr("周报", "Weekly report"), close: { showReport = false }) {
+        ReportView(end: store.end) { key, title in
+          showReport = false
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { sheet = .explain(key: key, title: title) }
+        }
+      }
+      .environmentObject(session)
+      .presentationDetents([.medium, .large])
+      .presentationDragIndicator(.visible)
+    }
     .onAppear { if !store.isObserving { store.observe(session) } }
     .task { await store.refresh() }
     // 「全部指标 →」 on Today (also when this tab is created by that tap: the publisher replays the pending request)
@@ -84,11 +97,12 @@ struct TrendsView: View {
     ScrollViewReader { proxy in
       ScrollView(.vertical, showsIndicators: false) {
         LazyVStack(alignment: .leading, spacing: 0) {
-          header.id("top")
-          if session.flags.contains("ui_ai_first") {
-            AskJarvisBar(example: tr("这周为什么恢复低？", "why is recovery low?")).padding(.bottom, 12)
-          }
+          BodyGlancePage(page: store.page, range: store.range, end: store.end, loading: store.loading, session: session,
+                         run: glanceActions)
+            .id("top")
+          // below the fold (vertical scroll only): every 2.0.0 view of the tab, by category
           SegControl(items: Mode.allCases.map { ($0, $0.label) }, selected: mode) { mode = $0 }
+            .padding(.top, 150)
           switch mode {
           case .metrics: metrics
           case .sleep: TrendsSleepView(end: store.end) { day in path.append(SleepRoute(date: day)) }.padding(.top, 14)
@@ -114,34 +128,17 @@ struct TrendsView: View {
     }
   }
 
-  // MARK: - header: end date (opens the calendar) and title
+  // MARK: - the first glance's taps
 
-  private var header: some View {
-    HStack(alignment: .bottom) {
-      Button { sheet = .calendar } label: {
-        VStack(alignment: .leading, spacing: 1) {
-          HStack(spacing: 4) {
-            Text(overline).font(Typo.overline)
-            Icon(.calendar, size: 12)
-          }
-          .foregroundColor(Palette.text2)
-          Text(tr("身体", "Body")).font(Typo.title).titleTracking().foregroundColor(Palette.text)
-        }
-      }
-      .buttonStyle(PressScale())
-      .accessibilityLabel(tr("选择结束日期", "Pick the end date"))
-      Spacer()
-      if store.end != nil {
-        Button { store.select(nil) } label: { Chip(label: tr("回到今天", "Back to today")) }.buttonStyle(PressScale())
-      }
-    }
-    .padding(.top, 10).padding(.bottom, 10)
-  }
-
-  private var overline: String {
-    if let e = store.end { return tr("截至 \(TodayModel.shortDay(e))", "Up to \(TodayModel.shortDay(e))") }
-    guard let d = store.userToday else { return " " }
-    return "\(TodayView.weekday(d)) \(TodayModel.shortDay(d))"
+  private var glanceActions: BodyGlanceActions {
+    BodyGlanceActions(
+      setRange: { store.setRange($0) },
+      pickEnd: { sheet = .calendar },
+      backToToday: { store.select(nil) },
+      open: { sheet = $0 },
+      report: { showReport = true },
+      syncNow: { Task { _ = await HealthSyncService.shared.syncNow(); await store.refresh() } },
+      syncCenter: { app.route = .syncCenter })
   }
 
   // MARK: - metrics
