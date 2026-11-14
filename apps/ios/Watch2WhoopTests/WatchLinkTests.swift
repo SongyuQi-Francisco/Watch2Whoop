@@ -395,6 +395,22 @@ final class PhoneWatchLinkTests: XCTestCase {
     XCTAssertFalse(again.ended)
   }
 
+  /// No paired watch, or the app not on it: the phone does nothing for the watch (no store, no pull, no push).
+  func testThePhoneStaysSilentWithoutAWatch() {
+    XCTAssertTrue(WatchLinkGate.linked(supported: true, activated: true, paired: true, appInstalled: true))
+    XCTAssertFalse(WatchLinkGate.linked(supported: false, activated: true, paired: true, appInstalled: true))   // iPad
+    XCTAssertFalse(WatchLinkGate.linked(supported: true, activated: false, paired: true, appInstalled: true))   // before activation
+    XCTAssertFalse(WatchLinkGate.linked(supported: true, activated: true, paired: false, appInstalled: false))  // no watch
+    XCTAssertFalse(WatchLinkGate.linked(supported: true, activated: true, paired: true, appInstalled: false))   // app not on the watch
+  }
+
+  @MainActor
+  func testDetachWithoutAWatchDoesNothing() {
+    // in the simulator there is never a paired watch: attach / detach must not start anything or throw
+    PhoneWatchBridge.shared.detach()
+    PhoneWatchBridge.shared.detach()
+  }
+
   func testInboxKeepsTheNewestIds() {
     var inbox = PhoneWatchInbox()
     inbox.remember((0..<(WatchParams.phoneSeenIdsKept + 5)).map { "id\($0)" })

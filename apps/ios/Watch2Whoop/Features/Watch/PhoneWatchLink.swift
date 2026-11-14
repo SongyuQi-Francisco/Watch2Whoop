@@ -83,11 +83,22 @@ struct PhoneWatchInbox: Codable, Equatable {
   func save(_ d: UserDefaults = .standard) { d.set(WatchCodec.encode(self), forKey: Self.key) }
 }
 
-/// WatchConnectivity on the phone. Attached to the signed-in account; does nothing on a phone without a paired watch.
+/// When the phone does anything for the watch: only with a paired watch that has the app installed. Without one the
+/// bridge stays silent: no training store, no network pull, no timer, no error (activating WCSession itself is a cheap
+/// local call the system answers once). Pure, so the rule is unit-tested.
+enum WatchLinkGate {
+  static func linked(supported: Bool, activated: Bool, paired: Bool, appInstalled: Bool) -> Bool {
+    supported && activated && paired && appInstalled
+  }
+}
+
+/// WatchConnectivity on the phone. Attached to the signed-in account; it only starts its work (today's training, the
+/// pushes) once the system reports a paired watch with the app installed (`WatchLinkGate`), and stops when that ends.
 @MainActor
 final class PhoneWatchBridge: NSObject, ObservableObject {
   static let shared = PhoneWatchBridge()
 
+  private var account: AccountSession?
   private var store: TrainingStore?
   private var cancellable: AnyCancellable?
   private var inbox = PhoneWatchInbox.load()
@@ -96,27 +107,52 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
 
   private var wc: WCSession? { WCSession.isSupported() ? WCSession.default : nil }
 
-  /// Called when an account opens: watches today's training and pushes it to the watch.
+  /// Whether a watch is there to talk to right now.
+  private var linked: Bool {
+    guard let wc else { return false }
+    return WatchLinkGate.linked(supported: true, activated: wc.activationState == .activated, paired: wc.isPaired,
+                                appInstalled: wc.isWatchAppInstalled)
+  }
+
+  /// Called when an account opens. Only activates WatchConnectivity; the rest waits for a watch (`update`).
   func attach(_ session: AccountSession) {
+    account = session
     guard let wc else { return }
     if wc.delegate == nil {
       wc.delegate = self
-      wc.activate()
-    }
-    let s = TrainingStore(session: session)
-    store = s
-    cancellable = s.$session.removeDuplicates().sink { [weak self] t in self?.push(WatchPlanBuilder.plan(from: t)) }
-    Task {
-      await s.refresh()
-      await drain()
+      wc.activate()   // answered once by activationDidComplete; nothing runs until then
+    } else {
+      update()
     }
   }
 
-  /// Sign-out: the watch shows 「在手机上登录」 and keeps its own queue until someone signs in again.
+  /// Sign-out: the watch (if any) shows 「在手机上登录」 and keeps its own queue until someone signs in again.
   func detach() {
+    let wasLinked = linked
+    account = nil
+    stopStore()
+    if wasLinked { pushContext(WatchContext(signedIn: false, plan: nil, lang: Lang.code, sentAt: Date())) }
+  }
+
+  /// A watch appeared or went away (activation, pairing, app installed / removed): start or stop the work.
+  fileprivate func update() {
+    guard linked, let account else { stopStore(); return }
+    if store == nil {
+      let s = TrainingStore(session: account)
+      store = s
+      cancellable = s.$session.removeDuplicates().sink { [weak self] t in self?.push(WatchPlanBuilder.plan(from: t)) }
+      Task {
+        await s.refresh()
+        await drain()
+      }
+    } else {
+      push(WatchPlanBuilder.plan(from: store?.session))
+    }
+  }
+
+  private func stopStore() {
     cancellable = nil
     store = nil
-    pushContext(WatchContext(signedIn: false, plan: nil, lang: Lang.code, sentAt: Date()))
   }
 
   private func push(_ plan: WatchPlan?) {
@@ -124,12 +160,13 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
   }
 
   private func pushContext(_ c: WatchContext) {
-    guard let wc, wc.activationState == .activated, wc.isPaired, wc.isWatchAppInstalled else { return }
+    guard linked, let wc else { return }
     try? wc.updateApplicationContext(WatchCodec.message(c))
   }
 
   fileprivate func received(_ e: WatchSetEvent) {
     queued.append(e)
+    if store == nil { update() }
     Task { await drain() }
   }
 
@@ -156,7 +193,11 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
 
 extension PhoneWatchBridge: WCSessionDelegate {
   nonisolated func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
-    Task { @MainActor in self.push(WatchPlanBuilder.plan(from: self.store?.session)) }
+    Task { @MainActor in self.update() }
+  }
+
+  nonisolated func sessionWatchStateDidChange(_ session: WCSession) {
+    Task { @MainActor in self.update() }
   }
 
   nonisolated func sessionDidBecomeInactive(_ session: WCSession) {}
@@ -173,7 +214,11 @@ extension PhoneWatchBridge: WCSessionDelegate {
   nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
     guard message[WatchCodec.requestKey] != nil else { return }
     Task { @MainActor in
-      if self.store == nil { self.detach(); return }
+      guard self.account != nil else {
+        self.pushContext(WatchContext(signedIn: false, plan: nil, lang: Lang.code, sentAt: Date()))
+        return
+      }
+      self.update()
       await self.store?.refresh()
       self.push(WatchPlanBuilder.plan(from: self.store?.session))
     }

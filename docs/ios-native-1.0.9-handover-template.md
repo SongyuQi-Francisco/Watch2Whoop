@@ -39,7 +39,12 @@
    - 后台任务的标识（`watch2whoop.sync.backfill`、`watch2whoop.sync.refresh`、`watch2whoop.sync.process`）已经写在 Info.plist 里，不用管。
    - **App Groups：不要加**（1.0.9 没有小组件 / 扩展，不需要）。**Keychain Sharing：不要加**。登录凭据存在钥匙串的默认访问组（Team ID + Bundle ID，和 1.0.8 一样，代码里没有指定别的组）；加了 Keychain Sharing 而第一个组名和默认的不一样，就读不到 1.0.8 存的凭据，大家得重新登录。
    - 如果 Xcode 提示 App ID 缺能力（比如 Push），点「Register」/「Try Again」让它更新描述文件。
-5. 打包上传：顶部选 **Watch2Whoop** scheme 和 **Any iOS Device (arm64)** → **Product → Archive** → Organizer 里确认是 **1.0.9 (10)** → **Distribute App → App Store Connect → Upload**。`Info.plist` 已声明不使用非豁免加密，不会再问出口合规。推送的环境 Xcode 导出时会自动改成正式环境。
+   - **从 2.1.0 起 iPhone app 里带着 Apple Watch app**（target `Watch2WhoopWatch`，打包时自动嵌进去，一次上传两个都带上）。第一次要给它也做一次：
+     - 它的 Bundle ID 是 **`<iPhone 的 Bundle ID>.watchkitapp`**（工程自动拼，不用填）。选 Watch2WhoopWatch target → Signing & Capabilities，同样勾「Automatically manage signing」、同一个 Team；Xcode 会在开发者账号里自动注册这个 App ID 和它的描述文件。账号不让自动注册时，到 developer.apple.com → Identifiers 手动加 `<iPhone 的 Bundle ID>.watchkitapp`（类型 App IDs → App），勾 **HealthKit**，再回 Xcode 点「Try Again」。
+     - 它应该显示的能力：**HealthKit**（手表上开训练、读心率、把力量训练存进「健康」）；Background Modes 里的 **Workout processing**（训练中手腕放下也继续计时）。不用加 App Groups、Keychain Sharing、Push。
+     - 版本号、构建号和 iPhone app 是同一个来源（`Config/Watch2Whoop.xcconfig`），两个 target 一样，不要单独改（不一样 App Store Connect 会拒收）。
+     - 手表 app 有自己的图标（和 iPhone 同一张图），不用另外准备。
+5. 打包上传：顶部选 **Watch2Whoop** scheme 和 **Any iOS Device (arm64)** → **Product → Archive** → Organizer 里确认是 **1.0.9 (10)** → **Distribute App → App Store Connect → Upload**。（从 2.1.0 起：Archive 前 Xcode 要装了 watchOS 平台，Settings → Components → watchOS，没有就编不过；Organizer 里展开归档应该能看到 `Watch/Watch2WhoopWatch.app`，上传时两个 App ID 的描述文件都要有效。）`Info.plist` 已声明不使用非豁免加密，不会再问出口合规。推送的环境 Xcode 导出时会自动改成正式环境。
 6. TestFlight：新构建先加到**内部组**（我们先自己用几天），等我说可以了再加到带公开链接的**外部组**。
 
 **Beta App Review**：这一版换了整个工程，外部组大概率要重新审核。审核备注用我另外发你的最新 `App-Review-Notes.txt` 整份粘贴（演示账号我会先续期）。里面新加了下面这一段，供你核对：
@@ -57,6 +62,9 @@ The app is now fully native (SwiftUI); the content is the same as before. Permis
 - Notifications: likes / comments from circles and reminders; silent pushes (no visible content) tell the app to fetch
   new data in the background.
 - Background: HealthKit background delivery, background app refresh and processing for the sync.
+Apple Watch app (from 2.1.0, inside the same upload): logs strength-training sets during a workout started on the
+watch. Health on the watch: reads heart rate during that workout and saves the strength workout to Health (this is
+the only place the app writes to Health). It needs the iPhone app; sets are handed to the iPhone, which syncs them.
 Sign-in: Sign in with Apple, an e-mail code, or the setup QR code / link below. Account deletion: Me → Delete account.
 Demo account: <演示账号的设置链接 / 激活码，由中控填>
 ```

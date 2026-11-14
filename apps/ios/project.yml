@@ -116,6 +116,9 @@ targets:
         product: Flutter
       - sdk: HealthKit.framework
       - sdk: JavaScriptCore.framework
+      # The Apple Watch app ships inside the iPhone app (owner 2026-11-15: it ships with 2.1.0): XcodeGen copies it
+      # into Watch/ ("Embed Watch Content"), so one TestFlight upload carries both.
+      - target: Watch2WhoopWatch
 
   Watch2WhoopTests:
     type: bundle.unit-test
@@ -137,9 +140,9 @@ targets:
     dependencies:
       - target: Watch2Whoop
 
-  # Apple Watch app, phase 1 (docs/watch-app-plan.md 5: logging sets). Its own scheme, NOT embedded in the iPhone app
-  # yet: the iPhone build, its tests and TestFlight stay exactly as they were (plan 4.10 V1). Installed on a watch from
-  # Xcode with development signing; embedding it for TestFlight is a later step (apps/ios/Watch2WhoopWatch/README.md).
+  # Apple Watch app, phase 1 (docs/watch-app-plan.md 5: logging sets), embedded in the iPhone app above and uploaded with
+  # it. Bundle ID = the iPhone app's + ".watchkitapp"; version and build number come from the same xcconfig as the
+  # iPhone app (they must be equal for App Store Connect). Release steps: apps/ios/Watch2WhoopWatch/README.md.
   Watch2WhoopWatch:
     type: application
     platform: watchOS
@@ -162,8 +165,8 @@ targets:
         CFBundleLocalizations: [zh-Hans, en]
         WKApplication: true
         WKCompanionAppBundleIdentifier: $(W2W_BUNDLE_ID)
-        # Installable on its own from Xcode while it is not embedded in the iPhone app; it still talks to the iPhone app.
-        WKRunsIndependentlyOfCompanionApp: true
+        # A companion app: it needs the iPhone app (plan, hand-over of the sets), so it is not offered on its own.
+        WKRunsIndependentlyOfCompanionApp: false
         WKBackgroundModes: [workout-processing]
         # English here and in en.lproj, Chinese in zh-Hans.lproj/InfoPlist.strings (keep the three equal in meaning)
         NSHealthShareUsageDescription: "Watch2Whoop reads your heart rate during a workout you start on this watch, to show it between sets."
@@ -184,6 +187,8 @@ targets:
         TARGETED_DEVICE_FAMILY: "4"
         WATCHOS_DEPLOYMENT_TARGET: "11.0"
         ENABLE_PREVIEWS: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # embedded: only the iPhone app is installed / archived, the watch app travels inside it
         SKIP_INSTALL: YES
     dependencies:
       - sdk: HealthKit.framework

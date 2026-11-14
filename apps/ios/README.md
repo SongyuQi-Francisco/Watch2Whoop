@@ -33,7 +33,7 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 
 ## TestFlight
 
-给编译上传的人：只从 `app-ios-v<版本>` 的 GitHub Release 拿源码（zip 里除了 `apps/ios/`，还有它要打进 app 的两个文件，路径和仓库一样），版本号和构建号在 `Config/Watch2Whoop.xcconfig` 里，不要改。签名、能力（HealthKit、Sign in with Apple、Push、Background Modes）、Keychain、App Review 备注的完整步骤在交接单模板 [`docs/ios-native-1.0.9-handover-template.md`](../../docs/ios-native-1.0.9-handover-template.md)。
+给编译上传的人：只从 `app-ios-v<版本>` 的 GitHub Release 拿源码（zip 里除了 `apps/ios/`，还有它要打进 app 的两个文件，路径和仓库一样），版本号和构建号在 `Config/Watch2Whoop.xcconfig` 里，不要改。签名、能力（HealthKit、Sign in with Apple、Push、Background Modes）、Keychain、App Review 备注的完整步骤在交接单模板 [`docs/ios-native-1.0.9-handover-template.md`](../../docs/ios-native-1.0.9-handover-template.md)。从 2.1.0 起 iPhone app 里嵌着 Apple Watch app（`Watch2WhoopWatch/`）：Xcode 要装 watchOS 平台，开发者账号里要有 `<Bundle ID>.watchkitapp` 这个 App ID（勾 HealthKit），见 [`Watch2WhoopWatch/README.md`](Watch2WhoopWatch/README.md)。
 
 ## English
 
@@ -46,6 +46,8 @@ Pure-SwiftUI iOS app (#340), replacing the Flutter app (`apps/watch2whoop/`) fro
 **TestFlight**: build only from the `app-ios-v<version>` GitHub Release (its zip holds `apps/ios/` plus the two files the
 project builds in from elsewhere, at their repository paths). The version and build number are in
 `Config/Watch2Whoop.xcconfig`; do not change them. Signing, capabilities, Keychain and App Review notes:
-`docs/ios-native-1.0.9-handover-template.md`.
+`docs/ios-native-1.0.9-handover-template.md`. From 2.1.0 the iPhone app embeds the Apple Watch app: Xcode needs the
+watchOS platform and the account needs the App ID `<bundle ID>.watchkitapp` with HealthKit
+(`Watch2WhoopWatch/README.md`).
 
 Licence: MIT ([LICENSE](LICENSE)).

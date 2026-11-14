@@ -24,25 +24,52 @@ iPhone: TrainingStore session ─► WatchPlanBuilder ─► updateApplicationCo
 
 ## Building
 
-The watch app has its own scheme and is **not embedded in the iPhone app yet**, so the iPhone scheme, its tests and
-TestFlight uploads are unchanged (plan 4.10 V1). Embedding it (an iPhone target dependency on `Watch2WhoopWatch`) is a
-later step, after the demo has been tried on a real watch.
+The watch app is **embedded in the iPhone app** (owner, 2026-11-15: it ships with 2.1.0, together with the redesigned iPhone app). The iPhone target depends on
+`Watch2WhoopWatch`; XcodeGen copies it into `Watch2Whoop.app/Watch/` ("Embed Watch Content"), so building, testing or
+archiving the `Watch2Whoop` scheme builds the watch app too, and one TestFlight upload carries both. This needs the
+watchOS platform in Xcode (Settings → Components → watchOS); without it the iPhone app does not build either.
 
-Compile check without a watch simulator runtime (only the watchOS SDK that ships with Xcode is needed; CI runs this):
+- Bundle ID: `$(W2W_BUNDLE_ID).watchkitapp`, from the same git-ignored `Config/Watch2Whoop.local.xcconfig` as the iPhone
+  app (the repository only has placeholders). `WKCompanionAppBundleIdentifier` = the iPhone app's bundle ID.
+- Version and build number: the same `W2W_MARKETING_VERSION` / `W2W_BUILD_NUMBER` as the iPhone app
+  (`Config/Watch2Whoop.xcconfig`); App Store Connect rejects an upload where they differ.
+- A companion app (`WKRunsIndependentlyOfCompanionApp = false`): it is installed with the iPhone app and needs it.
+- Capabilities: HealthKit; background mode `workout-processing`. Its own app icon (`Assets.xcassets`, the iPhone
+  icon).
+- Without a paired watch, or with the watch app not installed, the iPhone side does nothing (`WatchLinkGate`: no
+  training store, no network pull, no push; only the one-time `WCSession.activate()`).
 
-```bash
-cd apps/ios && xcodegen generate && xcodebuild -project Watch2Whoop.xcodeproj -target Watch2WhoopWatch -sdk watchsimulator CODE_SIGNING_ALLOWED=NO build
-```
+The `Watch2WhoopWatch` scheme alone builds just the watch app (simulator screenshots, running on a watch from Xcode).
+Simulator screenshots (Debug): `SIMCTL_CHILD_W2W_WATCH_DEMO=t1…t10|s1…s9` shows one mockup screen with synthetic data.
 
-## Installing on your own watch (development signing)
+## Releasing (TestFlight)
 
-1. Fill in `Config/Watch2Whoop.local.xcconfig` (git-ignored) as for the iPhone app: `W2W_BUNDLE_ID`, `W2W_TEAM_ID`. The
-   watch app's bundle ID is `$(W2W_BUNDLE_ID).watchkitapp`.
-2. Xcode → Settings → Components: install the watchOS platform (needed to run on a watch).
-3. On the watch: Settings → Privacy & Security → Developer Mode on (the watch restarts). The iPhone must be unlocked,
-   paired, and connected to the Mac (cable or the same Wi-Fi).
-4. `cd apps/ios && xcodegen generate`, open `Watch2Whoop.xcodeproj`, scheme **Watch2WhoopWatch**, destination your
-   watch, Run. With automatic signing Xcode registers the watch app's bundle ID and its HealthKit capability.
-5. First start on the watch: allow heart rate (read) and workouts (write) in the Health sheet.
-6. Run the iPhone app (scheme Watch2Whoop, development build) on the paired iPhone and open 记录 once, so today's plan
-   reaches the watch.
+For the person who archives and uploads (the full checklist is `docs/ios-native-1.0.9-handover-template.md`):
+
+1. In the Apple Developer account the watch app needs its own App ID: `<iPhone bundle ID>.watchkitapp`, with
+   **HealthKit**. With automatic signing Xcode registers it (select the `Watch2WhoopWatch` target → Signing &
+   Capabilities, same team, "Automatically manage signing"); if the account does not allow that, add it under
+   Identifiers by hand and press "Try Again" in Xcode.
+2. Install the watchOS platform in Xcode before archiving.
+3. Archive the `Watch2Whoop` scheme as usual; in the Organizer the archive contains `Watch/Watch2WhoopWatch.app`.
+   Both provisioning profiles (iPhone and watch) must be valid for the upload.
+4. Do not change the version or build number of either target; they come from one place.
+
+## Running on your own watch (development)
+
+1. Fill in `Config/Watch2Whoop.local.xcconfig` as for the iPhone app.
+2. On the watch: Settings → Privacy & Security → Developer Mode (the watch restarts). The iPhone is unlocked, paired and
+   connected to the Mac.
+3. Run the `Watch2Whoop` scheme on the iPhone: the watch app is installed with it (Watch app on the iPhone → My Watch →
+   Watch2Whoop → Show App on Apple Watch, if it does not appear by itself). Or run the `Watch2WhoopWatch` scheme with the
+   watch as destination.
+4. First start on the watch: allow heart rate (read) and workouts (write) in the Health sheet.
+5. Open 记录 once on the iPhone so today's plan reaches the watch.
+
+## 中文（给发版的人）
+
+- 从 2.1.0 起手表 app **嵌在 iPhone app 里**，打 `Watch2Whoop` scheme 的包时自动带上，一次上传两个都有。Xcode 要先装 watchOS 平台（Settings → Components → watchOS），没装 iPhone app 也编不过。
+- 开发者账号里要有手表 app 自己的 App ID：**`<iPhone 的 Bundle ID>.watchkitapp`**，勾 **HealthKit**。自动签名时 Xcode 会自己注册（选 `Watch2WhoopWatch` target → Signing & Capabilities，同一个 Team，勾 Automatically manage signing）；账号不允许时到 developer.apple.com → Identifiers 手动加，再回 Xcode 点 Try Again。
+- 版本号、构建号和 iPhone app 同一个来源（`Config/Watch2Whoop.xcconfig`），不要单独改。
+- Organizer 里归档应该包含 `Watch/Watch2WhoopWatch.app`；上传时 iPhone 和手表两个描述文件都要有效。
+- 完整的交接单：`docs/ios-native-1.0.9-handover-template.md`。
