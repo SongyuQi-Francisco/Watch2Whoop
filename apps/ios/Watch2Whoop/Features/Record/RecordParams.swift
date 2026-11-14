@@ -40,6 +40,15 @@ enum RecordParams {
   static let intensityOpacity: [String: Double] = ["light": 0.55, "moderate": 0.75, "hard": 0.92, "max": 1]
   /// Session cards under the history calendar.
   static let historyCards = 12
+  /// Opacity of heart-rate zones 1–5 on a history card's bar (`train`; the harder the zone, the stronger).
+  static let zoneOpacity: [Double] = [0.25, 0.4, 0.6, 0.8, 1]
+  /// A zone this small still gets a sliver on the bar (share of the bar), so a minute of zone 5 stays visible.
+  static let zoneMinShare = 0.03
+
+  // MARK: training timer (11 / 12)
+
+  /// A span longer than this is not shown (a draft left open from the morning is not a training under way).
+  static let timerMaxHours = 6.0
 
   // MARK: food dial (10)
 

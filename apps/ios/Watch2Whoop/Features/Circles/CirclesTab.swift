@@ -202,8 +202,9 @@ private struct CirclesScreen: View {
     HStack(spacing: 8) {
       if store.feedOn {
         Button { show(.feed, proxy) } label: {
+          // 2.1.0: whom the unread likes and comments are from (`from`); an older server sends none, the face keeps the number
           Face(icon: .messagesSquare, label: tr("动态", "Feed"), number: "\(store.unread)", unit: tr("条未读", "unread"),
-               dot: store.unread > 0 ? .bad : nil) { Color.clear }
+               dot: store.unread > 0 ? .bad : nil) { FaceRow(people: store.unreadFrom, max: 3) }
         }
         .buttonStyle(PressScale())
       }

@@ -7,13 +7,37 @@ struct MeAIFace: Equatable {
   var fallback = false
   /// The fallback AI's allowance left this month, 0–100 (`/ai-providers` → fallback.remaining_pct).
   var remainingPct: Int?
+  /// The fallback AI's money this month (2.1.0: `spent_cny` / `quota_cny` of the ai-choice option or of fallback); both
+  /// or neither, so the face shows 「¥1.2 / ¥3」 or the percentage of an older server.
+  var spentCny: Double? = nil
+  var quotaCny: Double? = nil
 
   /// Pure (unit-tested in `MeGlanceTests`).
   static func of(choice: AIChoice?, list: AIProviderList?) -> MeAIFace? {
     guard let choice else { return nil }
     guard let cur = choice.options.first(where: { $0.current }) else { return MeAIFace() }
-    let isFallback = cur.key == "fallback"
-    return MeAIFace(name: cur.label, fallback: isFallback, remainingPct: isFallback ? list?.fallback?.remainingPct : nil)
+    guard cur.key == "fallback" else { return MeAIFace(name: cur.label, fallback: false, remainingPct: nil) }
+    var face = MeAIFace(name: cur.label, fallback: true, remainingPct: list?.fallback?.remainingPct)
+    let spent = cur.spentCny ?? list?.fallback?.spentCny
+    let quota = cur.quotaCny ?? list?.fallback?.quotaCny
+    if let spent, let quota, quota > 0 {
+      face.spentCny = spent
+      face.quotaCny = quota
+    }
+    return face
+  }
+
+  /// 「¥1.2」, 「¥3」 (one decimal, none when whole).
+  static func money(_ v: Double) -> String {
+    let r = (v * 10).rounded() / 10
+    if r == r.rounded() { return "¥\(Int(r))" }
+    return String(format: "¥%.1f", r)
+  }
+
+  /// Little left (under a fifth): the gauge turns `mid`.
+  var low: Bool {
+    if let spentCny, let quotaCny { return quotaCny - spentCny < quotaCny * 0.2 }
+    return (remainingPct ?? 100) < 20
   }
 }
 
@@ -26,6 +50,8 @@ struct MeGlanceActions {
   var ai: () -> Void
   /// 共享给我的 (the people who share with me).
   var shared: () -> Void
+  /// 谁能看我 (2.1.0 `audience`).
+  var audience: () -> Void = {}
 }
 
 /// The first glance of 我 (docs/design/2.0.1 `07-me`): avatar + name (tap = profile) and the sync capsule, the sync dial
@@ -107,14 +133,19 @@ struct MeGlance: View {
     HStack(spacing: 8) {
       if inbox.on {
         Button(action: run.inbox) {
+          // 2.1.0: who the unread are from (`unread_from`); none from an older server
           Face(icon: .inbox, label: tr("消息", "Messages"), number: "\(inbox.unread)", unit: tr("条未读", "unread"),
-               dot: inbox.unread > 0 ? .bad : nil) { Color.clear }
+               dot: inbox.unread > 0 ? .bad : nil) { FaceRow(people: inbox.unreadFaces, max: 3) }
         }
         .buttonStyle(PressScale())
       }
       if let ai {
         Button(action: run.ai) {
-          if let pct = ai.remainingPct {
+          if let spent = ai.spentCny, let quota = ai.quotaCny {
+            Face(icon: .orbit, label: tr("AI 额度", "AI allowance"), number: MeAIFace.money(spent), unit: "/ \(MeAIFace.money(quota))") {
+              BulletGauge(value: min(spent, quota), max: quota, step: quota / 4, majors: [quota / 2], tone: ai.low ? .mid : .text)
+            }
+          } else if let pct = ai.remainingPct {
             Face(icon: .orbit, label: tr("AI 额度", "AI allowance"), number: "\(pct)", unit: tr("% 剩余", "% left")) {
               BulletGauge(value: Double(pct), max: 100, step: 25, majors: [50], tone: pct < 20 ? .mid : .text)
             }
@@ -124,7 +155,15 @@ struct MeGlance: View {
         }
         .buttonStyle(PressScale())
       }
-      if !session.viewable.isEmpty {
+      if let a = session.audience {
+        // 2.1.0 (`07-me`): who can see me, their faces; 共享给我的 stays a row of 我 below
+        Button(action: run.audience) {
+          Face(icon: .users, label: tr("共享", "Sharing"), number: "\(a.count)", unit: tr("人可看", "can see"), dimmed: a.count == 0) {
+            FaceRow(people: a.people, max: 5)
+          }
+        }
+        .buttonStyle(PressScale())
+      } else if !session.viewable.isEmpty {
         Button(action: run.shared) {
           Face(icon: .users, label: tr("共享", "Shared"), number: "\(session.viewable.count)", unit: tr("人给我看", "people")) {
             HStack(spacing: -6) {
@@ -143,7 +182,7 @@ struct MeGlance: View {
     if let j = try? await session.api.json(.get(Endpoint.syncMissingDays)) { missing = MissingDays(j) }
     let choice = try? await session.api.send(.get(Endpoint.aiChoice), as: AIChoice.self)
     var list: AIProviderList?
-    if choice?.options.first(where: { $0.current })?.key == "fallback" {
+    if let cur = choice?.options.first(where: { $0.current }), cur.key == "fallback", cur.spentCny == nil {
       list = try? await session.api.send(.get(Endpoint.aiProviders), as: AIProviderList.self)
     }
     ai = MeAIFace.of(choice: choice, list: list)

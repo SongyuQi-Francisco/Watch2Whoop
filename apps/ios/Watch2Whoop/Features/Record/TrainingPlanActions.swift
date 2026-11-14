@@ -31,8 +31,8 @@ extension TrainingStore {
 
   // MARK: reads
 
-  func searchLibrary(query: String, group: String, equipment: String) async throws -> [LibraryExercise] {
-    LibraryExercise.list(try await api.json(ExerciseAPI.search(query: query, group: group, equipment: equipment)))
+  func searchLibrary(query: String, group: String, equipment: String, favorites: Bool = false) async throws -> [LibraryExercise] {
+    LibraryExercise.list(try await api.json(ExerciseAPI.search(query: query, group: group, equipment: equipment, favorites: favorites)))
   }
 
   func exerciseDetail(_ slug: String) async -> (detail: ExerciseDetail?, offline: Bool) {

@@ -99,14 +99,34 @@ struct InboxItem: Codable, Equatable, Identifiable {
   }
 }
 
+/// Where unread messages come from (`unread_from`, 2.1.0): a person (a like, a comment …), a circle invite, or the app.
+struct InboxSource: Codable, Equatable {
+  var type: String
+  var id: Int?
+  var name: String?
+  var initial: String?
+  var avatar: String?
+
+  var face: FacePerson? {
+    var j: [String: Any] = ["type": type]
+    if let id { j["id"] = id }
+    if let name { j["name"] = name }
+    if let initial { j["initial"] = initial }
+    if let avatar { j["avatar"] = avatar }
+    return FacePerson.parse(j, index: 0)
+  }
+}
+
 /// One page of `GET /inbox`.
 struct InboxPage: Decodable, Equatable {
   var items: [InboxItem] = []
   var unread = 0
   var more = false
   var next: String?
+  /// The whole box's unread senders (newest first, at most 3); nil on an older server.
+  var unreadFrom: [InboxSource]?
 
-  enum CodingKeys: String, CodingKey { case items, unread, more, next }
+  enum CodingKeys: String, CodingKey { case items, unread, more, next, unreadFrom = "unread_from" }
 
   init(items: [InboxItem] = [], unread: Int = 0, more: Bool = false, next: String? = nil) {
     self.items = items
@@ -121,6 +141,7 @@ struct InboxPage: Decodable, Equatable {
     unread = c.opt(.unread) ?? 0
     more = c.opt(.more) ?? false
     next = c.opt(.next)
+    unreadFrom = c.opt(.unreadFrom)
   }
 }
 
@@ -133,6 +154,14 @@ struct InboxCache: Codable, Equatable {
   var pendingRead: [String] = []
   var pendingHidden: [String] = []
   var pendingAllRead = false
+  /// Faces of the unread (`unread_from`, 2.1.0); nil when the server has not said.
+  var unreadFrom: [InboxSource]?
+
+  /// The 消息 face's avatars: none once nothing is unread (read here, not on the server yet).
+  var unreadFaces: [FacePerson] {
+    guard unread > 0 else { return [] }
+    return (unreadFrom ?? []).compactMap(\.face)
+  }
 }
 
 /// The pure part of the inbox, so it can be tested without a server.
@@ -149,6 +178,7 @@ enum InboxLogic {
     out.items = page.items + tail
     out.next = tail.isEmpty ? page.next : cache.next
     out.unread = page.unread
+    out.unreadFrom = page.unreadFrom
     return applyPending(out)
   }
 
@@ -159,6 +189,7 @@ enum InboxLogic {
     out.items += page.items.filter { !known.contains($0.id) }
     out.next = page.next
     out.unread = page.unread
+    out.unreadFrom = page.unreadFrom ?? cache.unreadFrom
     return applyPending(out)
   }
 

@@ -198,3 +198,29 @@ struct MuscleRangeBar: View, Equatable {
     .accessibilityHidden(true)
   }
 }
+
+/// The training timer (2.1.0, `log.started_at`): the time since the first ticked set, ticking every second; the length of a
+/// submitted training stays. Nothing without a start (an older server, no set ticked yet).
+struct SessionTimer: View {
+  let session: TrainingSession
+  let doneSets: Int
+  /// When this phone saw the first tick, before the save that carries it has come back.
+  var localStart: Date?
+  let size: CGFloat
+
+  var body: some View {
+    let start = session.startedAt ?? localStart.map { ISO8601DateFormatter.localWithOffset.string(from: $0) }
+    TimelineView(.periodic(from: .now, by: 1)) { ctx in
+      if let t = TrainingTimer.elapsed(start: start, startedFrom: session.startedFrom, submittedAt: session.submittedAt,
+                                       submitted: session.submitted, doneSets: doneSets, now: ctx.date) {
+        HStack(alignment: .center, spacing: size * 0.18) {
+          Icon(.timer, size: max(14, size * 0.42)).foregroundColor(Palette.text2)
+          Text(TrainingTimer.text(t)).font(.system(size: size, weight: .light).monospacedDigit()).foregroundColor(Palette.text)
+            .lineLimit(1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(tr("已练 \(TrainingTimer.text(t))", "Training for \(TrainingTimer.text(t))"))
+      }
+    }
+  }
+}

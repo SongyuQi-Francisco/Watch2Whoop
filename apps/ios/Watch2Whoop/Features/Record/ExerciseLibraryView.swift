@@ -260,6 +260,8 @@ struct ExerciseDetailView: View {
   @State private var detail: ExerciseDetail?
   @State private var failed: String?
   @State private var swapping = false
+  /// The star tapped here (2.1.0), until the detail is loaded again.
+  @State private var tapped: Bool?
 
   var body: some View {
     TrainingPage(nav: nav, title: detail?.name ?? tr("动作详情", "Exercise")) {
@@ -285,9 +287,33 @@ struct ExerciseDetailView: View {
 
   private var sex: String { nav.store.muscle?.sex ?? "male" }
 
+  /// 「收藏」 / 「已收藏」: local first, put back when the write is refused.
+  private func starButton(_ d: ExerciseDetail, on: Bool) -> some View {
+    Button {
+      tapped = !on
+      Task { if await !nav.store.setStar(d.slug, !on) { tapped = on } }
+    } label: {
+      HStack(spacing: 6) {
+        Icon(.star, size: 15).foregroundColor(on ? Palette.mid : Palette.text2)
+        Text(on ? tr("已收藏", "Starred") : tr("收藏", "Star")).font(.system(size: 14, weight: .medium)).foregroundColor(Palette.text)
+      }
+      .padding(.horizontal, 12).frame(minHeight: 36)
+      .background(Capsule().fill(Palette.surface2))
+    }
+    .buttonStyle(PressScale())
+    .accessibilityAddTraits(on ? .isSelected : [])
+  }
+
   private func content(_ d: ExerciseDetail) -> some View {
     VStack(alignment: .leading, spacing: 10) {
-      if let other = d.otherName { Text(other).font(Typo.caption).foregroundColor(Palette.text2) }
+      let on = ExerciseFavorites.shown(server: d.favorite, pending: nav.store.pendingStars[d.slug], tapped: tapped)
+      if d.otherName != nil || on != nil {
+        HStack(spacing: 8) {
+          if let other = d.otherName { Text(other).font(Typo.caption).foregroundColor(Palette.text2) }
+          Spacer(minLength: 0)
+          if let on { starButton(d, on: on) }
+        }
+      }
       let urls = d.images.compactMap { ExerciseMedia.url($0, base: nav.store.api.baseURL) }
       if !urls.isEmpty { DemoImages(urls: urls, label: d.name) }
       if !d.credits.isEmpty {

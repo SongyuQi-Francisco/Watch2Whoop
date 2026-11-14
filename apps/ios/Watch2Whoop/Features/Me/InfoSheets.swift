@@ -212,6 +212,7 @@ struct UnsentChangesView: View {
     case "meal", "food", FoodKind.foodDelete, FoodKind.portion, FoodKind.mealLog, FoodKind.recipeLog: return tr("饮食", "Food")
     case FoodKind.grocery, FoodKind.pantry: return tr("采购", "Shopping")
     case "training", RecordKind.session, RecordKind.submit: return tr("训练", "Training")
+    case ExerciseFavorites.kind: return tr("动作收藏", "Starred exercise")
     case "supplement": return tr("补剂", "Supplement")
     case "circle.like": return tr("圈子点赞", "Circle like")          // N7
     case "circle.comment": return tr("圈子评论", "Circle comment")    // N7

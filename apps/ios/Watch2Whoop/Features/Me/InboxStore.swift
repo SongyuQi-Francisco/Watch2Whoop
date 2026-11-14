@@ -48,6 +48,8 @@ final class InboxStore: ObservableObject {
   var items: [InboxItem] { on ? cache.items : [] }
   /// The row in 我 and the red badge on the tab.
   var unread: Int { on ? cache.unread : 0 }
+  /// Who the unread messages are from (the 消息 face of 我).
+  var unreadFaces: [FacePerson] { on ? cache.unreadFaces : [] }
 
   private func start() {
     session.$flags.map { $0.contains(Self.flag) }.removeDuplicates().sink { [weak self] isOn in

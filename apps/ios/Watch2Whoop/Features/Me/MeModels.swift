@@ -125,9 +125,15 @@ struct AIChoice: Decodable, Equatable {
     var status: String?
     /// The fallback AI's terms were agreed to.
     var consent = false
+    /// The fallback AI's money this month (2.1.0, on the `fallback` option only).
+    var spentCny: Double?
+    var quotaCny: Double?
     var id: String { key }
 
-    enum CodingKeys: String, CodingKey { case key, label, kind, available, note, current, status, consent }
+    enum CodingKeys: String, CodingKey {
+      case key, label, kind, available, note, current, status, consent
+      case spentCny = "spent_cny", quotaCny = "quota_cny"
+    }
 
     init(from d: Decoder) throws {
       let c = try d.container(keyedBy: CodingKeys.self)
@@ -139,6 +145,8 @@ struct AIChoice: Decodable, Equatable {
       current = try c.decodeIfPresent(Bool.self, forKey: .current) ?? false
       status = try c.decodeIfPresent(String.self, forKey: .status)
       consent = try c.decodeIfPresent(Bool.self, forKey: .consent) ?? false
+      spentCny = try c.decodeIfPresent(Double.self, forKey: .spentCny)
+      quotaCny = try c.decodeIfPresent(Double.self, forKey: .quotaCny)
     }
   }
 }

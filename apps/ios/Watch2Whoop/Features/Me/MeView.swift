@@ -34,6 +34,8 @@ private struct MeScreen: View {
   @State private var linkError: String?
   /// A page pushed from the first glance (the 共享 face), or by `W2W_DEV_ME_PAGE` at launch (Debug screenshots).
   @State private var devPage: MePage?
+  /// 谁能看我, pushed from the 共享 face (2.1.0).
+  @State private var openAudience = false
 
   private var menu: MeMenu {
     let server = session.config.server
@@ -43,11 +45,11 @@ private struct MeScreen: View {
                   privacy: LegalLinks.url(.privacy, server: server) != nil, terms: LegalLinks.url(.terms, server: server) != nil)
   }
 
-  var body: some View {
+  /// The root of the stack (kept apart from `body` so the type checker copes with both).
+  @ViewBuilder private var stack: some View {
     let menu = self.menu
     let groups = menu.firstLevel
-    NavigationStack {
-      ScrollViewReader { proxy in
+    ScrollViewReader { proxy in
       ScrollView(.vertical, showsIndicators: false) {
         VStack(alignment: .leading, spacing: 18) {
           // 2.0.1 (`07-me`): no page title; the first glance, then the rows of 我 below the fold
@@ -66,23 +68,25 @@ private struct MeScreen: View {
       .statusBarCover()
       .clearOfJarvisKey()
       .task { await devShot(proxy) }
-      }
-      .toolbar(.hidden, for: .navigationBar)
-      .navigationDestination(isPresented: $openInbox) { InboxView(store: inbox, circles: circles) }
-      .navigationDestination(isPresented: Binding(get: { devPage != nil }, set: { if !$0 { devPage = nil } })) {
-        if let devPage { MePageView(page: devPage, menu: menu, perform: perform) }
-      }
     }
+    .toolbar(.hidden, for: .navigationBar)
+    .navigationDestination(isPresented: $openInbox) { InboxView(store: inbox, circles: circles) }
+    .navigationDestination(isPresented: $openAudience) { AudiencePage() }
+    .navigationDestination(isPresented: Binding(get: { devPage != nil }, set: { if !$0 { devPage = nil } })) {
+      if let devPage { MePageView(page: devPage, menu: menu, perform: perform) }
+    }
+  }
+
+  var body: some View {
+    accountDialogs(main)
+  }
+
+  private var main: some View {
+    NavigationStack { stack }
     .badge(inbox.unread)
     .onAppear { take(app.route) }
     #if DEBUG
-    .onAppear {   // simulator screenshots
-      if RecordDevShot.value("W2W_DEV_ME_SHEET") == "appearance" { sheet = .appearance }
-      if RecordDevShot.value("W2W_DEV_ME_SHEET") == "journal" { sheet = .journal }
-      // `W2W_DEV_ME_SHEET=sync`: the sync center (2.0.1 `08`), as the dial's tap opens it
-      if RecordDevShot.value("W2W_DEV_ME_SHEET") == "sync" { DispatchQueue.main.asyncAfter(deadline: .now() + 3) { app.route = .syncCenter } }
-      devPage = RecordDevShot.value("W2W_DEV_ME_PAGE").flatMap(MePage.init(rawValue:))
-    }
+    .onAppear { devLaunch() }   // simulator screenshots
     #endif
     .onChange(of: app.route) { take($0) }
     .task {
@@ -99,31 +103,19 @@ private struct MeScreen: View {
         SafariView(url: handbook) { self.handbook = nil }.ignoresSafeArea()
       }
     }
-    .confirmationDialog(tr("退出登录？", "Sign out?"), isPresented: $confirmSignOut, titleVisibility: .visible) {
-      Button(tr("退出登录", "Sign out"), role: .destructive) { Task { await app.signOut() } }
-      Button(tr("取消", "Cancel"), role: .cancel) {}
-    } message: {
-      Text(unsent > 0
-           ? tr("还有 \(unsent) 条修改没提交到服务器，退出会丢掉它们。这台手机上的数据会删掉，服务器上的不受影响。", "\(unsent) changes have not reached the server yet and will be lost. Data on this iPhone is removed; your server keeps everything.")
-           : tr("这台手机上的数据会删掉，服务器上的不受影响。", "Data on this iPhone is removed; your server keeps everything."))
-    }
-    .alert(tr("删除账号", "Delete account"), isPresented: $confirmDelete) {
-      TextField("DELETE", text: $deleteText).textInputAutocapitalization(.characters)
-      Button(tr("永久删除", "Delete forever"), role: .destructive) {
-        guard deleteText == "DELETE" else { deleteError = tr("要输入 DELETE 才能删除", "Type DELETE to delete"); return }
-        Task { deleteError = await app.deleteAccount() }
-      }
-      Button(tr("取消", "Cancel"), role: .cancel) {}
-    } message: {
-      Text(tr("账号和服务器上的全部数据都会删掉，不能恢复。输入 DELETE 确认。", "Your account and all its data on the server are deleted for good. Type DELETE to confirm."))
-    }
-    .alert(deleteError ?? "", isPresented: Binding(get: { deleteError != nil && !confirmDelete }, set: { if !$0 { deleteError = nil } })) {
-      Button(tr("好", "OK"), role: .cancel) {}
-    }
-    .alert(linkError ?? "", isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })) {
-      Button(tr("好", "OK"), role: .cancel) {}
-    }
   }
+
+  #if DEBUG
+  /// Simulator screenshots: `W2W_DEV_ME_SHEET` opens a sheet, `W2W_DEV_ME_PAGE` pushes a page (`audience`: 谁能看我).
+  private func devLaunch() {
+    if RecordDevShot.value("W2W_DEV_ME_SHEET") == "appearance" { sheet = .appearance }
+    if RecordDevShot.value("W2W_DEV_ME_SHEET") == "journal" { sheet = .journal }
+    // `W2W_DEV_ME_SHEET=sync`: the sync center (2.0.1 `08`), as the dial's tap opens it
+    if RecordDevShot.value("W2W_DEV_ME_SHEET") == "sync" { DispatchQueue.main.asyncAfter(deadline: .now() + 3) { app.route = .syncCenter } }
+    devPage = RecordDevShot.value("W2W_DEV_ME_PAGE").flatMap(MePage.init(rawValue:))
+    if RecordDevShot.value("W2W_DEV_ME_PAGE") == "audience" { openAudience = true }
+  }
+  #endif
 
   /// Debug screenshots (RecordDevShot): `W2W_DEV_SCROLL=me-links` brings the server's rows on screen (`me-end`: the bottom
   /// of the page), `W2W_DEV_MELINK=<key>` then does what a tap on that row does.
@@ -199,7 +191,8 @@ private struct MeScreen: View {
       syncNow: { Task { _ = await HealthSyncService.shared.syncNow() } },
       inbox: { openInbox = true },
       ai: { perform(.ai) },
-      shared: { devPage = .shared })
+      shared: { devPage = .shared },
+      audience: { openAudience = true })
   }
 
   private func countUnsent() async {
@@ -210,6 +203,37 @@ private struct MeScreen: View {
   private func loadAccountRows() async {
     if let m = try? await session.api.send(.get(Endpoint.authMethods), as: AuthService.Methods.self) { referrals = m.referrals }
     if let a = try? await session.api.send(.get(Endpoint.account), as: AccountInfo.self) { inviteOptional = a.inviteOptional }
+  }
+}
+
+extension MeScreen {
+  /// Sign out, delete the account and their errors (apart from `body`, so the type checker copes).
+  fileprivate func accountDialogs<V: View>(_ content: V) -> some View {
+    content
+      .confirmationDialog(tr("退出登录？", "Sign out?"), isPresented: $confirmSignOut, titleVisibility: .visible) {
+        Button(tr("退出登录", "Sign out"), role: .destructive) { Task { await app.signOut() } }
+        Button(tr("取消", "Cancel"), role: .cancel) {}
+      } message: {
+        Text(unsent > 0
+             ? tr("还有 \(unsent) 条修改没提交到服务器，退出会丢掉它们。这台手机上的数据会删掉，服务器上的不受影响。", "\(unsent) changes have not reached the server yet and will be lost. Data on this iPhone is removed; your server keeps everything.")
+             : tr("这台手机上的数据会删掉，服务器上的不受影响。", "Data on this iPhone is removed; your server keeps everything."))
+      }
+      .alert(tr("删除账号", "Delete account"), isPresented: $confirmDelete) {
+        TextField("DELETE", text: $deleteText).textInputAutocapitalization(.characters)
+        Button(tr("永久删除", "Delete forever"), role: .destructive) {
+          guard deleteText == "DELETE" else { deleteError = tr("要输入 DELETE 才能删除", "Type DELETE to delete"); return }
+          Task { deleteError = await app.deleteAccount() }
+        }
+        Button(tr("取消", "Cancel"), role: .cancel) {}
+      } message: {
+        Text(tr("账号和服务器上的全部数据都会删掉，不能恢复。输入 DELETE 确认。", "Your account and all its data on the server are deleted for good. Type DELETE to confirm."))
+      }
+      .alert(deleteError ?? "", isPresented: Binding(get: { deleteError != nil && !confirmDelete }, set: { if !$0 { deleteError = nil } })) {
+        Button(tr("好", "OK"), role: .cancel) {}
+      }
+      .alert(linkError ?? "", isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })) {
+        Button(tr("好", "OK"), role: .cancel) {}
+      }
   }
 }
 

@@ -46,6 +46,7 @@ struct TrainingRoot: View {
           BodyPair(sex: store.muscle?.sex ?? "male", spacing: side * 0.08, fill: BodyPair.shares(shares))
             .frame(height: side * 0.56)
           Text(sessionLabel).font(.system(size: 17, weight: .medium)).tracking(2).foregroundColor(Palette.text2).lineLimit(1)
+          if let s { SessionTimer(session: s, doneSets: RecordGlance.sets(s, rows: store.rows).filter(\.done).count, localStart: store.timerLocalStart, size: 15) }
         }
         .frame(width: side * 0.72)
         .padding(.top, side * 0.08)
@@ -165,7 +166,8 @@ struct TrainingRoot: View {
 
   private var libraryFace: some View {
     Button { push(.library) } label: {
-      Face(icon: .bookOpen, label: tr("动作库", "Library")) {
+      // the library's size on a 2.1.0 server (`library_total`); an older one gives none, the face keeps only the search
+      Face(icon: .bookOpen, label: tr("动作库", "Library"), number: store.libraryTotal.map(String.init)) {
         HStack {
           Icon(.search, size: 15).foregroundColor(Palette.text2)
           Spacer(minLength: 0)

@@ -148,9 +148,13 @@ struct AIFallback: Decodable, Equatable {
   var used = false
   var points: [String] = []
   var pointsTranslated = false
+  /// This month's money (`spent_cny` / `quota_cny`): the 我 face's 「¥1.2 / ¥3」.
+  var spentCny: Double?
+  var quotaCny: Double?
 
   enum CodingKeys: String, CodingKey {
     case consent, available, reason, message, used, points
+    case spentCny = "spent_cny", quotaCny = "quota_cny"
     case displayName = "display_name", remainingPct = "remaining_pct", resetOn = "reset_on", consentedAt = "consented_at"
     case consentVersion = "consent_version", pointsTranslated = "points_translated"
   }
@@ -171,6 +175,8 @@ struct AIFallback: Decodable, Equatable {
     used = try c.decodeIfPresent(Bool.self, forKey: .used) ?? false
     points = try c.decodeIfPresent([String].self, forKey: .points) ?? []
     pointsTranslated = try c.decodeIfPresent(Bool.self, forKey: .pointsTranslated) ?? false
+    spentCny = try c.decodeIfPresent(Double.self, forKey: .spentCny)
+    quotaCny = try c.decodeIfPresent(Double.self, forKey: .quotaCny)
   }
 
   /// The tag next to the name (`fbBadge` in ai.js).

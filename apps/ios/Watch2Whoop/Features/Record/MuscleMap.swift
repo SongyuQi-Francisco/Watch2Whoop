@@ -8,13 +8,16 @@ import SwiftUI
 /// The server's answer, reduced to what the map and the list need.
 struct MuscleLoad: Equatable {
   enum Range: String, CaseIterable, Identifiable {
-    case today, week, last7
+    case today, week, last7, last28
     var id: String { rawValue }
+    /// The ranges of the 2.0.0 card (全部肌群): 4 weeks is the weekly map's switch only.
+    static let card: [Range] = [.today, .week, .last7]
     var title: String {
       switch self {
       case .today: return tr("今天", "Today")
       case .week: return tr("本周", "This week")
       case .last7: return tr("近 7 天", "Last 7 days")
+      case .last28: return tr("4 周", "4 weeks")
       }
     }
   }
@@ -31,7 +34,20 @@ struct MuscleLoad: Equatable {
     var sportMin: [Range: Double]
     var prevWeek: Double?
     var delta: Double? = nil
+    /// The 4-week range (`target_4w`, the weekly one × 28/7; 2.1.0).
+    var low4w: Double? = nil
+    var high4w: Double? = nil
     var id: String { key }
+
+    /// The range a period is measured against: four weeks' for 「4 周」, the weekly one otherwise.
+    func target(_ r: Range) -> (low: Double, high: Double)? {
+      if r == .last28 {
+        guard let lo = low4w, let hi = high4w else { return nil }
+        return (lo, hi)
+      }
+      guard let lo = low, let hi = high else { return nil }
+      return (lo, hi)
+    }
   }
 
   var sex: String
@@ -42,6 +58,8 @@ struct MuscleLoad: Equatable {
   var sexSet = true
   /// The sports that do not count towards any muscle (`mapped: false`).
   var unmappedSports: Set<String> = []
+  /// The server has the 4-week range (`ranges.last28`, 2.1.0): the weekly map offers 「4 周」 instead of 「近 7 天」.
+  var hasLast28 = false
 
   static func == (a: MuscleLoad, b: MuscleLoad) -> Bool {
     a.sex == b.sex && a.muscles == b.muscles && a.unmatched == b.unmatched
@@ -61,13 +79,16 @@ struct MuscleLoad: Equatable {
       guard let key = m["key"] as? String else { return nil }
       let st = m["status"] as? [String: Any] ?? [:]
       let week = st["week"] as? String ?? "none", last7 = st["last7"] as? String ?? week
-      let t = m["target"] as? [String: Any]
+      let last28 = st["last28"] as? String ?? "none"
+      let t = m["target"] as? [String: Any], t4 = m["target_4w"] as? [String: Any]
       return Muscle(key: key, name: m["name"] as? String ?? key, sets: byRange(m["ranges"], "sets"), volume: byRange(m["ranges"], "volume_kg"),
-                    status: [.today: week, .week: week, .last7: last7], low: RecordFormat.double(t?["low"]),
+                    status: [.today: week, .week: week, .last7: last7, .last28: last28], low: RecordFormat.double(t?["low"]),
                     high: RecordFormat.double(t?["high"]), trainedToday: (m["trained_today"] as? Bool) ?? false,
                     sportMin: byRange(m["sport_min"], nil), prevWeek: RecordFormat.double((m["prev_week"] as? [String: Any])?["sets"]),
-                    delta: RecordFormat.double(m["delta_sets"]))
+                    delta: RecordFormat.double(m["delta_sets"]), low4w: RecordFormat.double(t4?["low"]),
+                    high4w: RecordFormat.double(t4?["high"]))
     }
+    let hasLast28 = list.contains { (($0["ranges"] as? [String: Any])?["last28"]) is [String: Any] }
     var sports: [Range: [(String, Double)]] = [:]
     var unmapped: Set<String> = []
     for r in Range.allCases {
@@ -78,7 +99,7 @@ struct MuscleLoad: Equatable {
       }
     }
     return MuscleLoad(sex: j["sex"] as? String ?? "male", muscles: muscles, sports: sports, unmatched: (j["unmatched"] as? [String]) ?? [],
-                      sexSet: j["sex"] is String, unmappedSports: unmapped)
+                      sexSet: j["sex"] is String, unmappedSports: unmapped, hasLast28: hasLast28)
   }
 
   /// The other muscles drawn in the same region(s) of the body (muscle-load.js): tapping that region shows them together.

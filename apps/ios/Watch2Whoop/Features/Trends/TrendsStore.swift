@@ -70,10 +70,13 @@ struct TrendsSnapshot: Equatable {
   var local: DocRecord?
   var vo2: DocRecord?
   var sleep: DocRecord?
+  /// The server's own range document when the phone's is shown: `training_sessions` is the server's only.
+  var server: DocRecord?
 
   /// The page this snapshot draws (nil until the range's document is cached).
   static func page(_ s: TrendsSnapshot) -> TrendsPage? {
-    guard let json = s.trends?.json, let data = TrendsData(json: json) else { return nil }
+    guard let json = s.trends?.json, var data = TrendsData(json: json) else { return nil }
+    if data.trainingSessions == nil { data.trainingSessions = TrendsData.sessions(s.server?.json) }
     return TrendsPage(data: data, local: TrendsLocal.Output(json: s.local?.json), vo2: s.vo2?.json, sleep: s.sleep?.json)
   }
 
@@ -81,6 +84,7 @@ struct TrendsSnapshot: Equatable {
   static func read(_ db: Database, days: Int, end: String?, endDay: String?) throws -> TrendsSnapshot {
     var s = TrendsSnapshot()
     s.trends = try SeriesLocal.shown(db, server: TrendsDocs.trends(days, end: end), local: SeriesLocal.trendsKey(days, end: end))
+    if s.trends?.key != TrendsDocs.trends(days, end: end) { s.server = try DocRecord.fetchOne(db, key: TrendsDocs.trends(days, end: end)) }
     let day = end ?? endDay ?? (s.trends?.json?["end"] as? String).map { String($0.prefix(10)) }
     if let day { s.local = try DocRecord.fetchOne(db, key: TrendsLocal.docKey(day)) }
     s.vo2 = try SeriesLocal.shown(db, server: TrendsDocs.vo2max(end), local: SeriesLocal.vo2Key(end))
