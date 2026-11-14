@@ -36,6 +36,18 @@ struct FoodContent: View {
   @State private var allRecipes = false
   /// A Jarvis card's recipe, until the recipes are read.
   @State private var askedRecipe: String?
+  /// 2.0.1 (记录 → 饮食): the dial, readings and faces on top, the day's meals below the fold, 采购 as a page.
+  var glance = false
+  /// 2.0.1: 日记 (behaviours, numbers, supplements) lives below the fold of 饮食; nil = no row.
+  var openJournal: (() -> Void)? = nil
+  @State private var l1: FoodL1?
+
+  /// The L1 half sheets of the glance (direction.md 3: face → L1).
+  enum FoodL1: String, Identifiable {
+    case meals, quick, water
+    var id: String { rawValue }
+    var height: CGFloat { self == .meals ? 520 : 340 }
+  }
 
   enum Mode: Hashable { case diet, shopping }
 
@@ -57,9 +69,11 @@ struct FoodContent: View {
     }
   }
 
-  init(store: FoodStore, toast: Binding<Toast?>) {
+  init(store: FoodStore, toast: Binding<Toast?>, glance: Bool = false, openJournal: (() -> Void)? = nil) {
     self.store = store
     _toast = toast
+    self.glance = glance
+    self.openJournal = openJournal
   }
 
   var body: some View {
@@ -83,6 +97,10 @@ struct FoodContent: View {
       show(r)
     }
     .onChange(of: store.recipes.count) { _ in if let id = askedRecipe { openRecipe(id) } }
+    .navigationDestination(isPresented: Binding(get: { glance && mode == .shopping }, set: { if !$0 { mode = .diet } })) {
+      RecordPage(title: tr("采购", "Shopping")) { GroceryView(store: store, toast: $toast).padding(.top, 12) }
+    }
+    .sheet(item: $l1) { k in glanceSheet(k).l1Detents(k.height) }
     .sheet(item: $entry) { e in
       SheetContainer(title: e.food, close: { entry = nil }) {
         FoodEntrySheet(entry: e, store: store) { msg in
@@ -124,7 +142,64 @@ struct FoodContent: View {
     }
   }
 
-  private var content: some View {
+  @ViewBuilder private var content: some View {
+    if glance { glanceContent } else { classicContent }
+  }
+
+  /// 2.0.1: the first glance, then (below the fold) the day's meals, the meal plan, 采购, 饮食档案 and 日记.
+  private var glanceContent: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      FoodGlanceTop(store: store, meals: { l1 = .meals }, quick: { l1 = .quick }, water: { l1 = .water }, recipes: { allRecipes = true })
+      VStack(alignment: .leading, spacing: 22) {
+        RecordStatusLine(offline: store.offline, refreshing: store.refreshing && store.nutrition == nil)
+        HStack {
+          DayStepper(day: store.day, today: store.today) { store.select($0) }
+          Spacer()
+        }
+        FoodIntakeSection(nutrition: store.nutrition, day: store.day, isToday: store.isToday, refreshing: store.refreshing, picked: picked,
+                          selectButton: selectButton, pickBar: pickedBar, open: tapEntry)
+        if store.isToday, let plan = store.mealPlan, !plan.isEmpty {
+          MealPlanSection(plan: plan, retry: { Task { await store.refreshMealPlan() } }) { r, slot in
+            recipeSlot = slot
+            recipe = r
+          }
+        }
+        RowGroup {
+          ListRow(icon: .shoppingCart, title: tr("采购", "Shopping")) { mode = .shopping }
+          RowDivider(inset: 0)
+          ListRow(icon: .bookOpen, title: tr("食谱", "Recipes"), value: "\(store.recipes.count)") { allRecipes = true }
+          RowDivider(inset: 0)
+          ListRow(icon: .fileText, title: tr("我的饮食档案", "My diet profile"), value: store.dietBrief?.meta) { other = .diet }
+          if let openJournal {
+            RowDivider(inset: 0)
+            ListRow(icon: .calendarDays, title: tr("日记", "Journal"), action: openJournal)
+          }
+        }
+      }
+      .padding(.top, 200)
+      .id("n5.meals")
+    }
+  }
+
+  @ViewBuilder private func glanceSheet(_ k: FoodL1) -> some View {
+    switch k {
+    case .meals:
+      SheetContainer(title: tr("今天吃了", "Eaten today"), close: { l1 = nil }) {
+        FoodIntakeSection(nutrition: store.nutrition, day: store.day, isToday: store.isToday, refreshing: store.refreshing,
+                          open: { e in l1 = nil; DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { tapEntry(e) } })
+      }
+    case .quick:
+      SheetContainer(title: tr("快记", "Quick log"), close: { l1 = nil }) {
+        QuickMeals(store: store, toast: $toast, cardBackground: Palette.inSheet)
+      }
+    case .water:
+      SheetContainer(title: tr("饮水", "Water"), close: { l1 = nil }) {
+        if let w = store.water { FoodWaterCard(water: w, canWrite: store.isToday, add: addWater, undo: undoWater) }
+      }
+    }
+  }
+
+  private var classicContent: some View {
     VStack(alignment: .leading, spacing: 22) {
       SegmentedControl(items: [(Mode.diet, tr("饮食", "Food")), (.shopping, tr("采购", "Shopping"))], selection: $mode)
       RecordStatusLine(offline: store.offline, refreshing: store.refreshing && store.nutrition == nil)

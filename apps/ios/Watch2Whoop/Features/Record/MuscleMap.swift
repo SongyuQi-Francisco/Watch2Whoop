@@ -217,6 +217,9 @@ struct MuscleBodyView: View {
   let regions: [String: MuscleLoad.RegionState]
   var lineScale: CGFloat = 1
   var tap: ((String) -> Void)?
+  /// 2.0.1: a region's own colour (nil = not worked, drawn as the bare body), instead of the status colours. With it the
+  /// regions take no outline: today's muscles are the coloured ones (direction.md 4).
+  var fill: ((String) -> Color?)? = nil
 
   var body: some View {
     GeometryReader { g in
@@ -227,6 +230,11 @@ struct MuscleBodyView: View {
         for (slug, path) in side.regions.sorted(by: { (regions[$0.0]?.today == true ? 1 : 0) < (regions[$1.0]?.today == true ? 1 : 0) }) {
           let st = regions[slug]
           let p = path.applying(t)
+          if let fill {
+            ctx.fill(p, with: .color(fill(slug) ?? Palette.surface2))
+            ctx.stroke(p, with: .color(Palette.bg), lineWidth: 0.8 * lineScale)
+            continue
+          }
           ctx.fill(p, with: .color(color(st?.status)))
           if st?.sport == true { ctx.fill(p, with: .color(Palette.text.opacity(0.12))) }
           ctx.stroke(p, with: .color(st?.today == true ? Palette.text : Palette.bg), lineWidth: (st?.today == true ? 1.8 : 0.8) * lineScale)

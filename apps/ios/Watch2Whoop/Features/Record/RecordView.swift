@@ -1,61 +1,131 @@
 import SwiftUI
 
-/// 记录: 训练 · 日记 · 饮食 (2.0.1: 饮食 always lives here, the tab bar has no 饮食 tab).
+/// 记录, 2.0.1 (docs/design/2.0.1 `10-food`, `11`–`15`): 训练 | 饮食, switched by the header's two-way control (it replaces
+/// the date; the sync capsule stays on the right). Each view keeps the tab-root rhythm: one hero, readings, three faces,
+/// the rest below the fold. 训练's faces push the weekly muscle map, the history and the library; the ring pushes today's
+/// session. 日记 has no segment any more: it opens as a sheet from 饮食 (below the fold), and an old link to it lands there.
 struct RecordTab: View {
   @SceneStorage("w2w.record.segment") private var segment: Segment = .training
   @StateObject private var training: TrainingStore
   @StateObject private var journal: JournalStore
   @StateObject private var food: FoodStore
+  @EnvironmentObject private var app: AppModel
   @State private var toast: Toast?
   @State private var devHealth: MeSheet.RecordKind?
+  @State private var path: [RecordRoute] = []
+  @State private var journalOpen = false
+  private let session: AccountSession
 
+  /// `journal` stays for saved state and links of 2.0.0: it shows 饮食 with 日记 open.
   enum Segment: String, Hashable { case training, journal, food }
 
   init(session: AccountSession) {
+    self.session = session
     _training = StateObject(wrappedValue: TrainingStore(session: session))
     _journal = StateObject(wrappedValue: JournalStore(session: session))
     _food = StateObject(wrappedValue: FoodStore(session: session))
   }
 
-  private var shown: Segment { segment }
-
   var body: some View {
-    NavigationStack {
-      PageScaffold(title: tr("记录", "Log")) {
-        ScrollViewReader { proxy in
-          VStack(alignment: .leading, spacing: 18) {
-            SegmentedControl(items: items, selection: $segment)
-            switch shown {
-            case .training: TrainingSection(store: training, toast: $toast)
-            case .journal: JournalSection(store: journal, toast: $toast)
-            case .food: FoodContent(store: food, toast: $toast)
-            }
+    NavigationStack(path: $path) {
+      root
+        .toolbar(.hidden, for: .navigationBar)
+        .navigationDestination(for: RecordRoute.self) { r in page(r) }
+    }
+    .toast($toast)
+    .onReceive(JarvisPageLink.shared.$segment) { s in   // a Jarvis card's button (also when this tab is created by that tap)
+      guard let s else { return }
+      JarvisPageLink.shared.segment = nil
+      path.removeAll()
+      segment = s
+    }
+    .onChange(of: segment) { s in if s == .journal { openJournal() } }
+    .onAppear { if segment == .journal { openJournal() } }
+    .sheet(isPresented: $journalOpen) {
+      SheetContainer(title: tr("日记", "Journal"), close: { journalOpen = false }) {
+        JournalSection(store: journal, toast: $toast)
+      }
+      .presentationDetents([.large])
+    }
+    .sheet(item: $devHealth) { k in
+      SheetContainer(title: k.title, close: { devHealth = nil }) { HealthRecordView(kind: k, openLab: RecordDevShot.value("W2W_DEV_HEALTH")?.split(separator: ":").dropFirst().first.map(String.init)) }
+        .presentationDetents([.large])
+    }
+  }
+
+  private func openJournal() {
+    segment = .food
+    journalOpen = true
+  }
+
+  private var shown: Segment { segment == .training ? .training : .food }
+
+  private var root: some View {
+    ScrollViewReader { proxy in
+      ScrollView(.vertical, showsIndicators: false) {
+        VStack(alignment: .leading, spacing: 0) {
+          header
+          switch shown {
+          case .training: TrainingRoot(store: training, toast: $toast) { path.append($0) }
+          default: FoodContent(store: food, toast: $toast, glance: true, openJournal: { journalOpen = true })
           }
-          .padding(.top, 4)
-          .task { await devShot(proxy) }
+          // scrolled to the end, nothing sits under the Jarvis key (direction.md 2.4)
+          Color.clear.frame(height: 140)
         }
+        .padding(.horizontal, Metrics.gutter)
+        .frame(maxWidth: Metrics.maxContentWidth)
+        .frame(maxWidth: .infinity)
+        .task { await devShot(proxy) }
       }
-      .onReceive(JarvisPageLink.shared.$segment) { s in   // a Jarvis card's button (also when this tab is created by that tap)
-        if let s { segment = s; JarvisPageLink.shared.segment = nil }
-      }
+      .background(Palette.bg.ignoresSafeArea())
+      .statusBarCover()
       .refreshable {
         switch shown {
         case .training: await training.refresh()
-        case .journal: await journal.refresh()
-        case .food: await food.refresh()
+        default: await food.refresh()
         }
-      }
-      .toast($toast)
-      .sheet(item: $devHealth) { k in
-        SheetContainer(title: k.title, close: { devHealth = nil }) { HealthRecordView(kind: k, openLab: RecordDevShot.value("W2W_DEV_HEALTH")?.split(separator: ":").dropFirst().first.map(String.init)) }
-          .presentationDetents([.large])
       }
     }
   }
 
-  /// Debug screenshots (RecordDevShot): segment, a health record sheet, a scroll position.
+  /// The two-way switch + the sync capsule (tap = sync now or retry, hold = sync center).
+  private var header: some View {
+    HStack(spacing: 8) {
+      RecordSegmentSwitch(selection: $segment)
+      Spacer(minLength: 0)
+      TodaySyncCapsule(card: nil, page: session.sync, tap: syncNow, center: { app.route = .syncCenter })
+    }
+    .frame(height: 44)
+  }
+
+  private func syncNow() {
+    Task {
+      _ = await HealthSyncService.shared.syncNow()
+      await training.refresh()
+      await food.refresh()
+    }
+  }
+
+  @ViewBuilder private func page(_ r: RecordRoute) -> some View {
+    switch r {
+    case .session: TrainingSessionPage(store: training, toast: $toast)
+    case .muscles: MuscleWeekPage(store: training, toast: $toast) { path.append($0) }
+    case .allMuscles: AllMusclesPage(store: training, toast: $toast)
+    case .history: TrainingHistoryPage(store: training, toast: $toast)
+    case .library: LibraryPage(store: training, toast: $toast)
+    case .week: TrainingWeekPage(store: training, toast: $toast)
+    }
+  }
+
+  /// Debug screenshots (RecordDevShot): segment, a page of 训练 (`W2W_DEV_RECORD_PAGE=session|muscles|history|library|week`),
+  /// a health record sheet, a scroll position.
   private func devShot(_ proxy: ScrollViewProxy) async {
     if let s = RecordDevShot.value("W2W_DEV_RECORD").flatMap(Segment.init(rawValue:)) { segment = s }
+    if let p = RecordDevShot.value("W2W_DEV_RECORD_PAGE") {
+      let routes: [String: RecordRoute] = ["session": .session, "muscles": .muscles, "all": .allMuscles, "history": .history,
+                                           "library": .library, "week": .week]
+      if let r = routes[p], path.isEmpty { path = [r] }
+    }
     if let h = RecordDevShot.value("W2W_DEV_HEALTH")?.split(separator: ":").first.flatMap({ MeSheet.RecordKind(rawValue: String($0)) }) {
       devHealth = h
     }
@@ -63,10 +133,6 @@ struct RecordTab: View {
       try? await Task.sleep(nanoseconds: 2_500_000_000)
       proxy.scrollTo(anchor, anchor: .top)
     }
-  }
-
-  private var items: [(Segment, String)] {
-    [(.training, tr("训练", "Training")), (.journal, tr("日记", "Journal")), (.food, tr("饮食", "Food"))]
   }
 }
 
