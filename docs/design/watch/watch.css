@@ -1,0 +1,28 @@
+/* Page chrome of the watch mockups (boards, cards, captions). The screens themselves are SVG drawn by watch.js. */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#0A0A0C;color:#F4F4F6;font-family:system-ui;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+body{padding:36px 40px 40px;width:max-content}
+h1{font-size:26px;font-weight:600;letter-spacing:-.3px}
+h1 small{font-size:14px;font-weight:500;color:#8D8D94;margin-left:12px;letter-spacing:0}
+h2{font-size:17px;font-weight:600;margin:34px 0 14px;display:flex;align-items:baseline;gap:10px}
+h2 small{font-size:12px;font-weight:500;color:#8D8D94}
+.lead{font-size:13px;color:#8D8D94;margin-top:8px;max-width:900px;line-height:1.55}
+.row{display:flex;gap:22px;align-items:flex-start;flex-wrap:nowrap}
+.cell{display:flex;flex-direction:column;gap:10px}
+.cell .no{font-size:11px;font-weight:600;color:#55555B;letter-spacing:.6px}
+.cell .ti{font-size:14px;font-weight:600}
+.cell .hd{display:flex;align-items:baseline;gap:8px}
+.an{display:flex;gap:8px;font-size:11.5px;line-height:1.45;color:#C9C9CF}
+.an b{flex:0 0 62px;font-weight:500;color:#8D8D94}
+.an span{flex:1}
+.notes{display:flex;flex-direction:column;gap:3px}
+.arrow{align-self:center;color:#3A3A40;font-size:20px;margin:0 -8px;padding-bottom:120px}
+/* single card: 46 mm, 42 mm and the full notes */
+.card{display:flex;gap:36px;align-items:flex-start}
+.card .sz{font-size:11px;color:#8D8D94;margin-top:10px;text-align:center}
+.card .notes{width:330px;gap:9px;padding-top:6px}
+.card .an{font-size:14px}.card .an b{flex-basis:84px}
+.card h1{font-size:22px;margin-bottom:4px}
+.card .fl{font-size:12px;color:#8D8D94;margin-bottom:18px}
+.legend{display:flex;gap:18px;margin-top:14px;font-size:12px;color:#8D8D94}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:5px;margin-right:6px;vertical-align:-1px}
