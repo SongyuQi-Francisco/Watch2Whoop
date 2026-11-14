@@ -154,6 +154,18 @@ struct PageScaffold<Content: View>: View {
 }
 
 extension View {
+  /// Every page of a tab (its root and what it pushes) ends above the Jarvis key: the band from the key's top down to the
+  /// tab bar is page background, so rows scroll out of sight before they reach the key instead of passing under it, and
+  /// the last row comes to rest above it (direction.md 2.4: never content under the key). The band reaches under the tab
+  /// bar too, so nothing shows through its glass below the band either.
+  func clearOfJarvisKey() -> some View {
+    safeAreaInset(edge: .bottom, spacing: 0) {
+      Palette.bg.frame(height: JarvisLayer.keyClearance)
+        .background(Palette.bg.ignoresSafeArea(edges: .bottom))
+        .accessibilityHidden(true)
+    }
+  }
+
   /// The page's background behind the status bar, so what is scrolled up does not show under the clock (regression O3).
   func statusBarCover(_ color: Color = Palette.bg) -> some View {
     safeAreaInset(edge: .top, spacing: 0) { Color.clear.frame(height: 0).background(color) }

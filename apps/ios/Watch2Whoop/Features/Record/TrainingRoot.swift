@@ -17,13 +17,13 @@ struct TrainingRoot: View {
   @State private var sheet: TrainingSheet?
   @Environment(\.askAI) private var askAI
 
-  static var ringSide: CGFloat { min(300, max(220, UIScreen.main.bounds.height * 0.34)) }
+  static var ringSide: CGFloat { min(300, max(200, UIScreen.main.bounds.height * (Rhythm.isShort ? 0.32 : 0.34))) }
 
   var body: some View {
     VStack(spacing: 0) {
-      hero.padding(.top, 24)
-      readings.padding(.top, 36)
-      faces.padding(.top, 40)
+      hero.padding(.top, Rhythm.gap(24))
+      readings.padding(.top, Rhythm.gap(36))
+      faces.padding(.top, Rhythm.gap(40))
       below.padding(.top, 200)
     }
     .task {

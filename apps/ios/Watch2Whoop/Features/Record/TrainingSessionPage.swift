@@ -110,7 +110,8 @@ struct TrainingSessionPage: View {
           if superset { Icon(.link, size: 13).foregroundColor(Palette.text2) }
           if e.banned { Icon(.ban, size: 14).foregroundColor(Palette.bad) } else if e.caution { Icon(.triangleAlert, size: 14).foregroundColor(Palette.mid) }
           Text(TrainingWeek.shortPlan(e.name)).font(.system(size: 17, weight: .medium)).foregroundColor(e.banned || allDone(sets) ? Palette.text2 : Palette.text)
-            .strikethrough(e.banned, color: Palette.text3).lineLimit(1).minimumScaleFactor(0.8)
+            .strikethrough(e.banned, color: Palette.text3).lineLimit(2).minimumScaleFactor(0.9)
+            .fixedSize(horizontal: false, vertical: true)
         }
         Spacer(minLength: 6)
         if !e.banned {

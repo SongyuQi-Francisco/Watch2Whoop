@@ -129,6 +129,22 @@ enum Tone: String {
   }
 }
 
+/// The vertical rhythm of a tab root's first glance (direction.md 2.4: header, 32, hero, 40, readings, 44, faces). On a
+/// short screen (iPhone SE, 667 pt) the hero, readings and faces did not fit above the Jarvis key, so the faces sat under
+/// it; there the gaps shrink to about a third (order and sizes stay).
+enum Rhythm {
+  /// Screens shorter than this (points) count as short: the 667 pt phones (iPhone SE 2nd / 3rd generation, iPhone 8).
+  static let shortScreen: CGFloat = 700
+  /// The share of each gap kept on a short screen.
+  static let shortScale: CGFloat = 0.35
+
+  static var isShort: Bool { UIScreen.main.bounds.height < shortScreen }
+
+  /// A gap of the first glance, for this screen.
+  static func gap(_ v: CGFloat) -> CGFloat { gap(v, short: isShort) }
+  static func gap(_ v: CGFloat, short: Bool) -> CGFloat { short ? (v * shortScale).rounded() : v }
+}
+
 /// Corner radii and spacing of the page (app.css `--radius` 18 for cards, 14 for tiles).
 enum Metrics {
   static let cardRadius: CGFloat = 18

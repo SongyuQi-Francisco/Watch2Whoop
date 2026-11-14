@@ -150,8 +150,7 @@ struct RecordPage<Trailing: View, Content: View>: View {
         }
         .frame(height: 44)
         content()
-        // nothing sits under the Jarvis key (direction.md 2.4)
-        Color.clear.frame(height: 150)
+        Color.clear.frame(height: 24)   // the Jarvis key's band is the page's own (clearOfJarvisKey)
       }
       .padding(.horizontal, Metrics.gutter)
       .frame(maxWidth: Metrics.maxContentWidth)

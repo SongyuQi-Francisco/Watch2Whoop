@@ -152,7 +152,7 @@ struct Face<Graphic: View>: View {
     VStack(alignment: .leading, spacing: 0) {
       HStack(spacing: 5) {
         Icon(age != nil ? .refreshCw : icon, size: 13)
-        Text(label).font(.system(size: 12, weight: .medium)).lineLimit(1).minimumScaleFactor(0.8)
+        Text(label).font(.system(size: 12, weight: .medium)).lineLimit(1).minimumScaleFactor(0.7).allowsTightening(true)
         Spacer(minLength: 0)
         if let age { Text(age).font(.system(size: 12, weight: .medium).monospacedDigit()).foregroundColor(Palette.mid).lineLimit(1) }
         if let dot { Circle().fill(dot.color).frame(width: 6, height: 6) }

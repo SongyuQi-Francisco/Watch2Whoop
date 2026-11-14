@@ -16,9 +16,9 @@ struct FoodGlanceTop: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      hero.padding(.top, 24)
-      readings.padding(.top, 36)
-      faces.padding(.top, 40)
+      hero.padding(.top, Rhythm.gap(24))
+      readings.padding(.top, Rhythm.gap(36))
+      faces.padding(.top, Rhythm.gap(40))
     }
   }
 

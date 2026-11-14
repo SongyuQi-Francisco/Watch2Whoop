@@ -376,7 +376,7 @@ extension TodayGlance {
                       bullet: Bullet(value: ex, max: Swift.max(60, ex * 1.4)), explain: ("exercise_min", tr("锻炼分钟", "Exercise minutes"))))
     }
     if let tsb = m.detail.tsb {
-      rows.append(Row(id: "tsb", label: tr("训练状态", "Training state"), value: TodayGlanceRules.signed(tsb), unit: nil,
+      rows.append(Row(id: "tsb", label: tr("训练状态", "Form"), value: TodayGlanceRules.signed(tsb), unit: nil,
                       delta: m.detail.loadLabel, bullet: Bullet(value: tsb, max: 40, centred: true), explain: ("tsb", tr("训练状态", "Training state"))))
     }
     strainRows = rows.compactMap { $0 }

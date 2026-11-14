@@ -69,8 +69,7 @@ struct RecordTab: View {
           case .training: TrainingRoot(store: training, toast: $toast) { path.append($0) }
           default: FoodContent(store: food, toast: $toast, glance: true, openJournal: { journalOpen = true })
           }
-          // scrolled to the end, nothing sits under the Jarvis key (direction.md 2.4)
-          Color.clear.frame(height: 140)
+          Color.clear.frame(height: 24)   // the Jarvis key's band is the page's own (clearOfJarvisKey)
         }
         .padding(.horizontal, Metrics.gutter)
         .frame(maxWidth: Metrics.maxContentWidth)

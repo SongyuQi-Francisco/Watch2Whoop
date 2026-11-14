@@ -157,7 +157,8 @@ struct PlanExerciseThumb: View {
         } placeholder: {
           Color.clear
         }
-      } else if !primary.isEmpty, let front = MuscleBodies.shared.side(sex: sex, front: true), let back = MuscleBodies.shared.side(sex: sex, front: false) {
+      } else if Self.hasMap(primary: primary, secondary: secondary),
+                let front = MuscleBodies.shared.side(sex: sex, front: true), let back = MuscleBodies.shared.side(sex: sex, front: false) {
         Palette.surface2
         let regions = MuscleLoad.exerciseRegions(primary: primary, secondary: secondary)
         HStack(spacing: 1) {
@@ -167,12 +168,20 @@ struct PlanExerciseThumb: View {
         .padding(3)
         .allowsHitTesting(false)   // it sits in the button of its row
       } else {
+        // no picture and no muscle that maps onto the body (cardio, stretches, unknown names): a neutral icon, never an
+        // empty tile or a blank body
         Palette.surface2
+        Icon(.dumbbell, size: side * 0.42).foregroundColor(Palette.text2)
       }
     }
     .frame(width: side, height: side)
     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     .accessibilityHidden(true)
+  }
+
+  /// Whether the muscles colour at least one region of the body map (names it does not know draw nothing).
+  static func hasMap(primary: [String], secondary: [String]) -> Bool {
+    !MuscleLoad.exerciseRegions(primary: primary, secondary: secondary).isEmpty
   }
 }
 

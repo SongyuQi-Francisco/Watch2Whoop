@@ -44,6 +44,7 @@ struct MainTabView: View {
     TabView(selection: $selection) {
       ForEach(AppTab.visible(circles: session.circlesTab)) { tab in
         TabRoot(tab: tab, session: session)
+          .clearOfJarvisKey()   // the root and every page it pushes stop above the key
           .tabItem {
             Label { Text(tab.title) } icon: { Image(tab.icon.assetName).renderingMode(.template) }
           }

@@ -100,8 +100,7 @@ struct TodayView: View {
             SyncNudges(card: store.model.sync, coverage: store.model.coverage) { await store.refresh() }.padding(.top, 16)
           }
           if showsQuote { dailyQuote.padding(.top, 16) }
-          // scrolled to the end, nothing sits under the Jarvis key (direction.md 2.4)
-          Color.clear.frame(height: 140)
+          Color.clear.frame(height: 24)   // the Jarvis key's band is the page's own (clearOfJarvisKey)
           Color.clear.frame(height: 1).id("bottom")
         }
         .padding(.horizontal, Metrics.gutter)

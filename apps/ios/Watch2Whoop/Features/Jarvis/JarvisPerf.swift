@@ -107,8 +107,8 @@ final class JarvisPerf: NSObject {
 /// - `script`: nothing but the scripted recogniser (UI tests drive the key with real touches);
 /// - `open`: open the cockpit and leave it open; `chat`: open the chat and ask a quick question;
 /// - the cockpit's flows (2.0.1): `cockpit-meal` / `cockpit-train` (second rings), `cockpit-back` (second ring, then back),
-///   `cockpit-interrupt` (tap the core again while the panels fan out), `cockpit-qa` / `cockpit-mealvoice` /
-///   `cockpit-set` (talk through 说话 / 记一餐 → 说 / 记训练 → 说一组 with scripted words, then the reply card),
+///   `cockpit-interrupt` (tap the core again while the panels fan out), `cockpit-qa` / `cockpit-mealvoice`
+///   (talk through 说话 / 记一餐 → 说 with scripted words, then the reply card),
 ///   `cockpit-template` (a quick meal logged at once), `cockpit-undo` (the same, then 撤销); the screens behind the keys:
 ///   `cockpit-photo`, `cockpit-ask`, `cockpit-plan`, `cockpit-backfill`, `cockpit-templates`;
 /// - `posture`: the chat with the posture sheet open; `posture-filled`: with three made-up photos in it;
@@ -166,14 +166,13 @@ enum JarvisDemo {
         cockpit.tapCore()
         await sec(0.9)
         cockpit.activate(.talk)
-      case "cockpit-mealvoice", "cockpit-set":
-        let meal = mode == "cockpit-mealvoice"
-        cockpitPhrase = meal ? tr("中午吃了鸡胸饭", "Chicken rice for lunch") : tr("卧推六十公斤八个", "Bench press sixty kilos eight reps")
+      case "cockpit-mealvoice":
+        cockpitPhrase = tr("中午吃了鸡胸饭", "Chicken rice for lunch")
         cockpit.tapCore()
         await sec(0.9)
-        cockpit.activate(meal ? .meal : .train)
+        cockpit.activate(.meal)
         await sec(1.2)
-        cockpit.activate(meal ? .mealTalk : .trainTalk)
+        cockpit.activate(.mealTalk)
       case "cockpit-template", "cockpit-undo":
         cockpit.tapCore()
         await sec(0.9)

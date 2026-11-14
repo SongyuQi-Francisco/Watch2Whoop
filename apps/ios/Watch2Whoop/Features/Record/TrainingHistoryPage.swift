@@ -126,11 +126,15 @@ struct TrainingHistoryPage: View {
       HStack(spacing: 14) {
         Icon(strength ? .dumbbell : .flame, size: 24).foregroundColor(Palette.train).frame(width: 44)
         VStack(alignment: .leading, spacing: 8) {
-          HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(name).font(.system(size: 18, weight: .semibold)).foregroundColor(Palette.text).lineLimit(1).minimumScaleFactor(0.8)
-            Text(RecordDay.short(d.date)).font(.system(size: 15).monospacedDigit()).foregroundColor(Palette.text2).lineLimit(1)
+          // a long name (several plans, English) wraps onto a second line instead of being cut; the date sits beside
+          // the intensity steps, where it never competes with the name for width
+          Text(name).font(.system(size: 18, weight: .semibold)).foregroundColor(Palette.text)
+            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+          HStack(spacing: 10) {
+            Text(RecordDay.short(d.date)).font(.system(size: 15).monospacedDigit()).foregroundColor(Palette.text2)
+              .lineLimit(1).fixedSize()
+            IntensityBar(intensity: d.intensity)
           }
-          IntensityBar(intensity: d.intensity)
         }
         Spacer(minLength: 6)
         VStack(alignment: .trailing, spacing: 4) {
@@ -141,6 +145,7 @@ struct TrainingHistoryPage: View {
               .foregroundColor(Palette.text2)
           }
         }
+        .fixedSize()   // the strain and minutes keep their width; the name wraps instead
         Icon(.chevronRight, size: 14).foregroundColor(Palette.text3)
       }
       .padding(.horizontal, 16).padding(.vertical, 16)

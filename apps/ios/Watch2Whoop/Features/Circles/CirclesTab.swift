@@ -169,15 +169,15 @@ private struct CirclesScreen: View {
       CircleDial(people: CircleGlanceRules.dial(people), trained: count.trained, total: count.total,
                  side: TodayGlancePage.dialSide) { p in openPerson(p.id, proxy) }
         .frame(maxWidth: .infinity)
-        .padding(.top, 18)
+        .padding(.top, Rhythm.gap(18))
       HStack(alignment: .top, spacing: 20) {
         groupReading(tr("平均睡眠", "Avg sleep"), people.map { $0.scores?.sleepScore }, others: others.map { $0.scores?.sleepScore },
                      mine: me?.scores?.sleepScore, max: 100, step: 10, digits: 0, tone: .sleep)
         groupReading(tr("平均负荷", "Avg strain"), people.map { $0.scores?.strain }, others: others.map { $0.scores?.strain },
                      mine: me?.scores?.strain, max: 21, step: 3, digits: 1, tone: .train)
       }
-      .padding(.top, 40)
-      faces(proxy).padding(.top, 44)
+      .padding(.top, Rhythm.gap(40))
+      faces(proxy).padding(.top, Rhythm.gap(44))
     }
   }
 

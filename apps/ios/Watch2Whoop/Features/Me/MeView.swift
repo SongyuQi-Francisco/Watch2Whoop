@@ -58,7 +58,7 @@ private struct MeScreen: View {
           }
         }
         .padding(.horizontal, Metrics.gutter)
-        .padding(.bottom, 140)   // nothing under the Jarvis key when scrolled to the end
+        .padding(.bottom, 24)   // the Jarvis key's band is the page's own (clearOfJarvisKey)
         .frame(maxWidth: Metrics.maxContentWidth)
         .frame(maxWidth: .infinity)
       }
