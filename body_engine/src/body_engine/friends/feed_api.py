@@ -43,7 +43,8 @@ def posts(before: str | None = None, limit: int = P.FEED_PAGE, circle: int | Non
 
 @router.get("/unread")
 def unread(conn=Depends(get_conn), viewer=Depends(current_user)):
-    return {"count": feed.unread(conn, viewer["id"])}
+    n = feed.unread(conn, viewer["id"])
+    return {"count": n, "from": feed.unread_from(conn, viewer["id"]) if n else []}   # who (UI 2.0.1 circle faces)
 
 
 @router.post("/seen", status_code=204)

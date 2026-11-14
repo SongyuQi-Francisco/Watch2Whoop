@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 import psycopg
 
 from .. import auth, queries
-from ..friends import blocks, direct, notes, params as FP, rules, store as friends
+from ..friends import blocks, direct, faces, notes, params as FP, rules, store as friends
 from ..friends.feed import COMMENT
 from ..i18n import L, is_en
 from ..images import store as images
@@ -213,7 +213,8 @@ def _circle_notifications(conn, uid: int) -> list[dict]:
     en = is_en()
     return [{"id": f"notification:{r['id']}", "type": "circle", "kind": r["kind"], "at": r["created_at"],
              "title": _pick(r, "title", en), "body": _pick(r, "body", en), "url": r["url"], "circle_id": number(r, "circle_id"),
-             "_read": r["read_at"] is not None, "_src": ("notification", r["id"])} for r in rows if still_shown(r)]
+             "_read": r["read_at"] is not None, "_src": ("notification", r["id"]), "_actor": number(r, "actor_id")}
+            for r in rows if still_shown(r)]
 
 
 def _other_notifications(conn, uid: int) -> list[dict]:
@@ -274,7 +275,7 @@ def listing(conn: psycopg.Connection, uid: int, since: datetime | None = None, b
     """One page, newest first. `since`: only items newer than that (the next `since` is this answer's `now`); `before`: this
     answer's `next`, for older pages. `unread` always counts the whole inbox. Without `since` the answer is the whole truth,
     so a client that keeps a copy can drop what is no longer there (a withdrawn invite, a blocked person)."""
-    items = _collect(conn, uid)
+    items = all_items = _collect(conn, uid)
     unread = sum(not i["read"] for i in items)
     if since is not None:
         items = [i for i in items if i["at"] > since]
@@ -284,9 +285,45 @@ def listing(conn: psycopg.Connection, uid: int, since: datetime | None = None, b
     page = items[:limit]
     # the transaction's start, so nothing written after this reading is older than the next `since`
     now = conn.execute("SELECT now() AS t").fetchone()["t"].astimezone(timezone.utc)
-    return {"items": [_public(i) for i in page], "unread": unread, "more": len(items) > limit,
+    return {"items": [_public(i) for i in page], "unread": unread, "unread_from": unread_from(conn, uid, all_items),
+            "more": len(items) > limit,
             "next": _cursor(page[-1]) if len(items) > limit else None,
             "now": now.isoformat().replace("+00:00", "Z"), "keep_days": P.KEEP_DAYS}
+
+
+def unread_from(conn: psycopg.Connection, uid: int, items: list[dict], limit: int = FP.UNREAD_FROM_MAX) -> list[dict]:
+    """Who the unread items are from (UI 2.0.1 Me -> messages face), newest first, one entry per source, at most `limit`:
+    {type: person, id, name, initial, avatar?} for circle interactions (people the list already shows), {type: circle_invite,
+    name, initial, avatar?} for an invite (the circle, never the inviter), {type: system} for notices / what's new / others."""
+    seen, picked = set(), []
+    for i in items:
+        if i["read"]:
+            continue
+        if i["type"] == "circle" and i.get("_actor") is not None:
+            key = ("person", i["_actor"])
+        elif i["type"] == "circle_invite":
+            key = ("circle_invite", i["invite"]["circle_name"])
+        else:
+            key = ("system", None)
+        if key in seen:
+            continue
+        seen.add(key)
+        picked.append((key, i))
+        if len(picked) >= limit:
+            break
+    people = faces.faces(conn, uid, [k[1] for k, _ in picked if k[0] == "person"])
+    out = []
+    for (kind, ref), i in picked:
+        if kind == "person":
+            if ref in people:
+                out.append({"type": "person", **people[ref]})
+        elif kind == "circle_invite":
+            inv = i["invite"]
+            out.append({"type": "circle_invite", "name": inv["circle_name"], "initial": faces.initial(inv["circle_name"]),
+                        **({"avatar": inv["avatar"]} if inv.get("avatar") else {})})
+        else:
+            out.append({"type": "system"})
+    return out
 
 
 # ---------------------------------------------------------------- read / hidden

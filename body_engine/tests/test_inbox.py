@@ -667,10 +667,15 @@ def test_a_block_either_way_hides_their_invites_and_interactions(client, dsn, wo
     nid = add_notice(dsn, ann)
     shown = {f"invite:{inv}", f"notification:{like}", f"notification:{comment}", f"notification:{other}", f"notice:{nid}"}
     assert set(item_ids(client, tok["Ann"])) == shown
+    people = [x["id"] for x in listing(client, tok["Ann"])["unread_from"] if x["type"] == "person"]
+    assert people.count(ben) <= 1   # one entry per source (UI 2.0.1)
     blocker, target = ("Ann", ben) if who == "i_blocked_them" else ("Ben", ann)
     assert client.put(f"/v1/friends/blocks/{target}", headers=h(tok[blocker])).status_code == 200
     assert set(item_ids(client, tok["Ann"])) == {f"notification:{other}", f"notice:{nid}"}
-    assert listing(client, tok["Ann"])["unread"] == 2
+    after = listing(client, tok["Ann"])
+    assert after["unread"] == 2
+    assert {(x["type"], x.get("id")) for x in after["unread_from"]} == {("person", ids["Cat"]), ("system", None)}   # Ben gone too
+    assert next(x for x in after["unread_from"] if x["type"] == "person")["initial"] == "C"
     # not acceptable, and the answer is the one for any dead invite: it does not tell who blocked whom
     r = client.post(f"/v1/users/me/inbox/invites/{inv}/accept", headers=h(tok["Ann"]))
     assert r.status_code == 404 and code(r) == "invite_gone"

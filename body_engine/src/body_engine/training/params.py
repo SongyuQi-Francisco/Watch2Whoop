@@ -595,7 +595,7 @@ UNRESOLVED_CANDIDATES = 5    # replacement candidates offered for a plan exercis
 
 
 # ---------- muscle load map (rollout flag muscle_load, training/muscle_load.py) ----------
-MUSCLE_LOAD_VERSION = "v1.2-2026-10-25"   # v1.2: every workout credits muscles, equivalent sets count for the colours; v1.1: sports layer, custom exercises (#189)
+MUSCLE_LOAD_VERSION = "v1.3-2026-11-15"   # v1.3: 4-week range (last28) with the weekly range x 4; v1.2: every workout credits muscles, equivalent sets count for the colours; v1.1: sports layer, custom exercises (#189)
 PRIMARY_FACTOR, SECONDARY_FACTOR = 1.0, 0.5   # a set counts fully for the primary muscles of the exercise, half for the secondary ones
                                               # (the usual "fractional sets" bookkeeping: Pelland et al. 2024 preprint, Krieger / Israetel practice)
 MUSCLE_LOAD_BASELINE_DAYS = 28                # "last trained" looks back this far; the week-over-week comparison needs the previous week
@@ -617,8 +617,18 @@ MUSCLE_SIDE_BY_REGION = {   # body-map region (muscle-body-data.js) -> catalog m
     "calves": ["calves"], "biceps": ["biceps"], "triceps": ["triceps"], "forearm": ["forearms"],
     "abs": ["abdominals"], "obliques": ["abdominals"], "adductors": ["adductors"], "neck": ["neck"],
 }
+# Training calendar (UI 2.0.1 history cards): a day's "main" muscles are those with at least this many effective sets (the
+# muscle map's weighting: primary 1, secondary 0.5, sports as equivalent sets), at most this many groups / muscles listed.
+# Display constants, not health thresholds.
+CALENDAR_MUSCLE_MIN_SETS = 1.0
+FAVORITES_MAX = 300   # starred exercises per person (training/favorites.py); a sanity cap, the library has ~6,300
+CALENDAR_MAX_GROUPS = 3
+CALENDAR_MAX_MUSCLES = 6
 RECOMMEND_LIMIT = 5                           # exercises suggested for a tapped muscle
-MUSCLE_RANGES = ("today", "week", "last7")
+MUSCLE_RANGES = ("today", "week", "last7", "last28")
+# The 4-week view of the muscle map (UI 2.0.1, "本周 | 4 周"): the last MUSCLE_LOAD_4W_DAYS days ending today, compared with the
+# weekly range above scaled by the number of weeks (days / 7) -- the same dose per week, just summed over four of them.
+MUSCLE_LOAD_4W_DAYS = 28
 
 # ---- Sports layer of the muscle load map (issue #189, coverage: every workout credits muscles) ----------------------------------
 # Watch workouts (workouts table: cycling, swimming, basketball, strength training without logged sets ...) are converted to two numbers per

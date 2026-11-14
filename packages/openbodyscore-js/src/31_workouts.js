@@ -22,7 +22,7 @@ OBS.workouts = (function (U, S) {
   var PARAMS = {
     ALGO_VERSION: "workouts-1-2026-10-30",                 // training/importer.WORKOUTS_VERSION
     TRAINING_VERSION: "v1.0-2026-10-17",
-    MUSCLE_LOAD_VERSION: "v1.2-2026-10-25",
+    MUSCLE_LOAD_VERSION: "v1.3-2026-11-15",
     MAX_DURATION_S: 12 * 3600,                            // an unfinished record, excluded
     HR_CAP_S: 300,                                        // a heart-rate sample counts until the next one, ≤ 5 min
     MIN_HR_COVERAGE: 0.6,
@@ -59,7 +59,8 @@ OBS.workouts = (function (U, S) {
     MUSCLE_LOAD_BASELINE_DAYS: 28,
     WEEKLY_SETS_RANGE_DEFAULT: [10, 20],
     WEEKLY_SETS_RANGE: null,                              // filled from TABLES below (training/params.WEEKLY_SETS_RANGE)
-    MUSCLE_RANGES: ["today", "week", "last7"],
+    MUSCLE_RANGES: ["today", "week", "last7", "last28"],
+    MUSCLE_LOAD_4W_DAYS: 28,                              // training/params.MUSCLE_LOAD_4W_DAYS
     SET_CYCLE_MIN: 3.0,
     SPORT_SETS_PER_MIN: 1 / 3.0,
     INTENSITY_MULT: { rest: 0.4, light: 0.6, moderate: 1.0, hard: 1.4, max: 1.8 },
@@ -912,10 +913,20 @@ OBS.workouts = (function (U, S) {
       longest_streak: best, by_type: types, by_intensity: byInt };
   }
 
+  /** history.day_zone_min: minutes per heart-rate zone summed over the day's sessions; null when none has zones. */
+  function day_zone_min(sessions) {
+    var z = sessions.map(function (s) { return s.hr_zone_min; }).filter(function (x) { return x && x.length; });
+    if (!z.length) return null;
+    var n = Math.max.apply(null, z.map(function (x) { return x.length; })), out = [];
+    for (var i = 0; i < n; i++) out.push(U.round(U.pySum(z.map(function (x) { return x[i] || 0; })), 1));
+    return out;
+  }
+
   function calendar_view(res, start, end, label) {
     var days = res.days.map(function (d) {
       var row = {};
       CALENDAR_DAY_KEYS.forEach(function (k) { row[k] = d[k]; });
+      row.hr_zone_min = day_zone_min(d.sessions);
       row.sessions = d.sessions.map(function (s) {
         return { id: s.id, name: s.name, type: s.type, start: s.start, duration_min: s.duration_min,
           active_kcal: s.active_kcal, intensity: s.intensity, source: s.source };
@@ -979,15 +990,20 @@ OBS.workouts = (function (U, S) {
   }
 
   function weekly_range(m) { return has(PARAMS.WEEKLY_SETS_RANGE, m) ? PARAMS.WEEKLY_SETS_RANGE[m] : PARAMS.WEEKLY_SETS_RANGE_DEFAULT; }
-  function status_for(m, sets) {
+  /** muscle_load.range_4w: the weekly range scaled to the 4-week window. */
+  function range_4w(m) {
+    var r = weekly_range(m), weeks = PARAMS.MUSCLE_LOAD_4W_DAYS / 7;
+    return [U.round(r[0] * weeks), U.round(r[1] * weeks)];
+  }
+  function status_for(m, sets, rng) {
     if (sets <= 0) return "none";
-    var r = weekly_range(m);
+    var r = rng || weekly_range(m);
     return sets < r[0] ? "low" : sets > r[1] ? "high" : "ok";
   }
   function windows(today) {
     var mon = U.addDays(today, -U.weekday(today));
     return [["today", today, today], ["week", mon, today], ["last7", U.addDays(today, -6), today],
-      ["prev_week", U.addDays(mon, -7), U.addDays(mon, -1)]];
+      ["last28", U.addDays(today, -(PARAMS.MUSCLE_LOAD_4W_DAYS - 1)), today], ["prev_week", U.addDays(mon, -7), U.addDays(mon, -1)]];
   }
   function sport_name(t) {
     return L(has(TABLES.TYPE_NAMES, t) ? TABLES.TYPE_NAMES[t] : t, has(TABLES.TYPE_NAMES_EN, t) ? TABLES.TYPE_NAMES_EN[t] : t);
@@ -1161,6 +1177,7 @@ OBS.workouts = (function (U, S) {
       today, agg.logged_days, targets_of(data.plan_targets));
     var muscles = Object.keys(TABLES.MUSCLE_ZH).map(function (key) {
       var st = agg.stats[key], lst = has(agg.last, key) ? agg.last[key] : null, rng = weekly_range(key), eqm = sp.sets[key];
+      var r4 = range_4w(key);
       var total = function (w) { return st[w].sets + eqm[w]; };
       var week = total("week"), prev = total("prev_week"), ranges = {}, sportMin = {};
       PARAMS.MUSCLE_RANGES.forEach(function (w) {
@@ -1172,8 +1189,8 @@ OBS.workouts = (function (U, S) {
         ranges: ranges,
         prev_week: { sets: r1(prev), logged_sets: r1(st.prev_week.sets), sport_sets: r1(eqm.prev_week),
           volume_kg: U.round(st.prev_week.volume_kg) },
-        delta_sets: r1(week - prev), target: { low: rng[0], high: rng[1] },
-        status: { week: status_for(key, week), last7: status_for(key, total("last7")) },
+        delta_sets: r1(week - prev), target: { low: rng[0], high: rng[1] }, target_4w: { low: r4[0], high: r4[1] },
+        status: { week: status_for(key, week), last7: status_for(key, total("last7")), last28: status_for(key, total("last28"), r4) },
         trained_today: total("today") > 0, sport_min: sportMin,
         last: lst && { date: lst.date, exercises: lst.exercises.map(function (e) {
           var o = {};
@@ -1182,7 +1199,7 @@ OBS.workouts = (function (U, S) {
         }).slice(0, 8) } };
     });
     var sex = data.sex === "male" || data.sex === "female" ? data.sex : null;
-    return [{ version: PARAMS.MUSCLE_LOAD_VERSION, today: today, week_start: win[1][1], sex: sex,
+    return [{ version: PARAMS.MUSCLE_LOAD_VERSION, today: today, week_start: win[1][1], last28_start: win[3][1], sex: sex,
       source: { sparky: get(data, "sparky_state"), imported_days: imported.length }, unmatched: agg.unmatched,
       sports: sp.overall, muscles: muscles }, sp.by_muscle];
   }
