@@ -31,15 +31,17 @@ final class TodayGlanceTests: XCTestCase {
   // MARK: - rules
 
   func testUsualNeedsTwoWeeksAndLeavesTodayOut() throws {
-    let thirteen: [Double?] = (0..<13).map { Double(60 + $0) } + [90]
+    let thirteen: [Double?] = (0..<13).map { i -> Double? in Double(60 + i) } + [90]
     XCTAssertNil(TodayGlanceRules.usual(thirteen))   // first two weeks: no usual line
-    let days: [Double?] = (0..<30).map { Double(50 + $0) } + [99]   // 50…79, then today
+    let days: [Double?] = (0..<30).map { i -> Double? in Double(50 + i) } + [99]   // 50…79, then today
     let u = try XCTUnwrap(TodayGlanceRules.usual(days))
     XCTAssertEqual(u.lowerBound, 57.25, accuracy: 1e-9)
     XCTAssertEqual(u.upperBound, 71.75, accuracy: 1e-9)
     XCTAssertEqual(TodayGlanceRules.usualMid(days)!, 64.5, accuracy: 1e-9)
     // gaps do not count as days
-    let gaps: [Double?] = (0..<30).map { $0 % 3 == 0 ? Double($0) : nil } + [1]
+    var gaps: [Double?] = []
+    for i in 0..<30 { gaps.append(i % 3 == 0 ? Double(i) : nil) }
+    gaps.append(1)
     XCTAssertNil(TodayGlanceRules.usual(gaps))
   }
 
