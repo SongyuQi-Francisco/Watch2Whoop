@@ -25,8 +25,10 @@ def stress(user: str, start: date | None = None, end: date | None = None, hours:
 
 @router.get("/strain-coach")
 def strain_coach(user: str, date: date | None = None, conn=Depends(get_conn), viewer=Depends(current_user)):
-    """Today's strain target: the strain range from recovery score and recent fatigue, and the progress completed."""
-    return views.strain_coach(conn, _owner(conn, viewer, user, "scores"), date)
+    """Today's strain target: the strain range from recovery score and recent fatigue, and the progress completed;
+    `day_curve` (cumulative strain by hour) and, with the training share, `forecast` (mean day strain of the latest days
+    with today's planned session) for the Today strain sheet."""
+    return views.strain_coach_page(conn, _owner(conn, viewer, user, "scores"), viewer["id"], date)
 
 
 @router.get("/sleep-coach")

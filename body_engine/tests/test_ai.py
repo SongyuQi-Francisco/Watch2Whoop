@@ -683,6 +683,14 @@ def test_v2_meal_card_after_a_log_can_undo(dsn, world, monkeypatch, v2):
     with db(dsn) as c:
         got = list(chat_mod._auto_cards(c, ids["A"], [(0, "log_food", {"items": [{"date": None}]})], v2=True))
         assert {"kind": "send", "key": "undo_meal"} in got[0]["data"]["card"]["actions"]
+        assert "written" not in got[0]["data"]["card"]   # no result given: as before
+        # issue #445: two food writes of one turn -> one card carrying both writes' ids (the app undoes them itself)
+        writes = [(0, "log_food", {"items": [{"date": None}]}, {"created": [{"id": "e1", "date": "2026-10-20"}]}),
+                  (0, "log_meal_template", {"date": None}, {"log_id": 5, "date": "2026-10-20", "entries": [{"id": "e2"}]})]
+        got = list(chat_mod._auto_cards(c, ids["A"], writes, v2=True))
+        assert len(got) == 1 and got[0]["data"]["card"]["written"] == [
+            {"tool": "log_food", "date": "2026-10-20", "entry_ids": ["e1"], "log_id": None},
+            {"tool": "log_meal_template", "date": "2026-10-20", "entry_ids": ["e2"], "log_id": 5}]
         got = list(chat_mod._auto_cards(c, ids["A"], [(0, "undo_sparky_entry", {"kind": "food", "date": None})], v2=True))
         card = got[0]["data"]["card"]
         assert card["type"] == "meal" and {"kind": "send", "key": "undo_meal"} not in card["actions"]

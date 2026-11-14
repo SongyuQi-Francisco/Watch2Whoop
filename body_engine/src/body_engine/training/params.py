@@ -643,3 +643,11 @@ INTENSITY_MULT = {"rest": 0.4, "light": 0.6, "moderate": 1.0, "hard": 1.4, "max"
 STRENGTH_PRIMARIES_PER_SET = 1.5
 STRENGTH_FALLBACK_RESISTANCE = 1.0
 SPORT_PRIMARY_FACTOR, SPORT_SECONDARY_FACTOR = 1.0, 0.5   # minutes count fully for primary muscles, half for secondary ones
+
+# ---------- strain forecast on Today's strain sheet (2.0.1, training/forecast.py) ----------
+# How many of the latest past days with the same planned session make the forecast. A product setting (the 2.0.1 design,
+# docs/design/2.0.1 strain sheet: "the planned type's last 4 sessions"), not a physiological threshold: few enough to follow
+# a change of routine, enough to smooth one unusual day.
+FORECAST_SESSIONS = 4
+# How far back to look for those days; older days describe a different training block (also a product setting).
+FORECAST_LOOKBACK_DAYS = 180

@@ -18,6 +18,7 @@ from . import recovery as R
 from . import sleep as S
 from . import strain as L
 from . import hrv_kind as HK
+from . import day_curve
 from .inputs import Inputs, Night, load, segments_in
 from .muscle import daily_muscle_load
 from .. import sparky_client
@@ -365,7 +366,9 @@ def compute(conn: psycopg.Connection, client, user_id: int, start: date, end: da
     inp = load(conn, client, user_id, origin - timedelta(days=P.HRMAX_WINDOW_DAYS), end, archive_dir, hrv_kind=kind,
                ow_cache=ow_cache)
     muscle_note = load_muscle(conn, inp, user_id, origin, end, sparky)
-    return score_days(inp, origin, end, today), {"inp": inp, "hrv_kind": kind, "hrv_kind_reason": kind_reason,
+    rows = score_days(inp, origin, end, today)
+    day_curve.attach(rows, inp.hr, tz, datetime.now(tz))   # details.load.hourly_strain (Today's strain sheet)
+    return rows, {"inp": inp, "hrv_kind": kind, "hrv_kind_reason": kind_reason,
                                                  "muscle_load": muscle_note}
 
 
