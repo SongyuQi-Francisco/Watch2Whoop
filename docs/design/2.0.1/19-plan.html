@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>Jarvis · 计划 (本周)</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+/* Jarvis -> 记训练 -> 计划 = the week plan, pushed inside 记录. One subject: the week as seven columns (bar height = planned sets;
+   done = train, today = ink outline that fills set by set, later = grey, rest = a dot). Tap a day = its session below.
+   Header right: days per week (3 / 4 / 5, the split changes with it). Row end = swap (safe alternatives only).
+   Rhythm (y): header 54-98 -> 20 -> reading 118-146 -> 14 -> week 160-306 -> 22 -> today 328-352 -> 8 -> 5 rows 360-590
+   -> button 632-680 -> key 722. */
+.p-read{margin-top:20px;height:28px;display:flex;align-items:baseline}
+.p-read .t-label{margin-left:8px}
+.p-read .r{margin-left:auto;display:flex;align-items:baseline}
+.p-week{margin-top:14px}
+.p-today{margin-top:22px;height:24px;display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600}
+.p-today .t-label{margin-left:auto;font-size:13px}
+.p-list{margin-top:8px;border-top:1px solid var(--hair)}
+.p-ex{display:grid;grid-template-columns:21px 1fr 54px 64px 16px;align-items:center;column-gap:11px;height:46px;border-bottom:1px solid var(--hair)}
+.p-th{height:42px;aspect-ratio:1/2}
+.p-nm{font-size:15px;font-weight:500;white-space:nowrap}
+.p-sx{font-size:13px;font-weight:500;color:var(--text2);white-space:nowrap}
+.p-wt{text-align:right;white-space:nowrap}
+.p-ex > i{color:var(--text3);font-size:15px}
+.p-cta{position:absolute;left:20px;right:20px;top:578px}
+.p-cta i{font-size:17px}
+.jarvis{background:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
+</style>
+</head>
+<body>
+<div class="sb">
+  <div class="sb-time">9:41</div><div class="sb-island"></div>
+  <div class="sb-sys">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M1.2 4.2a10.4 10.4 0 0 1 14.6 0"/><path d="M3.9 6.9a6.5 6.5 0 0 1 9.2 0"/><circle cx="8.5" cy="9.9" r="1.2" fill="currentColor" stroke="none"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x="0.5" y="0.5" width="23" height="12" rx="3.6" stroke="currentColor" stroke-opacity="0.4"/><rect x="2" y="2" width="20" height="9" rx="2.2" fill="currentColor"/><path d="M25 4.5v4c.9-.3 1.5-1.1 1.5-2s-.6-1.7-1.5-2z" fill="currentColor" fill-opacity="0.45"/></svg>
+  </div>
+</div>
+
+<main class="page">
+  <header class="hdr">
+    <div class="hdr-back"><i data-i="chevron-left"></i>本周计划</div>
+    <div class="seg s"><span>3 天</span><span class="on">4 天</span><span>5 天</span></div>
+  </header>
+  <section class="p-read">
+    <span class="t-gauge">0</span><span class="u" style="font-size:15px">/ 67 组</span>
+    <div class="r"><span class="t-gauge">0</span><span class="u" style="font-size:15px">/ 4 天</span></div>
+  </section>
+  <section class="p-week"><svg width="362" height="146" viewBox="0 0 362 146" fill="none" style="display:block;font-family:system-ui"><circle cx="25.9" cy="101" r="2" fill="var(--tick)"/><text x="25.9" y="124" text-anchor="middle" font-size="11" font-weight="500" fill="var(--text2)">一</text><text x="25.9" y="141" text-anchor="middle" font-size="10" font-weight="500" fill="var(--text2)"></text><rect x="66.6" y="23.0" width="22" height="81.0" rx="6" stroke="var(--text)" stroke-width="1.5"/><text x="77.6" y="16.0" text-anchor="middle" font-size="12" font-weight="500" fill="var(--text)">18</text><text x="77.6" y="124" text-anchor="middle" font-size="11" font-weight="600" fill="var(--text)">二</text><text x="77.6" y="141" text-anchor="middle" font-size="10" font-weight="500" fill="var(--text)">上肢 A</text><rect x="118.3" y="32.0" width="22" height="72.0" rx="6" fill="var(--past)"/><text x="129.3" y="25.0" text-anchor="middle" font-size="12" font-weight="500" fill="var(--text2)">16</text><text x="129.3" y="124" text-anchor="middle" font-size="11" font-weight="500" fill="var(--text2)">三</text><text x="129.3" y="141" text-anchor="middle" font-size="10" font-weight="500" fill="var(--text2)">下肢 A</text><circle cx="181.0" cy="101" r="2" fill="var(--tick)"/><text x="181.0" y="124" text-anchor="middle" font-size="11" font-weight="500" fill="var(--text2)">四</text><text x="181.0" y="141" text-anchor="middle" font-size="10" font-weight="500" fill="var(--text2)"></text><rect x="221.7" y="27.5" width="22" height="76.5" rx="6" fill="var(--past)"/><text x="232.7" y="20.5" text-anchor="middle" font-size="12" font-weight="500" fill="var(--text2)">17</text><text x="232.7" y="124" text-anchor="middle" font-size="11" font-weight="500" fill="var(--text2)">五</text><text x="232.7" y="141" text-anchor="middle" font-size="10" font-weight="500" fill="var(--text2)">上肢 B</text><rect x="273.4" y="32.0" width="22" height="72.0" rx="6" fill="var(--past)"/><text x="284.4" y="25.0" text-anchor="middle" font-size="12" font-weight="500" fill="var(--text2)">16</text><text x="284.4" y="124" text-anchor="middle" font-size="11" font-weight="500" fill="var(--text2)">六</text><text x="284.4" y="141" text-anchor="middle" font-size="10" font-weight="500" fill="var(--text2)">下肢 B</text><circle cx="336.1" cy="101" r="2" fill="var(--tick)"/><text x="336.1" y="124" text-anchor="middle" font-size="11" font-weight="500" fill="var(--text2)">日</text><text x="336.1" y="141" text-anchor="middle" font-size="10" font-weight="500" fill="var(--text2)"></text></svg></section>
+  <div class="p-today">今天 · 上肢 A<span class="t-label">18 组 · 约 55 分</span></div>
+  <section class="p-list">
+    <div class="p-ex"><div class="p-th" data-body="front" data-lit="chest:train deltoids:train@.5 triceps:train@.5"></div><div class="p-nm">卧推</div><div class="p-sx">4 × 8</div><div class="p-wt"><span class="t-row">60</span><span class="u">kg</span></div><i data-i="refresh-cw"></i></div>
+    <div class="p-ex"><div class="p-th" data-body="back" data-lit="upper-back:train deltoids:train@.5"></div><div class="p-nm">哑铃划船</div><div class="p-sx">4 × 10</div><div class="p-wt"><span class="t-row">26</span><span class="u">kg</span></div><i data-i="refresh-cw"></i></div>
+    <div class="p-ex"><div class="p-th" data-body="back" data-lit="upper-back:train@.6"></div><div class="p-nm">高位下拉</div><div class="p-sx">4 × 10</div><div class="p-wt"><span class="t-row">55</span><span class="u">kg</span></div><i data-i="refresh-cw"></i></div>
+    <div class="p-ex"><div class="p-th" data-body="front" data-lit="deltoids:train"></div><div class="p-nm">侧平举</div><div class="p-sx">3 × 15</div><div class="p-wt"><span class="t-row">8</span><span class="u">kg</span></div><i data-i="refresh-cw"></i></div>
+    <div class="p-ex"><div class="p-th" data-body="front" data-lit="biceps:train forearm:train@.5"></div><div class="p-nm">二头弯举</div><div class="p-sx">3 × 12</div><div class="p-wt"><span class="t-row">12</span><span class="u">kg</span></div><i data-i="refresh-cw"></i></div>
+  </section>
+  <div class="btn-primary p-cta"><i data-i="dumbbell"></i>开始训练</div>
+</main>
+<div class="jarvis" data-core="58"></div>
+<nav class="tabbar">
+  <div class="tab"><i data-i="circle-gauge"></i>今天</div>
+  <div class="tab"><i data-i="activity"></i>身体</div>
+  <div class="tab on"><i data-i="square-plus"></i>记录</div>
+  <div class="tab"><i data-i="users"></i>圈子</div>
+  <div class="tab"><i data-i="user"></i>我</div>
+</nav>
+<div class="home-ind"></div>
+<script src="kit.js"></script>
+<script src="core.js"></script>
+<script src="../../../body_engine/src/body_engine/web/static/muscle-body-data.js"></script>
+<script src="body.js"></script>
+</body>
+</html>

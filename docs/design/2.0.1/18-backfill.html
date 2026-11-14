@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>Jarvis · 补记训练</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+.p-sheet{position:absolute;left:0;right:0;top:62px;bottom:0;border-radius:38px 38px 0 0;background:var(--sheet);z-index:70;padding:0 20px}
+.p-hd{display:flex;align-items:center;height:44px;margin-top:9px}
+.p-hd .t-title{display:flex;align-items:center;gap:6px}
+.p-hd .icon-btn + .icon-btn{margin-left:12px}
+/* Jarvis -> 记训练 -> 补记: a session that was not logged when it happened. One subject: how long (the big number).
+   If the watch recorded something unlogged, it is offered first and fills day, type, minutes and heart rate in one tap
+   (shown chosen here). Everything else is a tap: day, type, - / +, effort. 记上 writes at once -> the 「已记到…」 card with 撤销.
+   Rhythm (y): sheet 62 -> header 71-115 -> watch 131-195 -> days 215-275 -> types 291-323 -> minutes 355-443
+   -> readings 463-491 -> effort 523-557 -> button 784-832. */
+.p-found{margin-top:16px;height:64px;border-radius:18px;background:var(--in-sheet);display:flex;align-items:center;gap:12px;padding:0 14px}
+.p-found .ic{width:36px;height:36px;border-radius:18px;background:var(--sheet);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--train)}
+.p-found b{display:block;font-size:15px;font-weight:600}
+.p-found .t-label{display:block;margin-top:3px}
+.p-found .ok{margin-left:auto;width:24px;height:24px;border-radius:12px;background:var(--accent);color:var(--on-accent);display:flex;align-items:center;justify-content:center;font-size:15px}
+.p-days{margin-top:20px;display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.p-d{height:60px;border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+.p-d .t-axis{font-size:11px}
+.p-d b{font-size:17px;font-weight:500}
+.p-d s{width:4px;height:4px;border-radius:2px;background:transparent}
+.p-d.has s{background:var(--train)}
+.p-d.on{background:var(--lozenge)}
+.p-kinds{margin-top:16px;display:flex;gap:8px}
+.p-kinds .chip{background:var(--in-sheet);padding:0 13px}
+.p-kinds .chip.on{background:var(--accent)}
+.p-min{margin-top:32px;height:88px;display:flex;align-items:center;justify-content:center;gap:36px}
+.p-min .n{position:relative;font-size:88px;font-weight:200;letter-spacing:-2.5px;line-height:1}
+.p-min .n small{position:absolute;left:100%;bottom:14px;margin-left:4px;font-size:17px;font-weight:400;color:var(--text2);letter-spacing:0}
+.p-step{width:44px;height:44px;border-radius:22px;background:var(--in-sheet);display:flex;align-items:center;justify-content:center;font-size:20px}
+.p-read{margin-top:20px;height:28px;display:flex;justify-content:center;align-items:baseline;gap:32px}
+.p-read > div{display:flex;align-items:baseline}
+.p-read .t-label{margin-left:6px}
+.p-eff{margin-top:32px;display:flex;justify-content:center}
+.p-eff .seg{background:var(--in-sheet)}
+.p-eff .seg span{padding:0 26px}
+.p-cta{position:absolute;left:20px;right:20px;bottom:42px}
+.p-cta i{font-size:17px}
+</style>
+</head>
+<body>
+<div class="sb" style="z-index:80">
+  <div class="sb-time">9:41</div><div class="sb-island"></div>
+  <div class="sb-sys">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M1.2 4.2a10.4 10.4 0 0 1 14.6 0"/><path d="M3.9 6.9a6.5 6.5 0 0 1 9.2 0"/><circle cx="8.5" cy="9.9" r="1.2" fill="currentColor" stroke="none"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x="0.5" y="0.5" width="23" height="12" rx="3.6" stroke="currentColor" stroke-opacity="0.4"/><rect x="2" y="2" width="20" height="9" rx="2.2" fill="currentColor"/><path d="M25 4.5v4c.9-.3 1.5-1.1 1.5-2s-.6-1.7-1.5-2z" fill="currentColor" fill-opacity="0.45"/></svg>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<section class="p-sheet">
+  <div class="grabber"></div>
+  <div class="p-hd"><div class="t-title">补记训练</div><span class="icon-btn"><i data-i="x"></i></span></div>
+  <!-- unlogged session found on the watch: one tap fills everything below -->
+  <div class="p-found">
+    <span class="ic"><i data-i="activity"></i></span>
+    <div><b>篮球 · 62 分</b><span class="t-label">昨天 19:10 · 手表</span></div>
+    <span class="ok"><i data-i="check"></i></span>
+  </div>
+  <!-- last 7 days; dot = already has a session -->
+  <div class="p-days">
+    <div class="p-d has"><span class="t-axis">三</span><b>4</b><s></s></div>
+    <div class="p-d"><span class="t-axis">四</span><b>5</b><s></s></div>
+    <div class="p-d has"><span class="t-axis">五</span><b>6</b><s></s></div>
+    <div class="p-d has"><span class="t-axis">六</span><b>7</b><s></s></div>
+    <div class="p-d"><span class="t-axis">日</span><b>8</b><s></s></div>
+    <div class="p-d on"><span class="t-axis">一</span><b>9</b><s></s></div>
+    <div class="p-d"><span class="t-axis">二</span><b>10</b><s></s></div>
+  </div>
+  <div class="p-kinds"><span class="chip">力量</span><span class="chip on">篮球</span><span class="chip">游泳</span><span class="chip">爬坡</span><span class="chip">跑步</span><span class="chip">其他</span></div>
+  <div class="p-min">
+    <span class="p-step"><i data-i="minus"></i></span>
+    <div class="n">62<small>分</small></div>
+    <span class="p-step"><i data-i="plus"></i></span>
+  </div>
+  <div class="p-read">
+    <div><span class="t-gauge">142</span><span class="u">bpm</span><span class="t-label">平均</span></div>
+    <div><span class="t-gauge">540</span><span class="u">kcal</span><span class="t-label">活动</span></div>
+  </div>
+  <div class="p-eff"><div class="seg"><span>轻</span><span class="on">中</span><span>强</span></div></div>
+  <div class="btn-primary p-cta"><i data-i="check"></i>记上</div>
+</section>
+<div class="home-ind"></div>
+<script src="kit.js"></script>
+<script src="core.js"></script>
+</body>
+</html>

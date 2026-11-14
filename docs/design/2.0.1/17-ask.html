@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>Jarvis · 提问</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+.p-sheet{position:absolute;left:0;right:0;top:62px;bottom:0;border-radius:38px 38px 0 0;background:var(--sheet);z-index:70;padding:0 20px}
+.p-hd{display:flex;align-items:center;height:44px;margin-top:9px}
+.p-hd .t-title{display:flex;align-items:center;gap:6px}
+.p-hd .icon-btn + .icon-btn{margin-left:12px}
+/* Jarvis -> 提问 = the chat sheet (09) opened empty with the keyboard up. One subject: the field. Above it, four questions
+   built from today's data (tap = send), then the context chips of the screen the key was tapped on. The answer is 09.
+   Rhythm (y): sheet 62 -> header 71-115 -> questions 131-323 -> chips 484-516 -> field 528-572 -> keyboard 582-874. */
+.p-ai{display:flex;align-items:center;gap:6px;font-size:17px;font-weight:600;letter-spacing:-0.2px}
+.p-ai i.chev{font-size:13px;color:var(--text2);margin-left:-1px}
+.p-asks{margin-top:16px}
+.p-ask{display:flex;align-items:center;gap:12px;height:48px;font-size:16px;font-weight:500;border-bottom:1px solid var(--hair)}
+.p-ask i:first-child{font-size:19px;color:var(--text2)}
+.p-ask .chev{margin-left:auto;font-size:15px;color:var(--text3)}
+.p-chips{position:absolute;left:20px;right:20px;top:422px;display:flex;gap:8px}
+.p-chip{display:inline-flex;align-items:center;gap:5px;height:32px;padding:0 12px 0 10px;border-radius:16px;background:var(--in-sheet);font-size:13px;font-weight:500}
+.p-chip i{font-size:14px;color:var(--text2)}
+.p-comp{position:absolute;left:20px;right:20px;top:466px;display:flex;align-items:center;gap:8px}
+.p-field{flex:1;height:44px;border-radius:22px;background:var(--in-sheet);display:flex;align-items:center;padding:0 6px 0 16px;font-size:16px;color:var(--text2)}
+.p-field u{width:2px;height:22px;border-radius:1px;background:#8FDCFF;margin-right:3px}
+.p-field i{margin-left:auto;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:19px;color:var(--text)}
+.p-send{width:44px;height:44px;border-radius:22px;background:var(--in-sheet);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--text3)}
+/* system keyboard stand-in (drawn by iOS, not by the app) */
+.p-kb{position:absolute;left:0;right:0;top:520px;bottom:0;background:var(--in-sheet)}
+.p-kb span{position:absolute;height:43px;border-radius:6px;background:var(--lozenge);display:flex;align-items:center;justify-content:center;font-size:21px;font-weight:400;color:var(--text)}
+.p-kb span.fn{background:var(--hair);font-size:18px}
+</style>
+</head>
+<body>
+<div class="sb" style="z-index:80">
+  <div class="sb-time">9:41</div><div class="sb-island"></div>
+  <div class="sb-sys">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M1.2 4.2a10.4 10.4 0 0 1 14.6 0"/><path d="M3.9 6.9a6.5 6.5 0 0 1 9.2 0"/><circle cx="8.5" cy="9.9" r="1.2" fill="currentColor" stroke="none"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x="0.5" y="0.5" width="23" height="12" rx="3.6" stroke="currentColor" stroke-opacity="0.4"/><rect x="2" y="2" width="20" height="9" rx="2.2" fill="currentColor"/><path d="M25 4.5v4c.9-.3 1.5-1.1 1.5-2s-.6-1.7-1.5-2z" fill="currentColor" fill-opacity="0.45"/></svg>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<section class="p-sheet">
+  <div class="grabber"></div>
+  <div class="p-hd">
+    <div class="p-ai"><span data-core="22"></span>管家<i class="chev" data-i="chevron-down"></i></div>
+    <span class="icon-btn"><i data-i="messages-square"></i></span>
+    <span class="icon-btn"><i data-i="x"></i></span>
+  </div>
+  <!-- questions from today's data; tap = send -->
+  <div class="p-asks">
+    <div class="p-ask"><i data-i="dumbbell"></i>今天适合练腿吗<i class="chev" data-i="arrow-up"></i></div>
+    <div class="p-ask"><i data-i="moon"></i>昨晚睡得怎么样<i class="chev" data-i="arrow-up"></i></div>
+    <div class="p-ask"><i data-i="soup"></i>晚饭还能吃多少<i class="chev" data-i="arrow-up"></i></div>
+    <div class="p-ask"><i data-i="calendar-days"></i>这周练得够吗<i class="chev" data-i="arrow-up"></i></div>
+  </div>
+  <div class="p-chips">
+    <span class="p-chip"><i data-i="circle-gauge"></i>恢复 82%</span>
+    <span class="p-chip"><i data-i="moon"></i>睡眠</span>
+    <span class="p-chip"><i data-i="flame"></i>负荷</span>
+  </div>
+  <div class="p-comp">
+    <div class="p-field"><u></u>问点什么<i data-i="mic"></i></div>
+    <span class="p-send"><i data-i="arrow-up"></i></span>
+  </div>
+  <div class="p-kb"><span style="left:6.0px;top:10px;width:33px">Q</span><span style="left:45.0px;top:10px;width:33px">W</span><span style="left:84.0px;top:10px;width:33px">E</span><span style="left:123.0px;top:10px;width:33px">R</span><span style="left:162.0px;top:10px;width:33px">T</span><span style="left:201.0px;top:10px;width:33px">Y</span><span style="left:240.0px;top:10px;width:33px">U</span><span style="left:279.0px;top:10px;width:33px">I</span><span style="left:318.0px;top:10px;width:33px">O</span><span style="left:357.0px;top:10px;width:33px">P</span><span style="left:25.5px;top:64px;width:33px">A</span><span style="left:64.5px;top:64px;width:33px">S</span><span style="left:103.5px;top:64px;width:33px">D</span><span style="left:142.5px;top:64px;width:33px">F</span><span style="left:181.5px;top:64px;width:33px">G</span><span style="left:220.5px;top:64px;width:33px">H</span><span style="left:259.5px;top:64px;width:33px">J</span><span style="left:298.5px;top:64px;width:33px">K</span><span style="left:337.5px;top:64px;width:33px">L</span><span style="left:64.5px;top:118px;width:33px">Z</span><span style="left:103.5px;top:118px;width:33px">X</span><span style="left:142.5px;top:118px;width:33px">C</span><span style="left:181.5px;top:118px;width:33px">V</span><span style="left:220.5px;top:118px;width:33px">B</span><span style="left:259.5px;top:118px;width:33px">N</span><span style="left:298.5px;top:118px;width:33px">M</span><span class="fn" style="left:6px;top:118px;width:44px"><i data-i="arrow-up"></i></span><span class="fn" style="left:352px;top:118px;width:44px"><i data-i="x"></i></span><span class="fn" style="left:6px;top:172px;width:90px;font-size:16px">123</span><span style="left:102px;top:172px;width:198px;font-size:16px">空格</span><span class="fn" style="left:306px;top:172px;width:90px;font-size:16px">发送</span></div>
+</section>
+<div class="home-ind"></div>
+<script src="kit.js"></script>
+<script src="core.js"></script>
+</body>
+</html>

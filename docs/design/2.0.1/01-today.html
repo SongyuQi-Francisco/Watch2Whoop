@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>今天 · first glance</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+/* page-specific rhythm (y): header 54-98 -> 32 -> hero 130-410 -> 40 -> gauges 450-509 -> 44 -> faces 553-673 -> 49 -> key 722 */
+.hero{margin-top:32px}
+.gauges{margin-top:40px}
+.faces{margin-top:44px}
+.vitals rect{fill:var(--band)}
+.vitals circle{fill:var(--text)}
+</style>
+</head>
+<body>
+
+<!-- status bar -->
+<div class="sb">
+  <div class="sb-time">9:41</div><div class="sb-island"></div>
+  <div class="sb-sys">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M1.2 4.2a10.4 10.4 0 0 1 14.6 0"/><path d="M3.9 6.9a6.5 6.5 0 0 1 9.2 0"/><circle cx="8.5" cy="9.9" r="1.2" fill="currentColor" stroke="none"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x="0.5" y="0.5" width="23" height="12" rx="3.6" stroke="currentColor" stroke-opacity="0.4"/><rect x="2" y="2" width="20" height="9" rx="2.2" fill="currentColor"/><path d="M25 4.5v4c.9-.3 1.5-1.1 1.5-2s-.6-1.7-1.5-2z" fill="currentColor" fill-opacity="0.45"/></svg>
+  </div>
+</div>
+
+<main class="page">
+  <!-- header: date (tap = month calendar, swipe hero = other day) + sync state (tap = sync now) -->
+  <header class="hdr">
+    <div class="hdr-date">11月10日<i data-i="chevron-down"></i></div>
+    <div class="sync is-ok"><i data-i="circle-check"></i>2分前</div>
+  </header>
+
+  <!-- HERO: recovery dial. Ticks = 0-100 scale, long marks = zone edges 34 / 67, grey band = usual 58-74 -->
+  <section class="hero">
+    <div class="dial" data-dial="82" data-band="58 74" data-zones="34 67" data-tone="good"></div>
+    <div class="dial-core">
+      <div class="hero-label">恢复</div>
+      <div class="hero-num"><span class="t-hero">82</span><span class="pct">%</span></div>
+      <div class="minibars" style="--tone:var(--good)">
+        <b style="height:9.5px"></b><b style="height:12px"></b><b style="height:6.5px"></b><b style="height:11px"></b>
+        <b style="height:13px"></b><b style="height:11.4px"></b><b style="height:16px"></b>
+      </div>
+      <div class="verdict t-verdict">可上强度</div>
+    </div>
+  </section>
+
+  <!-- attached gauges: sleep score (band = usual) and strain so far (tint = today's target, dots = planned session) -->
+  <section class="gauges">
+    <div class="gauge">
+      <div class="gauge-hd"><span class="t-gauge">88</span><span class="t-label">睡眠</span></div>
+      <div class="gauge-bar" data-gauge="88" data-max="100" data-band="72 84" data-tone="sleep" data-step="10"></div>
+    </div>
+    <div class="gauge">
+      <div class="gauge-hd"><span class="t-gauge">2.8</span><span class="t-label">负荷</span></div>
+      <div class="gauge-bar" data-gauge="2.8" data-max="21" data-target="12 16" data-plan="13.4" data-tone="train" data-step="2" data-majors="10 14 18"></div>
+    </div>
+  </section>
+
+  <!-- module faces: slot 1 = body check (体征, or the 关注 face when something is off), slot 2 = rule-picked, slot 3 = circles (pinned) -->
+  <section class="faces">
+    <div class="face">
+      <div class="face-hd"><i data-i="heart-pulse"></i>体征</div>
+      <div class="face-num"><span class="t-face">5/5</span></div>
+      <div class="face-gfx">
+        <svg class="vitals" width="91" height="26" viewBox="0 0 91 26">
+          <rect x="0" y="1" width="6.5" height="24" rx="3.25"/><circle cx="3.25" cy="10" r="2.5"/>
+          <rect x="21" y="1" width="6.5" height="24" rx="3.25"/><circle cx="24.25" cy="7" r="2.5"/>
+          <rect x="42" y="1" width="6.5" height="24" rx="3.25"/><circle cx="45.25" cy="14.5" r="2.5"/>
+          <rect x="63" y="1" width="6.5" height="24" rx="3.25"/><circle cx="66.25" cy="17" r="2.5"/>
+          <rect x="84.5" y="1" width="6.5" height="24" rx="3.25"/><circle cx="87.75" cy="11.5" r="2.5"/>
+        </svg>
+      </div>
+    </div>
+    <div class="face">
+      <div class="face-hd"><i data-i="soup"></i>饮食</div>
+      <div class="face-num"><span class="t-face">420</span><span class="u">kcal</span></div>
+      <div class="face-gfx"><div data-gauge="420" data-max="2500" data-target="2100" data-tone="text" data-step="500" style="width:100%;height:22px"></div></div>
+    </div>
+    <div class="face">
+      <div class="face-hd"><i data-i="users"></i>圈子</div>
+      <div class="face-num"><span class="t-face">3</span><span class="u">人练了</span></div>
+      <div class="face-gfx avs"><span class="av on">鹿</span><span class="av on">杰</span><span class="av">木</span><span class="av on">K</span><span class="av">安</span></div>
+    </div>
+  </section>
+</main>
+
+<!-- Jarvis key + system tab bar (今天 · 身体 · 记录 · 圈子 · 我) + home indicator -->
+<div class="jarvis"><i data-i="orbit"></i></div>
+<nav class="tabbar">
+  <div class="tab on"><i data-i="circle-gauge"></i>今天</div>
+  <div class="tab"><i data-i="activity"></i>身体</div>
+  <div class="tab"><i data-i="square-plus"></i>记录</div>
+  <div class="tab"><i data-i="users"></i>圈子</div>
+  <div class="tab"><i data-i="user"></i>我</div>
+</nav>
+<div class="home-ind"></div>
+<script src="kit.js"></script>
+</body>
+</html>

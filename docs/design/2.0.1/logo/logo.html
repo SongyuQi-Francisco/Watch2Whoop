@@ -1,0 +1,85 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Logo</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1D1D20;color:#F4F4F6;font-family:system-ui;-webkit-font-smoothing:antialiased}
+body.one{background:transparent}
+.board{width:1200px;padding:48px 56px}
+h1{font-size:15px;font-weight:500;color:#8D8D94;letter-spacing:.5px;margin-bottom:28px}
+.row{display:grid;grid-template-columns:repeat(3,1fr);gap:40px}
+.col h2{font-size:22px;font-weight:600;margin:0 0 4px}.col p{font-size:13px;color:#8D8D94;margin-bottom:18px}
+.ic{display:block;border-radius:22.4%;overflow:hidden}
+.ic svg{display:block;width:100%;height:100%}
+.pair{display:flex;gap:16px;align-items:flex-end;margin-bottom:18px}
+.small{display:flex;gap:9px;align-items:flex-end}
+.home{margin-top:44px;border-radius:28px;padding:26px 30px;display:flex;gap:34px;background:linear-gradient(160deg,#2b3350,#141826)}
+.home.l{background:linear-gradient(160deg,#dfe6f2,#b9c6dc);margin-top:16px}
+.app{width:76px;text-align:center;font-size:11px;color:#fff}.home.l .app{color:#111}
+.app .ic{width:64px;height:64px;margin:0 auto 6px}
+.ph{background:#3a3f55;border-radius:22.4%;width:64px;height:64px;margin:0 auto 6px;opacity:.55}
+</style></head><body>
+<script>
+var ACT="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"; // Lucide "activity" (ISC)
+var T={dark:{bg:'#000000',ink:'#F4F4F6',good:'#72BF8E',dim:'rgba(141,141,148,.38)',tick:'rgba(141,141,148,.6)',track:'rgba(244,244,246,.16)'},
+       light:{bg:'#FFFFFF',ink:'#111113',good:'#4E9A6B',dim:'rgba(108,108,115,.30)',tick:'rgba(108,108,115,.6)',track:'rgba(17,17,19,.12)'}};
+function pt(r,f){var a=(f*360-90)*Math.PI/180;return [512+r*Math.cos(a),512+r*Math.sin(a)]}
+function arc(r,f0,f1,w,c,cap){var a=pt(r,f0),b=pt(r,f1),big=(f1-f0)>.5?1:0;
+  return '<path d="M'+a[0].toFixed(1)+' '+a[1].toFixed(1)+'A'+r+' '+r+' 0 '+big+' 1 '+b[0].toFixed(1)+' '+b[1].toFixed(1)+'" fill="none" stroke="'+c+'" stroke-width="'+w+'" stroke-linecap="'+(cap||'round')+'"/>'}
+function tick(r0,r1,f,w,c){var a=pt(r0,f),b=pt(r1,f);return '<line x1="'+a[0].toFixed(1)+'" y1="'+a[1].toFixed(1)+'" x2="'+b[0].toFixed(1)+'" y2="'+b[1].toFixed(1)+'" stroke="'+c+'" stroke-width="'+w+'" stroke-linecap="round"/>'}
+var TRI="M13.73 4a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"; // Lucide "triangle" (ISC), drawn rotated 180 deg
+function tri(sc,stroke,sw,fill){return '<g transform="translate(512 512) rotate(180) scale('+sc+') translate(-12 -14.4)"><path d="'+TRI+'" fill="'+(fill||'none')+'" stroke="'+stroke+'" stroke-width="'+sw+'" stroke-linecap="round" stroke-linejoin="round"/></g>'}
+var V=.82;
+var DRAW={
+ A:function(t){var s='';                       // the Today dial itself
+   s+=arc(356,0,.9999,10,t.track,'butt')+arc(356,0,V,46,t.good);
+   for(var i=0;i<48;i++){var f=i/48,maj=(i%16===0);s+=tick(maj?236:262,304,f,maj?12:8,maj?t.ink:t.tick)}
+   return s},
+ B:function(t){var s='';                       // dial + pulse (continuity with the current icon)
+   s+=arc(348,0,.9999,10,t.track,'butt')+arc(348,0,V,54,t.good);
+   s+='<g transform="translate(512 512) scale(15.5) translate(-12 -12)"><path d="'+ACT+'" fill="none" stroke="'+t.ink+'" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></g>';
+   return s},
+ C:function(t){var s='',n=36,lit=Math.round(V*n); // the scale is the value: lit ticks
+   for(var i=0;i<n;i++){var f=i/n;s+=tick(i===0?218:262,374,f,30,i===0?t.ink:(i<lit?t.good:t.dim))}
+   return s},
+ D:function(t){                                // dial + the Jarvis core (inverted triangle)
+   return arc(348,0,.9999,10,t.track,'butt')+arc(348,0,V,54,t.good)+tri(15,t.ink,2.4)+tri(5.2,t.ink,0,t.ink)},
+ E:function(t){                                // Today's two readings: recovery outside, strain inside
+   return arc(360,0,.9999,10,t.track,'butt')+arc(360,0,V,56,t.good)+arc(236,0,.9999,10,t.track,'butt')+arc(236,0,.56,56,t.ink)},
+ F:function(t){var k='#0B0B0C';                // B inverted: state colour as the ground
+   return '<rect width="1024" height="1024" fill="'+t.good+'"/>'+arc(348,0,V,54,k)+'<g transform="translate(512 512) scale(15.5) translate(-12 -12)"><path d="'+ACT+'" fill="none" stroke="'+k+'" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></g>'},
+ H:function(t){var s=arc(292,0,.9999,10,t.track,'butt')+arc(292,0,V,44,t.good); // dial, scale outside the arc
+   for(var i=0;i<60;i++){var maj=(i%15===0);s+=tick(maj?352:366,400,i/60,maj?12:7,maj?t.ink:t.tick)}
+   return s},
+ I:function(t){var s='',n=60,lit=Math.round(V*n); // fine tick ring: 60 thin ticks
+   for(var i=0;i<n;i++)s+=tick(i===0?214:270,380,i/n,15,i===0?t.ink:(i<lit?t.good:t.dim));
+   return s},
+ J:function(t){var s='',n=40,lit=Math.round(V*n); // rising ticks: the lit ticks grow toward the value
+   for(var i=0;i<n;i++){var len=i<lit?70+110*i/(lit-1):56;s+=tick(384-len,384,i/n,24,i<lit?t.good:t.dim)}
+   return s},
+ K:function(t){var f0=.625,sp=.75,s=arc(352,f0,f0+sp,10,t.track,'butt')+arc(352,f0,f0+sp*V,50,t.good); // 270-degree gauge
+   for(var i=0;i<=36;i++){var maj=(i%9===0);s+=tick(maj?232:258,298,f0+sp*i/36,maj?12:8,maj?t.ink:t.tick)}
+   return s},
+ L:function(t){var s='',n=48,m=32,a=Math.round(V*n),b=Math.round(.56*m); // two tick rings: recovery outside, strain inside
+   for(var i=0;i<n;i++)s+=tick(316,388,i/n,20,i<a?t.good:t.dim);
+   for(var j=0;j<m;j++)s+=tick(196,254,j/m,20,j<b?t.ink:t.dim);
+   return s},
+ M:function(t){var s=arc(388,0,.9999,6,t.track,'butt')+arc(388,0,V,16,t.good),n=36,lit=Math.round(V*n); // hairline dial outside, bold ticks inside
+   for(var i=0;i<n;i++)s+=tick(i===0?196:236,336,i/n,28,i===0?t.ink:(i<lit?t.good:t.dim));
+   return s},
+ G:function(t){var s=arc(372,0,.9999,22,t.ink,'butt'); // the core alone: ring, ticks, inverted triangle, one lit point
+   for(var i=0;i<24;i++)s+=tick(296,330,i/24,12,t.tick);
+   return s+tri(17.5,t.ink,2.2)+'<circle cx="512" cy="512" r="46" fill="'+t.good+'"/>'}
+};
+function icon(c,theme){var t=T[theme||'dark'];return '<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg"><rect width="1024" height="1024" fill="'+t.bg+'"/>'+DRAW[c](t)+'</svg>'}
+function box(c,theme,px){return '<span class="ic" style="width:'+px+'px;height:'+px+'px">'+icon(c,theme)+'</span>'}
+var q=new URLSearchParams(location.search),one=q.get('c');
+if(one){document.body.className='one';document.body.innerHTML='<div style="width:1024px;height:1024px">'+icon(one,q.get('theme'))+'</div>'}
+else{
+ var SET=q.get('set')==='3'?['H','I','J','K','L','M']:q.get('set')==='2'?['D','E','F','G']:['A','B','C'];
+ var N={H:['H · 表盘 · 刻度在外','A 的变体：刻度移到弧外，中心留空'],I:['I · 细刻度环','C 的变体：60 条细刻度'],J:['J · 渐长刻度','亮起的刻度一路变长，指向读数'],K:['K · 270° 仪表','开口向下的仪表盘：弧 + 内刻度'],L:['L · 双刻度环','外圈恢复、内圈负荷，都用刻度表示'],M:['M · 细环 + 粗刻度','A 和 C 合在一起：外面一条细值弧，里面粗刻度'],D:['D · 表盘 + 核心','恢复环 + Jarvis 的倒三角核心'],E:['E · 双读数','外环恢复、内环负荷：今天页的两个读数'],F:['F · 绿底','B 的反色：绿色做底，主屏幕上最醒目'],G:['G · 核心','只有核心：环、刻度、倒三角、一个亮点'],A:['A · 表盘','今天页的恢复表盘：值弧 + 刻度'],B:['B · 表盘 + 脉搏','保留现在图标的脉搏线，换成新 UI 的黑底细环'],C:['C · 刻度环','刻度本身就是读数：亮起的刻度 = 恢复']};
+ var h='<div class="board"'+(SET.length>4?' style="width:2100px"':SET.length>3?' style="width:1500px"':'')+'><h1>WATCH2WHOOP · APP ICON · 2.0.1</h1><div class="row" style="grid-template-columns:repeat('+SET.length+',1fr)">';
+ SET.forEach(function(c){var L=SET.length>3?180:220,S=SET.length>3?88:104;h+='<div class="col"><h2>'+N[c][0]+'</h2><p>'+N[c][1]+'</p><div class="pair">'+box(c,'dark',L)+box(c,'light',S)+'</div><div class="small">'+box(c,'dark',60)+box(c,'dark',40)+box(c,'dark',29)+box(c,'light',60)+box(c,'light',40)+box(c,'light',29)+'</div></div>'});
+ h+='</div>';
+ ['dark','light'].forEach(function(th){h+='<div class="home'+(th==='light'?' l':'')+'">';
+   SET.forEach(function(c,i){h+='<div class="app"><div class="ph"></div>&nbsp;</div><div class="app">'+box(c,th,64)+'Watch2Whoop</div>'});h+='<div class="app"><div class="ph"></div>&nbsp;</div></div>'});
+ document.body.innerHTML=h+'</div>'}
+</script></body></html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>Jarvis · 更多 (快记)</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+.p-sheet{position:absolute;left:0;right:0;top:62px;bottom:0;border-radius:38px 38px 0 0;background:var(--sheet);z-index:70;padding:0 20px}
+.p-hd{display:flex;align-items:center;height:44px;margin-top:9px}
+.p-hd .t-title{display:flex;align-items:center;gap:6px}
+.p-hd .icon-btn + .icon-btn{margin-left:12px}
+/* Jarvis -> 记一餐 -> 更多 = every quick-log meal (the ring only holds the two most used). One subject: the list.
+   Tap + = log that meal once, at once; the row then shows 已记到… with 撤销 (first row). Under each name: the macro split
+   (protein / carbs / fat by energy, same mark as the 快记 face). Search and the meal filter narrow the list.
+   Rhythm (y): sheet 62 -> header 71-115 -> search 127-171 -> filter 187-221 -> rows from 237, 60 each. */
+.p-search{margin-top:12px;height:44px;border-radius:22px;background:var(--in-sheet);display:flex;align-items:center;gap:8px;padding:0 14px;font-size:16px;color:var(--text2)}
+.p-search i{font-size:18px}
+.p-filter{margin-top:16px;display:flex}
+.p-filter .seg{background:var(--in-sheet)}
+.p-filter .seg span{padding:0 14px}
+.p-list{margin-top:16px;border-top:1px solid var(--hair)}
+.p-t{display:grid;grid-template-columns:1fr 86px 36px;align-items:center;column-gap:12px;height:60px;border-bottom:1px solid var(--hair)}
+.p-t b{display:flex;align-items:baseline;gap:8px;font-size:16px;font-weight:500;margin-bottom:8px}
+.p-t em{font-style:normal;font-size:12px;font-weight:500;color:var(--text2)}
+.p-k{text-align:right;white-space:nowrap}
+.p-add{width:36px;height:36px;border-radius:18px;background:var(--in-sheet);display:flex;align-items:center;justify-content:center;font-size:18px}
+.p-add.done{background:var(--good-soft);color:var(--good)}
+.p-undo{display:inline-flex;align-items:center;gap:4px;height:6px;font-size:12px;font-weight:600;color:var(--text)}
+.p-undo i{font-size:13px}
+</style>
+</head>
+<body>
+<div class="sb" style="z-index:80">
+  <div class="sb-time">9:41</div><div class="sb-island"></div>
+  <div class="sb-sys">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M1.2 4.2a10.4 10.4 0 0 1 14.6 0"/><path d="M3.9 6.9a6.5 6.5 0 0 1 9.2 0"/><circle cx="8.5" cy="9.9" r="1.2" fill="currentColor" stroke="none"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x="0.5" y="0.5" width="23" height="12" rx="3.6" stroke="currentColor" stroke-opacity="0.4"/><rect x="2" y="2" width="20" height="9" rx="2.2" fill="currentColor"/><path d="M25 4.5v4c.9-.3 1.5-1.1 1.5-2s-.6-1.7-1.5-2z" fill="currentColor" fill-opacity="0.45"/></svg>
+  </div>
+</div>
+
+<div class="scrim"></div>
+<section class="p-sheet">
+  <div class="grabber"></div>
+  <div class="p-hd"><div class="t-title">快记</div><span class="icon-btn"><i data-i="x"></i></span></div>
+  <div class="p-search"><i data-i="search"></i>搜一餐</div>
+  <div class="p-filter"><div class="seg s"><span class="on">常用</span><span>早</span><span>午</span><span>晚</span><span>加餐</span></div></div>
+  <div class="p-list">
+    <div class="p-t"><div><b>鸡胸饭<em>已记到午餐</em></b><span class="p-undo"><i data-i="undo-2"></i>撤销</span></div><div class="p-k"><span class="t-row">570</span><span class="u">kcal</span></div><span class="p-add done"><i data-i="check"></i></span></div>
+    <div class="p-t"><div><b>燕麦碗</b><svg width="96" height="6" viewBox="0 0 96 6" fill="none" style="display:block"><rect x="0.00" y="0" width="21.13" height="6" rx="3" fill="var(--text)" fill-opacity="1"/><rect x="23.13" y="0" width="51.06" height="6" rx="3" fill="var(--text)" fill-opacity="0.55"/><rect x="76.19" y="0" width="19.81" height="6" rx="3" fill="var(--text)" fill-opacity="0.28"/></svg></div><div class="p-k"><span class="t-row">420</span><span class="u">kcal</span></div><span class="p-add"><i data-i="plus"></i></span></div>
+    <div class="p-t"><div><b>希腊酸奶杯</b><svg width="96" height="6" viewBox="0 0 96 6" fill="none" style="display:block"><rect x="0.00" y="0" width="32.16" height="6" rx="3" fill="var(--text)" fill-opacity="1"/><rect x="34.16" y="0" width="35.73" height="6" rx="3" fill="var(--text)" fill-opacity="0.55"/><rect x="71.88" y="0" width="24.12" height="6" rx="3" fill="var(--text)" fill-opacity="0.28"/></svg></div><div class="p-k"><span class="t-row">210</span><span class="u">kcal</span></div><span class="p-add"><i data-i="plus"></i></span></div>
+    <div class="p-t"><div><b>三文鱼饭</b><svg width="96" height="6" viewBox="0 0 96 6" fill="none" style="display:block"><rect x="0.00" y="0" width="23.38" height="6" rx="3" fill="var(--text)" fill-opacity="1"/><rect x="25.38" y="0" width="38.15" height="6" rx="3" fill="var(--text)" fill-opacity="0.55"/><rect x="65.54" y="0" width="30.46" height="6" rx="3" fill="var(--text)" fill-opacity="0.28"/></svg></div><div class="p-k"><span class="t-row">610</span><span class="u">kcal</span></div><span class="p-add"><i data-i="plus"></i></span></div>
+    <div class="p-t"><div><b>牛肉面</b><svg width="96" height="6" viewBox="0 0 96 6" fill="none" style="display:block"><rect x="0.00" y="0" width="19.92" height="6" rx="3" fill="var(--text)" fill-opacity="1"/><rect x="21.92" y="0" width="45.71" height="6" rx="3" fill="var(--text)" fill-opacity="0.55"/><rect x="69.63" y="0" width="26.37" height="6" rx="3" fill="var(--text)" fill-opacity="0.28"/></svg></div><div class="p-k"><span class="t-row">640</span><span class="u">kcal</span></div><span class="p-add"><i data-i="plus"></i></span></div>
+    <div class="p-t"><div><b>全麦三明治</b><svg width="96" height="6" viewBox="0 0 96 6" fill="none" style="display:block"><rect x="0.00" y="0" width="24.66" height="6" rx="3" fill="var(--text)" fill-opacity="1"/><rect x="26.66" y="0" width="41.73" height="6" rx="3" fill="var(--text)" fill-opacity="0.55"/><rect x="70.39" y="0" width="25.61" height="6" rx="3" fill="var(--text)" fill-opacity="0.28"/></svg></div><div class="p-k"><span class="t-row">390</span><span class="u">kcal</span></div><span class="p-add"><i data-i="plus"></i></span></div>
+    <div class="p-t"><div><b>蛋白奶昔</b><svg width="96" height="6" viewBox="0 0 96 6" fill="none" style="display:block"><rect x="0.00" y="0" width="61.68" height="6" rx="3" fill="var(--text)" fill-opacity="1"/><rect x="63.68" y="0" width="16.45" height="6" rx="3" fill="var(--text)" fill-opacity="0.55"/><rect x="82.12" y="0" width="13.88" height="6" rx="3" fill="var(--text)" fill-opacity="0.28"/></svg></div><div class="p-k"><span class="t-row">180</span><span class="u">kcal</span></div><span class="p-add"><i data-i="plus"></i></span></div>
+    <div class="p-t"><div><b>豆腐沙拉</b><svg width="96" height="6" viewBox="0 0 96 6" fill="none" style="display:block"><rect x="0.00" y="0" width="28.09" height="6" rx="3" fill="var(--text)" fill-opacity="1"/><rect x="30.09" y="0" width="19.66" height="6" rx="3" fill="var(--text)" fill-opacity="0.55"/><rect x="51.76" y="0" width="44.24" height="6" rx="3" fill="var(--text)" fill-opacity="0.28"/></svg></div><div class="p-k"><span class="t-row">260</span><span class="u">kcal</span></div><span class="p-add"><i data-i="plus"></i></span></div>
+  </div>
+</section>
+<div class="home-ind"></div>
+<script src="kit.js"></script>
+<script src="core.js"></script>
+</body>
+</html>
