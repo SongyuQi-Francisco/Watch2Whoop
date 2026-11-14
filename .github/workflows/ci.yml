@@ -293,6 +293,15 @@ jobs:
         run: >-
           xcodebuild -project Watch2Whoop.xcodeproj -scheme Watch2Whoop -destination "platform=iOS Simulator,id=$SIM_ID"
           -derivedDataPath "$RUNNER_TEMP/dd" CODE_SIGNING_ALLOWED=NO test
+      # The Apple Watch app (phase 1, apps/ios/Watch2WhoopWatch): compiled against the watchOS simulator SDK, no runtime
+      # needed. It is not embedded in the iPhone app, so the steps above do not build it.
+      - name: Apple Watch app compiles
+        run: |
+          if ! xcodebuild -showsdks | grep -q watchsimulator; then
+            echo "::warning::no watchOS simulator SDK in this Xcode; the watch app was not compiled"; exit 0
+          fi
+          xcodebuild -project Watch2Whoop.xcodeproj -target Watch2WhoopWatch -sdk watchsimulator \
+            SYMROOT="$RUNNER_TEMP/watch" OBJROOT="$RUNNER_TEMP/watch-obj" CODE_SIGNING_ALLOWED=NO build
 
   # Android build check (#253): the release APK, signed with the runner's debug key (no secrets on pull requests), kept
   # as an artifact of the run for a test phone. Not a required check of main yet.

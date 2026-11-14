@@ -1,0 +1,3 @@
+/* Permission texts of the watch app (same meaning as project.yml and en.lproj) */
+"NSHealthShareUsageDescription" = "你在这块手表上开始训练时，Watch2Whoop 读取心率，在组间显示。";
+"NSHealthUpdateUsageDescription" = "Watch2Whoop 把你在手表上记录的力量训练存进「健康」，它的心率和能量会算进你的负荷。";
