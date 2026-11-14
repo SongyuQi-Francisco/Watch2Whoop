@@ -162,6 +162,10 @@ struct PlannedExercise: Equatable, Identifiable {
   var sessionName: String? = nil
   var sessionTitle: String? = nil
   var addedForDay = false
+  /// Planned rest between sets (`target.rest_sec`), and the last session's sets as the server writes them
+  /// (`last[0].sets`, `"57.5×8"`): the watch's rest countdown and 「上次」 (docs/watch-app-plan.md 2.1).
+  var restSec: Int? = nil
+  var lastSets: [String] = []
   var id: String { slug }
 
   var banned: Bool { status == "banned" }
@@ -208,7 +212,9 @@ struct PlannedExercise: Equatable, Identifiable {
                            secondaryMuscles: (c["secondary_muscles"] as? [String]) ?? [],
                            dayOfWeek: (s?["day_of_week"] as? NSNumber)?.intValue, sessionName: s?["name"] as? String,
                            sessionTitle: ExerciseNames.template(s),
-                           addedForDay: (c["added_for_day"] as? Bool) ?? (s?["added_for_day"] as? Bool) ?? false)
+                           addedForDay: (c["added_for_day"] as? Bool) ?? (s?["added_for_day"] as? Bool) ?? false,
+                           restSec: (t["rest_sec"] as? NSNumber)?.intValue,
+                           lastSets: ((c["last"] as? [[String: Any]])?.first?["sets"] as? [String]) ?? [])
   }
 }
 
