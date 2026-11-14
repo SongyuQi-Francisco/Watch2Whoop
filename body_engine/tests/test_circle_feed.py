@@ -389,15 +389,17 @@ def test_pagination_newest_first(client, world, dsn, pair):
 def test_red_dot_and_seen(client, world, dsn, pair):
     ids, tok, _ = pair
     log_sets(dsn, ids["Ann"], [("bench-press", [(8, 60, True)])])
-    assert client.get(f"{FEED}/unread", headers=h(tok["Ann"])).json() == {"count": 0}          # first call starts the clock
+    assert client.get(f"{FEED}/unread", headers=h(tok["Ann"])).json() == {"count": 0, "from": []}   # first call starts the clock
     pid = get_feed(client, tok["Ben"])["posts"][0]["id"]
     client.put(f"{FEED}/posts/{pid}/like", headers=h(tok["Ben"]))
     client.post(f"{FEED}/posts/{pid}/comments", headers=h(tok["Ben"]), json={"body": "hi"})
     client.put(f"{FEED}/posts/{pid}/like", headers=h(tok["Ann"]))                               # my own ❤️ doesn't count
-    assert client.get(f"{FEED}/unread", headers=h(tok["Ann"])).json() == {"count": 2}
-    assert client.get(f"{FEED}/unread", headers=h(tok["Ben"])).json() == {"count": 0}
+    got = client.get(f"{FEED}/unread", headers=h(tok["Ann"])).json()
+    assert got["count"] == 2                                                                      # ❤️ + comment, both by Ben
+    assert [(x["id"], x["name"], x["initial"]) for x in got["from"]] == [(ids["Ben"], "Ben", "B")]   # who: one entry per person
+    assert client.get(f"{FEED}/unread", headers=h(tok["Ben"])).json() == {"count": 0, "from": []}
     assert client.post(f"{FEED}/seen", headers=h(tok["Ann"])).status_code == 204
-    assert client.get(f"{FEED}/unread", headers=h(tok["Ann"])).json() == {"count": 0}
+    assert client.get(f"{FEED}/unread", headers=h(tok["Ann"])).json() == {"count": 0, "from": []}
 
 
 def inbox(dsn, uid):

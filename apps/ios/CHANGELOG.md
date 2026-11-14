@@ -11,8 +11,9 @@ tags it and the workflow publishes this section as the release notes. The Flutte
 
 1.0.9 (build 10) was never released: its content ships in 2.0.0, and the `## 1.0.9` section below is a development record only. 1.0.9 从未发布：它的内容并入 2.0.0 一起发布，下面 `## 1.0.9` 一节只是开发记录。
 
-## 2.0.1
+## 2.1.0
 
+- 新增 Apple Watch app（第 1 期，训练记组）：在手表上开始今天计划的训练，每组一个大大的「重量 × 次数」，转表冠调整，点一下或双指互点两下记一组；自动进组间休息（倒计时、实时心率、到点震动），练完看小结；手机不在身边也能记，回到手机旁自动补交到当天的训练。跟 iPhone app 一起安装，需要 watchOS 11 及以上。 / New Apple Watch app (phase 1, logging sets): start today's planned training on the watch, one big "weight × reps" per set adjusted with the Digital Crown, one tap or Double Tap logs it; rest starts by itself (countdown, live heart rate, a tap on the wrist at zero) and a summary follows. It works with the phone away and hands the sets to the day's training when you are back. Installed with the iPhone app; needs watchOS 11 or later.
 - 同步中心只给一个结论：手机传完、服务器还在切换或算分时显示「已上传，分数计算中」，不再出现「已同步」和「同步连接失效」同时出现（FB-23）；「后台 App 刷新」关着单独一行，点一下打开本 app 的系统设置，不算同步失败。 / The sync center gives one answer: while the server switches you over or computes, it says "Uploaded, scores being computed" instead of "Synced" next to "Sync connection expired" (FB-23); Background App Refresh off is its own row that opens this app's Settings, not a sync failure.
 - 同步中心新增「最近 30 天 · 缺 N 天」：点进去按日期列出缺数据的日子和缺的类别（睡眠 / 心率 / HRV / 步数），每天可以单独重新同步，也可以全部重新同步；「健康」里本来就没有的日子标「健康里也没有」，不再提示（FB-24）。 / New in the sync center, "Last 30 days · N days missing": the days with data missing, newest first, with what is missing (sleep / heart rate / HRV / steps), a re-sync per day and one for all; days Health has nothing of either say "Not in Health" and are not prompted again (FB-24).
 - 「我」页更清爽：一级只留常用入口，其余收进健康档案、数据与导入、偏好设置、帮助与关于、账号几页；共享给我的人点进去看。 / A tidier Me page: the first screen keeps what you use most, the rest moves into Health record, Data and import, Preferences, Help and about, and Account; people who share with you are one tap in.

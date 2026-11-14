@@ -847,8 +847,11 @@ def search(
     limit: int = 30,
     with_meta: bool = True,
     client: sparky_client.SparkyClient | None = None,
+    only: set[str] | None = None,
+    stats: dict | None = None,
 ) -> list[dict]:
-    """Search the standard exercise catalog + user's exercise_meta (+ SparkyFitness custom exercises if connected)."""
+    """Search the standard exercise catalog + user's exercise_meta (+ SparkyFitness custom exercises if connected).
+    only: keep just these slugs (favourites). stats: filled with {"matched": every match before `limit`}."""
     cat_rows, meta_by_ref = _load_catalog_and_meta(conn, user_id, with_meta)
     meta_by_slug = _match_meta_to_slug(cat_rows, meta_by_ref)
 
@@ -905,6 +908,8 @@ def search(
             elif not m.get("app_exercise_id"):
                 m = {**m, "app_exercise_id": sp["id"]}
 
+        if only is not None and r["slug"] not in only:
+            continue
         item = format_exercise(r, m, detail=False)
         if not include_banned and item["status"] == "banned":
             continue
@@ -965,9 +970,13 @@ def search(
         )
         if not include_banned and st == "banned":
             continue
+        if only is not None and f"{LOG_PREFIX}{sp['id']}" not in only:
+            continue
         scored.append((-40, sp["id"], _log_exercise_item(sp, prim, st, desc)))
 
     scored.sort(key=lambda t: (t[0], t[1]))
+    if stats is not None:
+        stats["matched"] = len(scored)
     return [t[2] for t in scored[: max(1, min(limit, 150))]]
 
 

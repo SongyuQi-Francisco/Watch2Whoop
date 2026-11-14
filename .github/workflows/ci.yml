@@ -272,6 +272,12 @@ jobs:
           echo "$XCODEGEN_SHA256  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
           unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
           "$RUNNER_TEMP/xcodegen/bin/xcodegen" generate
+      # The iPhone app embeds the Apple Watch app (apps/ios/Watch2WhoopWatch), so the build below also compiles it with the
+      # watchOS simulator SDK. Say so plainly when the runner's Xcode lacks the watchOS platform.
+      - name: watchOS SDK present (the iPhone app embeds the watch app)
+        run: |
+          xcodebuild -showsdks | grep -q watchsimulator || {
+            echo "::error::this Xcode has no watchOS platform; the iPhone app cannot be built (it embeds the watch app)"; exit 1; }
       - name: Simulator
         run: |
           id="$(xcrun simctl list devices available -j | python3 -c '

@@ -20,7 +20,7 @@ from .. import auth, sparky_client
 from ..records.api import _owner, _self, current_user, get_conn
 from ..i18n import L
 from ..rollout import flags
-from . import catalog, custom, goals, hevy_import, history, loads, manual, muscle_load, plan_add, plan_remove, plans, session_log
+from . import catalog, custom, favorites, goals, hevy_import, history, loads, manual, muscle_load, plan_add, plan_remove, plans, session_log
 from . import params as P
 
 router = APIRouter(prefix="/v1/users/{user}/training", tags=["training"])
@@ -82,13 +82,16 @@ class SwapExerciseIn(BaseModel):
 @router.get("/calendar")
 def training_calendar(user: str, month: str | None = None, start: date | None = None, end: date | None = None,
                       conn=Depends(get_conn), viewer=Depends(current_user)):
-    """Per-day training count, duration, intensity, types, active energy, exercise minutes, strain and muscle load for a month (month=YYYY-MM, default this month; or start / end, at most 92 days);
+    """Per-day training count, duration, intensity, types, active energy, exercise minutes, strain and muscle load, heart-rate zone minutes
+    and main muscles / muscle groups for a month (month=YYYY-MM, default this month; or start / end, at most 92 days);
     days without training are included too. summary aggregates this period."""
     owner_id = _owner(conn, viewer, user, "training")
     try:
-        return history.calendar(conn, viewer["id"], owner_id, month, start, end)
+        out = history.calendar(conn, viewer["id"], owner_id, month, start, end)
     except ValueError as e:
         raise HTTPException(422, str(e))
+    history.add_muscles(conn, owner_id, out)   # each day's main muscles / groups (UI 2.0.1 history cards)
+    return out
 
 
 @router.get("/day/{day}")
@@ -159,25 +162,61 @@ def list_catalog_exercises(
     pattern: str | None = None,
     category: str | None = None,
     include_banned: bool = True,
+    favorites_only: Annotated[bool, Query(alias="favorites")] = False,
     limit: Annotated[int, Query(ge=1, le=200)] = 60,
     conn=Depends(get_conn),
     viewer=Depends(current_user),
 ):
-    """Search or browse the bilingual exercise catalog, merged with the user's exercise_meta restrictions when authorized."""
+    """Search or browse the bilingual exercise catalog, merged with the user's exercise_meta restrictions when authorized.
+    total = items in this answer; matched = every match before `limit`; library_total = the whole library this person is
+    offered (no filters). Own library only: each item's `favorite` star and favorites=true (only starred ones)."""
     owner_id = _owner(conn, viewer, user, "training")
     with_meta = auth.can_view(conn, viewer["id"], owner_id, "exercises")
+    own = owner_id == viewer["id"]
+    stars = favorites.slugs(conn, owner_id) if own else set()
+    stats: dict = {}
+    args = dict(user_id=owner_id if with_meta else None, include_banned=True)
     items = catalog.search(
         conn,
-        user_id=owner_id if with_meta else None,
         query=q,
         muscle=muscle,
         equipment=equipment,
         pattern=pattern,
         category=category,
-        include_banned=include_banned,
         limit=limit,
+        only=stars if own and favorites_only else None,
+        stats=stats,
+        **{**args, "include_banned": include_banned},
     )
-    return {"exercises": items, "total": len(items)}
+    filtered = bool(q or muscle or equipment or pattern or category or not include_banned or (own and favorites_only))
+    library = stats.get("matched", len(items))
+    if filtered:
+        whole: dict = {}
+        catalog.search(conn, limit=1, stats=whole, **args)
+        library = whole.get("matched", library)
+    if own:
+        for it in items:
+            it["favorite"] = it.get("slug") in stars
+    return {"exercises": items, "total": len(items), "matched": stats.get("matched", len(items)), "library_total": library,
+            **({"favorites_count": len(stars)} if own else {})}
+
+
+@router.put("/exercises/{slug}/favorite")
+def star_exercise(user: str, slug: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Star an exercise of the library (self-only, token scope write; idempotent)."""
+    uid = _self(viewer, user)
+    try:
+        return favorites.add(conn, uid, slug)
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+@router.delete("/exercises/{slug}/favorite")
+def unstar_exercise(user: str, slug: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Remove the star (self-only, token scope write; idempotent)."""
+    return favorites.remove(conn, _self(viewer, user), slug)
 
 
 @router.get("/exercises/{slug}")
@@ -190,6 +229,8 @@ def get_catalog_exercise(user: str, slug: str, conn=Depends(get_conn), viewer=De
         ex = catalog.get_exercise(conn, owner_id if with_meta else None, slug)
     except ValueError as e:
         raise HTTPException(404, str(e))
+    if owner_id == viewer["id"]:
+        ex["favorite"] = ex.get("slug") in favorites.slugs(conn, owner_id)
     return {**ex, **loads.for_exercise(conn, viewer["id"], owner_id, ex, plans._user_today(conn, owner_id))}
 
 
@@ -409,6 +450,7 @@ class SessionDraftIn(BaseModel):
     exercises: list[SessionExerciseIn] = Field(default_factory=list, max_length=session_log.MAX_EXERCISES)
     notes: str | None = Field(default=None, max_length=500)
     client_id: str | None = Field(default=None, max_length=64)   # the app's resend key (#340 N2): one write per id
+    started_at: datetime | None = None   # when the app saw the first set ticked (UI 2.0.1 timer); optional
 
 
 class SessionSubmitIn(BaseModel):
@@ -437,7 +479,7 @@ def save_training_session(user: str, day: date, body: SessionDraftIn, conn=Depen
 
     def save():
         try:
-            return session_log.save_draft(conn, uid, day, [e.model_dump() for e in body.exercises], body.notes)
+            return session_log.save_draft(conn, uid, day, [e.model_dump() for e in body.exercises], body.notes, body.started_at)
         except ValueError as e:
             raise HTTPException(422, str(e))
     return idem.once(conn, uid, body.client_id, f"training.session:{day}", save)
@@ -532,7 +574,7 @@ class TrainingGoalsIn(BaseModel):
 
 @router.get("/muscle-load", dependencies=MUSCLE)
 def muscle_load_map(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
-    """Effective sets and volume per muscle for today / this week / the last 7 days, the weekly range and colour status, last trained.
+    """Effective sets and volume per muscle for today / this week / the last 7 / 28 days, the weekly range (and x4 for 28 days) and colour status, last trained.
     The owner also gets their own training goals (they are not part of the training share)."""
     owner_id = _owner(conn, viewer, user, "training")
     out = muscle_load.compute(conn, owner_id)

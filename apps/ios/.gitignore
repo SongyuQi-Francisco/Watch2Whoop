@@ -11,3 +11,5 @@ DerivedData/
 # Generated from project.yml by XcodeGen
 Watch2Whoop/Info.plist
 Watch2Whoop/Watch2Whoop.entitlements
+Watch2WhoopWatch/Info.plist
+Watch2WhoopWatch/Watch2WhoopWatch.entitlements

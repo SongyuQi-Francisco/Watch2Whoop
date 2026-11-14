@@ -531,6 +531,28 @@ def unread(conn: psycopg.Connection, uid: int) -> int:
     return int(n)
 
 
+def unread_from(conn: psycopg.Connection, uid: int, limit: int = P.UNREAD_FROM_MAX) -> list[dict]:
+    """Who the unread ❤️ / comments of `unread` are from (the same rows), latest first, at most `limit` people."""
+    row = conn.execute("SELECT seen_at FROM circle_feed_seen WHERE user_id = %s", (uid,)).fetchone()
+    if row is None:
+        return []
+    rows = conn.execute(
+        f"""SELECT w, max(t) AS t FROM (
+              SELECT l.user_id AS w, l.created_at AS t FROM circle_feed_likes l JOIN circle_feed_posts p ON p.id = l.post_id
+               WHERE p.user_id = %(u)s AND l.user_id <> %(u)s AND l.active AND l.created_at > %(t)s AND {_SEEN_BY.format(w='l.user_id', v='%(u)s')}
+                 AND {_LOUD.format(w='l.user_id')} AND {blocks.not_blocked('%(u)s', 'l.user_id')}
+              UNION ALL
+              SELECT c.user_id, c.created_at FROM circle_feed_comments c JOIN circle_feed_posts p ON p.id = c.post_id
+               WHERE p.user_id = %(u)s AND c.user_id <> %(u)s AND c.deleted_at IS NULL AND c.created_at > %(t)s
+                 AND {_SEEN_BY.format(w='c.user_id', v='%(u)s')} AND {_LOUD.format(w='c.user_id')}
+                 AND {blocks.not_blocked('%(u)s', 'c.user_id')} AND {_comment_ok('%(u)s')}) x
+            GROUP BY w ORDER BY max(t) DESC, w LIMIT %(n)s""",
+        {"u": uid, "t": row["seen_at"], "hide": prefs.hidden(conn, uid, feed=True), "n": limit}).fetchall()
+    from . import faces
+    people = faces.faces(conn, uid, [r["w"] for r in rows])
+    return [people[r["w"]] for r in rows if r["w"] in people]
+
+
 def mark_seen(conn: psycopg.Connection, uid: int) -> None:
     conn.execute("""INSERT INTO circle_feed_seen (user_id) VALUES (%s)
                     ON CONFLICT (user_id) DO UPDATE SET seen_at = now()""", (uid,))

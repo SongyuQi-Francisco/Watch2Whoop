@@ -89,7 +89,9 @@ def options(conn: psycopg.Connection, user_id: int) -> list[dict]:
     if fallback.read_key() is not None:
         s = fallback.summary(conn, user_id)
         out.append({"key": "fallback", "label": s["display_name"], "kind": "fallback", "available": s["available"] or s["reason"] == "fallback_consent",  # consent is asked when picked
-                    "note": L(f"剩 {s['remaining_pct']}%", f"{s['remaining_pct']}% left"), "consent": s["consent"]})
+                    "note": L(f"剩 {s['remaining_pct']}%", f"{s['remaining_pct']}% left"), "consent": s["consent"],
+                    # the allowance in CNY next to the percent (UI 2.0.1 Me -> AI face: "¥1.2 / ¥3")
+                    **{k: s[k] for k in ("spent_cny", "quota_cny", "remaining_cny", "remaining_pct", "reset_on")}})
     for r in conn.execute("SELECT * FROM ai_providers WHERE user_id = %s ORDER BY is_default DESC, id", (user_id,)):
         mcp = catalog.is_mcp(r["kind"])
         out.append({"key": f"p:{r['id']}", "label": catalog.display_name(r), "kind": "mcp" if mcp else "api",
