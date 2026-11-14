@@ -9,7 +9,9 @@ if [ "$1" = "--frame" ]; then  # internal: one frame
     --screenshot="$TMP/$(printf %05d "$i").png" "file://$HERE/film.html?film=$FILM&t=$t" >/dev/null 2>&1; rm -rf "$P"; exit 0
 fi
 FILM="$1"; LEN="$2"; OUT="$(cd "$3" && pwd)"; JOBS="${4:-6}"; TMP="$(mktemp -d)"; N=$((LEN*60/1000)); export TMP FILM
-seq 0 $((N-1)) | xargs -P "$JOBS" -n 1 "$0" --frame
+seq 0 $((N-1)) | xargs -P "$JOBS" -n 1 "$0" --frame || true
+# a frame Chrome failed to write is rendered again, one at a time
+for i in $(seq 0 $((N-1))); do [ -s "$TMP/$(printf %05d "$i").png" ] || "$0" --frame "$i"; done
 echo "frames: $(ls "$TMP"/*.png | wc -l) of $N"
 ffmpeg -loglevel error -y -framerate 60 -i "$TMP/%05d.png" -c:v libx264 -pix_fmt yuv420p -crf 18 -movflags +faststart "$OUT/watch-$FILM.mp4"
 ffmpeg -loglevel error -y -framerate 60 -i "$TMP/%05d.png" -vf "fps=30,scale=520:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer:bayer_scale=4" "$OUT/watch-$FILM.gif"
