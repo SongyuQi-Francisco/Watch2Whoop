@@ -39,7 +39,10 @@ struct SignedInFlows: ViewModifier {
             .presentationDragIndicator(.visible)
           } else {
             NavigationStack {
-              SyncCenterView(startHistory: box.historyDays)
+              // 2.0.1: the sync center's first level (`08-sync-center`); a backfill link goes straight to its tools
+              Group {
+                if let days = box.historyDays { SyncCenterView(startHistory: days) } else { SyncCenterHome() }
+              }
                 .toolbar {
                   ToolbarItem(placement: .cancellationAction) {
                     Button(tr("完成", "Done")) { app.route = nil }.foregroundColor(Palette.text)

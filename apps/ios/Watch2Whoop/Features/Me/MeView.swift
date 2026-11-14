@@ -32,7 +32,7 @@ private struct MeScreen: View {
   @State private var inviteOptional = false
   @State private var openingLink = false
   @State private var linkError: String?
-  /// Debug screenshots: the page `W2W_DEV_ME_PAGE` pushes at launch (never set in Release).
+  /// A page pushed from the first glance (the 共享 face), or by `W2W_DEV_ME_PAGE` at launch (Debug screenshots).
   @State private var devPage: MePage?
 
   private var menu: MeMenu {
@@ -48,16 +48,22 @@ private struct MeScreen: View {
     let groups = menu.firstLevel
     NavigationStack {
       ScrollViewReader { proxy in
-      PageScaffold(title: tr("我", "Me")) {
+      ScrollView(.vertical, showsIndicators: false) {
         VStack(alignment: .leading, spacing: 18) {
-          header
+          // 2.0.1 (`07-me`): no page title; the first glance, then the rows of 我 below the fold
+          MeGlance(session: session, inbox: inbox, run: glanceActions).padding(.bottom, 40)
           ForEach(Array(groups.enumerated()), id: \.offset) { i, g in
             if i == groups.count - 1 && !session.meLinks.isEmpty { links }   // the server's rows, before the last group
             MeRowGroup(group: g, menu: menu, perform: perform).id(i == groups.count - 1 ? "me-end" : "me-\(i)")
           }
         }
-        .padding(.top, 8)
+        .padding(.horizontal, Metrics.gutter)
+        .padding(.bottom, 140)   // nothing under the Jarvis key when scrolled to the end
+        .frame(maxWidth: Metrics.maxContentWidth)
+        .frame(maxWidth: .infinity)
       }
+      .background(Palette.bg.ignoresSafeArea())
+      .statusBarCover()
       .task { await devShot(proxy) }
       }
       .toolbar(.hidden, for: .navigationBar)
@@ -71,6 +77,8 @@ private struct MeScreen: View {
     #if DEBUG
     .onAppear {   // simulator screenshots
       if RecordDevShot.value("W2W_DEV_ME_SHEET") == "appearance" { sheet = .appearance }
+      // `W2W_DEV_ME_SHEET=sync`: the sync center (2.0.1 `08`), as the dial's tap opens it
+      if RecordDevShot.value("W2W_DEV_ME_SHEET") == "sync" { DispatchQueue.main.asyncAfter(deadline: .now() + 3) { app.route = .syncCenter } }
       devPage = RecordDevShot.value("W2W_DEV_ME_PAGE").flatMap(MePage.init(rawValue:))
     }
     #endif
@@ -177,26 +185,14 @@ private struct MeScreen: View {
     openInbox = true
   }
 
-  private var header: some View {
-    Button { sheet = .profile } label: {
-      HStack(spacing: 14) {
-        Text(String((session.displayName ?? "?").prefix(1)).uppercased())
-          .font(.system(size: 22, weight: .semibold)).foregroundColor(Palette.text)
-          .frame(width: 52, height: 52)
-          .background(Circle().fill(Palette.surface2))
-        VStack(alignment: .leading, spacing: 2) {
-          Text(session.displayName ?? tr("我的账号", "My account")).font(Typo.heroWord).foregroundColor(Palette.text)
-          Text(URL(string: session.config.server)?.host ?? session.config.server).font(Typo.caption).foregroundColor(Palette.text2)
-        }
-        Spacer()
-        Icon(.chevronRight, size: 16).foregroundColor(Palette.text3)
-      }
-      .padding(16)
-      .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
-      .contentShape(Rectangle())
-    }
-    .buttonStyle(PressScale())
-    .accessibilityLabel(tr("打开个人资料", "Open your profile"))
+  private var glanceActions: MeGlanceActions {
+    MeGlanceActions(
+      profile: { sheet = .profile },
+      syncCenter: { app.route = .syncCenter },
+      syncNow: { Task { _ = await HealthSyncService.shared.syncNow() } },
+      inbox: { openInbox = true },
+      ai: { perform(.ai) },
+      shared: { devPage = .shared })
   }
 
   private func countUnsent() async {
@@ -300,7 +296,7 @@ private struct MeSyncRow: View {
   @ObservedObject private var sync = HealthSyncService.shared
 
   var body: some View {
-    NavigationLink { SyncCenterView() } label: {
+    NavigationLink { SyncCenterHome() } label: {
       MeRowLabel(icon: MeItem.syncCenter.icon, title: MeItem.syncCenter.title, value: sync.diagnosis.headline,
                  tone: tone(sync.diagnosis.overall))
     }

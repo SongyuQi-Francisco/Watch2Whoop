@@ -39,8 +39,9 @@ private struct CirclesScreen: View {
             if store.list != nil && !store.hasCircles {
               EmptyCircles(create: { sheet = .create }, join: { sheet = .join("") })
             } else {
-              if store.byCircle && !store.chips.isEmpty { circleBar }
-              modeBar
+              glance(proxy)
+              // below the fold (vertical scroll only): the 2.0.0 feed, members and leaderboards
+              modeBar.padding(.top, 110).id("circles.list")
               switch store.mode {
               case .feed where store.feedOn:
                 FeedList(store: store) { id in withAnimation { proxy.scrollTo(id, anchor: .top) } }
@@ -121,42 +122,131 @@ private struct CirclesScreen: View {
 
   // MARK: parts
 
+  /// 2.0.1 header (`06-circles`): the circle picker on the left (全部 / each circle, 我的圈子, 加入), the sync capsule right.
+  /// No page title on a tab root.
   private var header: some View {
-    HStack(alignment: .center, spacing: 6) {
-      VStack(alignment: .leading, spacing: 1) {
-        if store.offline {
-          Text(tr("离线 · 显示上次的内容", "Offline · showing what was saved")).font(Typo.overline).foregroundColor(Palette.mid)
-        } else if store.refreshing && store.list == nil {
-          Text(tr("正在更新", "Updating")).font(Typo.overline).foregroundColor(Palette.text2)
+    HStack(spacing: 8) {
+      Menu {
+        if store.byCircle && !store.chips.isEmpty {
+          Button { store.select(nil) } label: { Text(tr("全部圈子", "All circles")) }
+          ForEach(store.chips) { c in Button { store.select(c.id) } label: { Text(c.name) } }
         }
-        Text(tr("圈子", "Circles")).font(Typo.title).titleTracking().foregroundColor(Palette.text)
+        Button { sheet = .manage } label: { Text(tr("我的圈子", "My circles")) }
+        Button { sheet = .join("") } label: { Text(tr("用邀请码加入", "Join with a code")) }
+      } label: {
+        HStack(spacing: 4) {
+          Text(circleTitle).font(Typo.header).foregroundColor(Palette.text).lineLimit(1)
+          Icon(.chevronDown, size: 13).foregroundColor(Palette.text2)
+        }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
       }
-      Spacer()
-      iconButton(.userPlus, tr("邀请朋友", "Invite friends")) { sheet = (store.list?.circles.contains(where: \.isOwner) ?? false) ? .invite(nil) : .create }
-      iconButton(.settings, tr("我的圈子", "My circles")) { sheet = .manage }
+      .accessibilityLabel(tr("选择圈子", "Pick a circle"))
+      if store.offline {
+        Chip(label: tr("离线", "Offline"))
+      } else if store.refreshing && store.list == nil {
+        Chip(label: tr("正在更新", "Updating"))
+      }
+      Spacer(minLength: 0)
+      TodaySyncCapsule(card: nil, page: store.session.sync, tap: { Task { _ = await HealthSyncService.shared.syncNow() } },
+                       center: { app.route = .syncCenter })
     }
-    .padding(.top, 10)
+    .frame(height: 44)
   }
 
-  private func iconButton(_ icon: Icon.Name, _ label: String, action: @escaping () -> Void) -> some View {
-    Button(action: action) {
-      Icon(icon, size: 20).foregroundColor(Palette.text)
-        .frame(width: 40, height: 40)
-        .background(Circle().fill(Palette.surface))
-    }
-    .buttonStyle(PressScale())
-    .accessibilityLabel(label)
+  private var circleTitle: String {
+    if let id = store.circle, let c = store.chips.first(where: { $0.id == id }) { return c.name }
+    return tr("全部圈子", "All circles")
   }
 
-  /// 全部 + one chip per circle (flag circles_by_circle): narrows the feed, the members and the leaderboards.
-  private var circleBar: some View {
-    ScrollView(.horizontal, showsIndicators: false) {
-      HStack(spacing: 8) {
-        PillButton(title: tr("全部", "All"), on: store.circle == nil) { store.select(nil) }
-        ForEach(store.chips) { c in
-          PillButton(title: c.name, avatar: (c.avatar, c.name), on: store.circle == c.id) { store.select(c.id) }
+  /// The first glance: who trained today on the recovery dial, the group's sleep and strain, faces 动态 · 排行 · 邀请.
+  @ViewBuilder private func glance(_ proxy: ScrollViewProxy) -> some View {
+    let people = CircleGlanceRules.people(store.overview)
+    let count = CircleGlanceRules.trained(people)
+    let me = store.overview?.me
+    let others = people.filter { !($0.isSelf || $0.shared == nil) }
+    VStack(spacing: 0) {
+      CircleDial(people: CircleGlanceRules.dial(people), trained: count.trained, total: count.total,
+                 side: TodayGlancePage.dialSide) { p in openPerson(p.id, proxy) }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 18)
+      HStack(alignment: .top, spacing: 20) {
+        groupReading(tr("平均睡眠", "Avg sleep"), people.map { $0.scores?.sleepScore }, others: others.map { $0.scores?.sleepScore },
+                     mine: me?.scores?.sleepScore, max: 100, step: 10, digits: 0, tone: .sleep)
+        groupReading(tr("平均负荷", "Avg strain"), people.map { $0.scores?.strain }, others: others.map { $0.scores?.strain },
+                     mine: me?.scores?.strain, max: 21, step: 3, digits: 1, tone: .train)
+      }
+      .padding(.top, 40)
+      faces(proxy).padding(.top, 44)
+    }
+  }
+
+  @ViewBuilder private func groupReading(_ label: String, _ all: [Double?], others: [Double?], mine: Double?, max: Double,
+                                         step: Double, digits: Int, tone: Tone) -> some View {
+    if let mean = CircleGlanceRules.mean(all) {
+      VStack(alignment: .leading, spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+          Text(TodayModel.fmt(mean, digits: digits)).font(Typo.reading).foregroundColor(Palette.text)
+          Text(label).font(Typo.label).foregroundColor(Palette.text2)
+        }
+        GroupGauge(values: others.compactMap { $0 }, mine: mine, mean: mean, max: max, step: step, tone: tone)
+      }
+      .frame(maxWidth: .infinity, minHeight: 59, alignment: .topLeading)
+      .accessibilityElement(children: .ignore)
+      .accessibilityLabel("\(label) \(TodayModel.fmt(mean, digits: digits))")
+    }
+  }
+
+  private func faces(_ proxy: ScrollViewProxy) -> some View {
+    HStack(spacing: 8) {
+      if store.feedOn {
+        Button { show(.feed, proxy) } label: {
+          Face(icon: .messagesSquare, label: tr("动态", "Feed"), number: "\(store.unread)", unit: tr("条未读", "unread"),
+               dot: store.unread > 0 ? .bad : nil) { Color.clear }
+        }
+        .buttonStyle(PressScale())
+      }
+      if store.boardOn {
+        let rank = CircleGlanceRules.myRank(store.board)
+        Button { show(.board, proxy) } label: {
+          Face(icon: .trophy, label: tr("排行", "Ranking"), number: rank.map { "\($0.rank)" } ?? "—",
+               unit: rank.map { tr("/\($0.of) 名", "of \($0.of)") }, dimmed: rank == nil) {
+            RankBars(bars: CircleGlanceRules.rankBars(store.board))
+          }
+        }
+        .buttonStyle(PressScale())
+      }
+      Button { invite() } label: {
+        Face(icon: .userPlus, label: tr("邀请", "Invite")) {
+          HStack(spacing: 6) {
+            Icon(.share, size: 16)
+            Text(tr("分享", "Share")).font(.system(size: 15, weight: .semibold))
+          }
+          .foregroundColor(Palette.text)
+          .frame(maxWidth: .infinity, minHeight: 32)
+          .background(Capsule().fill(Palette.surface2))
         }
       }
+      .buttonStyle(PressScale())
+    }
+  }
+
+  private func invite() {
+    sheet = (store.list?.circles.contains(where: \.isOwner) ?? false) ? .invite(nil) : .create
+  }
+
+  private func show(_ m: CirclesStore.Mode, _ proxy: ScrollViewProxy) {
+    withAnimation(.easeOut(duration: 0.18)) { store.setMode(m) }
+    if m == .feed { store.markSeen() }
+    withAnimation { proxy.scrollTo("circles.list", anchor: .top) }
+  }
+
+  /// An avatar on the dial: that person's read-only pages when they share with me, else the member list.
+  private func openPerson(_ id: Int, _ proxy: ScrollViewProxy) {
+    if let p = store.session.viewable.first(where: { $0.id == id }) {
+      store.session.viewing = p
+    } else {
+      show(.members, proxy)
     }
   }
 
