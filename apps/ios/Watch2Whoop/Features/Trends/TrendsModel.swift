@@ -79,6 +79,9 @@ struct TrendsData: Equatable {
   var aerobicWeeks: [Week]
   /// Status cards from the server (as of `end`), before the phone's own values are laid over them.
   var status: [String: Any]
+  /// Training sessions per day (`training_sessions.values`, the weekly report's count; 2.1.0, server only), by date. Nil
+  /// on an older server, without the training share, or when the log could not be read.
+  var trainingSessions: [String: Double]?
 
   init?(json: [String: Any]) {
     guard let dates = json["dates"] as? [String], let s = json["series"] as? [String: Any] else { return nil }
@@ -103,12 +106,24 @@ struct TrendsData: Equatable {
       return Week(week: String(week.prefix(10)), value: TodayModel.num(w["value"]) ?? 0, target: TodayModel.num(w["target"]))
     }
     status = json["status"] as? [String: Any] ?? [:]
+    trainingSessions = Self.sessions(json)
+  }
+
+  /// `training_sessions.values` by date (the block's array is aligned with `dates`); nil when it has none.
+  static func sessions(_ json: [String: Any]?) -> [String: Double]? {
+    guard let json, let dates = json["dates"] as? [String], let b = json["training_sessions"] as? [String: Any],
+          let values = b["values"] as? [Any], values.count == dates.count else { return nil }
+    var out: [String: Double] = [:]
+    for (i, d) in dates.enumerated() {
+      if let v = TodayModel.num(values[i]) { out[String(d.prefix(10))] = v }
+    }
+    return out
   }
 
   static func == (a: TrendsData, b: TrendsData) -> Bool {
     a.start == b.start && a.end == b.end && a.days == b.days && a.dates == b.dates && a.series == b.series
       && a.hrZones == b.hrZones && a.aerobicWeeks == b.aerobicWeeks && a.unavailable == b.unavailable
-      && NSDictionary(dictionary: a.status).isEqual(to: b.status)
+      && NSDictionary(dictionary: a.status).isEqual(to: b.status) && a.trainingSessions == b.trainingSessions
   }
 
   /// Weekly strength volume (sum of the daily muscle load per Monday-first week), as on the page (muscleWeeks).

@@ -12,8 +12,10 @@ struct MuscleWeekPage: View {
   @State private var range: MuscleLoad.Range = .week
   @Environment(\.askAI) private var askAI
 
-  /// The ranges offered: the server has today, this week and the last 7 days (no four-week range yet).
-  static let ranges: [MuscleLoad.Range] = [.week, .last7]
+  /// The ranges offered: 本周 | 4 周 on a 2.1.0 server (`ranges.last28`, `target_4w`), 本周 | 近7天 on an older one.
+  static func ranges(_ m: MuscleLoad?) -> [MuscleLoad.Range] {
+    m?.hasLast28 == true ? [.week, .last28] : [.week, .last7]
+  }
 
   var body: some View {
     RecordPage(title: tr("肌肉负荷", "Muscle load"), trailing: { rangeSwitch }) {
@@ -23,15 +25,18 @@ struct MuscleWeekPage: View {
         EmptyNote(text: store.refreshing ? "…" : tr("暂无", "None")).padding(.top, 24)
       }
     }
-    .task { await store.refresh() }
+    .task {
+      await store.refresh()
+      if RecordDevShot.value("W2W_DEV_MUSCLE_RANGE") == "last28" { range = .last28 }   // simulator screenshots
+    }
   }
 
   private var rangeSwitch: some View {
     HStack(spacing: 2) {
-      ForEach(Self.ranges) { r in
+      ForEach(Self.ranges(store.muscle)) { r in
         let on = r == range
         Button { withAnimation(.easeOut(duration: 0.15)) { range = r } } label: {
-          Text(r == .week ? tr("本周", "Week") : tr("近7天", "7 days")).font(.system(size: 14, weight: on ? .semibold : .medium))
+          Text(Self.switchTitle(r)).font(.system(size: 14, weight: on ? .semibold : .medium))
             .foregroundColor(on ? Palette.text : Palette.text2)
             .padding(.horizontal, 12).frame(height: 32)
             .background(Capsule().fill(on ? Palette.surface2 : .clear))
@@ -42,6 +47,14 @@ struct MuscleWeekPage: View {
     }
     .padding(3)
     .background(Capsule().fill(Palette.surface))
+  }
+
+  static func switchTitle(_ r: MuscleLoad.Range) -> String {
+    switch r {
+    case .week: return tr("本周", "Week")
+    case .last28: return tr("4 周", "4 wk")
+    default: return tr("近7天", "7 days")
+    }
   }
 
   /// A region's colour on the weekly map.
@@ -63,6 +76,7 @@ struct MuscleWeekPage: View {
   }
 
   private func content(_ m: MuscleLoad) -> some View {
+    let range = Self.ranges(m).contains(self.range) ? self.range : .week
     let regions = m.regions(range)
     let t = RecordGlance.onTarget(m, range: range)
     let groups = RecordGlance.groups(m, range: range)

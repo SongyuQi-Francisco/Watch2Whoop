@@ -13,8 +13,10 @@ enum RecordDocs {
   static func trainingDay(_ day: String) -> String { "training:day:\(day)" }
   static let muscle = "training:muscle"
   static let rules = "exercise:rules"
+  /// `/training/exercises?limit=1`: only its `library_total` (the 动作库 face's number, 2.1.0).
+  static let libraryCount = "exercise:library:count"
 
-  static let kinds = [RecordKind.journal, RecordKind.session, RecordKind.submit]
+  static let kinds = [RecordKind.journal, RecordKind.session, RecordKind.submit, ExerciseFavorites.kind]
 }
 
 enum RecordKind {
@@ -40,6 +42,7 @@ enum RecordAPI {
   static func day(_ day: String) -> APIRequest { .get("/v1/users/me/training/day/\(day)") }
   static let muscle = APIRequest.get("/v1/users/me/training/muscle-load")
   static let rules = APIRequest.get("/v1/users/me/exercises")
+  static let libraryCount = APIRequest.get("/v1/users/me/training/exercises", ["limit": "1"])
   static let events = "/v1/users/me/events"
 }
 
@@ -304,21 +307,34 @@ struct TrainingSession: Equatable {
   var changed = false
   /// `connected` / `not_linked` / `unreadable`; submitting needs the log.
   var trainingLog: String? = nil
+  /// When the training started (`log.started_at`, or the queued save's own `started_at`), ISO 8601; nil on a log saved
+  /// before 2.1.0 or on an older server.
+  var startedAt: String? = nil
+  /// `first_set` (the first ticked set) / `draft` (the first save) / nil.
+  var startedFrom: String? = nil
+  /// The end of a submitted training (`log.submitted_at`).
+  var submittedAt: String? = nil
+  /// The server takes `started_at` with the draft (its log answers `started_from`, 2.1.0): an older one refuses unknown
+  /// fields, so the field is only sent when this is true.
+  var acceptsStart = false
 
   static func == (a: TrainingSession, b: TrainingSession) -> Bool {
     a.day == b.day && a.exercises == b.exercises && a.rows == b.rows && a.submitted == b.submitted && a.canLog == b.canLog
       && a.canEditPlan == b.canEditPlan && a.pendingSave == b.pendingSave && a.pendingSubmit == b.pendingSubmit && a.changedSinceSubmit == b.changedSinceSubmit
       && a.title == b.title && a.readiness?.label == b.readiness?.label && a.removed == b.removed && a.changed == b.changed
-      && a.trainingLog == b.trainingLog
+      && a.trainingLog == b.trainingLog && a.startedAt == b.startedAt && a.startedFrom == b.startedFrom && a.submittedAt == b.submittedAt
+      && a.acceptsStart == b.acceptsStart
   }
 
   var loggable: [PlannedExercise] { exercises.filter { !$0.banned } }
   var doneSets: Int { loggable.reduce(0) { n, e in n + (rows[e.slug] ?? []).filter { $0.done && $0.hasValue }.count } }
   var totalSets: Int { loggable.reduce(0) { $0 + (rows[$1.slug] ?? []).count } }
 
-  /// The PUT body of the draft.
-  func payload() -> [String: Any] {
-    ["exercises": loggable.map { e in ["slug": e.slug, "name": e.logName, "sets": (rows[e.slug] ?? []).map(\.json)] as [String: Any] }]
+  /// The PUT body of the draft; `startedAt` = when the phone saw the first set ticked (TrainingTimer.startToSend).
+  func payload(startedAt: String? = nil) -> [String: Any] {
+    var o: [String: Any] = ["exercises": loggable.map { e in ["slug": e.slug, "name": e.logName, "sets": (rows[e.slug] ?? []).map(\.json)] as [String: Any] }]
+    if let startedAt { o["started_at"] = startedAt }
+    return o
   }
 
   static func build(_ j: [String: Any]?, day: String, pending: [PendingRecord]) -> TrainingSession? {
@@ -332,6 +348,7 @@ struct TrainingSession: Equatable {
     let save = pending.last { $0.kind == RecordKind.session && $0.date == day }
     let submit = pending.last { $0.kind == RecordKind.submit && $0.date == day }
     let source = save.map { $0.json } ?? log
+    let queuedStart = save?.json["started_at"] as? String
     var saved: [String: [SetRow]] = [:]
     for e in (source?["exercises"] as? [[String: Any]]) ?? [] {
       guard let slug = e["slug"] as? String else { continue }
@@ -352,7 +369,10 @@ struct TrainingSession: Equatable {
                            canLog: (j["can_log"] as? Bool) ?? false, canEditPlan: (j["can_edit_plan"] as? Bool) ?? false, submitted: (log?["status"] as? String) == "submitted" && save == nil,
                            changedSinceSubmit: (log?["changed_since_submit"] as? Bool) ?? false,
                            readiness: readiness.map { (label: $0.0, tone: $0.1) }, pendingSave: save, pendingSubmit: submit,
-                           removed: RemovedExercise.list(j["removed"]), changed: j["change"] is [String: Any], trainingLog: j["training_log"] as? String)
+                           removed: RemovedExercise.list(j["removed"]), changed: j["change"] is [String: Any], trainingLog: j["training_log"] as? String,
+                           startedAt: queuedStart ?? log?["started_at"] as? String,
+                           startedFrom: queuedStart != nil ? "first_set" : log?["started_from"] as? String,
+                           submittedAt: log?["submitted_at"] as? String, acceptsStart: log?.keys.contains("started_from") ?? false)
   }
 }
 
@@ -475,6 +495,11 @@ struct TrainingMonth: Equatable {
     var minutes: Double = 0
     var labels: [String] = []
     var types: [String] = []
+    /// 2.1.0 (`/training/calendar`): the day's heart-rate zone minutes (zones 1–5), its muscles (muscle-load keys, most
+    /// sets first) and body areas; nil on an older server, or when the server could not read them.
+    var hrZoneMin: [Double]? = nil
+    var muscles: [String]? = nil
+    var muscleGroups: [String]? = nil
     var id: String { date }
   }
 
@@ -487,14 +512,23 @@ struct TrainingMonth: Equatable {
   /// Average day strain of the month's past days with a strain (`summary.avg_strain`).
   var avgStrain: Double? = nil
 
-  static func build(_ j: [String: Any]?, month: String) -> TrainingMonth? {
+  /// `server`: the server's own copy of the month when the phone's is shown, for the fields only the server has.
+  static func build(_ j: [String: Any]?, month: String, server: [String: Any]? = nil) -> TrainingMonth? {
     guard let j else { return nil }
+    if let server, (server as NSDictionary) != (j as NSDictionary), let s = build(server, month: month), let m = build(j, month: month) {
+      let byDate = Dictionary(s.days.map { ($0.date, $0) }, uniquingKeysWith: { a, _ in a })
+      var out = m
+      out.days = m.days.map { HistoryCardWire.overlay($0, server: byDate[$0.date]) }
+      return out
+    }
     let days = ((j["days"] as? [[String: Any]]) ?? []).compactMap { d -> Day? in
       guard let date = d["date"] as? String else { return nil }
       return Day(date: date, intensity: d["intensity"] as? String, label: (d["labels"] as? [String])?.first,
                  sessions: (d["sessions_count"] as? NSNumber)?.intValue ?? 0, strain: RecordFormat.double(d["strain"]),
                  future: (d["future"] as? Bool) ?? false, minutes: RecordFormat.double(d["duration_min"]) ?? 0,
-                 labels: (d["labels"] as? [String]) ?? [], types: (d["types"] as? [String]) ?? [])
+                 labels: (d["labels"] as? [String]) ?? [], types: (d["types"] as? [String]) ?? [],
+                 hrZoneMin: (d["hr_zone_min"] as? [Any])?.compactMap { RecordFormat.double($0) },
+                 muscles: d["muscles"] as? [String], muscleGroups: d["muscle_groups"] as? [String])
     }
     let s = j["summary"] as? [String: Any]
     return TrainingMonth(month: month, days: days, trainingDays: (s?["training_days"] as? NSNumber)?.intValue,

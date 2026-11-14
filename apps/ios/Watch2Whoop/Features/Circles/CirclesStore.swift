@@ -28,6 +28,8 @@ final class CirclesStore: ObservableObject {
   @Published private(set) var pending: [OutboxItem] = []
   /// ❤️ and comments on my posts since I last opened the feed (the red dot).
   @Published private(set) var unread = 0
+  /// Whom the unread likes and comments are from (`/feed/unread` → `from`, 2.1.0; newest first). In memory only.
+  @Published private(set) var unreadFrom: [FacePerson] = []
   @Published private(set) var refreshing = false
   @Published private(set) var loadingMore = false
   @Published private(set) var offline = false
@@ -271,6 +273,7 @@ final class CirclesStore: ObservableObject {
     guard feedOn, let data = try? await session.api.data(.get(Endpoint.Circles.unread)),
           let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
     unread = (o["count"] as? NSNumber)?.intValue ?? 0
+    unreadFrom = unread > 0 ? (FacePerson.list(o["from"]) ?? []) : []
     store(Key.unread, unread)
   }
 
@@ -278,6 +281,7 @@ final class CirclesStore: ObservableObject {
   func markSeen() {
     guard feedOn else { return }
     unread = 0
+    unreadFrom = []
     store(Key.unread, 0)
     let api = session.api
     Task { _ = try? await api.data(APIRequest(method: .post, path: Endpoint.Circles.seen, idempotent: true)) }

@@ -122,9 +122,17 @@ struct TrainingHistoryPage: View {
   private func card(_ d: TrainingMonth.Day) -> some View {
     let strength = RecordGlance.isStrength(d.types)
     let name = d.labels.isEmpty ? (d.label ?? tr("训练", "Workout")) : d.labels.map(TrainingWeek.shortPlan).joined(separator: " + ")
+    let worked = HistoryCardWire.regions(d.muscles)
+    let zones = HistoryCardWire.zoneShares(d.hrZoneMin)
     return Button { detailDay = d.date } label: {
       HStack(spacing: 14) {
-        Icon(strength ? .dumbbell : .flame, size: 24).foregroundColor(Palette.train).frame(width: 44)
+        // 2.1.0: the day's muscles on the small body (`muscles`); without them (an older server, sports only) the icon
+        if !worked.isEmpty {
+          BodyPair(sex: store.muscle?.sex ?? "male", spacing: 2, lineScale: 0.3) { worked.contains($0) ? Palette.train : nil }
+            .frame(width: 52, height: 48)
+        } else {
+          Icon(strength ? .dumbbell : .flame, size: 24).foregroundColor(Palette.train).frame(width: 52)
+        }
         VStack(alignment: .leading, spacing: 8) {
           // a long name (several plans, English) wraps onto a second line instead of being cut; the date sits beside
           // the intensity steps, where it never competes with the name for width
@@ -133,7 +141,8 @@ struct TrainingHistoryPage: View {
           HStack(spacing: 10) {
             Text(RecordDay.short(d.date)).font(.system(size: 15).monospacedDigit()).foregroundColor(Palette.text2)
               .lineLimit(1).fixedSize()
-            IntensityBar(intensity: d.intensity)
+            // 2.1.0: minutes in heart-rate zones 1–5 (`hr_zone_min`); without them the intensity steps
+            if let zones { ZoneBar(shares: zones) } else { IntensityBar(intensity: d.intensity) }
           }
         }
         Spacer(minLength: 6)
@@ -156,6 +165,30 @@ struct TrainingHistoryPage: View {
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("\(name) \(RecordDay.short(d.date)) \(tr("负荷", "strain")) \(d.strain.map { RecordFormat.num($0, 1) } ?? "—")")
     .accessibilityAddTraits(.isButton)
+  }
+}
+
+/// The day's heart-rate zones 1–5 as one bar of five segments (width = share of the minutes, harder zones stronger).
+private struct ZoneBar: View {
+  let shares: [Double]
+
+  var body: some View {
+    let widths = HistoryCardWire.segments(shares)
+    GeometryReader { geo in
+      let gap: CGFloat = 3
+      let shown = widths.filter { $0 > 0 }.count
+      let room = max(0, geo.size.width - gap * CGFloat(max(0, shown - 1)))
+      HStack(spacing: gap) {
+        ForEach(Array(widths.enumerated()), id: \.offset) { i, w in
+          if w > 0 {
+            Capsule().fill(Palette.train.opacity(RecordParams.zoneOpacity[min(i, RecordParams.zoneOpacity.count - 1)]))
+              .frame(width: room * CGFloat(w), height: 6)
+          }
+        }
+      }
+    }
+    .frame(maxWidth: 200).frame(height: 6)
+    .accessibilityHidden(true)
   }
 }
 

@@ -62,11 +62,20 @@ struct TrainingSessionPage: View {
 
   private var count: some View {
     let s = store.session
-    return HStack(alignment: .firstTextBaseline, spacing: 4) {
-      Text("\(s?.doneSets ?? 0)").font(.system(size: 44, weight: .light).monospacedDigit()).foregroundColor(Palette.text)
-      Text("/\(s?.totalSets ?? 0) \(tr("组", "sets"))").font(.system(size: 20, weight: .regular).monospacedDigit()).foregroundColor(Palette.text2)
+    return HStack(alignment: .firstTextBaseline, spacing: 24) {
+      HStack(alignment: .firstTextBaseline, spacing: 4) {
+        Text("\(s?.doneSets ?? 0)").font(.system(size: 44, weight: .light).monospacedDigit()).foregroundColor(Palette.text)
+        Text("/\(s?.totalSets ?? 0) \(tr("组", "sets"))").font(.system(size: 20, weight: .regular).monospacedDigit()).foregroundColor(Palette.text2)
+      }
+      .accessibilityElement(children: .combine)
+      // 2.1.0: the time since the first ticked set (`log.started_at`); none on an older server
+      if let s { SessionTimer(session: s, doneSets: doneCount(s), localStart: store.timerLocalStart, size: 44) }
     }
-    .accessibilityElement(children: .combine)
+  }
+
+  /// Ticked sets of the rows being edited (the session's own count lags behind the debounced save).
+  private func doneCount(_ s: TrainingSession) -> Int {
+    RecordGlance.sets(s, rows: store.rows).filter(\.done).count
   }
 
   @ViewBuilder private func content(_ s: TrainingSession) -> some View {

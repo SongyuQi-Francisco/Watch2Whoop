@@ -8,8 +8,9 @@ import Foundation
 enum ExerciseAPI {
   private static let base = "/v1/users/me/training"
 
-  static func search(query: String, group: String, equipment: String) -> APIRequest {
+  static func search(query: String, group: String, equipment: String, favorites: Bool = false) -> APIRequest {
     var q = ["limit": "100"]
+    if favorites { q["favorites"] = "true" }
     let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
     if !text.isEmpty { q["q"] = text }
     if !group.isEmpty { q["muscle"] = group }
@@ -125,6 +126,8 @@ struct LibraryExercise: Equatable, Identifiable {
   /// Catalog muscle keys, for the row's small body (2.0.1 library).
   var primary: [String] = []
   var secondary: [String] = []
+  /// Starred (2.1.0, own library only); nil = this server has no stars.
+  var favorite: Bool? = nil
   var id: String { slug }
 
   static func parse(_ j: [String: Any]) -> LibraryExercise? {
@@ -133,7 +136,8 @@ struct LibraryExercise: Equatable, Identifiable {
     let gear = ExerciseVocab.equipment(keys: (j["equipment"] as? [String]) ?? [], zh: (j["equipment_zh"] as? [String]) ?? [])
     return LibraryExercise(slug: slug, name: ExerciseNames.exercise(j) ?? slug, status: j["status"] as? String ?? "active",
                            custom: (j["source"] as? String) == "user_custom", subtitle: (muscles + gear).joined(separator: " · "),
-                           primary: (j["primary_muscles"] as? [String]) ?? [], secondary: (j["secondary_muscles"] as? [String]) ?? [])
+                           primary: (j["primary_muscles"] as? [String]) ?? [], secondary: (j["secondary_muscles"] as? [String]) ?? [],
+                           favorite: j["favorite"] as? Bool)
   }
 
   static func list(_ j: [String: Any]?) -> [LibraryExercise] {
@@ -288,6 +292,8 @@ struct ExerciseDetail: Equatable {
   var recent: [Recent]
   var steps: [String]
   var alternatives: [ExerciseAlternative]
+  /// Starred (2.1.0, own library only); nil = no stars here.
+  var favorite: Bool? = nil
 
   var banned: Bool { status == "banned" }
   /// A name from the person's own log that the catalog does not have (catalog.py LOG_PREFIX): it has a page but no place in a plan.
@@ -323,7 +329,8 @@ struct ExerciseDetail: Equatable {
                           primary: ExerciseVocab.muscles(keys: primaryKeys, zh: (j["primary_muscles_zh"] as? [String]) ?? []),
                           secondary: ExerciseVocab.muscles(keys: secondaryKeys, zh: (j["secondary_muscles_zh"] as? [String]) ?? []),
                           recent: recent, steps: (j["instructions_zh"] as? [String]) ?? [],
-                          alternatives: ((j["alternatives"] as? [[String: Any]]) ?? []).compactMap(ExerciseAlternative.parse))
+                          alternatives: ((j["alternatives"] as? [[String: Any]]) ?? []).compactMap(ExerciseAlternative.parse),
+                          favorite: j["favorite"] as? Bool)
   }
 }
 

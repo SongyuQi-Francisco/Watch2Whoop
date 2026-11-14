@@ -135,9 +135,13 @@ enum BodyGlanceRules {
 
   // MARK: faces
 
-  /// The 周报 face: the last `days` days up to the end day, true = trained (aerobic minutes or strength volume), nil = no
-  /// reading of either that day.
+  /// The 周报 face: the last `days` days up to the end day, true = trained, nil = no reading that day. Trained = a session
+  /// in the training log (`training_sessions`, 2.1.0); on an older server, aerobic minutes or strength volume.
   static func trainingDays(_ d: TrendsData, days: Int = BodyParams.weekDays) -> [Bool?] {
+    // 2.1.0: the training log's sessions per day (`training_sessions`, the weekly report's count) when the server sends them
+    if let sessions = d.trainingSessions {
+      return d.dates.suffix(days).map { date in sessions[date].map { $0 > 0 } }
+    }
     let aerobic = Array((d.series["aerobic_min"]?.values ?? []).suffix(days))
     let muscle = Array((d.series["muscle_load"]?.values ?? []).suffix(days))
     var out: [Bool?] = []

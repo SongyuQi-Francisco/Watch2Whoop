@@ -209,7 +209,7 @@ struct MuscleLoadCard: View {
       SectionHeader(title: tr("肌肉负荷", "Muscle load"))
       Card {
         VStack(spacing: 12) {
-          SegmentedControl(items: MuscleLoad.Range.allCases.map { ($0, $0.title) }, selection: $range)
+          SegmentedControl(items: MuscleLoad.Range.card.map { ($0, $0.title) }, selection: $range)
           let regions = m.regions(range)
           HStack(spacing: 12) {
             ForEach([true, false], id: \.self) { front in

@@ -155,9 +155,9 @@ enum RecordGlance {
       var sets = 0.0, low = 0.0, high = 0.0, withTarget = 0
       for m in ms {
         sets += m.sets[range] ?? 0
-        if let lo = m.low, let hi = m.high {
-          low += lo
-          high += hi
+        if let t = m.target(range) {
+          low += t.low
+          high += t.high
           withTarget += 1
         }
       }
@@ -176,9 +176,9 @@ enum RecordGlance {
     return "ok"
   }
 
-  /// 「9/17 达标」: the muscles in their weekly range, of the muscles that have one.
+  /// 「9/17 达标」: the muscles in their range (weekly, or four weeks' for 「4 周」), of the muscles that have one.
   static func onTarget(_ load: MuscleLoad, range: MuscleLoad.Range) -> (ok: Int, total: Int) {
-    let targeted = load.muscles.filter { $0.low != nil && $0.high != nil }
+    let targeted = load.muscles.filter { $0.target(range) != nil }
     let ok = targeted.filter { ($0.status[range] ?? "none") == "ok" }.count
     return (ok, targeted.count)
   }

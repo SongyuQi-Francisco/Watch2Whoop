@@ -22,6 +22,8 @@ final class AccountSession: ObservableObject {
   @Published var displayName: String?
   /// People who share something with me (`/v1/web/me` → `viewable`, the server's answer). In memory only.
   @Published var viewable: [ViewablePerson] = []
+  /// Who can see my data (`/v1/web/me` → `audience`, 2.1.0); nil on an older server. In memory only.
+  @Published var audience: Audience?
   /// Whose read-only view is open (`MemberScreen`, over the whole app); nil = my own pages.
   @Published var viewing: ViewablePerson?
   /// Theme and daily quote (flag `slim_mode`, #126): nil while the flag is off. First the local copy, then `/v1/web/me`.
@@ -48,6 +50,8 @@ final class AccountSession: ObservableObject {
     guard let me = try? await api.json(.get(Endpoint.webMe)) else { return }
     let list = ViewablePerson.parse(me["viewable"])
     if list != viewable { viewable = list }
+    let who = Audience.parse(me["audience"])
+    if who != audience { audience = who }
     let links = MeLink.parse(me["me_links"], server: api.baseURL)
     if links != meLinks { meLinks = links }
   }
@@ -346,6 +350,7 @@ final class AppModel: ObservableObject {
       session?.setAppearance(flags.contains(AppearanceChoice.flag) ? AppearanceChoice(json: me["appearance"]) ?? AppearanceChoice() : nil)
       session?.displayName = cfg.displayName
       session?.viewable = ViewablePerson.parse(me["viewable"])
+      session?.audience = Audience.parse(me["audience"])
       session?.meLinks = MeLink.parse(me["me_links"], server: api.baseURL)
     } catch APIError.unauthorized {
       // handled by onUnauthorized

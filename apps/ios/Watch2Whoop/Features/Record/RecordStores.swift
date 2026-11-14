@@ -82,6 +82,12 @@ final class TrainingStore: LocalPageStore {
   /// The rows being edited (the draft), kept here so typing is not overwritten by a refresh.
   @Published var rows: [String: [SetRow]] = [:]
   @Published private(set) var saveState = ""
+  /// The whole library's size (`library_total`, 2.1.0); nil on an older server.
+  @Published private(set) var libraryTotal: Int?
+  /// Stars this phone has not had confirmed yet (queued writes), by slug.
+  @Published private(set) var pendingStars: [String: Bool] = [:]
+  /// When the phone saw today's first set ticked (sent as `started_at`, TrainingTimer).
+  private var firstTick: Date?
   private var editing = false
   private var saveTask: Task<Void, Never>?
   let muscleOn: Bool
@@ -103,7 +109,7 @@ final class TrainingStore: LocalPageStore {
   private func observeAll() {
     var keys = [RecordDocs.session(today), RecordDocs.week(monday), RecordDocs.calendar(month), RecordDocs.calendar(String(monday.prefix(7))),
                 RecordDocs.rules, TrainingLocal.calendarKey(month), TrainingLocal.calendarKey(String(monday.prefix(7))),
-                LocalCompute.stateDoc]
+                LocalCompute.stateDoc, RecordDocs.libraryCount]
     if muscleOn { keys.append(RecordDocs.muscle) }
     observe(keys: keys, kinds: RecordDocs.kinds)
   }
@@ -117,7 +123,9 @@ final class TrainingStore: LocalPageStore {
       cal += (calendarDoc(String(RecordDay.add(monday, 6).prefix(7)))?["days"] as? [[String: Any]]) ?? []
     }
     week = TrainingWeek.build(view.json(RecordDocs.week(monday)), calendar: cal, monday: monday)
-    calendar = TrainingMonth.build(calendarDoc(month), month: month)
+    calendar = TrainingMonth.build(calendarDoc(month), month: month, server: view.json(RecordDocs.calendar(month)))
+    libraryTotal = (view.json(RecordDocs.libraryCount)?["library_total"] as? NSNumber)?.intValue
+    pendingStars = ExerciseFavorites.pending(view.pending)
     muscle = muscleOn ? MuscleLoad.parse(view.json(RecordDocs.muscle)) : nil
     rules = ExerciseRule.parseList(view.list(RecordDocs.rules))
   }
@@ -138,12 +146,14 @@ final class TrainingStore: LocalPageStore {
     let t = db.userToday()
     if t != today {
       today = t
+      firstTick = nil
       observeAll()
     }
     defer { computeLocal([month, String(monday.prefix(7)), String(RecordDay.add(monday, 6).prefix(7))]) }
     await send()
     var f = [DocFetch(RecordDocs.session(today), RecordAPI.session(today)), DocFetch(RecordDocs.week(monday), RecordAPI.week(today)),
-             DocFetch(RecordDocs.calendar(month), RecordAPI.calendar(month)), DocFetch(RecordDocs.rules, RecordAPI.rules)]
+             DocFetch(RecordDocs.calendar(month), RecordAPI.calendar(month)), DocFetch(RecordDocs.rules, RecordAPI.rules),
+             DocFetch(RecordDocs.libraryCount, RecordAPI.libraryCount)]
     if String(monday.prefix(7)) != month {
       f.append(DocFetch(RecordDocs.calendar(String(monday.prefix(7))), RecordAPI.calendar(String(monday.prefix(7)))))
     }
@@ -203,6 +213,7 @@ final class TrainingStore: LocalPageStore {
     var r = rows[slug] ?? []
     change(&r)
     rows[slug] = r
+    if firstTick == nil, session?.startedFrom != "first_set", r.contains(where: \.done) { firstTick = Date() }
     saveState = tr("保存中…", "Saving…")
     saveTask?.cancel()
     saveTask = Task { [weak self] in
@@ -217,8 +228,11 @@ final class TrainingStore: LocalPageStore {
     guard var s = session else { return }
     s.rows = rows
     let hadSubmit = s.pendingSubmit != nil
+    let hasDone = rows.values.contains { $0.contains(where: \.done) }
+    let start = TrainingTimer.startToSend(accepts: s.acceptsStart || serverKnowsStart, queued: s.pendingSave?.json["started_at"] as? String,
+                                          server: s.startedAt, serverFrom: s.startedFrom, hasDone: hasDone, firstTick: firstTick, now: Date())
     let out = await write(kind: RecordKind.session, date: today, group: "training:\(today)", method: .put,
-                          path: RecordAPI.sessionPath(today), body: s.payload(), supersede: true)
+                          path: RecordAPI.sessionPath(today), body: s.payload(startedAt: start), supersede: true)
     if hadSubmit {
       _ = await write(kind: RecordKind.submit, date: today, group: "training:\(today)", method: .post,
                       path: RecordAPI.sessionPath(today) + "/submit", body: ["allow_duplicate": false])
@@ -226,6 +240,33 @@ final class TrainingStore: LocalPageStore {
     editing = false
     saveState = out.sent ? tr("已保存", "Saved") : out.queued ? tr("离线，已存在本机", "Offline, kept on this phone") : out.message
     if out.sent { await pull([DocFetch(RecordDocs.session(today), RecordAPI.session(today))]) }
+  }
+
+  /// A day without a log yet cannot say whether the server takes `started_at`: a 2.1.0 server's calendar has the
+  /// server-only `muscles` on its days, an older one has not.
+  /// The phone's own first tick for the timer until the save comes back; only with a server that keeps it (an older one
+  /// has no timer at all).
+  var timerLocalStart: Date? { session?.acceptsStart == true || serverKnowsStart ? firstTick : nil }
+
+  private var serverKnowsStart: Bool {
+    let days = (view.json(RecordDocs.calendar(month))?["days"] as? [[String: Any]]) ?? []
+    return days.contains { $0.keys.contains("muscles") }
+  }
+
+  // MARK: - starred exercises (2.1.0)
+
+  /// The star of an exercise as shown: this phone's queued change over the server's flag (nil = no stars on this server).
+  func star(_ slug: String, server: Bool?) -> Bool? {
+    ExerciseFavorites.shown(server: server, pending: pendingStars[slug], tapped: nil)
+  }
+
+  /// Stars or unstars, local first (`PUT` / `DELETE …/favorite`, last one wins); offline it waits in the queue. Returns
+  /// false when it could not be kept (the page puts the star back).
+  func setStar(_ slug: String, _ on: Bool) async -> Bool {
+    let out = await write(kind: ExerciseFavorites.kind, date: nil, group: "favorite:\(slug)", method: on ? .put : .delete,
+                          path: ExerciseFavorites.path(slug), body: nil, overlay: ["slug": slug, "favorite": on],
+                          clientIdInBody: false, supersede: true)
+    return out.saved && !out.failed && !out.conflict
   }
 
   /// 「提交」: the draft first, then the submit. Returns false when the server kept it as a draft (the same exercises
