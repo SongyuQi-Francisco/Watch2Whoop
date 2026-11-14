@@ -94,7 +94,12 @@ struct TodayL1Sheet: View {
       Text(s.text ?? "—").font(.system(size: 40, weight: .light).monospacedDigit()).foregroundColor(Palette.text)
       Text(model.isPast ? tr("全天", "Day") : tr("现在", "Now")).font(Typo.label).foregroundColor(Palette.text2)
       Spacer()
-      if let t = s.target {
+      if let day = model.glance.strainDay, let f = day.forecast {
+        Text("···").font(.system(size: 15, weight: .heavy)).foregroundColor(Palette.train)
+        Text(tr("预计", "Expected")).font(Typo.label).foregroundColor(Palette.text2)
+        Text(TodayModel.fmt(f, digits: 1)).font(.system(size: 22, weight: .regular).monospacedDigit()).foregroundColor(Palette.text)
+        if let n = TodayGlanceRules.forecastCount(day) { Text(n).font(Typo.label).foregroundColor(Palette.text2) }
+      } else if let t = s.target {
         Text(tr("目标", "Target")).font(Typo.label).foregroundColor(Palette.text2)
         Text("\(TodayModel.fmt(t.lowerBound, digits: 1))–\(TodayModel.fmt(t.upperBound, digits: 1))")
           .font(.system(size: 22, weight: .regular).monospacedDigit()).foregroundColor(Palette.text)
@@ -102,16 +107,7 @@ struct TodayL1Sheet: View {
     }
     .padding(.top, 4)
     if let day = model.glance.strainDay {
-      if let f = day.forecast {
-        HStack(spacing: 4) {
-          Spacer()
-          Text(tr("预计", "Expected")).font(Typo.label).foregroundColor(Palette.text2)
-          Text(TodayModel.fmt(f, digits: 1)).font(.system(size: 15, weight: .medium).monospacedDigit()).foregroundColor(Palette.text)
-          if let n = TodayGlanceRules.forecastCount(day) { Text(n).font(Typo.label).foregroundColor(Palette.text2) }
-        }
-        .padding(.top, 2)
-      }
-      StrainDayChart(day: day, target: s.target, max: s.max, majors: s.majors).frame(height: 132).padding(.top, 10)
+      StrainDayChart(day: day, target: s.target, max: s.max, majors: s.majors, live: !model.isPast).frame(height: 120).padding(.top, 12)
     } else {
       BulletGauge(value: s.value, max: s.max, target: s.target, step: 1, majors: s.majors, tone: s.tone).padding(.top, 14)
       HStack {
@@ -205,44 +201,63 @@ struct StrainDayChart: View {
   let target: ClosedRange<Double>?
   let max: Double
   let majors: [Double]
+  /// Today (a 「现在」 line; the forecast runs from it to 24:00).
+  var live = true
+  /// Right axis: ticks and the target's two numbers.
+  private let axis: CGFloat = 30
 
   var body: some View {
-    VStack(spacing: 4) {
+    VStack(spacing: 6) {
       GeometryReader { g in
-        let w = g.size.width, h = g.size.height
+        let w = g.size.width - axis, h = g.size.height
         let x = { (hour: Double) in CGFloat(hour / 24) * w }
         let y = { (v: Double) in h - CGFloat(Swift.min(Swift.max(v, 0), max) / max) * h }
         ZStack(alignment: .topLeading) {
           if let t = target {
-            Rectangle().fill(Palette.band).frame(width: w, height: Swift.max(1, y(t.lowerBound) - y(t.upperBound)))
+            Rectangle().fill(Palette.train.opacity(0.14)).frame(width: w, height: Swift.max(1, y(t.lowerBound) - y(t.upperBound)))
               .offset(y: y(t.upperBound))
           }
-          ForEach(majors, id: \.self) { m in
-            Rectangle().fill(Palette.tick).frame(width: w, height: 1).offset(y: y(m))
-          }
           Rectangle().fill(Palette.hairStrong).frame(width: w, height: 1).offset(y: h - 1)
+          // the right axis: a line, short ticks every 2, long ones at the zone edges, the target's numbers
+          Rectangle().fill(Palette.tick).frame(width: 1, height: h).offset(x: w + 6)
+          ForEach(Array(stride(from: 0.0, through: max, by: 2)), id: \.self) { v in
+            let major = majors.contains(v)
+            Rectangle().fill(major ? Palette.tickMajor : Palette.tick).frame(width: major ? 8 : 5, height: 1).offset(x: w + 6, y: y(v))
+          }
+          if let t = target {
+            ForEach(Array(Set([t.lowerBound, t.upperBound])).sorted(), id: \.self) { v in
+              Text(TodayModel.fmt(v)).font(Typo.axis).foregroundColor(Palette.text2)
+                .fixedSize().offset(x: w + 16, y: y(v) - 7)
+            }
+          }
           if day.values.isEmpty {
             Text(TodayGlanceRules.curveReason(day.reason)).font(Typo.label).foregroundColor(Palette.text2)
+              .padding(.horizontal, 10).padding(.vertical, 4)
+              .background(Capsule().fill(Palette.inSheet))
               .frame(width: w, height: h)
           } else {
             let pts = [CGPoint(x: 0, y: y(0))] + day.values.enumerated().map { CGPoint(x: x(Double($0.offset + 1)), y: y($0.element)) }
             let now = pts.last!
-            if let f = day.forecast, day.values.count < 24 {
-              Path { p in p.move(to: now); p.addLine(to: CGPoint(x: w, y: y(f))) }
-                .stroke(Palette.text2, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [4, 4]))
+            if live {
+              Rectangle().fill(Palette.text3).frame(width: 1, height: h).offset(x: now.x - 0.5)
+            }
+            if let f = day.forecast, live {
+              let end = CGPoint(x: w, y: y(f))
+              Path { p in p.move(to: now); p.addLine(to: end) }
+                .stroke(Palette.train, style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [0.5, 5]))
+              Circle().stroke(Palette.train, lineWidth: 1.5).frame(width: 8, height: 8).offset(x: end.x - 4, y: end.y - 4)
             }
             Path { p in p.addLines(pts) }
               .stroke(Palette.train, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
-            Circle().fill(Palette.text).frame(width: 7, height: 7).offset(x: now.x - 3.5, y: now.y - 3.5)
+            Circle().fill(Palette.train).frame(width: 7, height: 7).offset(x: now.x - 3.5, y: now.y - 3.5)
           }
         }
       }
       HStack {
-        ForEach(["0:00", "6:00", "12:00", "18:00", "24:00"], id: \.self) { l in
-          Text(l).font(Typo.axis).foregroundColor(Palette.text2)
-          if l != "24:00" { Spacer() }
-        }
+        Text("00:00"); Spacer(); Text("12:00"); Spacer(); Text("24:00")
       }
+      .font(Typo.axis).foregroundColor(Palette.text2)
+      .padding(.trailing, axis)
     }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(label)
