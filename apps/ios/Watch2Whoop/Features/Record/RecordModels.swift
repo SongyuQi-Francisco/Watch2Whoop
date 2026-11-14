@@ -464,6 +464,10 @@ struct TrainingMonth: Equatable {
     var sessions: Int
     var strain: Double?
     var future: Bool
+    /// 2.0.1 history cards: the day's minutes, all its labels and the sessions' types (`strength_training` …).
+    var minutes: Double = 0
+    var labels: [String] = []
+    var types: [String] = []
     var id: String { date }
   }
 
@@ -473,6 +477,8 @@ struct TrainingMonth: Equatable {
   var totalMinutes: Double?
   var totalKcal: Double?
   var longestStreak: Int?
+  /// Average day strain of the month's past days with a strain (`summary.avg_strain`).
+  var avgStrain: Double? = nil
 
   static func build(_ j: [String: Any]?, month: String) -> TrainingMonth? {
     guard let j else { return nil }
@@ -480,13 +486,14 @@ struct TrainingMonth: Equatable {
       guard let date = d["date"] as? String else { return nil }
       return Day(date: date, intensity: d["intensity"] as? String, label: (d["labels"] as? [String])?.first,
                  sessions: (d["sessions_count"] as? NSNumber)?.intValue ?? 0, strain: RecordFormat.double(d["strain"]),
-                 future: (d["future"] as? Bool) ?? false)
+                 future: (d["future"] as? Bool) ?? false, minutes: RecordFormat.double(d["duration_min"]) ?? 0,
+                 labels: (d["labels"] as? [String]) ?? [], types: (d["types"] as? [String]) ?? [])
     }
     let s = j["summary"] as? [String: Any]
     return TrainingMonth(month: month, days: days, trainingDays: (s?["training_days"] as? NSNumber)?.intValue,
                          totalMinutes: RecordFormat.double(s?["total_duration_min"]),
                          totalKcal: RecordFormat.double(s?["total_workout_kcal"]) ?? RecordFormat.double(s?["total_active_kcal"]),
-                         longestStreak: (s?["longest_streak"] as? NSNumber)?.intValue)
+                         longestStreak: (s?["longest_streak"] as? NSNumber)?.intValue, avgStrain: RecordFormat.double(s?["avg_strain"]))
   }
 
   static func tone(_ intensity: String?) -> Tone? {
