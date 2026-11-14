@@ -297,21 +297,29 @@ def _for_model(viewer_id: int, name: str, args: dict, res):
 
 def _exec(conn, viewer: dict, provider: dict, call_row_id: int, name: str, args: dict) -> tuple[str, str]:
     """Run one tool (read tools automatically, write tools after confirmation); returns (status, result text)."""
+    return _exec_raw(conn, viewer, provider, call_row_id, name, args)[:2]
+
+
+def _exec_raw(conn, viewer: dict, provider: dict, call_row_id: int, name: str,
+              args: dict) -> tuple[str, str, object]:
+    """_exec plus the tool's own result (None on an error or for a web tool): the automatic cards read what a write
+    wrote from it (cards.written), the model only ever gets the text."""
     if name in web.NAMES:
-        return _exec_web(conn, viewer, provider, call_row_id, name, args)
+        return (*_exec_web(conn, viewer, provider, call_row_id, name, args), None)
     if fallback.is_fallback(provider):  # the fallback reads / writes only the caller's own data, never through shares
         args = APP.views[fallback.VIEW].call_args(TOOLS_BY_NAME[name], args)
+    res = None
     try:
         res = run_tool(conn, viewer["id"], f"api:{provider['kind']}", name, args,
                        provider_id=provider["id"], model=provider["model"])
         status, text = "done", _result_text(_for_model(viewer["id"], name, args, res))
     except Exception as e:  # Permission, parameter and database errors are passed to the model as they are
-        status, text = "error", f"{type(e).__name__}: {e}"
+        status, text, res = "error", f"{type(e).__name__}: {e}", None
     if parity.on(conn, viewer["id"]):
         text = naming.scrub(text)
     conn.execute("UPDATE ai_tool_calls SET status = %s, result = %s, decided_at = now() WHERE id = %s AND user_id = %s",
                  (status, text, call_row_id, viewer["id"]))
-    return status, text
+    return status, text, res
 
 
 def _exec_web(conn, viewer: dict, provider: dict, call_row_id: int, name: str, args: dict) -> tuple[str, str]:
@@ -442,13 +450,21 @@ def _auto_cards(conn, user_id: int, done_writes: list[tuple], v2: bool = False, 
     built after all of them ran so it shows the final totals; kept on the first matching call's row.
     v2: cards.AUTO_V2 too, and with reads (the fallback AI) cards.READ_AUTO; seen: the cards already shown this turn."""
     seen = set() if seen is None else seen
-    for row_id, name, args in done_writes:
+    written: dict[tuple, list] = {}   # spec key -> what the writes behind that card wrote (cards.written)
+    for _, name, args, *res in done_writes:
+        spec = cards.auto_spec(name, args, v2, reads)
+        w = spec and cards.written(name, res[0] if res else None)
+        if w:
+            written.setdefault(cards.spec_key(spec), []).append(w)
+    for row_id, name, args, *_ in done_writes:
         spec = cards.auto_spec(name, args, v2, reads)
         key = spec and cards.spec_key(spec)
         if not spec or key in seen:
             continue
         seen.add(key)
         card, status, _ = _card(conn, user_id, spec, v2, auto=name in cards.AUTO)
+        if card and written.get(key):
+            card["written"] = written[key]
         if card:
             conn.execute("UPDATE ai_tool_calls SET card = %s WHERE id = %s AND user_id = %s", (Jsonb(card), row_id, user_id))
             yield ev("card", card=card, call_id=row_id)
@@ -679,10 +695,10 @@ def _turns(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Ada
                 pending = True
             else:
                 yield ev("tool", name=name, status="running")
-                status, text = _exec(conn, viewer, provider, row_id, name, args)
+                status, text, res = _exec_raw(conn, viewer, provider, row_id, name, args)
                 yield _tool_event(name, status, text)
                 if status == "done":
-                    done_writes.append((row_id, name, args))
+                    done_writes.append((row_id, name, args, res))
         if rich:
             yield from _auto_cards(conn, viewer["id"], done_writes, v2, reads=fb, seen=shown)
         conn.commit()

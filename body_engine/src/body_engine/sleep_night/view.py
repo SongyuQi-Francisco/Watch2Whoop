@@ -304,6 +304,52 @@ def ai_prompt(day: date, night: dict | None, score: dict | None) -> str:
              "stage composition, how it compares with my usual nights, what pulled it down, and what to change tonight.")
 
 
+# ---------------------------------------------------------------- nightly series (Today sleep sheet, 2.0.1)
+def _stat(values: list, prev: list) -> dict:
+    """values over the shown nights + mean, and the previous period's mean the way /trends gives prev_mean (the same
+    number of nights just before, only nights with a value, rounded to 2)."""
+    present = [v for v in values if v is not None]
+    prev = [v for v in prev if v is not None]
+    return {"values": values, "n": len(present),
+            "mean": round(sum(present) / len(present), 2) if present else None,
+            "prev_mean": round(sum(prev) / len(prev), 2) if prev else None, "prev_n": len(prev)}
+
+
+def series_compute(sessions: list[dict], tz: ZoneInfo, day: date, nights: int) -> dict:
+    """The pure part of series: sleep_sessions rows (SESSIONS_SQL) of the wake dates [day − 2·nights − 7, day].
+    deep_min = the main sleep's deep minutes (null for a night without stages); regularity_pct_7d = the 7-night sleep
+    regularity ending that night (the same number as baseline.regularity_pct_7d of that night's page; null without a
+    watch night that date)."""
+    dates = [day - timedelta(days=k) for k in range(2 * nights - 1, -1, -1)]
+    mains = main_rows(sessions, dates[0], day)
+
+    def deep(d):
+        r = mains.get(d)
+        staged = r and (r["deep_min"] or 0) + (r["core_min"] or 0) + (r["rem_min"] or 0) > 0
+        return round(r["deep_min"] or 0) if staged else None
+
+    watch = sleep_detail.watch_sessions(HSS.utc_sessions(sessions))
+
+    def regularity(d):
+        if d not in watch[0]:
+            return None
+        return sleep_detail.consistency_pct(sleep_detail.sri_from(*watch, tz, d - timedelta(days=6), d)["sri"])
+
+    deep_all = [deep(d) for d in dates]
+    reg_all = [regularity(d) for d in dates]
+    return {"nights": nights, "dates": dates[nights:],
+            "deep_min": _stat(deep_all[nights:], deep_all[:nights]),
+            "regularity_pct_7d": _stat(reg_all[nights:], reg_all[:nights])}
+
+
+def series(conn: psycopg.Connection, owner_id: int, day: date, nights: int = P.SERIES_NIGHTS) -> dict:
+    """Deep sleep and 7-night regularity of the `nights` nights up to `day`, each with the previous period's mean.
+    Sleep sessions only (the sleep share the endpoint already checks)."""
+    tz = queries.user_tz(conn, owner_id)
+    rows = conn.execute(SESSIONS_SQL, (owner_id, day - timedelta(days=2 * nights + 7), day)).fetchall()
+    return series_compute(rows, tz, day, nights)
+
+
 # ---------------------------------------------------------------- the page
 def build(conn: psycopg.Connection, viewer_id: int, owner_id: int, day: date | None = None) -> dict:
     return compute(load(conn, viewer_id, owner_id, day))

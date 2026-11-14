@@ -35,3 +35,8 @@ TEMP_DELTA_C = 0.6                      # wrist temperature: openbodyscore WRIST
 SPO2_LOW = 94.0                         # median SpO2 < 94 %: openbodyscore SPO2_LOW_MEDIAN
 
 MAX_NOTES = 6                           # notes shown, worst first
+
+# Nightly series on the sheet (deep sleep, 7-night regularity), the Today sleep sheet's curves (2.0.1): nights shown by
+# default = the long baseline window, so the curve, its mean and the 30-night average row describe the same nights.
+SERIES_NIGHTS = BASELINE_LONG
+SERIES_MAX_NIGHTS = 90

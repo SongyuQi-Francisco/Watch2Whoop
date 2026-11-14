@@ -96,6 +96,34 @@ def strain_coach(conn, user_id: int, d: date | None = None) -> dict:
     return coach.strain_coach(conn, user_id, d or today(conn, user_id))
 
 
+def day_curve(conn, user_id: int, d: date) -> dict:
+    """The day's cumulative strain by local hour (scores/day_curve.py, stored by the server's scoring run). values[h] =
+    strain at the end of hour h; the last value is the day's strain. Empty with a reason code when there is none:
+    no_scores (no row), no_raw_hr (no strain that day), not_computed (a row scored before the curve existed, or by the app)."""
+    r = conn.execute("""SELECT strain, details->'load'->'hourly_strain' AS curve, computed_at FROM daily_scores
+                        WHERE user_id = %s AND date = %s""", (user_id, d)).fetchone()
+    reason = ("no_scores" if r is None else "no_raw_hr" if r["strain"] is None
+              else None if r["curve"] else "not_computed")
+    return {"step_min": 60, "values": [] if reason else r["curve"], "reason": reason,
+            "computed_at": r["computed_at"] if r and not reason else None}
+
+
+def strain_coach_page(conn, owner_id: int, viewer_id: int, d: date | None = None) -> dict:
+    """GET /strain-coach: strain_coach (as the AI tool gets it) + the day curve (scores) + the forecast of today's planned
+    session (needs training too; without it the field is left out and `hidden` lists "training"). The extra blocks are
+    page-only: the AI tool keeps the short answer."""
+    from ..training import forecast
+    d = d or today(conn, owner_id)
+    out = {**coach.strain_coach(conn, owner_id, d), "day_curve": day_curve(conn, owner_id, d)}
+    if "training" not in auth.visible_scopes(conn, viewer_id, owner_id, ("training",)):
+        out["hidden"] = ["training"]
+    else:
+        fc = forecast.forecast(conn, owner_id, d)
+        if fc is not None:
+            out["forecast"] = fc
+    return out
+
+
 SLEEP_COACH_NEED = ("date", "need_min", "need_parts", "sleep_debt_min", "strain_today")   # from the scores row
 
 
