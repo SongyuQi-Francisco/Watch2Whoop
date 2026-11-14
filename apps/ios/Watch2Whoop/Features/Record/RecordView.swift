@@ -3,26 +3,24 @@ import SwiftUI
 /// 记录, 2.0.1 (docs/design/2.0.1 `10-food`, `11`–`15`): 训练 | 饮食, switched by the header's two-way control (it replaces
 /// the date; the sync capsule stays on the right). Each view keeps the tab-root rhythm: one hero, readings, three faces,
 /// the rest below the fold. 训练's faces push the weekly muscle map, the history and the library; the ring pushes today's
-/// session. 日记 has no segment any more: it opens as a sheet from 饮食 (below the fold), and an old link to it lands there.
+/// session. 日记 is not here any more: it lives in 我 (owner decision 2026-11-15); an old saved state or link to the
+/// `journal` segment shows 饮食 and opens 我 → 日记 (`AppModel.Route.journal`).
 struct RecordTab: View {
   @SceneStorage("w2w.record.segment") private var segment: Segment = .training
   @StateObject private var training: TrainingStore
-  @StateObject private var journal: JournalStore
   @StateObject private var food: FoodStore
   @EnvironmentObject private var app: AppModel
   @State private var toast: Toast?
   @State private var devHealth: MeSheet.RecordKind?
   @State private var path: [RecordRoute] = []
-  @State private var journalOpen = false
   private let session: AccountSession
 
-  /// `journal` stays for saved state and links of 2.0.0: it shows 饮食 with 日记 open.
+  /// `journal` stays for saved state and links of 2.0.0: it shows 饮食 and sends 日记 to 我.
   enum Segment: String, Hashable { case training, journal, food }
 
   init(session: AccountSession) {
     self.session = session
     _training = StateObject(wrappedValue: TrainingStore(session: session))
-    _journal = StateObject(wrappedValue: JournalStore(session: session))
     _food = StateObject(wrappedValue: FoodStore(session: session))
   }
 
@@ -41,12 +39,6 @@ struct RecordTab: View {
     }
     .onChange(of: segment) { s in if s == .journal { openJournal() } }
     .onAppear { if segment == .journal { openJournal() } }
-    .sheet(isPresented: $journalOpen) {
-      SheetContainer(title: tr("日记", "Journal"), close: { journalOpen = false }) {
-        JournalSection(store: journal, toast: $toast)
-      }
-      .presentationDetents([.large])
-    }
     .sheet(item: $devHealth) { k in
       SheetContainer(title: k.title, close: { devHealth = nil }) { HealthRecordView(kind: k, openLab: RecordDevShot.value("W2W_DEV_HEALTH")?.split(separator: ":").dropFirst().first.map(String.init)) }
         .presentationDetents([.large])
@@ -55,7 +47,7 @@ struct RecordTab: View {
 
   private func openJournal() {
     segment = .food
-    journalOpen = true
+    app.route = .journal
   }
 
   private var shown: Segment { segment == .training ? .training : .food }
@@ -67,7 +59,7 @@ struct RecordTab: View {
           header
           switch shown {
           case .training: TrainingRoot(store: training, toast: $toast) { path.append($0) }
-          default: FoodContent(store: food, toast: $toast, glance: true, openJournal: { journalOpen = true })
+          default: FoodContent(store: food, toast: $toast, glance: true)
           }
           Color.clear.frame(height: 24)   // the Jarvis key's band is the page's own (clearOfJarvisKey)
         }
@@ -78,6 +70,7 @@ struct RecordTab: View {
       }
       .background(Palette.bg.ignoresSafeArea())
       .statusBarCover()
+      .clearOfJarvisKey()
       .refreshable {
         switch shown {
         case .training: await training.refresh()
@@ -136,6 +129,20 @@ struct RecordTab: View {
 }
 
 // MARK: - 日记
+
+/// 我 → 日记: the journal with a store and a toast of its own (a sheet of MeView).
+struct JournalSheetBody: View {
+  @StateObject private var store: JournalStore
+  @State private var toast: Toast?
+
+  init(session: AccountSession) {
+    _store = StateObject(wrappedValue: JournalStore(session: session))
+  }
+
+  var body: some View {
+    JournalSection(store: store, toast: $toast).toast($toast)
+  }
+}
 
 struct JournalSection: View {
   @ObservedObject var store: JournalStore

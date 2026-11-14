@@ -110,6 +110,8 @@ final class AppModel: ObservableObject {
     case tab(AppTab)
     /// 我 → 消息; `item` = the row to scroll to (a tapped push, #359).
     case inbox(item: String?)
+    /// 我 → 日记 (2.0.1: the journal lives in 我; an old 记录 → 日记 state or link lands here).
+    case journal
   }
 
   let store: CredentialStore

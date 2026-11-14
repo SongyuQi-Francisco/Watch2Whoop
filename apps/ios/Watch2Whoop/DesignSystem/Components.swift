@@ -150,14 +150,17 @@ struct PageScaffold<Content: View>: View {
     }
     .background(Palette.bg.ignoresSafeArea())
     .statusBarCover()
+    .clearOfJarvisKey()
   }
 }
 
 extension View {
-  /// Every page of a tab (its root and what it pushes) ends above the Jarvis key: the band from the key's top down to the
-  /// tab bar is page background, so rows scroll out of sight before they reach the key instead of passing under it, and
-  /// the last row comes to rest above it (direction.md 2.4: never content under the key). The band reaches under the tab
-  /// bar too, so nothing shows through its glass below the band either.
+  /// A tab page's scroll view ends above the Jarvis key: the band from the key's top down to the tab bar is page
+  /// background, so rows scroll out of sight before they reach the key instead of passing under it, and the last row
+  /// comes to rest above it (direction.md 2.4: never content under the key). The band reaches under the tab bar too, so
+  /// nothing shows through its glass below it. It goes on the scroll view itself: put around a whole tab (outside its
+  /// NavigationStack) the band was drawn but the scroll views did not grow their bottom inset, and the last rows of 我
+  /// (账号 → 删除账号) could not be scrolled into view.
   func clearOfJarvisKey() -> some View {
     safeAreaInset(edge: .bottom, spacing: 0) {
       Palette.bg.frame(height: JarvisLayer.keyClearance)

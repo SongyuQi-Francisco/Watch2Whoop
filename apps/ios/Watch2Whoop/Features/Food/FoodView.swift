@@ -39,7 +39,6 @@ struct FoodContent: View {
   /// 2.0.1 (记录 → 饮食): the dial, readings and faces on top, the day's meals below the fold, 采购 as a page.
   var glance = false
   /// 2.0.1: 日记 (behaviours, numbers, supplements) lives below the fold of 饮食; nil = no row.
-  var openJournal: (() -> Void)? = nil
   @State private var l1: FoodL1?
 
   /// The L1 half sheets of the glance (direction.md 3: face → L1).
@@ -69,11 +68,10 @@ struct FoodContent: View {
     }
   }
 
-  init(store: FoodStore, toast: Binding<Toast?>, glance: Bool = false, openJournal: (() -> Void)? = nil) {
+  init(store: FoodStore, toast: Binding<Toast?>, glance: Bool = false) {
     self.store = store
     _toast = toast
     self.glance = glance
-    self.openJournal = openJournal
   }
 
   var body: some View {
@@ -170,10 +168,6 @@ struct FoodContent: View {
           ListRow(icon: .bookOpen, title: tr("食谱", "Recipes"), value: "\(store.recipes.count)") { allRecipes = true }
           RowDivider(inset: 0)
           ListRow(icon: .fileText, title: tr("我的饮食档案", "My diet profile"), value: store.dietBrief?.meta) { other = .diet }
-          if let openJournal {
-            RowDivider(inset: 0)
-            ListRow(icon: .calendarDays, title: tr("日记", "Journal"), action: openJournal)
-          }
         }
       }
       .padding(.top, 200)

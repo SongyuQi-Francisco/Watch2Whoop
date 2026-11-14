@@ -158,6 +158,7 @@ struct RecordPage<Trailing: View, Content: View>: View {
     }
     .background(Palette.bg.ignoresSafeArea())
     .statusBarCover()
+    .clearOfJarvisKey()
     .toolbar(.hidden, for: .navigationBar)
   }
 }

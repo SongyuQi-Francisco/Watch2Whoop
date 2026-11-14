@@ -110,6 +110,7 @@ struct TodayView: View {
       }
       .background(Palette.bg.ignoresSafeArea())
       .statusBarCover()
+      .clearOfJarvisKey()
       .refreshable { await store.refresh() }
       .toast($toast)
       .modifier(DaySwipe { store.step($0) })
