@@ -218,6 +218,10 @@ struct CockpitMealPhotoView: View {
       if let e { toast = Toast(e); model.error = nil }
     }
     .onAppear { camera.start() }
+    // access turned on in Settings while the sheet stayed open: read it again on the way back (#445)
+    .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+      if camera.access == .denied { camera.start() }
+    }
     .onDisappear {
       camera.stop()
       model.cancel()

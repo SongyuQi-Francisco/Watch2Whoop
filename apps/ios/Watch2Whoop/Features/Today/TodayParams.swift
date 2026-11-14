@@ -7,6 +7,9 @@ import Foundation
 /// Baselines are the server's (trends/series.py `baseline_band`: mean ± 1 SD of the 60 days before the day, at least 14
 /// readings); for a metric without a band the same window is computed on the phone from the cached series (`DayBaseline`).
 enum TodayParams {
+  /// The lane-name column of the sleep sheet's hypnogram: wide enough for "Awake" at 11 pt (32 cut it).
+  static let hypnogramLabelWidth: CGFloat = 40
+
   // MARK: - 2.0.1 Today: stale data and the sleep sheet's rows
 
   /// The page's data counts as stale (sync capsule and faces say so) once the server's latest data is this old. Six hours:

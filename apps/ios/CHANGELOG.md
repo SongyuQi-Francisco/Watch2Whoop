@@ -21,6 +21,10 @@ tags it and the workflow publishes this section as the release notes. The Flutte
 - 语音输入：点「完成」后文字马上出现，服务器校对好的版本随后替换（你改过就不动）。 / Voice input: your words appear as soon as you tap Done, and the server's corrected version replaces them a moment later (unless you have edited them).
 - 修复 Jarvis 有时把上一条回答再显示一遍（断线续读接到了下一问的回答上）。 / Fixed Jarvis sometimes showing a reply twice (a resumed connection picked up the next question's reply).
 
+- 日记移到「我」：一级「数据」组里点「日记」打开（原来在「记录 → 饮食」下面）；「通知」移进「偏好设置」。 / The journal moves to Me: tap Journal in the Data group (it used to sit below Log → Food); Notifications moves into Preferences.
+- 列表不再从 Jarvis 键下面滚过，最后一行停在键上方；iPhone SE 这类有 Home 键的手机上 Jarvis 键不再压在标签栏上，小屏首屏放得下。 / Lists no longer scroll under the Jarvis key and their last row rests above it; on phones with a Home button (iPhone SE) the key no longer sits on the tab bar and the first screen fits.
+- 英文界面不再截断（负荷、睡眠图、肌肉负荷、本周计划的分组名、长动作名）；动作库里没有肌肉图的动作显示图标；补记的开始时间不会晚于现在。 / English labels no longer get cut (strain, sleep chart, muscle load, the weekly plan's groups, long exercise names); library exercises without a muscle map show an icon; a backfilled start time can no longer be later than now.
+
 ## 2.0.0
 
 第一个原生 iOS 版本：整个 app 都是 iOS 原生页面（今天、趋势、记录、饮食、朋友、我、Jarvis），打开更快、滑动更顺；打开就是上一次的数据，没网也能看，记下的内容联网后自动发出去；恢复、睡眠、负荷这些分数在你的 iPhone 上算。这一版补上了网页版里还缺的主要功能：「我」页的账号和 AI 设置、饮食和采购、训练动作库、Jarvis 的卡片、今天页和睡眠的细节、圈子成员和家人共享给你的数据；还新增了消息中心、体态分析、圈子举报 / 屏蔽和上架需要的隐私说明。从 TestFlight 直接更新就行，**不用重新登录**；1.0.8 里的设置和同步进度都会接着用。第一次打开会弹一次「健康」授权，请点「全部打开」再「允许」。服务器上开关默认关闭的功能（消息中心 `inbox`、体态分析 `posture_photos`，以及下面各包的手机计算开关）要等服务器打开以后才会出现。

@@ -38,7 +38,7 @@ struct CockpitTemplatesSheet: View {
   }
 
   var body: some View {
-    SheetContainer(title: tr("快记", "Quick log"), close: close) {
+    SheetContainer(title: tr("快记", "Quick log"), close: { if busy.isEmpty { close() } }) {   // a write in flight keeps the sheet and its 撤销 (#445 K)
       VStack(alignment: .leading, spacing: 14) {
         HStack(spacing: 8) {
           Icon(.search, size: 16).foregroundColor(Palette.text3)

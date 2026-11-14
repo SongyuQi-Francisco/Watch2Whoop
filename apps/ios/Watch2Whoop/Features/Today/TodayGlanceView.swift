@@ -50,9 +50,9 @@ struct TodayGlancePage: View, Equatable {
   var body: some View {
     VStack(spacing: 0) {
       header
-      hero.padding(.top, 32)
-      readings.padding(.top, 40)
-      faces.padding(.top, 44)
+      hero.padding(.top, Rhythm.gap(32))
+      readings.padding(.top, Rhythm.gap(40))
+      faces.padding(.top, Rhythm.gap(44))
     }
   }
 

@@ -115,7 +115,6 @@ final class JarvisCockpitTests: XCTestCase {
     run(&m, 0.7)
     XCTAssertEqual(m.items.map(\.key), [.trainStart, .trainBackfill, .trainPlan])
     XCTAssertEqual(m.items.map(\.angle), [-36, 0, 36])
-    XCTAssertFalse(m.items.contains { $0.key == .trainTalk })
     XCTAssertEqual(m.crumbIcon, .dumbbell)
   }
 

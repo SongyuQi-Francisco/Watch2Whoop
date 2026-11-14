@@ -117,6 +117,7 @@ struct TrendsView: View {
       }
       .background(Palette.bg.ignoresSafeArea())
       .statusBarCover()
+      .clearOfJarvisKey()
       .refreshable { await store.refresh() }
       .onAppear {
         if PerfProbe.trendsScroll { autoScroll(proxy) }

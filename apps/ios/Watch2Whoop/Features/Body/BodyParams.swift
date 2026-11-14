@@ -10,6 +10,9 @@ enum BodyParams {
   static let barBucket = 7
   /// Height of the hero's bar chart (design: 180 pt, y 232–412).
   static let barsHeight: CGFloat = 180
+  /// The bars on a short screen (667 pt, `Rhythm.isShort`): 180 left no room for the faces above the Jarvis key.
+  static let barsHeightShort: CGFloat = 120
+  static var barsHeightHere: CGFloat { Rhythm.isShort ? barsHeightShort : barsHeight }
   /// The range the hero shows when the tab's range is 「今天」 (a one-day range has no period to average).
   static let todayWindow = 30
   /// Days of the 周报 face's dots (the last full week up to the end day).

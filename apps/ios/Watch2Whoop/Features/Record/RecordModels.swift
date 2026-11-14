@@ -444,7 +444,8 @@ struct TrainingWeek: Equatable {
     let volume = ((w["volume_by_group"] as? [String: Any]) ?? [:]).values.compactMap { $0 as? [String: Any] }
       .compactMap { g -> (String, Int, Bool)? in
         guard let n = g["name_zh"] as? String, let s = (g["direct_sets"] as? NSNumber)?.intValue else { return nil }
-        return (n, s, (g["status"] as? String) == "optimal")
+        // the group key names it in the app's language (the server's name is Chinese)
+        return (RecordGlance.groupName(g["group"] as? String) ?? n, s, (g["status"] as? String) == "optimal")
       }
       .sorted { $0.1 > $1.1 }
     let planDoc = w["plan"] as? [String: Any]

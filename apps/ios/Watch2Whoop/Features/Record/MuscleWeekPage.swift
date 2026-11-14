@@ -107,7 +107,8 @@ struct MuscleWeekPage: View {
   private func groupRow(_ g: RecordGlance.GroupRow, scale: Double) -> some View {
     Button { push(.allMuscles) } label: {
       HStack(spacing: 12) {
-        Text(g.title).font(.system(size: 17, weight: .medium)).foregroundColor(Palette.text).frame(width: 52, alignment: .leading)
+        Text(g.title).font(.system(size: 17, weight: .medium)).foregroundColor(Palette.text)
+          .frame(width: RecordParams.groupLabelWidth, alignment: .leading)
           .lineLimit(1).minimumScaleFactor(0.7)
         MuscleRangeBar(value: g.sets, low: g.low, high: g.high, max: scale, tone: Self.tone(g.status))
         HStack(alignment: .firstTextBaseline, spacing: 3) {

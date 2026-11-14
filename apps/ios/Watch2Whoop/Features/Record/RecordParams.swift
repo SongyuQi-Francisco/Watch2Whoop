@@ -3,6 +3,8 @@ import CoreGraphics
 /// Display constants of the 2.0.1 记录 tab (docs/design/2.0.1 screens 10–15). None of them is a health threshold: the
 /// muscle targets, the day strain and the food goals come from the server; these only decide how they are drawn.
 enum RecordParams {
+  /// The muscle-group name column of the weekly muscle page (13): wide enough for "Shoulders" at 17 pt (52 cut it).
+  static let groupLabelWidth: CGFloat = 84
   // MARK: set ring (12 / 11)
 
   /// Gap between two sets of one exercise, as a share of the ring.

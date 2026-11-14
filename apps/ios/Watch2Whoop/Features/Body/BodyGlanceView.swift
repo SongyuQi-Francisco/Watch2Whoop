@@ -27,8 +27,8 @@ struct BodyGlancePage: View {
   var body: some View {
     VStack(spacing: 0) {
       header
-      hero.padding(.top, 32)
-      faces.padding(.top, 40)
+      hero.padding(.top, Rhythm.gap(32))
+      faces.padding(.top, Rhythm.gap(40))
     }
   }
 
@@ -76,13 +76,13 @@ struct BodyGlancePage: View {
       mean(h).padding(.top, 4)
       Button { openScore() } label: {
         UsualBars(values: h?.bars ?? [], usual: h?.usual, max: score.max, tone: h?.lastTone ?? .text)
-          .frame(height: BodyParams.barsHeight)
+          .frame(height: BodyParams.barsHeightHere)
           .contentShape(Rectangle())
       }
       .buttonStyle(PressScale())
       .accessibilityLabel(score.label)
       dateRow(h?.dates ?? []).padding(.top, 6)
-      pageDots.padding(.top, 20)
+      pageDots.padding(.top, Rhythm.gap(20))
     }
     .contentShape(Rectangle())
     .gesture(DragGesture(minimumDistance: 24).onEnded { g in

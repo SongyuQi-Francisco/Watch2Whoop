@@ -94,7 +94,7 @@ enum CockpitKey: Hashable {
   /// One of the two most used quick meals, by its template id (never by place: the order can change before the tap acts).
   case template(Int)
   // 记训练
-  case trainStart, trainTalk, trainBackfill, trainPlan
+  case trainStart, trainBackfill, trainPlan
 }
 
 /// One panel: where it sits and what it shows (an icon and a label, or a quick meal's name and kcal).
@@ -529,9 +529,6 @@ struct CockpitMachine {
     case .mealTalk:
       listen(.meal)
       return [.listen(.meal)]
-    case .trainTalk:
-      listen(.set)
-      return [.listen(.set)]
     case .template:
       beginThinking(.meal)
       return [.run(k)]

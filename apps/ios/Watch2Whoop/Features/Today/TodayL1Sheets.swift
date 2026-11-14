@@ -459,7 +459,7 @@ struct StageChart: View {
               .frame(height: 26, alignment: .center)
           }
         }
-        .frame(width: 32, alignment: .leading)
+        .frame(width: TodayParams.hypnogramLabelWidth, alignment: .leading)
         GeometryReader { g in
           let w = g.size.width
           ZStack(alignment: .topLeading) {

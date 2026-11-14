@@ -194,16 +194,24 @@ struct CockpitBackfillForm: View {
     ...(day == today ? now : Date.distantFuture)
   }
 
-  var entry: ManualWorkoutAPI.Entry {
+  /// The start time sent: on today never later than now. The picker's range only limits new picks; a time picked on an
+  /// earlier day (an evening) stays in `start` when the day is switched back to today (#445 F).
+  static func startTime(_ start: Date, day: String, today: String, now: Date = Date()) -> String {
     let f = DateFormatter()
     f.dateFormat = "HH:mm"
     f.locale = Locale(identifier: "en_US_POSIX")
-    return ManualWorkoutAPI.Entry(type: type, minutes: minutes, intensity: intensity, date: day, time: timed ? f.string(from: start) : nil,
-                                  clientId: clientId)
+    let s = f.string(from: start), n = f.string(from: now)
+    return day == today && s > n ? n : s
+  }
+
+  var entry: ManualWorkoutAPI.Entry {
+    ManualWorkoutAPI.Entry(type: type, minutes: minutes, intensity: intensity, date: day,
+                           time: timed ? Self.startTime(start, day: day, today: today) : nil, clientId: clientId)
   }
 
   var body: some View {
-    SheetContainer(title: tr("补记训练", "Log a session"), close: close) {
+    // while a record is being written the × does nothing either (#445 K), like the swipe below
+    SheetContainer(title: tr("补记训练", "Log a session"), close: { if !busy { close() } }) {
       if let done { result(done) } else { form }
     }
     .toast($toast)

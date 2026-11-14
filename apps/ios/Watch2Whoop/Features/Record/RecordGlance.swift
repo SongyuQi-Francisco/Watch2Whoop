@@ -129,6 +129,12 @@ enum RecordGlance {
     var title: String { RecordGlance.groupTitle(key) }
   }
 
+  /// A known group key's name; nil for anything else (the caller keeps the server's own name).
+  static func groupName(_ key: String?) -> String? {
+    guard let key, ["chest", "back", "shoulders", "arms", "legs", "core"].contains(key) else { return nil }
+    return groupTitle(key)
+  }
+
   static func groupTitle(_ key: String) -> String {
     switch key {
     case "chest": return tr("胸", "Chest")

@@ -364,6 +364,7 @@ private struct InboxRouting: ViewModifier {
   }
 
   private func follow(_ r: AppModel.Route?) {
+    if case .journal? = r { selection = .me; return }   // MeView opens the sheet and clears the route
     guard case .inbox? = r else { return }
     if session.flags.contains(InboxStore.flag) { selection = .me } else { app.route = nil }
   }

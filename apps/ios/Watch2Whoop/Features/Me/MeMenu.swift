@@ -36,13 +36,13 @@ enum MePage: String, CaseIterable, Hashable {
 enum MeItem: Hashable {
   case page(MePage)
   // first level
-  case inbox, syncCenter, unsent, ai, notifications, invite
+  case inbox, syncCenter, unsent, journal, ai, invite
   // 健康档案
   case supplements, labs, events, bodyAge, memory
   // 数据与导入
   case dataStatus, hevy
   // 偏好设置
-  case bedtimeGoal, trainingSettings, language, appearance
+  case bedtimeGoal, trainingSettings, notifications, language, appearance
   // 帮助与关于
   case handbook, feedback, whatsNew, privacy, terms, licences, version
   // 账号
@@ -54,6 +54,7 @@ enum MeItem: Hashable {
     case .inbox: return tr("消息", "Messages")
     case .syncCenter: return tr("同步中心", "Sync center")
     case .unsent: return tr("没提交的修改", "Unsent changes")
+    case .journal: return tr("日记", "Journal")
     case .ai: return tr("AI 设置", "AI settings")
     case .notifications: return tr("通知", "Notifications")
     case .invite: return tr("邀请好友", "Invite friends")
@@ -89,6 +90,7 @@ enum MeItem: Hashable {
     case .inbox: return .inbox
     case .syncCenter: return .heartPulse
     case .unsent: return .clock   // the clock every page shows on a change still waiting to be sent
+    case .journal: return .calendarDays
     case .ai: return .sparkles
     case .notifications: return .bell
     case .invite: return .userPlus
@@ -122,6 +124,7 @@ enum MeItem: Hashable {
   var sheet: MeSheet? {
     switch self {
     case .unsent: return .unsent
+    case .journal: return .journal
     case .ai: return .ai
     case .notifications: return .notifications
     case .invite: return .invite
@@ -176,14 +179,16 @@ struct MeMenu: Equatable {
     var attention: [MeItem] = inbox ? [.inbox] : []
     attention.append(.syncCenter)
     if unsent > 0 { attention.append(.unsent) }   // next to sync, and only while there is something to send
+    // 日记 sits with the health record (owner decision of 2026-11-15: 「日记放到「我」」); to stay within 12 rows 通知 moved
+    // into 偏好设置
     var data: [MeItem] = shared > 0 ? [.page(.shared)] : []
-    data += entry(.healthRecord) + entry(.data)
+    data += [.journal] + entry(.healthRecord) + entry(.data)
     var more: [MeItem] = referrals ? [.invite] : []
     more += entry(.help) + entry(.account)
     return [
       MeMenuGroup(items: attention),
       MeMenuGroup(title: tr("数据", "Data"), items: data),
-      MeMenuGroup(title: tr("设置", "Settings"), items: [.ai, .notifications] + entry(.preferences)),
+      MeMenuGroup(title: tr("设置", "Settings"), items: [.ai] + entry(.preferences)),
       MeMenuGroup(items: more),
     ].filter { !$0.items.isEmpty }
   }
@@ -200,6 +205,7 @@ struct MeMenu: Equatable {
     case .preferences:
       var rows: [MeItem] = [.bedtimeGoal]
       if flags.contains("muscle_load") { rows.append(.trainingSettings) }
+      rows.append(.notifications)
       rows.append(.language)
       if flags.contains(AppearanceChoice.flag) { rows.append(.appearance) }
       return [MeMenuGroup(items: rows)]

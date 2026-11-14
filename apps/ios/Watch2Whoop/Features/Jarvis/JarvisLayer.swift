@@ -16,10 +16,13 @@ struct JarvisLayer: View {
   @StateObject private var cockpit = CockpitController(voice: JarvisVoice())
 
   static let keySize: CGFloat = 58
+  /// The height a tab's pages keep free above the tab bar for the key: the key, its 10 pt lift, and the gap iOS leaves
+  /// between the content's safe area and the bar's own frame (measured on iOS 26: the key's top is 81 pt above it).
+  static let keyClearance: CGFloat = keySize + 30
 
   var body: some View {
     GeometryReader { g in
-      let c = Self.keyCenter(in: g.size)
+      let c = Self.keyCenter(in: g.size, bottomInset: g.safeAreaInsets.bottom)
       ZStack(alignment: .topLeading) {
         CockpitView(controller: cockpit, center: c, size: g.size)
         toast(c, width: g.size.width)
@@ -57,12 +60,22 @@ struct JarvisLayer: View {
     }
   }
 
-  /// Above the tab bar, centred (the tab bar is 49 pt high before iOS 26; iOS 26's floating bar sits a little higher).
-  static func keyCenter(in size: CGSize) -> CGPoint {
-    var bar: CGFloat = 49
-    if #available(iOS 26.0, *) { bar = 62 }
-    return CGPoint(x: size.width / 2, y: size.height - bar - keySize / 2 - 10)
+  /// Above the tab bar, centred. Before iOS 26 the bar is 49 pt high above the home indicator. iOS 26's floating bar keeps
+  /// its place against the screen's bottom edge: on a phone with a home button (no home indicator, `bottomInset` 0, the
+  /// iPhone SE) it reaches 34 pt further into the safe area, and a key placed against the safe area sat on the bar's top
+  /// edge and over the faces above it.
+  static func keyCenter(in size: CGSize, bottomInset: CGFloat) -> CGPoint {
+    CGPoint(x: size.width / 2, y: size.height - barHeight(bottomInset: bottomInset) - keySize / 2 - 10)
   }
+
+  /// How far the tab bar reaches above the bottom of the safe area.
+  static func barHeight(bottomInset: CGFloat) -> CGFloat {
+    guard #available(iOS 26.0, *) else { return 49 }
+    return 62 + max(0, homeIndicator - bottomInset)
+  }
+
+  /// The home indicator's safe-area height on the phones that have one.
+  static let homeIndicator: CGFloat = 34
 
   static func mmss(_ s: Double) -> String { "\(Int(s) / 60):" + String(format: "%02d", Int(s) % 60) }
 

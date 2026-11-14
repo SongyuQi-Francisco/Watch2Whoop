@@ -6,7 +6,7 @@ import XCTest
 final class MeMenuTests: XCTestCase {
   /// Every row that existed on 我 in 2.0.0 (the pages are new; the people of 共享给我的 are on their page).
   private let everyEntry: [MeItem] = [
-    .inbox, .syncCenter, .unsent, .ai, .notifications, .invite,
+    .inbox, .syncCenter, .unsent, .journal, .ai, .notifications, .invite,
     .supplements, .labs, .events, .bodyAge, .memory,
     .dataStatus, .hevy,
     .bedtimeGoal, .trainingSettings, .language, .appearance,
@@ -39,8 +39,8 @@ final class MeMenuTests: XCTestCase {
     XCTAssertLessThanOrEqual(m.firstLevel.flatMap(\.items).count, 12)
     XCTAssertEqual(m.firstLevel.flatMap(\.items), [
       .inbox, .syncCenter, .unsent,
-      .page(.shared), .page(.healthRecord), .page(.data),
-      .ai, .notifications, .page(.preferences),
+      .page(.shared), .journal, .page(.healthRecord), .page(.data),
+      .ai, .page(.preferences),
       .invite, .page(.help), .page(.account),
     ])
   }
@@ -94,6 +94,18 @@ final class MeMenuTests: XCTestCase {
     XCTAssertFalse(m.firstLevel.flatMap(\.items).contains(.page(.data)))
     XCTAssertEqual(m.entry(.data), [.dataStatus])
     XCTAssertEqual(everythingOn().entry(.data), [.page(.data)])
+  }
+
+  func testTheJournalIsOnTheFirstLevelWithTheHealthRecord() {
+    // owner decision 2026-11-15: 日记 lives in 我, in the data group, next to 健康档案; it opens its own sheet
+    for m in [nothingOn(), everythingOn()] {
+      let data = m.firstLevel.first { $0.items.contains(.journal) }
+      XCTAssertNotNil(data)
+      XCTAssertTrue(data?.items.contains(m.entry(.healthRecord).first!) == true)
+    }
+    XCTAssertEqual(MeItem.journal.sheet, .journal)
+    // 通知 moved into 偏好设置 to keep the first level at 12 rows
+    XCTAssertEqual(reachable(everythingOn())[.notifications], .some(.preferences))
   }
 
   func testUnsentSitsNextToSyncOnlyWhileThereIsSomething() {

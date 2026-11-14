@@ -40,8 +40,8 @@ struct MeGlance: View {
   var body: some View {
     VStack(spacing: 0) {
       header
-      dial.padding(.top, 32)
-      faces.padding(.top, 40)
+      dial.padding(.top, Rhythm.gap(32))
+      faces.padding(.top, Rhythm.gap(40))
     }
     .task { await load() }
   }
@@ -126,7 +126,7 @@ struct MeGlance: View {
       }
       if !session.viewable.isEmpty {
         Button(action: run.shared) {
-          Face(icon: .users, label: tr("共享", "Shared"), number: "\(session.viewable.count)", unit: tr("人给我看", "share")) {
+          Face(icon: .users, label: tr("共享", "Shared"), number: "\(session.viewable.count)", unit: tr("人给我看", "people")) {
             HStack(spacing: -6) {
               ForEach(session.viewable.prefix(4)) { p in
                 AvatarView(url: p.avatar, name: p.shownName, size: 24).overlay(Circle().stroke(Palette.surface, lineWidth: 1.5))
