@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-Hans" data-opt="marks">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>A 露边 · 今天 first screen</title>
+<link rel="stylesheet" href="../kit.css">
+<link rel="stylesheet" href="dd.css">
+<style>
+/* Option A. Rhythm (y): header 54-98 -> 21 -> dial 119-399 -> 23 -> readings 422-481 -> 23 -> faces 504-624 -> joint 24
+   (chevron) -> next row 648, cut by the fold at 704 (the top of the key band): 56 pt of it show, the numbers are cut.
+   The 150 pt blank gap is gone; the key keeps its opaque band, so nothing ever sits under it. */
+.l0{--g1:21px;--g2:23px;--g3:23px}
+.faces.more{margin-top:0}
+html[data-size="se"] .l0{--dial:200px;--k:0.72;--g1:6px;--g2:10px;--g3:10px;--face:112px}
+html[data-size="se"] .joint{height:16px}
+</style>
+</head>
+<body>
+<div data-part="sb"></div>
+<main class="page l0">
+  <!-- first glance: unchanged content; every number that opens something carries a disclosure chevron -->
+  <div data-part="today-l0"></div>
+  <!-- the joint between the first glance and the rest of the page: one chevron, no words -->
+  <div class="joint"><i data-i="chevron-down"></i></div>
+  <!-- the next row as built today (训练 · 今晚 · 提醒); it used to sit 150 pt lower, out of sight -->
+  <div data-part="more-faces"></div>
+</main>
+<!-- the band of the Jarvis key: page background from the fold down, soft upper edge -->
+<div class="keyband"></div>
+<div data-part="chrome" data-on="0"></div>
+<script src="dd.js"></script>
+<script src="../kit.js"></script>
+<script src="../core.js"></script>
+</body>
+</html>

@@ -1,0 +1,218 @@
+/* =====================================================================================================
+   Watch2Whoop 2.0.1 mockup kit ("one subject per tab").  402 x 874 pt, 1 pt = 1 CSS px.
+   Use with kit.js (icons + chart helpers). Every page: <link rel="stylesheet" href="kit.css"> + <script src="kit.js">.
+   Rules that the classes enforce: colour = state (good/mid/bad) or category (sleep/train), everything else is ink;
+   no gradients, glows, borders or card shadows; tabular numerals everywhere.
+   ===================================================================================================== */
+
+/* ---------- 1. Tokens. Dark is the default and primary theme. ----------
+   Existing app tokens keep their exact hex (Palette.swift / app.css). The block marked "derived" is new; every derived
+   token is an opacity of an existing token, so Swift writes it as Palette.x.opacity(a) and no existing value changes. */
+:root{
+  --bg:#000000; --surface:#121214; --surface2:#1D1D20;
+  --text:#F4F4F6; --text2:#8D8D94; --text3:#55555B; --hair:rgba(255,255,255,0.07);
+  --good:#72BF8E; --mid:#D3AE63; --bad:#DE7F69; --sleep:#8D93E4; --train:#5FB3BD;
+  --good-soft:rgba(114,191,142,0.14); --mid-soft:rgba(211,174,99,0.14); --bad-soft:rgba(222,127,105,0.14);
+  --scrim:rgba(0,0,0,0.60); --sheet:#161618; --in-sheet:#232326; --accent:#F4F4F6; --on-accent:#000000;
+  /* derived (new) */
+  --track:rgba(244,244,246,0.16);       /* text a.16  : ring / gauge / spark tracks, 1.5 pt */
+  --tick:rgba(141,141,148,0.50);        /* text2 a.50 : minor scale ticks */
+  --tick-major:rgba(244,244,246,0.72);  /* text a.72  : zone edges, origin, majors */
+  --band:rgba(141,141,148,0.24);        /* text2 a.24 : usual range (常态) as an area behind a chart */
+  --band-line:rgba(141,141,148,0.62);   /* text2 a.62 : usual range as a line beside a scale (dial, gauge) */
+  --past:rgba(141,141,148,0.42);        /* text2 a.42 : history bars; only today / now takes colour */
+  --spark:rgba(244,244,246,0.62);       /* text a.62  : sparkline stroke */
+  --hair-strong:rgba(255,255,255,0.14); /* chart baseline */
+  /* system chrome stand-ins (drawn by iOS, not by the app) */
+  --glass:rgba(34,34,37,0.70); --glass-edge:rgba(255,255,255,0.10); --lozenge:rgba(255,255,255,0.12);
+  --glass-shadow:none; --sheet-shadow:none;
+}
+html[data-theme="light"]{
+  --bg:#FFFFFF; --surface:#F4F4F6; --surface2:#E9E9ED;
+  --text:#111113; --text2:#6C6C73; --text3:#A3A3AA; --hair:rgba(0,0,0,0.06);
+  --good:#4E9A6B; --mid:#B58A34; --bad:#BE5A44; --sleep:#6870C4; --train:#3F8F9A;
+  --good-soft:rgba(78,154,107,0.12); --mid-soft:rgba(181,138,52,0.13); --bad-soft:rgba(190,90,68,0.12);
+  --scrim:rgba(0,0,0,0.28); --sheet:#FFFFFF; --in-sheet:#F4F4F6; --accent:#111113; --on-accent:#FFFFFF;
+  --track:rgba(17,17,19,0.12);
+  --tick:rgba(108,108,115,0.55);
+  --tick-major:rgba(17,17,19,0.85);
+  --band:rgba(108,108,115,0.16);
+  --band-line:rgba(108,108,115,0.62);
+  --past:rgba(108,108,115,0.34);
+  --spark:rgba(17,17,19,0.55);
+  --hair-strong:rgba(0,0,0,0.14);
+  --glass:rgba(255,255,255,0.74); --glass-edge:rgba(0,0,0,0.06); --lozenge:rgba(0,0,0,0.07);
+  --glass-shadow:0 8px 28px rgba(0,0,0,0.10); --sheet-shadow:0 -4px 30px rgba(0,0,0,0.10);
+}
+
+/* ---------- 2. Base ---------- */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{margin:0}
+body{width:402px;height:874px;overflow:hidden;position:relative;background:var(--bg);color:var(--text);
+  font-family:system-ui;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:15px;line-height:1.25}
+i[data-i]{display:inline-flex;line-height:0}
+.num{font-variant-numeric:tabular-nums}
+
+/* ---------- 3. Device frame: status bar, Dynamic Island, home indicator ---------- */
+.sb{position:absolute;left:0;top:0;width:402px;height:54px;z-index:50;pointer-events:none}
+.sb-time{position:absolute;left:0;width:138px;top:18px;text-align:center;font-size:17px;font-weight:600;letter-spacing:-0.2px}
+.sb-island{position:absolute;left:138px;top:11px;width:126px;height:37px;border-radius:19px;background:#000}
+.sb-sys{position:absolute;right:30px;top:22px;height:13px;display:flex;align-items:center;gap:6px;color:var(--text)}
+.home-ind{position:absolute;left:134px;top:861px;width:134px;height:5px;border-radius:3px;background:var(--text);z-index:90}
+
+/* ---------- 4. iOS 26 system tab bar (floating glass capsule) + the 58 pt Jarvis key ----------
+   The bar is Apple's: Lucide icon above a 10.5 pt label, selected tab inside a lozenge. Do not restyle it.
+   The Jarvis key floats 10 pt above the bar centre (centre y = 751). Nothing important may sit under x 172-230, y 712-874. */
+.tabbar{position:absolute;left:21px;top:790px;width:360px;height:62px;border-radius:31px;display:flex;padding:4px;z-index:40;
+  background:var(--glass);-webkit-backdrop-filter:blur(24px) saturate(1.6);backdrop-filter:blur(24px) saturate(1.6);
+  box-shadow:inset 0 0 0 0.5px var(--glass-edge),var(--glass-shadow)}
+.tab{flex:1;border-radius:27px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  color:var(--text2);font-size:10.5px;font-weight:500;letter-spacing:0.1px}
+.tab i{font-size:23px}
+.tab.on{background:var(--lozenge);color:var(--text)}
+.jarvis{position:absolute;left:172px;top:722px;width:58px;height:58px;border-radius:29px;z-index:41;
+  display:flex;align-items:center;justify-content:center;color:var(--text);font-size:26px;
+  background:var(--glass);-webkit-backdrop-filter:blur(24px) saturate(1.6);backdrop-filter:blur(24px) saturate(1.6);
+  box-shadow:inset 0 0 0 0.5px var(--glass-edge),var(--glass-shadow)}
+
+/* ---------- 5. Page and header ----------
+   Tab root: content starts under the status bar (y 54); header row is 44 pt: date (-> month calendar) left,
+   sync state right. No page title on tab roots (the tab label already names the page). */
+.page{position:absolute;left:0;top:54px;width:402px;bottom:0;padding:0 20px}
+.hdr{height:44px;display:flex;align-items:center;justify-content:space-between}
+.hdr-date{display:flex;align-items:baseline;gap:6px;font-size:17px;font-weight:600;letter-spacing:-0.2px}
+.hdr-date span{font-weight:500;color:var(--text2)}
+.hdr-date i{font-size:13px;color:var(--text2);align-self:center;margin-left:-1px}
+/* Pushed page header: back chevron + 17 pt title (no large title). */
+.hdr-back{display:flex;align-items:center;gap:4px;font-size:17px;font-weight:600}
+.hdr-back i{font-size:22px;color:var(--text);margin-left:-6px}
+
+/* Sync state: the same capsule at the top right of EVERY tab root. 32 pt drawn, 44 pt hit area. Tap = sync now / retry.
+   Shape carries the state (check / spinner / alert), colour only repeats it. Text = age, never a clock time. */
+.sync{height:32px;display:inline-flex;align-items:center;gap:5px;padding:0 11px 0 9px;border-radius:16px;
+  background:var(--surface);font-size:13px;font-weight:500;color:var(--text2)}
+.sync i{font-size:15px}
+.sync.is-ok i{color:var(--text2)}          /* synced: circle-check + "2分前" */
+.sync.is-busy i{color:var(--text)}         /* syncing: refresh-cw (turns) + "同步中" */
+.sync.is-stale{color:var(--mid)}           /* behind: circle-alert + "6时前" or "缺2天" */
+.sync.is-fail{color:var(--bad)}            /* failed: circle-alert + "重试" */
+
+/* ---------- 6. Type scale (system font only; numbers tabular) ---------- */
+.t-hero{font-size:100px;font-weight:200;letter-spacing:-3px;line-height:1}       /* the one hero number */
+.t-gauge{font-size:28px;font-weight:400;letter-spacing:-0.4px;line-height:1}     /* numbers attached to the hero */
+.t-face{font-size:22px;font-weight:500;letter-spacing:-0.3px;line-height:1}      /* module face number */
+.t-row{font-size:19px;font-weight:500;letter-spacing:-0.2px;line-height:1}       /* row value in L1 */
+.t-title{font-size:17px;font-weight:600}                                         /* sheet / pushed page title */
+.t-body{font-size:15px;font-weight:400}
+.t-verdict{font-size:14px;font-weight:500;letter-spacing:0.2px}                  /* verdict word, ink, never coloured */
+.t-label{font-size:12px;font-weight:500;color:var(--text2)}                      /* labels, max 6 CJK chars / 2 words */
+.t-unit{font-size:11px;font-weight:500;color:var(--text2);letter-spacing:0}      /* unit after a number */
+.t-axis{font-size:10px;font-weight:500;color:var(--text2)}                       /* chart dates / scale numbers (text2, not text3) */
+.u{font-size:11px;font-weight:500;color:var(--text2);letter-spacing:0;margin-left:3px}
+
+/* ---------- 7. Hero: one per tab root. Full width, no card fill, centred. ----------
+   .hero holds the dial (kit.js data-dial) and .dial-core (label, number, 7 bars, verdict) stacked on top. */
+.hero{position:relative;height:280px;margin:0 auto}
+.hero .dial{position:absolute;left:50%;top:0;width:280px;height:280px;margin-left:-140px}
+.dial-core{position:absolute;left:50%;top:0;width:280px;height:280px;margin-left:-140px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center}
+.hero-label{font-size:13px;font-weight:500;color:var(--text2);letter-spacing:2px;margin-right:-2px}
+.hero-num{position:relative;margin-top:2px}                     /* digits are centred; the unit hangs outside */
+.hero-num .pct{position:absolute;left:100%;top:12px;margin-left:1px;font-size:20px;font-weight:300;color:var(--text2);letter-spacing:0}
+.minibars{display:flex;align-items:flex-end;gap:4px;height:16px;margin-top:12px}
+.minibars b{width:3.5px;border-radius:2px;background:var(--past)}
+.minibars b:last-child{background:var(--tone,var(--good))}
+.verdict{margin-top:10px}
+
+/* ---------- 8. Gauges attached to the hero (two side by side, 56 pt tall, whole gauge is the tap target) ---------- */
+.gauges{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.gauge-hd{display:flex;align-items:baseline;gap:6px;height:28px}
+.gauge-bar{height:22px;margin-top:9px}
+
+/* ---------- 9. Module faces ----------
+   A face = icon + label (top), ONE number + unit (middle), ONE graphic (bottom, max one colour). Fill only, radius 18.
+   Grid of 3 columns, gap 8 -> S = 115 x 120 (minimum width for "1,850 kcal" in English), M = 2 columns, L = 3 columns. */
+.faces{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.face{position:relative;height:120px;border-radius:18px;background:var(--surface);padding:13px 12px 12px;
+  display:flex;flex-direction:column;overflow:hidden}
+.face.m{grid-column:span 2}.face.l{grid-column:span 3}
+.face-hd{display:flex;align-items:center;gap:5px;height:16px;font-size:12px;font-weight:500;color:var(--text2)}
+.face-hd i{font-size:13px}
+.face-num{margin-top:12px;display:flex;align-items:baseline}
+.face-gfx{margin-top:auto;height:26px;position:relative;display:flex;align-items:flex-end}
+.face.attn::after{content:"";position:absolute;right:13px;top:18px;width:6px;height:6px;border-radius:3px;background:var(--mid)}
+.face.attn.bad::after{background:var(--bad)}
+.face.stale .face-num{color:var(--text2)}  /* stale: number in text2, age as unit, refresh-cw replaces the icon */
+
+/* ---------- 10. Charts: shared marks (kit.js draws dial / gauge / spark / bars / ring with these tokens) ---------- */
+.clabels{display:flex;justify-content:space-between;margin-top:6px;font-size:10px;font-weight:500;color:var(--text2)}
+.legend{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:500;color:var(--text2)}
+.legend s{width:14px;height:8px;background:var(--band);border-top:1px dashed var(--band-line);border-bottom:1px dashed var(--band-line);text-decoration:none}  /* = the usual band of a chart */
+
+/* ---------- 11. Tags, deltas, chips ---------- */
+/* 「非诊断」/「AI 生成」: short tag, opens the explanation sheet. Required on every score L1 and every AI answer. */
+.tag{display:inline-flex;align-items:center;gap:3px;height:22px;padding:0 8px;border-radius:11px;background:var(--in-sheet);
+  font-size:11.5px;font-weight:500;color:var(--text2)}
+.tag i{font-size:11px}
+/* Signed change vs the person's usual (always vs usual, never vs yesterday). Colour = whether the direction is good. */
+.delta{font-size:13px;font-weight:600;letter-spacing:-0.1px;color:var(--text2)}
+.delta.good{color:var(--good)}.delta.mid{color:var(--mid)}.delta.bad{color:var(--bad)}
+.chip{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:16px;background:var(--surface);
+  font-size:13px;font-weight:500}
+.chip.on{background:var(--accent);color:var(--on-accent)}
+
+/* ---------- 12. Rows inside L1: label | spark with usual band | value + unit | delta | chevron (row = L2 door) ---------- */
+.rows{border-top:1px solid var(--hair)}
+.row{display:grid;grid-template-columns:62px 1fr 74px 34px 12px;align-items:center;column-gap:10px;height:46px;border-bottom:1px solid var(--hair)}
+.row-l{font-size:13px;font-weight:500;color:var(--text2);white-space:nowrap}
+.row .spark{height:24px}
+.row-v{text-align:right;white-space:nowrap}
+.row .delta{text-align:right}
+.row .chev{color:var(--text3);font-size:13px}
+
+/* ---------- 13. Sheet (L1). Solid, never glass. iOS 26 half sheet: floats 8 pt in from the edges. ---------- */
+.sheet{position:absolute;left:8px;right:8px;bottom:8px;border-radius:36px 36px 46px 46px;background:var(--sheet);
+  padding:0 18px;z-index:70;box-shadow:var(--sheet-shadow)}
+.grabber{width:36px;height:5px;border-radius:3px;background:var(--text3);margin:6px auto 0;opacity:0.7}
+.sheet-hd{display:flex;align-items:center;gap:8px;height:44px;margin-top:9px}
+.sheet-hd .t-title{margin-right:2px}
+.icon-btn{margin-left:auto;width:32px;height:32px;border-radius:16px;background:var(--in-sheet);display:flex;align-items:center;
+  justify-content:center;color:var(--text2);font-size:17px}   /* drawn 32, hit area 44 (contentShape) */
+
+/* ---------- 14. Buttons ---------- */
+.btn-primary{height:48px;border-radius:14px;background:var(--accent);color:var(--on-accent);font-size:15px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;gap:6px}
+/* L1 exits: always the last row of an L1 sheet. Left = 全部指标 (L2), right = 问 Jarvis (L3 with context). */
+.exits{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cap{height:46px;border-radius:23px;background:var(--in-sheet);display:flex;align-items:center;justify-content:center;gap:6px;
+  font-size:15px;font-weight:600;color:var(--text)}
+.cap i{font-size:17px}
+.cap .chev{font-size:14px;color:var(--text2)}
+
+/* ---------- 15. Avatars (circles). Initial on surface2; ring = trained today (train) or nothing yet (track). ---------- */
+.avs{display:flex;align-items:center;height:24px}
+.av{width:23px;height:23px;border-radius:12px;background:var(--surface2);border:1.5px solid var(--track);margin-left:-5px;
+  display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--text2);
+  box-shadow:0 0 0 2px var(--surface)}
+.av:first-child{margin-left:0}
+.av.on{border-color:var(--train);color:var(--text)}
+
+/* ---------- 16. Lists (Me, settings, second-level pages): one group = one card of rows ---------- */
+.group{background:var(--surface);border-radius:18px;padding:0 14px}
+.li{display:flex;align-items:center;gap:12px;height:48px;font-size:15px}
+.li + .li{box-shadow:inset 0 1px 0 var(--hair)}
+.li i:first-child{font-size:20px;color:var(--text2)}
+.li .v{margin-left:auto;color:var(--text2);font-size:15px}
+.li .chev{color:var(--text3);font-size:16px}
+
+/* ---------- 17. Scrim (Jarvis menu / covers only; L1 sheets of a hero do not dim the hero) ---------- */
+.scrim{position:absolute;inset:0;background:var(--scrim);z-index:65}
+
+/* ---------- 14. Segment (two views of one tab root, e.g. 记录 = 训练 | 饮食) and muscle bodies (body.js) ---------- */
+.seg{display:inline-flex;height:34px;padding:3px;border-radius:17px;background:var(--surface)}
+.seg span{display:flex;align-items:center;gap:5px;height:28px;padding:0 14px;border-radius:14px;font-size:15px;font-weight:600;color:var(--text2)}
+.seg span i{font-size:15px}
+.seg span.on{background:var(--lozenge);color:var(--text)}
+.seg.s span{padding:0 11px;font-size:13px;font-weight:500}
+.bodies{display:flex;justify-content:center;gap:6px}
+.bodies > div{aspect-ratio:1/2}

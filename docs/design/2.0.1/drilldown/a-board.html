@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<title>A 露边 · tap paths</title>
+<link rel="stylesheet" href="../kit.css">
+<link rel="stylesheet" href="dd.css">
+</head>
+<body class="board">
+<!-- A board for the review (not an app screen): scaled frames of the option's screens, tap markers, wires. Built by board.js. -->
+<div class="bd" style="width:1840px;height:1010px" data-wires='[["t",290,330,"d",-8,330],["d",376,317,"m",-8,317],["b",116,512,"m",410,512]]'>
+<h1>方案 A · 露边<span>改动最小：下一段露出一截，数字后面带「›」</span></h1>
+<div class="fr" id="t" data-src="a-today.html" data-x="64" data-y="150" data-cap="今天 · 首屏|下一行被折线切开 + 一个向下箭头"></div>
+<div class="fr" id="d" data-src="a-day.html" data-x="418" data-y="150" data-cap="今日详情|点表盘进入，普通的二级页"></div>
+<div class="fr" id="m" data-src="a-metric.html" data-x="772" data-y="150" data-cap="HRV 详情|图 + 趋势线 + 范围切换 + 相关指标"></div>
+<div class="fr" id="b" data-src="a-body.html" data-x="1126" data-y="150" data-cap="身体 · 首屏|第一张趋势卡露出一截"></div>
+<i class="tapm" data-f="t" data-px="290" data-py="330">1</i>
+<i class="tapm" data-f="d" data-px="376" data-py="317">2</i>
+<i class="tapm" data-f="b" data-px="116" data-py="512">1</i>
+<i class="tapm" data-f="t" data-px="201" data-py="672">↑</i>
+<!-- inset: how the fold and the Jarvis key share the bottom -->
+<div class="fr" id="z" data-src="a-today.html" data-x="1470" data-y="150" data-s="0.78" data-cy="560" data-ch="314" data-r="14" data-cap="底部怎么分|键的带子不透明，内容到不了键下面"></div>
+<div class="dimline" data-f="z" data-py="704" data-x0="0" data-x1="402"></div>
+<div class="dimlab" data-f="z" data-px="8" data-py="708">折线 y 704 = 按键带上沿</div>
+<div class="dimline" data-f="z" data-py="648" data-x0="0" data-x1="402"></div>
+<div class="dimlab" data-f="z" data-px="8" data-py="628">露出 56 pt</div>
+<div class="dimlab" data-f="z" data-px="252" data-py="748">带高 88 pt</div>
+<div class="fr" id="s" data-src="a-today.html?size=se" data-w="375" data-h="667" data-x="1470" data-y="478" data-s="0.5" data-r="18" data-cap="小屏 375 × 667|表盘 200，露出 32 pt"></div>
+<div class="note" style="left:1680px;top:486px;width:150px"><b>小屏</b><br>间距压到 6 / 10 / 10，露出的只剩标签那一行，数字看不到。</div>
+<div class="note" style="left:64px;top:792px;width:400px"><b>首屏</b><br>间距收紧到 21 / 23 / 23，150 pt 空白删掉。<br>下一行（训练 · 今晚 · 提醒）在折线上被切开。<br>每个能点的数字后面一个「›」。</div>
+<div class="note" style="left:500px;top:792px;width:420px"><b>路径</b><br><span class="k">①</span> 点表盘 → 今日详情　<span class="k">②</span> 点任一行 → 该指标<br><span class="k">①</span> 点首屏上的数字 → 它自己的详情（睡眠、负荷先是现在的半屏，<br>　半屏里的行和「趋势 ›」再进指标页）<br><span class="k">↑</span> 上滑 = 原来折线下面的内容，现在看得见开头</div>
+<div class="note" style="left:960px;top:792px;width:440px"><b>现有代码</b><br>滚动、睡眠 / 负荷半屏、下面的卡片全部保留；新增两个页面（今日详情、指标详情）。<br>「全部指标」不再跳到身体 tab，改成推入今日详情。<br>身体的「今天」范围并入今日详情。</div>
+</div>
+<script src="board.js"></script>
+</body>
+</html>

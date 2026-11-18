@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<title>C 层级缩放 · tap paths</title>
+<link rel="stylesheet" href="../kit.css">
+<link rel="stylesheet" href="dd.css">
+</head>
+<body class="board">
+<!-- A board for the review (not an app screen): scaled frames of the option's screens, tap markers, wires. Built by board.js. -->
+<div class="bd" style="width:1840px;height:1010px" data-wires='[["t",290,345,"d",-8,345],["d",376,309,"m",-8,309],["b",116,600,"m",410,600],["m",52,60,"d",250,44,"up",40]]'>
+<h1>方案 C · 层级缩放<span>一眼 → 今日详情 → 单个指标；首屏不再往下滚，页头的三段刻度告诉你在第几层</span></h1>
+<div class="fr" id="t" data-src="c-today.html" data-x="64" data-y="150" data-cap="今天 · 第 1 层|首屏原样，页头多一个三段刻度"></div>
+<div class="fr" id="d" data-src="c-day.html" data-x="418" data-y="150" data-cap="今日详情 · 第 2 层|表盘缩进页头；训练 · 今晚 · 提醒在第一行"></div>
+<div class="fr" id="m" data-src="c-metric.html" data-x="772" data-y="150" data-cap="HRV · 第 3 层|返回 = 回到来的地方；小表盘 = 上一层"></div>
+<div class="fr" id="b" data-src="c-body.html" data-x="1126" data-y="150" data-cap="身体 · 第 1 层|点柱子 = 全部趋势，点卡片 = 该指标"></div>
+<i class="tapm" data-f="t" data-px="290" data-py="345">1</i>
+<i class="tapm" data-f="d" data-px="376" data-py="309">2</i>
+<i class="tapm" data-f="b" data-px="116" data-py="600">1</i>
+<div class="dimlab" data-f="m" data-px="-215" data-py="-50">点页头的小表盘 = 上一层</div>
+<!-- inset: the zoom (dial shrinks into the header) -->
+<div class="fr" id="p1" data-src="c-today.html" data-x="1470" data-y="150" data-s="0.28" data-r="12" data-cap="点表盘"></div>
+<div class="fr" id="p2" data-src="c-day.html?state=zoom" data-x="1593" data-y="150" data-s="0.28" data-r="12" data-cap="表盘缩小上移"></div>
+<div class="fr" id="p3" data-src="c-day.html" data-x="1716" data-y="150" data-s="0.28" data-r="12" data-cap="停在页头"></div>
+<div class="fr" id="v" data-src="c-today.html?opt=ladder,bare" data-x="1470" data-y="470" data-s="0.4" data-r="16" data-cap="变体 C′|表盘和两个读数加「›」"></div>
+<div class="note" style="left:1650px;top:478px;width:170px"><b>提示够不够？</b><br>纯 C 只靠三段刻度和缩放动画。<br>C′ 给没有底色的三处加「›」；卡片本身就是按钮的形状，不加。</div>
+<div class="note" style="left:64px;top:792px;width:400px"><b>首屏</b><br>批准过的节奏（32 / 40 / 44）一点不动，页面不再滚动。<br>折线下面什么都没有，所以不会再出现「假地板」。<br>页头中间：三段刻度，亮几段 = 第几层。</div>
+<div class="note" style="left:500px;top:792px;width:420px"><b>路径</b><br><span class="k">①</span> 点表盘 → 第 2 层（今日详情）<br><span class="k">①</span> 点数字 → 直接到第 3 层（该指标）<br><span class="k">②</span> 第 2 层点任一行 → 第 3 层<br>返回 = 回到来的地方；页头小表盘 = 上一层<br>在首屏上滑 = 也进第 2 层（老用户的习惯动作）</div>
+<div class="note" style="left:960px;top:792px;width:440px"><b>现有代码</b><br>三个半屏（恢复 / 睡眠 / 负荷）并进第 2 层，不再有半屏。<br>身体折线下的 指标 | 睡眠 | 报告 变成身体的第 2 层。<br>全部用系统导航（iOS 18 起有缩放转场，16 / 17 是普通推入）。</div>
+</div>
+<script src="board.js"></script>
+</body>
+</html>
