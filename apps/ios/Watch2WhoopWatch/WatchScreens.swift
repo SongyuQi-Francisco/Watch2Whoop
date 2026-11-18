@@ -1,38 +1,160 @@
 import SwiftUI
 
-/// One screen at a time, switched by the session's phase (plan 2.1: states of one page, not a navigation stack).
+/// Home is the root whenever no session runs (plan 2.4: 「一个首屏 + 当前场景」); a running session takes the whole app
+/// (plan 2.1: states of one page, not a navigation stack) until its summary's 「完成」 brings home back.
 struct RootView: View {
   @EnvironmentObject var m: WatchModel
 
   var body: some View {
-    NavigationStack {
-      screen
-        .background(W.bg)
-        // the title sits in the status row beside the clock (mockups), never over the progress pills
-        .navigationBarTitleDisplayMode(.inline)
-    }
-  }
-
-  @ViewBuilder private var screen: some View {
     if let s = m.session, m.running {
-      switch s.phase {
-      case .set: SetScreen(s: s)
-      case .logged: LoggedScreen(s: s)
-      case .rest(let t): RestScreen(s: s, timer: t)
-      case .summary: SummaryScreen(s: s)
-      case .ready, .finished: EmptyView()
+      NavigationStack {
+        session(s)
+          .background(W.bg)
+          // the title sits in the status row beside the clock (mockups), never over the progress pills
+          .navigationBarTitleDisplayMode(.inline)
       }
     } else if case .signedOut = m.syncState {
       SignInScreen()
-    } else if let plan = m.todaysPlan {
-      StartScreen(plan: plan)
     } else {
-      NoPlanScreen()
+      NavigationStack(path: $m.path) {
+        HomeScreen()
+          .background(W.bg)
+          .navigationDestination(for: WatchRoute.self) { r in
+            route(r).background(W.bg).navigationBarTitleDisplayMode(.inline)
+          }
+      }
+    }
+  }
+
+  @ViewBuilder private func session(_ s: SetSession) -> some View {
+    switch s.phase {
+    case .set: SetScreen(s: s)
+    case .logged: LoggedScreen(s: s)
+    case .rest(let t): RestScreen(s: s, timer: t)
+    case .summary: SummaryScreen(s: s)
+    case .ready, .finished: EmptyView()
+    }
+  }
+
+  @ViewBuilder private func route(_ r: WatchRoute) -> some View {
+    switch r {
+    case .start:
+      if let plan = m.todaysPlan { StartScreen(plan: plan) } else { GoneScreen() }
+    case .quick: QuickScreen()
+    case .receipt(let id):
+      if let l = m.quickLogs.log(id) { ReceiptScreen(log: l) } else { GoneScreen() }
+    case .undo(let id):
+      if let l = m.quickLogs.log(id) { UndoScreen(log: l) } else { GoneScreen() }
     }
   }
 }
 
-// MARK: - T1 start
+// MARK: - D1 / D2 / S1–S7 home (今天一眼)
+
+struct HomeScreen: View {
+  @EnvironmentObject var m: WatchModel
+
+  var body: some View {
+    // one drawing in the mockup's coordinates (D1 / D2), hung from the system clock's row (`HomeLayout`, `ClockRow`)
+    DesignCanvas { c in canvas(c, m.home) }
+      .toolbar(.hidden, for: .navigationBar)
+  }
+
+  @ViewBuilder private func canvas(_ c: CanvasMetrics, _ h: WatchHome) -> some View {
+    let s = c.s
+    let L = HomeLayout.self
+    let clockY = CGFloat(c.clock.centreY)
+    let dialY = clockY + CGFloat(L.dialBelowClock) * s   // = L.dialCentre(clockY:) in this watch's points
+    let keysY = CGFloat(L.keysCentreY) * c.sy
+    SyncMark(state: m.syncState, scale: s) { mark() }
+      .place(leading: CGFloat(c.clock.side), centerY: clockY)
+    RecoveryDial(home: h)
+      .frame(width: CGFloat(2 * L.dialOuter) * s, height: CGFloat(2 * L.dialOuter) * s)
+      .place(centerX: c.size.width / 2, centerY: dialY)
+    reading(tr("睡眠", "Sleep"), h.sleep, digits: 0, max: WatchParams.sleepMax, color: W.sleep, x: 16, dialY: dialY, s: s, grey: h.grey)
+    reading(tr("负荷", "Strain"), h.strain, digits: 1, max: WatchParams.strainMax, color: W.train, x: 112, dialY: dialY, s: s, grey: h.grey)
+    leftKey(h.key, s: s)
+      .frame(width: 134 * s, height: CGFloat(L.keysHeight) * s)
+      .place(leading: 12 * s, centerY: keysY)
+    core(s: s)
+      .place(centerX: 174 * s, centerY: keysY)
+  }
+
+  /// 「睡眠 88」 with its bar (mockup: label and value on one baseline, a 4 pt bar on a 1.5 pt track, 80 pt wide).
+  @ViewBuilder private func reading(_ label: String, _ value: Double?, digits: Int, max: Double, color: Color, x: CGFloat,
+                                    dialY: CGFloat, s: CGFloat, grey: Bool) -> some View {
+    let base = dialY + CGFloat(HomeLayout.readingsBaseline + 3) * s
+    let barY = dialY + CGFloat(HomeLayout.barBelowCentre + 0.75) * s
+    Text(label).font(.system(size: 10.5 * s, weight: .medium)).foregroundStyle(W.text2).fixedSize()
+      .place(leading: x * s, baseline: base)
+    Text(value.map { digits == 0 ? String(Int($0.rounded())) : String(format: "%.\(digits)f", $0) } ?? "—")
+      .font(.system(size: 19 * s, weight: .medium).monospacedDigit()).foregroundStyle(grey ? W.text2 : W.text).fixedSize()
+      .place(trailing: (x + 80) * s, baseline: base)
+    ZStack(alignment: .leading) {
+      Capsule().fill(W.track).frame(height: 1.5 * s)
+      if let v = value {
+        Capsule().fill(grey ? W.text2 : color)
+          .frame(width: Swift.max(4, 80 * CGFloat(Swift.min(1, Swift.max(0, v / max)))) * s, height: 4 * s)
+      }
+    }
+    .frame(width: 80 * s, height: 4 * s)
+    .place(leading: x * s, centerY: barY)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(label + " " + (value.map { String(format: "%.\(digits)f", $0) } ?? "—"))
+  }
+
+  /// Left capsule: today's plan (→ T1), 「记一餐」 on a day without training (→ M5), 「计划没同步」 (→ ask the phone).
+  @ViewBuilder private func leftKey(_ k: WatchHome.Key, s: CGFloat) -> some View {
+    let (icon, tint, label, play): (String, Color, String, Bool) = {
+      switch k {
+      case .train(let t): return ("dumbbell", W.train, t, true)
+      case .meal: return ("fork.knife", W.text2, tr("记一餐", "Log a meal"), false)
+      case .planMissing:
+        return (m.shows(m.askedPlanAt, for: 3) ? "arrow.triangle.2.circlepath" : "iphone", W.text2, tr("计划没同步", "No plan yet"), false)
+      }
+    }()
+    Button { m.homeKey() } label: {
+      HStack(spacing: 6 * s) {
+        Image(systemName: icon).font(.system(size: 13 * s, weight: .semibold)).foregroundStyle(tint)
+        Text(label).font(.system(size: 14 * s, weight: .semibold)).foregroundStyle(k == .planMissing ? W.text2 : W.text)
+          .lineLimit(1).minimumScaleFactor(0.7)
+        Spacer(minLength: 0)
+        if play { Image(systemName: "play").font(.system(size: 10 * s, weight: .bold)).foregroundStyle(W.text2) }
+      }
+      .padding(.horizontal, 13 * s)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .background(Capsule().fill(W.surface))
+    }
+    .buttonStyle(.plain)
+    // Double Tap = the left key (mockups D1 / D2), only while home is on top (a pushed screen has its own primary)
+    .handGestureShortcut(.primaryAction, isEnabled: m.path.isEmpty)
+  }
+
+  /// The Jarvis core: tap = quick log; hold = talk (`WatchModel.coreHold`), dimmed while voice is unavailable (mockup S7).
+  private func core(s: CGFloat) -> some View {
+    let refused = m.shows(m.voiceRefusedAt, for: 2)
+    return ZStack(alignment: .topTrailing) {
+      JarvisCoreMark(size: 40 * s, dim: !m.home.voice.isAvailable)
+      if refused {
+        Image(systemName: "mic.slash").font(.system(size: 9 * s, weight: .bold)).foregroundStyle(W.mid)
+          .padding(3 * s).background(Circle().fill(Color.black)).offset(x: 4 * s, y: -4 * s)
+      }
+    }
+    .contentShape(Circle())
+    .onTapGesture { m.coreTap() }
+    .onLongPressGesture(minimumDuration: 0.5) { m.coreHold() }
+    .accessibilityElement()
+    .accessibilityLabel(tr("快记", "Quick log"))
+    .accessibilityAddTraits(.isButton)
+    .accessibilityAction { m.coreTap() }
+  }
+
+  private func mark() {
+    if case .failed = m.syncState { m.retry() } else { m.askPhone() }
+  }
+}
+
+// MARK: - T1 start (from home's left capsule; back = home)
 
 struct StartScreen: View {
   @EnvironmentObject var m: WatchModel
@@ -43,16 +165,196 @@ struct StartScreen: View {
       ZStack {
         SetRing(plan: plan.exercises.map(\.sets), done: plan.exercises.reduce(0) { $0 + $1.done }, current: nil)
           .frame(width: 112 * W.k, height: 112 * W.k)
-        VStack(spacing: 0) {
-          Text(plan.title).font(W.font(12)).foregroundStyle(W.text2).lineLimit(1).frame(maxWidth: 84 * W.k)
-          Text("\(plan.totalSets)").font(W.font(42, .light))
-          Text(tr("组", "sets")).font(W.font(11)).foregroundStyle(W.text2)
-        }
+        // mockup T1, from the ring's centre: the name's baseline −16, the count's +22 (digits centred on the axis), 「组」 +39
+        Text(plan.title).font(W.font(12)).foregroundStyle(W.text2).lineLimit(1).frame(maxWidth: 84 * W.k)
+          .centredBaseline(-16 * W.k)
+        CenteredNumber(text: "\(plan.totalSets)", size: 42 * W.k, dy: CGFloat(22 - DialText.digitHeight(42) / 2) * W.k)
+        Text(tr("组", "sets")).font(W.font(11)).foregroundStyle(W.text2).centredBaseline(39 * W.k)
       }
       .frame(maxHeight: .infinity)
-      PrimaryButton(label: tr("开始", "Start"), icon: "play.fill") { m.primary() }
+      PrimaryButton(label: tr("开始", "Start"), icon: "play.fill") { m.startSession() }
     }
-    .toolbar { ToolbarItem(placement: .topBarLeading) { SyncMark(state: m.syncState) { m.retry() } } }
+    .ignoresSafeArea(edges: .bottom)   // the primary button in the bottom corner radius (mockup T1)
+  }
+}
+
+// MARK: - M5 quick log
+
+struct QuickScreen: View {
+  @EnvironmentObject var m: WatchModel
+
+  var body: some View {
+    let q = m.quick
+    let tiles = tiles(q)
+    Group {
+      if tiles.isEmpty {
+        // nothing from the phone yet: one icon + the one hint the plan allows (「在手机上打开一次」)
+        VStack(spacing: 8 * W.k) {
+          Image(systemName: "iphone").font(.system(size: 30 * W.k, weight: .light)).foregroundStyle(W.text2)
+          Text(tr("在手机上打开一次", "Open the app on your iPhone")).font(W.font(12.5)).foregroundStyle(W.text2)
+            .multilineTextAlignment(.center)
+        }
+        .onAppear { m.requestPlan() }
+      } else {
+        // four tiles fill the screen under the back key, no scrolling (mockup M5)
+        GeometryReader { g in
+          let gap = 4 * W.k
+          let rows = (tiles.count + 1) / 2
+          let h = min(110 * W.k, (g.size.height - W.pushedTop - gap * CGFloat(rows - 1)) / CGFloat(max(rows, 1)))
+          VStack(spacing: gap) {
+            ForEach(0..<rows, id: \.self) { r in
+              HStack(spacing: gap) {
+                ForEach(tiles[(r * 2)..<min(tiles.count, r * 2 + 2)], id: \.id) { t in
+                  QuickTile(icon: t.icon, name: t.name, sub: t.sub, action: t.action).frame(height: h)
+                }
+                if r * 2 + 1 >= tiles.count { Color.clear.frame(height: h) }
+              }
+            }
+          }
+          .padding(.top, W.pushedTop)
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+        .ignoresSafeArea(edges: .bottom)
+      }
+    }
+    .navigationTitle(tr("快记", "Quick log"))
+  }
+
+  private struct Tile {
+    var id: String
+    var icon: String
+    var name: String
+    var sub: String
+    var action: () -> Void
+  }
+
+  private func tiles(_ q: WatchQuick?) -> [Tile] {
+    guard let q else { return [] }
+    var out = q.meals.map { meal in
+      Tile(id: "m\(meal.id)", icon: "fork.knife", name: meal.name, sub: meal.kcal.map { "\(WatchFmt.int($0)) kcal" } ?? "—") {
+        m.logMeal(meal)
+      }
+    }
+    if let ml = q.waterMl {
+      out.append(Tile(id: "water", icon: "drop", name: tr("水", "Water"), sub: "+\(ml) ml") { m.logWater(ml) })
+    }
+    return out
+  }
+}
+
+// MARK: - M3 receipt
+
+struct ReceiptScreen: View {
+  @EnvironmentObject var m: WatchModel
+  var log: WatchQuickLog
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      Capsule().fill(WJarvis.ice).frame(width: 44 * W.k, height: 2).padding(.top, W.pushedTop - 6 * W.k)
+      HStack(spacing: 4 * W.k) {
+        Image(systemName: log.undone ? "arrow.uturn.backward.circle" : "checkmark.circle").font(W.font(12, .semibold))
+          .foregroundStyle(log.undone ? W.text2 : W.good)
+        Text(header).font(W.font(12.5)).foregroundStyle(W.text2).lineLimit(1)
+      }
+      .padding(.top, 6 * W.k)
+      Text(log.name).font(W.font(18, .semibold)).lineLimit(1).fixedSize(horizontal: false, vertical: true).padding(.top, 4 * W.k)
+      HStack(alignment: .lastTextBaseline, spacing: 4 * W.k) {
+        Text(big).font(W.font(42, .light)).tracking(-1)
+        Text(log.kind == .meal ? "kcal" : "ml").font(W.font(11.5)).foregroundStyle(W.text2)
+        Spacer(minLength: 2)
+        if let p = log.proteinG {
+          Text(tr("蛋白", "Protein")).font(W.font(11)).foregroundStyle(W.text2)
+          Text(WatchFmt.int(p)).font(W.font(15, .semibold))
+          Text("g").font(W.font(10.5)).foregroundStyle(W.text2)
+        }
+      }
+      if let b = log.bar(logs: m.quickLogs.items, quick: m.context?.quick) {
+        DayBar(before: b.before, added: b.added, goal: b.goal).padding(.top, 6 * W.k)
+        HStack(spacing: 0) {
+          Text(tr("今天 ", "Today ")).font(W.font(10.5)).foregroundStyle(W.text2)
+          Text(WatchFmt.int(b.before + b.added)).font(W.font(11.5))
+          Text(" / \(WatchFmt.int(b.goal)) kcal").font(W.font(10.5)).foregroundStyle(W.text2)
+        }
+        .padding(.top, 6 * W.k)
+      }
+      Spacer(minLength: 4)
+      if !log.undone {
+        // undo takes the confirm screen (M4); no Double Tap on it (mockup M3)
+        PrimaryButton(label: tr("撤销", "Undo"), icon: "arrow.uturn.backward", kind: .quiet, height: 42, doubleTap: false) {
+          m.path.append(.undo(log.id))
+        }
+      }
+    }
+    .padding(.horizontal, 4 * W.k)
+    .ignoresSafeArea(edges: .bottom)
+  }
+
+  private var header: String {
+    if log.undone { return tr("已撤销", "Undone") }
+    if log.kind == .water { return tr("已记喝水", "Water logged") }
+    let slot = log.slot ?? ""
+    return tr("已记到\(slot)", "Logged · \(slot)")
+  }
+
+  private var big: String {
+    log.kind == .water ? (log.ml.map(String.init) ?? "—") : (log.kcal.map { WatchFmt.int($0) } ?? "—")
+  }
+}
+
+/// The receipt's day bar: the day before this meal (ink 55 %), this meal (ice), on the goal's track.
+struct DayBar: View {
+  var before: Double
+  var added: Double
+  var goal: Double
+
+  var body: some View {
+    GeometryReader { g in
+      let w = g.size.width
+      let a = w * CGFloat(min(1, before / goal))
+      let b = min(w - a, w * CGFloat(added / goal))
+      ZStack(alignment: .leading) {
+        Capsule().fill(W.track)
+        Capsule().fill(W.text.opacity(0.55)).frame(width: a)
+        Capsule().fill(WJarvis.ice).frame(width: max(0, b - 2)).offset(x: a + 2)
+      }
+    }
+    .frame(height: 4)
+  }
+}
+
+// MARK: - M4 undo asks first
+
+struct UndoScreen: View {
+  @EnvironmentObject var m: WatchModel
+  @Environment(\.dismiss) private var dismiss
+  var log: WatchQuickLog
+
+  var body: some View {
+    VStack(spacing: 8 * W.k) {
+      Text(log.kind == .meal ? tr("撤销这一餐？", "Undo this meal?") : tr("撤销这杯水？", "Undo this drink?"))
+        .font(W.font(16, .semibold)).multilineTextAlignment(.center)
+      Text(detail).font(W.font(12)).foregroundStyle(W.text2).lineLimit(1).fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 2)
+      Button { m.undo(log.id) } label: {
+        Text(tr("撤销", "Undo")).font(W.font(17, .semibold)).foregroundStyle(W.bad)
+          .frame(maxWidth: .infinity, minHeight: 44 * W.k)
+          .background(Capsule().fill(W.bad.opacity(0.16)))
+      }
+      .buttonStyle(.plain)
+      PrimaryButton(label: tr("保留", "Keep"), kind: .quiet, height: 44) { dismiss() }   // Double Tap = 保留 (M4)
+    }
+    .toolbar(.hidden, for: .navigationBar)
+  }
+
+  private var detail: String {
+    log.kind == .meal ? "\(log.name) \(log.kcal.map { WatchFmt.int($0) } ?? "—") kcal" : "\(log.name) \(log.ml ?? 0) ml"
+  }
+}
+
+/// A route whose subject is gone (today's plan changed, a log pruned): one line, the back key leads home.
+struct GoneScreen: View {
+  var body: some View {
+    Image(systemName: "iphone").font(.system(size: 30 * W.k, weight: .light)).foregroundStyle(W.text2)
   }
 }
 
@@ -266,12 +568,13 @@ struct RestScreen: View {
           .stroke(W.train, style: StrokeStyle(lineWidth: 4, lineCap: .round))
           .rotationEffect(.degrees(-90))
           .padding(inset)
-        VStack(spacing: 0) {
-          Text(tr("休息", "Rest")).font(.system(size: d * 0.11, weight: .medium)).foregroundStyle(W.text2)
-          Text(RestTimer.clock(left)).font(.system(size: d * 0.30, weight: .light).monospacedDigit())
-          Text(nextLine).font(.system(size: d * 0.105, weight: .medium)).foregroundStyle(W.text2).lineLimit(1)
-            .minimumScaleFactor(0.7).frame(maxWidth: d * 0.72)
-        }
+        // mockup T6 (ticks' outer radius 54): 「休息」 baseline −17, the countdown +14 (centred on the axis), next set +30
+        let u = d / 108
+        Text(tr("休息", "Rest")).font(.system(size: 11 * u, weight: .medium)).foregroundStyle(W.text2).centredBaseline(-17 * u)
+        CenteredNumber(text: RestTimer.clock(left), size: 34 * u, monospaced: true,
+                       dy: CGFloat(14 - DialText.digitHeight(34) / 2) * u)
+        Text(nextLine).font(.system(size: 11 * u, weight: .medium)).foregroundStyle(W.text2).lineLimit(1)
+          .minimumScaleFactor(0.7).frame(maxWidth: d * 0.72).centredBaseline(30 * u)
       }
       .frame(width: d, height: d)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -346,13 +649,10 @@ struct SummaryScreen: View {
         ZStack {
           SetRing(plan: s.plan.exercises.map(\.sets), done: sum.doneSets, current: nil)
             .frame(width: 96 * W.k, height: 96 * W.k)
-          VStack(spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 1) {
-              Text("\(sum.doneSets)").font(W.font(36, .light))
-              Text("/\(sum.plannedSets)").font(W.font(15)).foregroundStyle(W.text2)
-            }
-            Text(tr("组", "sets")).font(W.font(11)).foregroundStyle(W.text2)
-          }
+          // mockup T9, from the ring's centre: the count's baseline +8 with 「/18」 hung after it, 「组」 +24
+          CenteredNumber(text: "\(sum.doneSets)", size: 36 * W.k, unit: "/\(sum.plannedSets)", unitSize: 15 * W.k,
+                         unitWeight: .regular, unitGap: 1 * W.k, dy: CGFloat(8 - DialText.digitHeight(36) / 2) * W.k)
+          Text(tr("组", "sets")).font(W.font(11)).foregroundStyle(W.text2).centredBaseline(24 * W.k)
         }
         HStack {
           stat("\(sum.minutes)", tr("分", "min"), tr("用时", "Time"))
@@ -429,7 +729,7 @@ struct SummaryScreen: View {
   }
 }
 
-// MARK: - S8 / S9
+// MARK: - S8
 
 struct SignInScreen: View {
   var body: some View {
@@ -438,23 +738,5 @@ struct SignInScreen: View {
       Text(tr("在手机上登录", "Sign in on your iPhone")).font(W.font(15, .semibold)).multilineTextAlignment(.center)
       Text("Watch2Whoop").font(W.font(11.5)).foregroundStyle(W.text2)
     }
-  }
-}
-
-struct NoPlanScreen: View {
-  @EnvironmentObject var m: WatchModel
-
-  var body: some View {
-    VStack(spacing: 8 * W.k) {
-      ZStack {
-        Circle().stroke(W.track, style: StrokeStyle(lineWidth: 1.5, dash: [2, 5]))
-        Image(systemName: "iphone").font(.system(size: 28 * W.k, weight: .light)).foregroundStyle(W.text2)
-      }
-      .frame(width: 96 * W.k, height: 96 * W.k)
-      Text(tr("计划没同步", "No plan for today")).font(W.font(15, .semibold))
-      Text(tr("在手机上打开一次", "Open the app on your iPhone")).font(W.font(11.5)).foregroundStyle(W.text2)
-    }
-    .onTapGesture { m.requestPlan() }
-    .onAppear { m.requestPlan() }
   }
 }

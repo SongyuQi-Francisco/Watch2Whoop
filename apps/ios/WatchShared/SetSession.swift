@@ -45,7 +45,7 @@ struct SessionSummary: Equatable {
 /// → summary. A value type with no watchOS imports: the watch's model drives it with taps, the Digital Crown, a clock
 /// tick and heart-rate samples, and carries out the effects it returns (haptics, events for the phone, the workout).
 struct SetSession: Equatable {
-  enum Phase: Equatable {
+  enum Phase: Equatable, Codable {
     /// T1: today's sets, 「开始」.
     case ready
     /// T2 / T3 / T4 / T7: the current set, two big numbers.
@@ -61,7 +61,7 @@ struct SetSession: Equatable {
   }
 
   /// Which number the crown changes on the set screen (default: reps, the one that most often differs from the plan).
-  enum Focus: Equatable { case reps, weight }
+  enum Focus: String, Equatable, Codable { case reps, weight }
 
   enum Haptic: Equatable { case start, success, restOver, end }
 
@@ -377,5 +377,61 @@ struct SetSession: Equatable {
   private func event(for s: LoggedSet, day: String) -> WatchSetEvent {
     WatchSetEvent(id: s.eventId, kind: .set, day: day, slug: s.slug, setIndex: s.setIndex, reps: s.reps, weightKg: s.weightKg,
                   durationS: s.durationS, at: s.at, hrEnd: s.hrEnd, restBeforeS: s.restBeforeS)
+  }
+}
+
+// MARK: - saving a running session (phase 2a: a running session is resumed on launch)
+
+extension SetSession: Codable {
+  private enum Keys: String, CodingKey {
+    case plan, phase, exercise, nextSet, weightKg, reps, durationS, focus, logged, startedAt, endedAt, heartRate, hrSum, hrCount,
+         restDrops, restsTaken, restsPlanned, pendingRest
+  }
+
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: Keys.self)
+    self.init(plan: try c.decode(WatchPlan.self, forKey: .plan))
+    phase = try c.decode(Phase.self, forKey: .phase)
+    exercise = try c.decode(Int.self, forKey: .exercise)
+    nextSet = try c.decode([Int].self, forKey: .nextSet)
+    weightKg = try c.decodeIfPresent(Double.self, forKey: .weightKg)
+    reps = try c.decodeIfPresent(Int.self, forKey: .reps)
+    durationS = try c.decodeIfPresent(Double.self, forKey: .durationS)
+    focus = try c.decode(Focus.self, forKey: .focus)
+    logged = try c.decode([LoggedSet].self, forKey: .logged)
+    startedAt = try c.decodeIfPresent(Date.self, forKey: .startedAt)
+    endedAt = try c.decodeIfPresent(Date.self, forKey: .endedAt)
+    heartRate = try c.decodeIfPresent(Int.self, forKey: .heartRate)
+    hrSum = try c.decode(Int.self, forKey: .hrSum)
+    hrCount = try c.decode(Int.self, forKey: .hrCount)
+    restDrops = try c.decode([Int].self, forKey: .restDrops)
+    restsTaken = try c.decode([Int].self, forKey: .restsTaken)
+    restsPlanned = try c.decode([Int].self, forKey: .restsPlanned)
+    pendingRest = try c.decodeIfPresent(Int.self, forKey: .pendingRest)
+    guard exercise >= 0, nextSet.count == plan.exercises.count else {
+      throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "session does not fit its plan"))
+    }
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var c = encoder.container(keyedBy: Keys.self)
+    try c.encode(plan, forKey: .plan)
+    try c.encode(phase, forKey: .phase)
+    try c.encode(exercise, forKey: .exercise)
+    try c.encode(nextSet, forKey: .nextSet)
+    try c.encodeIfPresent(weightKg, forKey: .weightKg)
+    try c.encodeIfPresent(reps, forKey: .reps)
+    try c.encodeIfPresent(durationS, forKey: .durationS)
+    try c.encode(focus, forKey: .focus)
+    try c.encode(logged, forKey: .logged)
+    try c.encodeIfPresent(startedAt, forKey: .startedAt)
+    try c.encodeIfPresent(endedAt, forKey: .endedAt)
+    try c.encodeIfPresent(heartRate, forKey: .heartRate)
+    try c.encode(hrSum, forKey: .hrSum)
+    try c.encode(hrCount, forKey: .hrCount)
+    try c.encode(restDrops, forKey: .restDrops)
+    try c.encode(restsTaken, forKey: .restsTaken)
+    try c.encode(restsPlanned, forKey: .restsPlanned)
+    try c.encodeIfPresent(pendingRest, forKey: .pendingRest)
   }
 }
