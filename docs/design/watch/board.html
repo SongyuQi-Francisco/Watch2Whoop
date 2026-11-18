@@ -1,0 +1,21 @@
+<!doctype html><html lang="zh-Hans"><head><meta charset="utf-8"><title>Watch2Whoop watch · board</title><link rel="stylesheet" href="watch.css"></head><body>
+<!-- ?flow=train|meal|ask|today|face|state : one flow at 46 mm with notes + the same screens at 42 mm.
+     no query: the overview board (every screen, 46 mm, title only). ?id=t2 : one screen as a card (46 mm + 42 mm + full notes). -->
+<div id="root"></div>
+<script src="lucide.js"></script><script src="watch.js"></script>
+<script>
+var q=new URLSearchParams(location.search),flow=q.get('flow'),id=q.get('id'),h='';
+function cell(it,size,scale,mode){var n=mode==='tiny'?'':'<div class="notes" style="width:'+Math.round((size[0]+31)*scale)+'px">'+notes(it,false)+'</div>';
+  return '<div class="cell"><div class="hd"><span class="no">'+it.id.toUpperCase()+'</span><span class="ti">'+it.t+'</span></div>'+frame(it.svg(),size,scale)+n+'</div>'}
+if(id){var it=byId(id),fl=FLOWS.filter(function(f){return f[0]===it.flow})[0][1];
+  h='<div class="card"><div>'+frame(it.svg(),W46,1.7)+'<div class="sz">46 mm · 208 × 248 pt</div></div><div>'+frame(it.svg(),W42,1.7)+'<div class="sz">42 mm · 187 × 223 pt</div></div>'
+   +'<div><div class="fl">'+fl+' · '+it.id.toUpperCase()+'</div><h1>'+it.t+'</h1><div class="notes" style="margin-top:14px">'+notes(it,true)+'</div></div></div>'}
+else if(flow){var name=FLOWS.filter(function(f){return f[0]===flow})[0][1],L=LIST.filter(function(i){return i.flow===flow}),per=flow==='state'?5:5;
+  h='<h1>'+name+'<small>Watch2Whoop · watchOS 设计稿 · 合成数据</small></h1><h2>46 mm<small>208 × 248 pt</small></h2>';
+  for(var a=0;a<L.length;a+=per)h+='<div class="row" style="margin-bottom:26px">'+L.slice(a,a+per).map(function(i){return cell(i,W46,1.25)}).join('')+'</div>';
+  h+='<h2>42 mm<small>187 × 223 pt · 同一布局</small></h2><div class="row">'+L.map(function(i){return '<div class="cell"><span class="no">'+i.id.toUpperCase()+'</span>'+frame(i.svg(),W42,.82)+'</div>'}).join('')+'</div>'}
+else{h='<h1>Watch2Whoop · Apple Watch 端设计稿<small>46 mm · 深色 · 合成数据（昵称「小林」）</small></h1><div class="lead">一屏一个主体；数字和图形说话，没有句子。训练类 = 青色，恢复 = 状态色，睡眠 = 紫色；浅蓝只属于 Jarvis。每屏的点按 / Double Tap / 表冠见各流程图。</div>';
+  FLOWS.forEach(function(f){var L=LIST.filter(function(i){return i.flow===f[0]});h+='<h2>'+f[1]+'<small>'+L.length+' 屏</small></h2>';for(var a=0;a<L.length;a+=5)h+='<div class="row" style="margin-bottom:18px">'+L.slice(a,a+5).map(function(i){return cell(i,W46,.92,'tiny')}).join('')+'</div>'})}
+document.getElementById('root').innerHTML=h;
+if(q.get('dim')){var r=document.body.getBoundingClientRect();document.body.setAttribute('data-dim',Math.ceil(r.width)+'x'+Math.ceil(r.height))}
+</script></body></html>

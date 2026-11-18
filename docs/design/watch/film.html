@@ -1,0 +1,72 @@
+<!doctype html><html lang="zh-Hans"><head><meta charset="utf-8"><title>Watch2Whoop watch · moving prototype</title>
+<style>
+/* Moving prototypes of the two key flows, drawn with the same screen functions as the static mockups (watch.js).
+     ?film=sets (default) | meal     which film
+     &t=<ms>                         one frame of the scripted film (used to render the 60 fps mp4 / gif)
+   No t = plays in a loop in the browser. The chips under the watch light up when that input is used. Data is synthetic. */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:520px;height:660px;overflow:hidden;background:#0A0A0C;color:#F4F4F6;font-family:system-ui;-webkit-font-smoothing:antialiased}
+#w{position:absolute;left:21px;top:22px}
+#cap{position:absolute;left:0;top:578px;width:520px;text-align:center;font-size:15px;font-weight:600;letter-spacing:.2px}
+#chips{position:absolute;left:0;top:612px;width:520px;display:flex;justify-content:center;gap:8px}
+.chip{font-size:11.5px;font-weight:500;padding:4px 11px;border-radius:12px;border:1px solid #2E2E33;color:#55555B}
+.chip.on{color:#000;background:#F4F4F6;border-color:#F4F4F6}
+</style></head><body>
+<div id="w"></div><div id="cap"></div>
+<div id="chips"><span class="chip" data-k="tap">点按</span><span class="chip" data-k="dt">Double Tap</span><span class="chip" data-k="crown">表冠</span><span class="chip" data-k="hap">触感</span></div>
+<script src="lucide.js"></script><script src="watch.js"></script>
+<script>
+var q=new URLSearchParams(location.search),FILM=q.get('film')||'sets';
+function seg(t,a,b){return cl((t-a)/(b-a))}
+function lerp(a,b,u){return a+(b-a)*u}
+function inr(t,a,b){return t>=a&&t<b}
+/* a finger: approaches, presses at t0, lifts at t1 (t1 = t0 for a tap) */
+function finger(t,x,y,t0,t1){t1=t1||t0;if(t<t0-260||t>t1+320)return '';var o,r;
+  if(t<t0){var u=ez((t-t0+260)/260);o=.42*u;r=22-7*u}else if(t<=t1){o=.5;r=15}else{var d=(t-t1)/320;o=.42*(1-d);r=15+11*ez(d)}
+  return ci(x,y,r,'#fff','fill-opacity="'+f(o*.5)+'" stroke="#fff" stroke-opacity="'+f(o)+'" stroke-width="1.2"')}
+function press(t,t0){return t<t0?0:t<t0+90?(t-t0)/90:1-seg(t,t0+90,t0+300)}
+/* clips cross-dissolve over 200 ms on black */
+function play(clips,t){var s='';clips.forEach(function(c){var o=seg(t,c[0],c[0]+200)*(1-seg(t,c[1],c[1]+200));if(o>0)s+='<g opacity="'+f(o)+'" transform="translate(0 '+f(6*(1-ez(seg(t,c[0],c[0]+260))))+')">'+c[2](t-c[0],t)+'</g>'});return s}
+
+function sets(t){var R={cap:'',chips:{},crown:0,rot:0},F='';
+  var clips=[
+   [0,1500,function(){return SC.start({press:press(t,1100)})}],
+   [1500,6300,function(){var hr=Math.round(lerp(96,134,io(seg(t,1700,4300)))),foc=inr(t,4500,5750),r=t<5000?'8':'9';
+      return SC.set({i:0,hr:hr,r:r,focus:foc?'r':null,crownOff:foc?(t<5000?-seg(t,4500,5000):1-ez(seg(t,5000,5300)))*.9*(t<5000?1:1):0,last:'60×8',press:press(t,6120)})}],
+   [6300,7700,function(tt){return SC.logged({i:0,r:'9',delta:'+1 次',u:seg(tt,0,900)})}],
+   [7700,11300,function(){var u=seg(t,7950,11000);return SC.rest({i:1,left:90*(1-u),hr:Math.round(lerp(134,108,ez(u))),drop:Math.round(lerp(0,26,ez(u)))})}],
+   [11300,12700,function(){return SC.set({i:1,hr:Math.round(lerp(108,116,seg(t,11300,12700))),last:'60×8',press:press(t,12300)})}],
+   [12700,13900,function(tt){return SC.logged({i:1,r:'8',delta:'= 持平',u:seg(tt,0,900)})}],
+   [14400,16700,function(){var v=t<15000?-1:t<15500?1:2,k=t<15000?0:t<15500?seg(t,15000,15200):seg(t,15500,15700);return SC.rir({v:v,crownOff:(1-k)*.8*(t<15000?0:1),press:press(t,16300)})}],
+   [16700,18700,function(tt){return SC.sumA({u:ez(seg(tt,100,1100))})}],
+   [18700,20900,function(){return SC.sumB({press:press(t,20300)})}]];
+  F+=finger(t,104,217,1100)+finger(t,104,215,12300)+finger(t,104,217,16300)+finger(t,104,217,20300);
+  R.cap=t<1500?'开始训练':t<4400?'做组中 · 实时心率':t<5800?'表冠 · 多做了一个，次数 +1':t<6300?'Double Tap · 记一组，不碰屏幕':t<7700?'记好了 · 比上次':t<11300?'组间休息 · 到点震动（快放）':t<12700?'下一组 · 点一下':t<13900?'记好了':t<14400?'……第 4 组':t<16700?'最后一组 · 还能做几个（可不填）':t<18700?'结束 · 完成组数':'结束 · 训练质量摆事实，不打分';
+  R.chips={tap:inr(t,1000,1400)||inr(t,12200,12600)||inr(t,16200,16600)||inr(t,20200,20600),dt:inr(t,5850,6300),crown:inr(t,4500,5600)||inr(t,14900,15900)||inr(t,18500,19000),hap:inr(t,1300,1650)||inr(t,6300,6750)||inr(t,10950,11400)||inr(t,12700,13100)||inr(t,16700,17100)};
+  R.crown=R.chips.crown?1:0;R.rot=t/260;
+  var dt='';
+  R.svg=play(clips,t)+F+dt;R.len=21000;return R}
+
+function meal(t){var R={cap:'',chips:{},crown:0,rot:0};
+  var M2={t:'鸡胸饭',k:'570',pr:'45',a:1180,b:570};
+  var clips=[
+   [0,1300,function(){return SC.today({lit:1})}],
+   [1300,3900,function(tt){var u=ez(seg(tt,0,420)),en=tt<300?0:tt>2300?.05:.35+.65*Math.abs(Math.sin(tt/210)*Math.sin(tt/530+1));
+      return SC.listen({cx:lerp(174,104,u),cy:lerp(220,116,u),size:lerp(40,64,u),T:tt+400,env:en,sec:'0:0'+Math.min(2,Math.floor(tt/1000)),hint:seg(tt,300,600)})}],
+   [3900,4550,function(tt){return SC.think({T:tt+300})}],
+   [4550,6150,function(tt){return SC.confirm({u:seg(tt,60,1560),T:tt,to:seg(tt,0,220)})}],
+   [6150,6950,function(tt){return SC.think({T:tt+300})}],
+   [6950,9700,function(tt){return SC.meal({u:ez(seg(tt,60,1000))})}],
+   [10000,11350,function(){return SC.quick({hot:t>10700?1:-1,hu:seg(t,10700,10950)})}],
+   [11350,13700,function(tt){return SC.meal({u:ez(seg(tt,60,1000)),m:M2})}]];
+  R.cap=t<1300?'今天一眼 · 按住右下的核心':t<3900?'按住说：「午饭一碗牛肉面加一个蛋」':t<4550?'松手 · 服务器转写':t<6150?'1.5 秒内可取消，否则自动发送':t<6950?'Jarvis 记录中':t<9700?'已记到午餐 · 可撤销（要确认）':t<10000?'另一条路：':t<11350?'快记 · 点一格，不用 AI':'已记录';
+  R.chips={tap:inr(t,900,3700)||inr(t,10600,11000),hap:inr(t,1300,1600)||inr(t,3700,4000)||inr(t,6950,7400)||inr(t,11350,11800)};
+  R.svg=play(clips,t)+finger(t,174,220,950,3700)+finger(t,153,85,10700);R.len=13800;return R}
+
+function show(t){var R=(FILM==='meal'?meal:sets)(t);
+  document.getElementById('w').innerHTML=frame(R.svg,W46,2,{crown:R.crown,crownRot:R.rot});
+  document.getElementById('cap').textContent=R.cap;
+  document.querySelectorAll('.chip').forEach(function(c){c.className='chip'+(R.chips[c.dataset.k]?' on':'')});return R}
+if(q.get('t')!=null)show(+q.get('t'));
+else{var t0=performance.now();(function loop(now){var R=show(0);var len=R.len;show((now-t0)%len);requestAnimationFrame(loop)})(t0)}
+</script></body></html>
