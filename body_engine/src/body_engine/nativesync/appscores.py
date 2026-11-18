@@ -174,6 +174,35 @@ def _pending(conn: psycopg.Connection, uid: int) -> dict | None:
     return conn.execute("SELECT * FROM app_score_pending WHERE user_id = %s", (uid,)).fetchone()
 
 
+def _gave_up_recently(s: dict | None) -> bool:
+    """A queued check of this user was given up within CHECK_EVERY_HOURS (run_pending): no new one until then."""
+    t = s and s.get("last_given_up_at")
+    return bool(t and t > datetime.now(t.tzinfo) - timedelta(hours=P.CHECK_EVERY_HOURS))
+
+
+def _store_unchecked(conn: psycopg.Connection, uid: int, algo_version: str, bundle_version: str | None,
+                     rows: dict[date, dict], gave_up: bool) -> None:
+    """Store rows as the app's without a check, when the server could not run one (a given-up check, and the uploads
+    of the CHECK_EVERY_HOURS after it). Why not the server's rows: the check failed because the server could not compute
+    them, so there are none; dropping the app's would leave the user without scores on the server, silently. The JS
+    bundle matches Python to ~1e-13 in the golden tests, and nothing about the app is learnt from a server failure, so
+    trust, the checked bundle and the last check stay as they were: the next check of this bundle runs when due, and the
+    rows are told apart by daily_scores.bundle_version. gave_up counts it in app_score_state (checks_given_up,
+    last_given_up_at), which the deployment's health check reports. A user without state yet starts untrusted. Commits."""
+    if rows:
+        E.write(conn, uid, list(rows.values()), min(rows), max(rows), only=set(rows), origin="app",
+                bundle_version=bundle_version)
+    conn.execute(
+        """INSERT INTO app_score_state AS s (user_id, algo_version, bundle_version, last_upload_at, uploads, days_stored,
+                                             trusted, checks_given_up, last_given_up_at)
+           VALUES (%(u)s, %(a)s, NULL, now(), 1, %(n)s, FALSE, %(g)s, CASE WHEN %(gave)s THEN now() END)
+           ON CONFLICT (user_id) DO UPDATE SET last_upload_at = now(), uploads = s.uploads + 1,
+             days_stored = s.days_stored + EXCLUDED.days_stored, checks_given_up = s.checks_given_up + EXCLUDED.checks_given_up,
+             last_given_up_at = coalesce(EXCLUDED.last_given_up_at, s.last_given_up_at), updated_at = now()""",
+        {"u": uid, "a": algo_version, "n": len(rows), "g": 1 if gave_up else 0, "gave": gave_up})
+    conn.commit()
+
+
 def _rows_json(rows: dict[date, dict]) -> dict:
     return {d.isoformat(): {k: v for k, v in r.items() if k != "date"} for d, r in rows.items()}
 
@@ -228,6 +257,11 @@ def upload(conn: psycopg.Connection, uid: int, algo_version: str, bundle_version
     if not (_check_inline() if inline is None else inline):
         p = _pending(conn, uid)
         waiting = (p is not None and p["algo_version"] == algo_version and p["bundle_version"] == bundle_version)
+        if due and not waiting and rows and _gave_up_recently(s):   # the last queued check could not be finished
+            _store_unchecked(conn, uid, algo_version, bundle_version, rows, gave_up=False)
+            return {"status": "ok", "stored": len(rows), "check": {"unchecked": True},
+                    "server_algo_version": SP.ALGO_VERSION, "app_scoring": active(conn, uid),
+                    "data_version": store.data_version(conn, uid)}
         day = p["check_date"] if waiting else (_check_day(rows, today) if due else None)
         if rows and day is not None:
             _queue_check(conn, uid, algo_version, bundle_version, day, rows, merge=waiting)
@@ -288,7 +322,8 @@ def run_pending(conn: psycopg.Connection, uid: int) -> dict | None:
     then store the waiting rows (passed) or the server's row of that day (failed), as an inline check would have.
     Uploads that arrived while the check ran are taken with it; a newer bundle's upload that replaced the waiting one is
     left for the next run. A check that was started CHECK_MAX_ATTEMPTS times without finishing (its job process died, e.g.
-    at its memory limit) is dropped, so it cannot hold up the queue every minute. Commits. None = nothing was waiting."""
+    at its memory limit) is given up so it cannot hold up the queue every minute: the waiting rows are stored unchecked
+    and counted (_store_unchecked), never dropped. Commits. None = nothing was waiting."""
     p = _pending(conn, uid)
     conn.commit()
     if p is None:
@@ -297,11 +332,18 @@ def run_pending(conn: psycopg.Connection, uid: int) -> dict | None:
         conn.execute("DELETE FROM app_score_pending WHERE user_id = %s AND updated_at = %s", (uid, p["updated_at"]))
         conn.commit()
         return {"status": "stale_algo", "stored": 0}
-    if p["attempts"] >= P.CHECK_MAX_ATTEMPTS:   # the check itself keeps killing the job: stop, keep the server's rows
-        conn.execute("DELETE FROM app_score_pending WHERE user_id = %s AND updated_at = %s", (uid, p["updated_at"]))
-        conn.commit()
-        log.warning("queued app score check of user %s given up after %s attempts", uid, p["attempts"])
-        return {"status": "gave_up", "stored": 0}
+    if p["attempts"] >= P.CHECK_MAX_ATTEMPTS:   # the check itself keeps dying: store the rows unchecked, count it
+        got = conn.execute("""DELETE FROM app_score_pending WHERE user_id = %s AND algo_version = %s
+                              AND bundle_version IS NOT DISTINCT FROM %s RETURNING rows""",
+                           (uid, p["algo_version"], p["bundle_version"])).fetchone()
+        if got is None:
+            conn.rollback()
+            return {"status": "replaced"}
+        rows = _rows_of(got["rows"])
+        _store_unchecked(conn, uid, p["algo_version"], p["bundle_version"], rows, gave_up=True)
+        log.warning("queued app score check of user %s given up after %s attempts; %s days stored unchecked",
+                    uid, p["attempts"], len(rows))
+        return {"status": "gave_up", "stored": len(rows)}
     conn.execute("UPDATE app_score_pending SET attempts = attempts + 1 WHERE user_id = %s", (uid,))
     conn.commit()
     tz = ZoneInfo(_tz_name(conn, uid))

@@ -558,17 +558,6 @@ def test_app_scores_check_is_queued_out_of_the_api(client, users, dsn, monkeypat
                c.execute("SELECT date, origin, recovery FROM daily_scores WHERE user_id = %s", (uid,)).fetchall()}
         assert got[d2] == ("server", 50) and got[d1] == ("app", 61), "nothing else of a failed upload is stored"
         assert appscores.plan(c, uid) == {"mode": "server"}
-    # a check whose job keeps dying (e.g. at the job's memory limit) is dropped after CHECK_MAX_ATTEMPTS starts
-    up({**body, "bundle_version": "0.2.3"})
-    with conn_of(dsn) as c:
-        def dies(conn, u, days, end=None):
-            raise MemoryError
-        monkeypatch.setattr(appscores, "server_rows", dies)
-        for _ in range(P.CHECK_MAX_ATTEMPTS):
-            assert appscores.run_pending_safe(c, uid) == {"error": "MemoryError: "}
-        assert appscores.run_pending_safe(c, uid) == {"status": "gave_up", "stored": 0}
-        assert appscores.run_pending_safe(c, uid) is None
-        monkeypatch.setattr(appscores, "server_rows", fake_server)
     # the server's algorithm changed while an upload waited: dropped, the app uploads again with the new version
     up({**body, "bundle_version": "0.2.2"})
     with conn_of(dsn) as c:
@@ -576,6 +565,37 @@ def test_app_scores_check_is_queued_out_of_the_api(client, users, dsn, monkeypat
         c.commit()
         assert appscores.run_pending_safe(c, uid) == {"status": "stale_algo", "stored": 0}
         assert len(calls) == 2
+    # a check whose job keeps dying (e.g. at the job's memory limit) is given up after CHECK_MAX_ATTEMPTS starts: the
+    # rows are stored unchecked (never dropped), counted for the health check, trust and the checked bundle unchanged
+    up({**body, "bundle_version": "0.2.3", "days": [row(d0, recovery=70), row(d1, recovery=71)]})
+    with conn_of(dsn) as c:
+        before = appscores.state(c, uid)
+
+        def dies(conn, u, days, end=None):
+            raise MemoryError
+        monkeypatch.setattr(appscores, "server_rows", dies)
+        for _ in range(P.CHECK_MAX_ATTEMPTS):
+            assert appscores.run_pending_safe(c, uid) == {"error": "MemoryError: "}
+        assert appscores.run_pending_safe(c, uid) == {"status": "gave_up", "stored": 2}
+        assert appscores.run_pending_safe(c, uid) is None
+        got = {r["date"]: (r["origin"], r["bundle_version"], r["recovery"]) for r in
+               c.execute("SELECT date, origin, bundle_version, recovery FROM daily_scores WHERE user_id = %s", (uid,)).fetchall()}
+        assert got[d0] == ("app", "0.2.3", 70) and got[d1] == ("app", "0.2.3", 71)
+        after = appscores.state(c, uid)
+        assert after["checks_given_up"] == 1 and after["last_given_up_at"] is not None
+        assert (after["trusted"], after["bundle_version"], after["last_check_at"]) == \
+            (before["trusted"], before["bundle_version"], before["last_check_at"])
+    # for CHECK_EVERY_HOURS after that, a due check is not started again: the upload is stored unchecked at once
+    soon = up({**body, "bundle_version": "0.2.4", "days": [row(d2, recovery=72)]})
+    assert soon["stored"] == 1 and soon["check"] == {"unchecked": True} and len(calls) == 2
+    with conn_of(dsn) as c:
+        assert c.execute("SELECT count(*) AS n FROM app_score_pending WHERE user_id = %s", (uid,)).fetchone()["n"] == 0
+        assert appscores.state(c, uid)["checks_given_up"] == 1   # counted once per give-up, not per upload
+        c.execute("UPDATE app_score_state SET last_given_up_at = now() - interval '7 hours' WHERE user_id = %s", (uid,))
+        c.commit()
+    monkeypatch.setattr(appscores, "server_rows", fake_server)
+    later = up({**body, "bundle_version": "0.2.4", "days": [row(d2, recovery=73)]})
+    assert later["check"] == {"date": d2.isoformat(), "queued": True}, "checks resume after the pause"
 
 
 def test_hr_histograms_by_month_equal_one_window(users, dsn, monkeypatch):

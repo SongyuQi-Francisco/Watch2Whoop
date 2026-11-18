@@ -14,3 +14,9 @@ CREATE TABLE IF NOT EXISTS app_score_pending (
   queued_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- A queued check that could not be finished (CHECK_MAX_ATTEMPTS starts, its job process died each time): the waiting rows
+-- are stored as the app's, unchecked (trust, the checked bundle and the last check stay as they were), counted here, and
+-- no new check is started for this user for CHECK_EVERY_HOURS. The deployment's health check shows recent ones.
+ALTER TABLE app_score_state ADD COLUMN IF NOT EXISTS checks_given_up INT NOT NULL DEFAULT 0;
+ALTER TABLE app_score_state ADD COLUMN IF NOT EXISTS last_given_up_at TIMESTAMPTZ;

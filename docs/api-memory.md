@@ -105,8 +105,11 @@ the next spot check took it to 425 MB, above the limit. On the server the API sa
   (`sync_refresh` → `sync-refresh-run`, a one-off container with its own limit). The job checks and then stores the rows
   (passed) or the server's row of that day (failed: the app is no longer trusted and the range is recomputed), exactly
   as the request used to; uploads arriving meanwhile join the waiting one. The hourly job runs a waiting check too (before
-  its skip decision), in case the per-minute job does not run; a check started 3 times without finishing (its job died,
-  e.g. at the job's own limit) is dropped so it cannot hold up the queue. The app needs no change: it treats `ok` the same as
+  its skip decision), in case the per-minute job does not run. A check started 3 times without finishing (its job died,
+  e.g. at the job's own limit) is given up so it cannot hold up the queue, but its rows are never dropped: they are
+  stored as the app's, unchecked (the server could not compute its own; trust and the checked bundle stay as they were),
+  counted in `app_score_state.checks_given_up` / `last_given_up_at` for the health check, and for the next 6 hours no
+  new check is started (uploads are stored unchecked right away). The app needs no change: it treats `ok` the same as
   before and only reads `check.ok` for its report. Job logs carry status, counts, the day and field names, never values.
 - **Histograms a month at a time** (`nativesync/scoring.hr_histograms`, `params.HIST_CHUNK_DAYS = 31`): memory follows
   the chunk; a day's counts do not depend on the window (the loader keeps one sample per type and time stamp, every
@@ -174,5 +177,5 @@ container on the database container's network, not with `docker exec` inside it.
 
 - **现象**：11-10 起 API（上限 384M）每天又被内核杀 0–5 次，到 11-18 共 32 次，都是 uvicorn 本身、和定时任务时间无关。把每次被杀的时间和反向代理的访问日志对齐：**32 次全部**有一个 `PUT /v1/users/me/scores/app`（app 上传自己算的分数）正在处理，都紧跟同一个用户的 `GET /v1/sync/scoring`；被杀的请求没记下抽查，所以这个用户之后每次上传都要抽查、每次都把 API 打死。
 - **原因**：上传的**抽查**在 API 进程里用 Python 重算一天，而评分引擎总是加载这个人从评分起点往前 365 天到今天的全部原始样本，一年的手表数据（合成测试约 46 万条）就是 **+225MB、约 10 秒**；`/sync/scoring` 带 430 天心率直方图也一样（+185MB）。glibc 在大请求之后不把释放的内存还给系统（动作库缓存等长期对象把它钉住），进程平时就停在 320–380MB，再来一次抽查就超过上限。
-- **修复**：① 抽查不在 API 进程里做：上传的行先放进 `app_score_pending`（迁移 1200），马上回 `ok`（`check.queued = true`），由每分钟的 `sync-refresh-run`（一次性容器，有自己的上限）抽查后再存（通过 = 存 app 的行；不通过 = 存服务器那天的行、不再信任、重算），结果和原来一样，只晚约一分钟；每小时任务兜底；`BODY_SYNC_SCORES=inline` 时照旧在请求里做。app 不用改。② 心率直方图按月分块加载（结果逐天一致，有测试）。③ 每分钟一次 `malloc_trim(0)`（进程涨了 16MB 才做，`BODY_MALLOC_TRIM_S`，0 = 关）。
+- **修复**：① 抽查不在 API 进程里做：上传的行先放进 `app_score_pending`（迁移 1200），马上回 `ok`（`check.queued = true`），由每分钟的 `sync-refresh-run`（一次性容器，有自己的上限）抽查后再存（通过 = 存 app 的行；不通过 = 存服务器那天的行、不再信任、重算），结果和原来一样，只晚约一分钟；每小时任务兜底；同一个检查开始 3 次都没做完（任务进程死了）就放弃，但行不丢：照常存成 app 的行（未抽查，信任状态不变），在 `app_score_state.checks_given_up` 计数给健康检查看，之后 6 小时不再开新的抽查；`BODY_SYNC_SCORES=inline` 时照旧在请求里做。app 不用改。② 心率直方图按月分块加载（结果逐天一致，有测试）。③ 每分钟一次 `malloc_trim(0)`（进程涨了 16MB 才做，`BODY_MALLOC_TRIM_S`，0 = 关）。
 - **实测**（同一镜像、Linux）：直方图请求峰值 382 → 191MB；抽查上传 425MB / 10 秒 → 191MB / 不到 0.1 秒；之后并发请求 275 → 194MB；排队的抽查在任务容器里峰值 297MB / 15 秒（上限 512M）。
