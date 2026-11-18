@@ -43,4 +43,12 @@ enum LevelParams {
   /// A tab root that scrolls shows at least this much of its next block above the key band (rule 1, form 2), so the cut
   /// itself says there is more (on iOS the only sign a page scrolls is content cut by the fold).
   static let peek: CGFloat = 48
+  /// What a scrolling tab root aims for (a little more than `peek`, so the cut passes through the next block's numbers).
+  static let peekTarget: CGFloat = 56
+  /// The joint between a first glance and its next block (drilldown `.joint`: 24 pt with one down chevron).
+  static let joint: CGFloat = 24
+  /// The first glance's gaps never shrink below this share of their value to make room for the peek.
+  static let minGapScale: CGFloat = 0.3
+  /// Where the gaps are not enough (667 pt phones), the dial or ring of that glance gives up at most this many points.
+  static let maxHeroShrink: CGFloat = 64
 }

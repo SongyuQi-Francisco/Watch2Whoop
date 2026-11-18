@@ -21,6 +21,9 @@ private struct CirclesScreen: View {
   @State private var sheet: CircleSheet?
   @Environment(\.scenePhase) private var phase
 
+  /// The first glance's gaps at factor 1 (`foldFit`).
+  static var glanceGaps: CGFloat { Rhythm.gap(18) + Rhythm.gap(40) + Rhythm.gap(44) }
+
   var body: some View {
     NavigationStack {
       ScrollViewReader { proxy in
@@ -39,9 +42,10 @@ private struct CirclesScreen: View {
             if store.list != nil && !store.hasCircles {
               EmptyCircles(create: { sheet = .create }, join: { sheet = .join("") })
             } else {
-              glance(proxy)
-              // below the fold (vertical scroll only): the 2.0.0 feed, members and leaderboards
-              modeBar.padding(.top, 110).id("circles.list")
+              FoldScaled { fold in glance(proxy, fold: fold) }
+              // the joint, then the 2.0.0 feed, members and leaderboards, their switch cut by the fold (option A)
+              FoldJoint()
+              modeBar.id("circles.list")
               switch store.mode {
               case .feed where store.feedOn:
                 FeedList(store: store) { id in withAnimation { proxy.scrollTo(id, anchor: .top) } }
@@ -56,6 +60,7 @@ private struct CirclesScreen: View {
           .padding(.bottom, 32)
           .frame(maxWidth: Metrics.maxContentWidth)
           .frame(maxWidth: .infinity)
+          .coordinateSpace(name: FoldFit.space)
         }
         .refreshable {
           await store.refresh(force: true)
@@ -64,6 +69,7 @@ private struct CirclesScreen: View {
         .background(Palette.bg.ignoresSafeArea())
         .statusBarCover()
         .clearOfJarvisKey()
+        .foldFit(gaps: Self.glanceGaps)
       }
       .toolbar(.hidden, for: .navigationBar)
     }
@@ -161,24 +167,24 @@ private struct CirclesScreen: View {
   }
 
   /// The first glance: who trained today on the recovery dial, the group's sleep and strain, faces 动态 · 排行 · 邀请.
-  @ViewBuilder private func glance(_ proxy: ScrollViewProxy) -> some View {
+  @ViewBuilder private func glance(_ proxy: ScrollViewProxy, fold: FoldFit.Fit) -> some View {
     let people = CircleGlanceRules.people(store.overview)
     let count = CircleGlanceRules.trained(people)
     let me = store.overview?.me
     let others = people.filter { !($0.isSelf || $0.shared == nil) }
     VStack(spacing: 0) {
       CircleDial(people: CircleGlanceRules.dial(people), trained: count.trained, total: count.total,
-                 side: TodayGlancePage.dialSide) { p in openPerson(p.id, proxy) }
+                 side: TodayGlancePage.dialSide - fold.shrink) { p in openPerson(p.id, proxy) }
         .frame(maxWidth: .infinity)
-        .padding(.top, Rhythm.gap(18))
+        .padding(.top, Rhythm.gap(18, fold: fold))
       HStack(alignment: .top, spacing: 20) {
         groupReading(tr("平均睡眠", "Avg sleep"), people.map { $0.scores?.sleepScore }, others: others.map { $0.scores?.sleepScore },
                      mine: me?.scores?.sleepScore, max: 100, step: 10, digits: 0, tone: .sleep)
         groupReading(tr("平均负荷", "Avg strain"), people.map { $0.scores?.strain }, others: others.map { $0.scores?.strain },
                      mine: me?.scores?.strain, max: 21, step: 3, digits: 1, tone: .train)
       }
-      .padding(.top, Rhythm.gap(40))
-      faces(proxy).padding(.top, Rhythm.gap(44))
+      .padding(.top, Rhythm.gap(40, fold: fold))
+      faces(proxy).foldGlanceEnd().padding(.top, Rhythm.gap(44, fold: fold))
     }
   }
 

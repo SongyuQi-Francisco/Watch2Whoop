@@ -472,17 +472,27 @@ struct CommentsSheet: View {
       Spacer(minLength: 0)
       if c.local == .pending {
         Icon(.clock, size: 14).foregroundColor(Palette.text3).accessibilityLabel(tr("发送中", "Sending"))
+      } else if c.user.isSelf || c.id > 0 {
+        // the visible door of the long press (2.1.0, drilldown README section 8): delete my own, report / block others'
+        Menu { actions(c) } label: {
+          Icon(.ellipsis, size: 16).foregroundColor(Palette.text3)
+            .frame(width: 32, height: 32)
+            .contentShape(Rectangle())
+        }
+        .accessibilityLabel(tr("更多", "More"))
       }
     }
     .contentShape(Rectangle())
-    .contextMenu {
-      if c.user.isSelf {
-        Button(role: .destructive) { confirmDelete = c } label: {
-          Label { Text(tr("删除", "Delete")) } icon: { Image(Icon.Name.trash.assetName).renderingMode(.template) }
-        }
-      } else if c.id > 0 {
-        ModerationItems(store: store, kind: .comment, target: c.id, user: c.user.id, post: postId)
+    .contextMenu { actions(c) }
+  }
+
+  @ViewBuilder private func actions(_ c: Comment) -> some View {
+    if c.user.isSelf {
+      Button(role: .destructive) { confirmDelete = c } label: {
+        Label { Text(tr("删除", "Delete")) } icon: { Image(Icon.Name.trash.assetName).renderingMode(.template) }
       }
+    } else if c.id > 0 {
+      ModerationItems(store: store, kind: .comment, target: c.id, user: c.user.id, post: postId)
     }
   }
 

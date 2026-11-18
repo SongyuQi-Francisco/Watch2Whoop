@@ -11,14 +11,15 @@ struct FoodGlanceTop: View {
   let water: () -> Void
   let recipes: () -> Void
   @Environment(\.askAI) private var askAI
+  @Environment(\.foldFit) private var fold
 
   static var dialSide: CGFloat { TodayGlancePage.dialSide }
 
   var body: some View {
     VStack(spacing: 0) {
-      hero.padding(.top, Rhythm.gap(24))
-      readings.padding(.top, Rhythm.gap(36))
-      faces.padding(.top, Rhythm.gap(40))
+      hero.padding(.top, Rhythm.gap(24, fold: fold))
+      readings.padding(.top, Rhythm.gap(36, fold: fold))
+      faces.foldGlanceEnd().padding(.top, Rhythm.gap(40, fold: fold))
     }
   }
 
@@ -27,7 +28,7 @@ struct FoodGlanceTop: View {
   private var hero: some View {
     let n = store.nutrition
     let d = RecordGlance.foodDial(kcal: n?.intake.kcal, goal: n?.goal.kcal)
-    let side = Self.dialSide, k = side / 280
+    let side = Self.dialSide - fold.shrink, k = side / 280
     return Button(action: meals) {
       TickDial(fraction: d.fraction, tone: .text, zones: d.target.map { [$0] } ?? [], side: side) {
         VStack(spacing: 0) {
