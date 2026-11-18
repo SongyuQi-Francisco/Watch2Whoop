@@ -206,10 +206,11 @@ final class FoodStore: LocalPageStore {
 
   // MARK: - water
 
-  func addWater(_ ml: Int) async -> WriteOutcome {
-    let at = ISO8601DateFormatter.localWithOffset.string(from: Date())
-    let out = await write(kind: FoodKind.water, date: today, group: "water", method: .post, path: FoodAPI.waterPath,
-                          body: ["ml": ml, "source": "button", "at": at])
+  /// `day`, `at`, `clientId`: a drink tapped on the Apple Watch keeps its own day, time and key (phase 2a).
+  func addWater(_ ml: Int, day: String? = nil, at when: Date = Date(), clientId: String? = nil) async -> WriteOutcome {
+    let at = ISO8601DateFormatter.localWithOffset.string(from: when)
+    let out = await write(kind: FoodKind.water, date: day ?? today, group: "water", method: .post, path: FoodAPI.waterPath,
+                          body: ["ml": ml, "source": "button", "at": at], clientId: clientId)
     if out.sent { await refreshDay() }
     return out
   }
@@ -248,18 +249,39 @@ final class FoodStore: LocalPageStore {
 
   // MARK: - quick meals and recipes
 
-  /// grams: one value per food, when they were changed in the template's sheet.
-  func log(_ t: MealTemplate, again: Bool = false, grams: [Double?] = []) async -> WriteOutcome {
-    var body: [String: Any] = ["date": today]
+  /// grams: one value per food, when they were changed in the template's sheet. `day` / `clientId`: a quick meal tapped on
+  /// the Apple Watch keeps its own day and key (phase 2a).
+  func log(_ t: MealTemplate, again: Bool = false, grams: [Double?] = [], day: String? = nil,
+           clientId: String? = nil) async -> WriteOutcome {
+    let date = day ?? today
+    var body: [String: Any] = ["date": date]
     if again { body["allow_duplicates"] = true }
     let changed = t.overrides(grams: grams)
     if let changed { body["items"] = changed }
     var overlay = (changed != nil ? t.totals(grams: grams) : t.totals).asJSON
     overlay.merge(["template_id": t.id, "name": t.name, "meal": t.meal.logName]) { $1 }
-    let out = await write(kind: FoodKind.mealLog, date: today, group: "meal", method: .post, path: FoodAPI.logTemplate(t.id),
-                          body: body, overlay: overlay)
+    let out = await write(kind: FoodKind.mealLog, date: date, group: "meal", method: .post, path: FoodAPI.logTemplate(t.id),
+                          body: body, overlay: overlay, clientId: clientId)
     if out.sent { await refreshDay() }
     return out
+  }
+
+  /// Undo of a quick meal or drink logged with `clientId` (the Apple Watch's undo, phase 2a): still queued → dropped
+  /// here; already sent → the same request again, which the server answers from its idempotency store (`client_id`,
+  /// nothing new is written) with the id it gave, then that id is deleted. A log already gone (404) counts as undone.
+  func undoWrite(clientId: String, path: String, body: [String: Any], delete: @escaping ([String: Any]) -> String?) async -> Bool {
+    let ok = await undo(clientId: clientId) {
+      var b = body
+      b["client_id"] = clientId
+      let data = try JSONSerialization.data(withJSONObject: b)
+      let first = try await self.api.data(APIRequest(method: .post, path: path, body: data, idempotent: true))
+      guard let j = (try? JSONSerialization.jsonObject(with: first)) as? [String: Any], let del = delete(j) else {
+        throw APIError.notFound
+      }
+      do { _ = try await self.api.data(APIRequest(method: .delete, path: del)) } catch APIError.notFound {}
+    }
+    if ok { await refreshDay() }
+    return ok
   }
 
   /// Undo today's logging of a template.

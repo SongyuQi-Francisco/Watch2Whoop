@@ -61,12 +61,15 @@ class LocalPageStore: ObservableObject {
 
   /// Writes locally, sends at once, and says how it went for this write.
   @discardableResult
+  /// `clientId`: a key made elsewhere (the Apple Watch's event id), so a write that arrives twice is stored once.
   func write(kind: String, date: String?, group: String, method: APIRequest.Method, path: String, body: [String: Any]?,
-             overlay: [String: Any]? = nil, clientIdInBody: Bool = true, supersede: Bool = false) async -> WriteOutcome {
+             overlay: [String: Any]? = nil, clientIdInBody: Bool = true, supersede: Bool = false,
+             clientId: String? = nil) async -> WriteOutcome {
     do {
       if supersede { try LocalRecords.supersede(db, group: group) }
       let cid = try LocalRecords.write(db, kind: kind, date: date, group: group, method: method.rawValue, path: path,
-                                       body: body, overlay: overlay, clientIdInBody: clientIdInBody)
+                                       body: body, overlay: overlay, clientIdInBody: clientIdInBody,
+                                       clientId: clientId ?? UUID().uuidString.lowercased())
       await send()
       return WriteOutcome(clientId: cid, item: LocalRecords.outboxState(db, clientId: cid))
     } catch {

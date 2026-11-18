@@ -280,17 +280,15 @@ final class WatchEventQueueTests: XCTestCase {
   }
 
   func testSyncStates() {
-    let today = "2026-01-02"
+    let now = t0.addingTimeInterval(150)
     let ctx = WatchContext(signedIn: true, plan: plan([ex("bench")]), lang: "zh", sentAt: t0)
-    func state(_ c: WatchContext?, _ q: WatchEventQueue = WatchEventQueue(), reachable: Bool = true, running: Bool = false,
-               day: String = today) -> WatchSyncState {
-      WatchSyncState.derive(context: c, queue: q, reachable: reachable, today: day, sessionRunning: running, now: t0.addingTimeInterval(150))
+    func state(_ c: WatchContext?, _ q: WatchEventQueue = WatchEventQueue(), reachable: Bool = true) -> WatchSyncState {
+      WatchSyncState.derive(context: c, queue: q, reachable: reachable, now: now)
     }
     XCTAssertEqual(state(nil), .signedOut)                                                                  // S8
     XCTAssertEqual(state(WatchContext(signedIn: false, plan: nil, lang: "zh", sentAt: t0)), .signedOut)
-    XCTAssertEqual(state(WatchContext(signedIn: true, plan: nil, lang: "zh", sentAt: t0)), .noPlan)       // S9
-    XCTAssertEqual(state(ctx, day: "2026-01-03"), .noPlan)                                                 // yesterday's plan
-    XCTAssertEqual(state(ctx, running: true, day: "2026-01-03"), .linked(minutesAgo: nil))                // past midnight mid-session
+    // phase 1's S9 wall is gone: no plan is a state of home, not of the sync mark
+    XCTAssertEqual(state(WatchContext(signedIn: true, plan: nil, lang: "zh", sentAt: t0)), .linked(minutesAgo: nil))
     var q = WatchEventQueue()
     q.heard(at: t0)
     XCTAssertEqual(state(ctx, q), .linked(minutesAgo: 2))                                                  // S1
@@ -420,5 +418,431 @@ final class PhoneWatchLinkTests: XCTestCase {
     d.removePersistentDomain(forName: "watch-inbox-test")
     inbox.save(d)
     XCTAssertEqual(PhoneWatchInbox.load(d), inbox)
+  }
+}
+
+// MARK: - phase 2a: home, quick log, resume
+
+private let day = "2026-01-02"
+
+private func today(recovery: Double? = 82, day d: String = day, dataAgo: TimeInterval = 120,
+                   phone: WatchPhoneSync = WatchPhoneSync(.ok)) -> WatchToday {
+  WatchToday(day: d, recovery: recovery, tone: recovery == nil ? nil : .good, usualLo: 58, usualHi: 74, verdict: "可上强度",
+             reason: recovery == nil ? "昨晚没戴表" : nil, sleep: 88, strain: 2.8, computedAt: t0,
+             dataAt: t0.addingTimeInterval(-dataAgo), phone: phone)
+}
+
+private func meal(_ id: Int, kcal: Double? = 500) -> WatchQuickMeal {
+  WatchQuickMeal(id: id, name: "m\(id)", slot: "Lunch", kcal: kcal, proteinG: 30)
+}
+
+final class WatchHomeTests: XCTestCase {
+  private func ctx(plan p: WatchPlan? = plan([ex("bench")]), planFor: String? = nil, today t: WatchToday? = today(),
+                   quick: WatchQuick? = nil) -> WatchContext {
+    WatchContext(signedIn: true, plan: p, lang: "zh", sentAt: t0, planFor: planFor, today: t, quick: quick)
+  }
+
+  /// A context saved by the phase-1 watch (or sent by a phase-1 phone) still decodes; the new fields are nil.
+  func testOldContextShapeStillDecodes() throws {
+    let old = """
+    {"signedIn": true, "lang": "zh", "sentAt": 1800000000000,
+     "plan": {"day": "2026-01-02", "title": "Upper A", "exercises": [{"slug": "bench", "name": "Bench", "sets": 3, "done": 0,
+       "reps": 8, "weightKg": 60, "weighted": true, "restSec": 90, "weightStepKg": 2.5, "last": ["60×8"]}]}}
+    """
+    let c = try XCTUnwrap(WatchCodec.context([WatchCodec.contextKey: Data(old.utf8)]))
+    XCTAssertTrue(c.signedIn)
+    XCTAssertEqual(c.plan?.exercises.first?.slug, "bench")
+    XCTAssertNil(c.planFor)
+    XCTAssertNil(c.today)
+    XCTAssertNil(c.quick)
+    XCTAssertEqual(WatchHome.derive(context: c, today: day, sync: .linked(minutesAgo: 1)).key, .train("Upper A"))
+    // an old event (no quick-log fields) too
+    let e = """
+    {"id": "x", "kind": "set", "day": "2026-01-02", "slug": "bench", "setIndex": 0, "reps": 8, "weightKg": 60, "at": 1800000000000}
+    """
+    let ev = try XCTUnwrap(WatchCodec.event([WatchCodec.eventKey: Data(e.utf8)]))
+    XCTAssertTrue(ev.isTraining)
+    XCTAssertNil(ev.templateId)
+  }
+
+  func testNewContextRoundTrips() throws {
+    var q = WatchQuick(day: day, meals: [meal(1), meal(2, kcal: nil)], waterMl: 250, kcal: 600, kcalGoal: 2300)
+    q.results = ["a": true, "b": false]
+    let c = ctx(planFor: day, quick: q)
+    XCTAssertEqual(c.planFor, day)
+    XCTAssertEqual(WatchCodec.context(WatchCodec.message(c)), c)
+    let m = WatchSetEvent.quick(.meal, id: "m", day: day, at: t0, templateId: 7)
+    XCTAssertEqual(WatchCodec.event(WatchCodec.message(m)), m)
+    XCTAssertFalse(m.isTraining)
+    let u = WatchSetEvent.quick(.undo, id: "u", day: day, at: t0, target: "m")
+    XCTAssertEqual(WatchCodec.event(WatchCodec.message(u))?.target, "m")
+  }
+
+  /// Phase 2a has no voice: the core is dimmed and a hold is refused; 2b changes only `WatchVoice.derive`.
+  func testVoiceIsUnavailableUntilItShips() {
+    XCTAssertEqual(WatchVoice.derive(context: ctx(), sync: .linked(minutesAgo: 1)), .unavailable(.notYet))
+    XCTAssertEqual(WatchVoice.derive(context: nil, sync: .signedOut), .unavailable(.signedOut))
+    XCTAssertFalse(WatchHome.derive(context: ctx(), today: day, sync: .linked(minutesAgo: 1)).voice.isAvailable)
+    XCTAssertTrue(WatchVoice.available.isAvailable)
+  }
+
+  /// A newer phone may send blocks this watch does not know (voice, widget data) or a state it cannot read: the
+  /// context still decodes, the unknown is ignored and an unreadable block is nil.
+  func testContextToleratesFutureFields() throws {
+    let newer = """
+    {"signedIn": true, "lang": "zh", "sentAt": 1800000000000, "planFor": "2026-01-02",
+     "voice": {"mode": "api", "direct": true}, "complications": {"families": ["circular"]},
+     "today": {"day": "2026-01-02", "recovery": 82, "computedAt": 1800000000000, "phone": {"kind": "teleporting"}},
+     "quick": {"day": "2026-01-02", "meals": [{"id": 1, "name": "Oats", "slot": "Breakfast", "kcal": 420}], "results": {}}}
+    """
+    let c = try XCTUnwrap(WatchCodec.context([WatchCodec.contextKey: Data(newer.utf8)]))
+    XCTAssertEqual(c.planFor, "2026-01-02")
+    XCTAssertNil(c.today)                          // its phone state is unknown here: the block is dropped, not the context
+    XCTAssertEqual(c.quick?.meals.map(\.id), [1])
+    XCTAssertNil(WatchCodec.context([WatchCodec.contextKey: Data(#"{"lang": "zh"}"#.utf8)]))   // phase-1 fields stay required
+  }
+
+  /// Everything the watch keeps lives in one store (the widgets' step moves it to an App Group suite).
+  func testStoreKeepsEverythingInOnePlace() throws {
+    let suite = "watch-store-test"
+    let d = try XCTUnwrap(UserDefaults(suiteName: suite))
+    d.removePersistentDomain(forName: suite)
+    defer { d.removePersistentDomain(forName: suite) }
+    let store = WatchStore(defaults: d)
+    XCTAssertNil(store.context())
+    XCTAssertTrue(store.queue().isEmpty)
+    let c = ctx(planFor: day, quick: WatchQuick(day: day, meals: [meal(1)], waterMl: 250, kcal: 600, kcalGoal: 2300))
+    store.save(c)
+    var q = WatchEventQueue()
+    q.enqueue(.quick(.water, id: "w", day: day, at: t0, ml: 250))
+    store.save(q)
+    var logs = WatchQuickLogs()
+    logs.add(WatchQuickLog.water(250, id: "w", day: day, at: t0))
+    store.save(logs)
+    var s = SetSession(plan: plan([ex("bench")]), newId: counter())
+    _ = s.primary(at: t0)
+    store.save(SavedSession(session: s, savedAt: t0))
+    let again = WatchStore(defaults: d)
+    XCTAssertEqual(again.context(), c)
+    XCTAssertEqual(again.queue(), q)
+    XCTAssertEqual(again.quickLogs(), logs)
+    XCTAssertEqual(again.session()?.session, s)
+    again.save(nil as SavedSession?)
+    XCTAssertNil(store.session())
+    store.clear()
+    XCTAssertNil(again.context())
+    XCTAssertTrue(again.quickLogs().items.isEmpty)
+  }
+
+  func testHomeKeysAndNumbers() {
+    let linked = WatchSyncState.linked(minutesAgo: 2)
+    // D1: today's plan → its name
+    var h = WatchHome.derive(context: ctx(), today: day, sync: linked)
+    XCTAssertEqual(h.key, .train("Upper A"))
+    XCTAssertEqual(h.recovery, 82)
+    XCTAssertEqual(h.tone, .good)
+    XCTAssertEqual(h.usual, 58...74)
+    XCTAssertEqual(h.verdict, "可上强度")
+    XCTAssertEqual(h.sleep, 88)
+    XCTAssertEqual(h.strain, 2.8)
+    XCTAssertFalse(h.grey)
+    // D2: the phone says there is no training today → 「记一餐」
+    XCTAssertEqual(WatchHome.derive(context: ctx(plan: nil, planFor: day), today: day, sync: linked).key, .meal)
+    // a plan with nothing to log is a day without training too
+    XCTAssertEqual(WatchHome.derive(context: ctx(plan: plan([]), planFor: day), today: day, sync: linked).key, .meal)
+    // S9 inside home: yesterday's plan, or the phone has not answered about today
+    XCTAssertEqual(WatchHome.derive(context: ctx(), today: "2026-01-03", sync: linked).key, .planMissing)
+    XCTAssertEqual(WatchHome.derive(context: ctx(plan: nil), today: day, sync: linked).key, .planMissing)
+    XCTAssertEqual(WatchHome.derive(context: nil, today: day, sync: .signedOut).key, .planMissing)
+    // yesterday's numbers are not today's: missing, never carried over
+    h = WatchHome.derive(context: ctx(), today: "2026-01-03", sync: linked)
+    XCTAssertNil(h.recovery)
+    XCTAssertNil(h.sleep)
+    XCTAssertNil(h.strain)
+    XCTAssertNil(h.verdict)
+    // no recovery today: no tone, no verdict, the phone's reason instead
+    h = WatchHome.derive(context: ctx(today: today(recovery: nil)), today: day, sync: linked)
+    XCTAssertNil(h.recovery)
+    XCTAssertNil(h.tone)
+    XCTAssertNil(h.verdict)
+    XCTAssertEqual(h.reason, "昨晚没戴表")
+    // S3: grey
+    XCTAssertTrue(WatchHome.derive(context: ctx(), today: day, sync: .stale(minutesAgo: 400)).grey)
+    XCTAssertFalse(WatchHome.derive(context: ctx(), today: day, sync: .offline).grey)
+    // quick log offered only with something to log
+    XCTAssertFalse(h.canQuickLog)
+    let q = WatchQuick(day: day, meals: [], waterMl: 250, kcal: nil, kcalGoal: nil)
+    XCTAssertTrue(WatchHome.derive(context: ctx(quick: q), today: day, sync: linked).canQuickLog)
+  }
+
+  /// The mark joins the watch's queue with the phone's capsule, aged on the watch (S1, S2, S3, S7 and the phone's own).
+  func testSyncMarkFollowsThePhonesCapsule() {
+    var q = WatchEventQueue()
+    q.heard(at: t0)
+    func state(_ t: WatchToday?, at now: Date = t0.addingTimeInterval(60), queue: WatchEventQueue? = nil) -> WatchSyncState {
+      WatchSyncState.derive(context: WatchContext(signedIn: true, plan: nil, lang: "zh", sentAt: t0, today: t), queue: queue ?? q,
+                            reachable: true, now: now)
+    }
+    // the age is the data's, not the last message's
+    XCTAssertEqual(state(today(dataAgo: 120)), .linked(minutesAgo: 3))
+    // S3: older than the limit, by the watch's own clock (a phone that went quiet cannot say so)
+    XCTAssertEqual(state(today(dataAgo: 120), at: t0.addingTimeInterval(Double(WatchParams.staleAfterMin) * 60)),
+                   .stale(minutesAgo: WatchParams.staleAfterMin + 2))
+    XCTAssertEqual(state(today(phone: WatchPhoneSync(.stale, "6时前"))), .stale(minutesAgo: 3))
+    // S2: the phone is syncing, only while that message is fresh
+    XCTAssertEqual(state(today(phone: WatchPhoneSync(.busy))), .phoneSyncing)
+    XCTAssertEqual(state(today(phone: WatchPhoneSync(.busy)), at: t0.addingTimeInterval(WatchParams.phoneBusyFreshSec + 1)),
+                   .linked(minutesAgo: 4))
+    // S7 and the phone's own problems
+    XCTAssertEqual(state(today(phone: WatchPhoneSync(.offline, "离线"))), .offline)
+    XCTAssertEqual(state(today(phone: WatchPhoneSync(.behind, "缺2天"))), .behind("缺2天"))
+    XCTAssertEqual(state(today(phone: WatchPhoneSync(.failed))), .phoneFailed)
+    // the watch's own link comes first: an undelivered quick log says 「待传」 / 「补交」 whatever the phone said
+    var waiting = q
+    waiting.enqueue(.quick(.meal, id: "m", day: day, at: t0, templateId: 1))
+    XCTAssertEqual(state(today(phone: WatchPhoneSync(.offline)), queue: waiting), .catchingUp(done: 0, total: 1))
+    XCTAssertTrue(WatchSyncState.stale(minutesAgo: 400).greysNumbers)
+    XCTAssertFalse(WatchSyncState.linked(minutesAgo: 1).greysNumbers)
+  }
+
+  func testAgeLabelsInBothLanguages() {
+    defer { Lang.override = nil }
+    Lang.override = "zh"
+    XCTAssertEqual(WatchSyncState.age(2), "2分前")
+    XCTAssertEqual(WatchSyncState.age(361), "6时前")
+    XCTAssertEqual(WatchSyncState.age(3 * 24 * 60), "3天前")
+    XCTAssertEqual(WatchSyncState.age(0), "刚刚")
+    XCTAssertEqual(WatchSyncState.age(nil), "—")
+    Lang.override = "en"
+    XCTAssertEqual(WatchSyncState.age(2), "2m ago")
+    XCTAssertEqual(WatchSyncState.age(361), "6h ago")
+    XCTAssertEqual(WatchSyncState.age(3 * 24 * 60), "3d ago")
+  }
+
+  /// Undo right after a tap: a pending event is simply taken back; once handed over, the phone gets an `undo`.
+  func testQuickLogEventsAndCancel() {
+    let l = WatchQuickLog.meal(meal(3, kcal: 570), id: "m1", day: day, at: t0)
+    XCTAssertEqual(l.event.kind, .meal)
+    XCTAssertEqual(l.event.templateId, 3)
+    XCTAssertEqual(l.event.id, "m1")
+    let w = WatchQuickLog.water(250, id: "w1", day: day, at: t0)
+    XCTAssertEqual(w.event.kind, .water)
+    XCTAssertEqual(w.event.ml, 250)
+    var q = WatchEventQueue()
+    q.enqueue(l.event)
+    q.enqueue(w.event)
+    XCTAssertTrue(q.cancel("m1"))          // not handed over yet
+    XCTAssertEqual(q.waiting, 1)
+    _ = q.takePending()
+    XCTAssertFalse(q.cancel("w1"))         // with WatchConnectivity: the phone will get it, so an undo follows
+    q.markFailed("w1")
+    XCTAssertTrue(q.cancel("w1"))          // a failed transfer never reached the phone
+    XCTAssertTrue(q.isEmpty)
+    XCTAssertFalse(q.cancel("nope"))
+    // the watch remembers its logs for a day and a half, no longer
+    var logs = WatchQuickLogs()
+    logs.add(l)
+    logs.add(l)
+    logs.add(WatchQuickLog.water(250, id: "old", day: "2026-01-01", at: t0.addingTimeInterval(-40 * 3600)))
+    XCTAssertEqual(logs.items.count, 2)
+    logs.markUndone("m1")
+    XCTAssertTrue(logs.log("m1")?.undone == true)
+    logs.prune(now: t0)
+    XCTAssertEqual(logs.items.map(\.id), ["m1"])
+    XCTAssertEqual(WatchQuickLogs.load(logs.data()), logs)
+  }
+
+  /// M3's bar: the phone's intake, corrected only by the watch's own logs it had not counted (or counted before an undo).
+  func testReceiptBar() throws {
+    let a = WatchQuickLog.meal(meal(1, kcal: 400), id: "a", day: day, at: t0)
+    var b = WatchQuickLog.meal(meal(2, kcal: 300), id: "b", day: day, at: t0.addingTimeInterval(60))
+    let c = WatchQuickLog.meal(meal(3, kcal: 570), id: "c", day: day, at: t0.addingTimeInterval(120))
+    let water = WatchQuickLog.water(250, id: "w", day: day, at: t0)
+    var q = WatchQuick(day: day, meals: [], waterMl: 250, kcal: 1000, kcalGoal: 2300)
+    // nothing of the watch's counted yet: a and b are added to the phone's number
+    var bar = try XCTUnwrap(c.bar(logs: [a, b, c, water], quick: q))
+    XCTAssertEqual(bar.before, 1700)
+    XCTAssertEqual(bar.added, 570)
+    XCTAssertEqual(bar.goal, 2300)
+    // the phone has counted a and c itself: c is taken out of "before", a is not added twice
+    q.results = ["a": true, "c": true]
+    bar = try XCTUnwrap(c.bar(logs: [a, b, c], quick: q))
+    XCTAssertEqual(bar.before, 1000 + 300 - 570)
+    // b undone on the watch after the phone counted it: taken out
+    b.undone = true
+    q.results["b"] = true
+    bar = try XCTUnwrap(c.bar(logs: [a, b, c], quick: q))
+    XCTAssertEqual(bar.before, 1000 - 300 - 570)
+    // unknown → no bar, never a guess
+    XCTAssertNil(water.bar(logs: [water], quick: q))                                           // a drink has no kcal bar
+    XCTAssertNil(c.bar(logs: [c], quick: nil))
+    XCTAssertNil(c.bar(logs: [c], quick: WatchQuick(day: "2026-01-01", meals: [], kcal: 1000, kcalGoal: 2300)))
+    XCTAssertNil(c.bar(logs: [c], quick: WatchQuick(day: day, meals: [], kcal: nil, kcalGoal: 2300)))
+    let unknown = WatchQuickLog.meal(meal(9, kcal: nil), id: "u", day: day, at: t0)
+    XCTAssertNil(c.bar(logs: [unknown, c], quick: WatchQuick(day: day, meals: [], kcal: 1000, kcalGoal: 2300)))
+  }
+
+  /// A running session is saved and comes back on launch; one left for hours is not resumed.
+  func testSessionResumesAfterRelaunch() throws {
+    var s = SetSession(plan: plan([ex("bench", sets: 3), ex("row")]), newId: counter())
+    _ = s.primary(at: t0)
+    s.recordHeartRate(140)
+    s.crown(2)
+    _ = s.primary(at: t0.addingTimeInterval(40))
+    _ = s.tick(at: t0.addingTimeInterval(41.5))
+    guard case .rest = s.phase else { return XCTFail("rest expected") }
+    let saved = SavedSession(session: s, savedAt: t0.addingTimeInterval(42))
+    let back = try XCTUnwrap(WatchCodec.decode(SavedSession.self, WatchCodec.encode(saved)))
+    XCTAssertEqual(back, saved)
+    XCTAssertEqual(back.session.logged.count, 1)
+    XCTAssertEqual(back.session.setIndex, 1)
+    XCTAssertEqual(back.session.reps, 10)
+    XCTAssertEqual(back.session.startedAt, t0)
+    // the countdown goes on from the same start
+    var r = back.session
+    XCTAssertEqual(r.tick(at: t0.addingTimeInterval(40 + 90)), [.haptic(.restOver)])
+    XCTAssertEqual(r.phase, .set)
+    XCTAssertTrue(back.resumable(now: t0.addingTimeInterval(3600)))
+    XCTAssertFalse(back.resumable(now: t0.addingTimeInterval(WatchParams.resumeWithinHours * 3600 + 100)))
+    XCTAssertFalse(SavedSession(session: SetSession(plan: plan([ex("bench")])), savedAt: t0).resumable(now: t0))   // not started
+    // a saved session that does not fit its plan is not loaded
+    XCTAssertNil(WatchCodec.decode(SavedSession.self, Data(#"{"savedAt": 0, "session": {"plan": {"day": "d", "title": "t", "exercises": []}, "phase": {"set": {}}, "exercise": 0, "nextSet": [1], "focus": "reps", "logged": [], "hrSum": 0, "hrCount": 0, "restDrops": [], "restsTaken": [], "restsPlanned": []}}"#.utf8)))
+  }
+}
+
+final class PhoneWatchTodayTests: XCTestCase {
+  override func tearDown() {
+    Lang.override = nil
+    super.tearDown()
+  }
+
+  /// The word under the watch's number fits the watch (≤ 4 characters / 2 English words), in both languages.
+  func testVerdictsAreShortInBothLanguages() {
+    for lang in ["zh", "en"] {
+      Lang.override = lang
+      for v in [10.0, 50, 90] {
+        let w = WatchTodayBuilder.verdict(v)
+        if lang == "zh" { XCTAssertLessThanOrEqual(w.count, 4, w) } else { XCTAssertLessThanOrEqual(w.split(separator: " ").count, 2, w) }
+      }
+    }
+    Lang.override = "zh"
+    XCTAssertEqual(WatchTodayBuilder.verdict(82), "可上强度")
+    XCTAssertEqual(WatchTodayBuilder.verdict(54), "正常练")
+    XCTAssertEqual(WatchTodayBuilder.tone(20), .bad)
+    XCTAssertEqual(WatchTodayBuilder.tone(54), .mid)
+    XCTAssertEqual(WatchTodayBuilder.tone(67), .good)
+  }
+
+  func testThePhonesCapsuleForTheWatch() {
+    XCTAssertEqual(WatchTodayBuilder.phone(.ok(ago: "2分前"), offline: false), WatchPhoneSync(.ok))
+    XCTAssertEqual(WatchTodayBuilder.phone(.busy, offline: false), WatchPhoneSync(.busy))
+    XCTAssertEqual(WatchTodayBuilder.phone(.stale("离线"), offline: true), WatchPhoneSync(.offline, "离线"))
+    XCTAssertEqual(WatchTodayBuilder.phone(.stale("6时前"), offline: false), WatchPhoneSync(.stale, "6时前"))
+    XCTAssertEqual(WatchTodayBuilder.phone(.behind("缺2天"), offline: false), WatchPhoneSync(.behind, "缺2天"))
+    XCTAssertEqual(WatchTodayBuilder.phone(.failed, offline: false), WatchPhoneSync(.failed))
+    XCTAssertEqual(WatchTodayBuilder.phone(.off, offline: false).kind, .off)
+  }
+
+  func testQuickTilesFromTheQuickMeals() {
+    let list = json("""
+    {"t": [
+      {"id": 1, "name": "Oats", "meal": "breakfast", "totals": {"kcal": 420, "protein_g": 18}, "uses_30d": 3},
+      {"id": 2, "name": "Guess", "meal": "lunch", "totals": {"kcal": 700}, "uses_30d": 9, "needs_confirmation": true},
+      {"id": 3, "name": "Rice", "meal": "lunch", "totals": {"kcal": 570, "protein_g": 42}, "uses_30d": 8},
+      {"id": 4, "name": "Yogurt", "meal": "snacks", "totals": {"kcal": 150}, "uses_30d": 5},
+      {"id": 5, "name": "Soup", "meal": "dinner", "totals": {"kcal": 300}, "uses_30d": 1}
+    ]}
+    """)["t"] as? [[String: Any]]
+    let templates = MealTemplate.parseList(list, pending: [], today: "2026-01-02")
+    let nutrition = NutritionDay(date: "2026-01-02", goal: Macros(kcal: 2300), goalName: nil, intake: Macros(kcal: 610), entries: [])
+    let q = WatchQuickBuilder.quick(templates: templates, nutrition: nutrition, day: "2026-01-02", water: true, results: ["x": true])
+    XCTAssertEqual(q.meals.map(\.id), [3, 4, 1])            // most used first; the one that needs its grams confirmed is not offered
+    XCTAssertEqual(q.meals.first?.kcal, 570)
+    XCTAssertEqual(q.meals.first?.proteinG, 42)
+    XCTAssertEqual(q.waterMl, WatchParams.waterQuickMl)
+    XCTAssertEqual(q.kcal, 610)
+    XCTAssertEqual(q.kcalGoal, 2300)
+    XCTAssertEqual(q.results, ["x": true])
+    // water off; another day's intake is not today's
+    let off = WatchQuickBuilder.quick(templates: templates, nutrition: nutrition, day: "2026-01-03", water: false, results: [:])
+    XCTAssertNil(off.waterMl)
+    XCTAssertNil(off.kcal)
+  }
+
+  /// The phone's inbox written by phase 1 (no quick logs) still loads with its seen ids.
+  func testInboxFromPhaseOneStillLoads() throws {
+    let old = #"{"seen": ["a", "b"], "held": []}"#
+    let inbox = try XCTUnwrap(WatchCodec.decode(PhoneWatchInbox.self, Data(old.utf8)))
+    XCTAssertEqual(inbox.seen, ["a", "b"])
+    XCTAssertTrue(inbox.quick.isEmpty)
+    var i = inbox
+    let m = WatchSetEvent.quick(.meal, id: "m", day: "2026-01-02", at: t0, templateId: 3)
+    i.logged(m, counted: true)
+    i.logged(m, counted: true)
+    XCTAssertEqual(i.quick.count, 1)
+    XCTAssertEqual(i.results, ["m": true])
+    i.uncount("m")
+    XCTAssertEqual(i.results, ["m": false])
+    XCTAssertEqual(i.original("m")?.event, m)
+    XCTAssertEqual(WatchCodec.decode(PhoneWatchInbox.self, WatchCodec.encode(i)), i)
+  }
+
+  @MainActor
+  func testPushesOnlyWhenSomethingBesidesTheTimeChanged() {
+    let a = WatchContext(signedIn: true, plan: nil, lang: "zh", sentAt: t0, planFor: "2026-01-02", today: today())
+    var b = a
+    b.sentAt = t0.addingTimeInterval(30)
+    b.today?.computedAt = t0.addingTimeInterval(30)
+    b.today?.dataAt = a.today?.dataAt?.addingTimeInterval(20)
+    XCTAssertTrue(PhoneWatchBridge.sameExceptTimes(b, a))
+    b.today?.recovery = 80
+    XCTAssertFalse(PhoneWatchBridge.sameExceptTimes(b, a))
+    XCTAssertFalse(PhoneWatchBridge.sameExceptTimes(a, nil))
+  }
+}
+
+/// The watch's dial and top-row geometry (owner's acceptance 2026-11-19: 「数字没有居中」).
+final class WatchLayoutTests: XCTestCase {
+  /// The number is centred on its own; the unit starts after its right edge, whatever the number's width.
+  func testUnitHangsWithoutMovingTheNumber() {
+    // "82" 40 pt wide on the axis x = 104: it spans 84…124, the unit starts 2.5 pt after it
+    XCTAssertEqual(DialText.unitLeading(centerX: 104, numberWidth: 40, gap: 2.5), 126.5, accuracy: 1e-9)
+    // a wider number moves only the unit
+    XCTAssertEqual(DialText.unitLeading(centerX: 104, numberWidth: 60, gap: 2.5), 136.5, accuracy: 1e-9)
+    // the digits' ink box is centred on the centre: baseline half the digit height below it
+    XCTAssertEqual(DialText.baseline(centerY: 100, size: 42), 100 + 42 * DialText.digitHeightEm / 2, accuracy: 1e-9)
+    XCTAssertEqual(DialText.digitHeight(42), 28.56, accuracy: 0.01)   // measured 28.5 pt on the simulator
+  }
+
+  /// The mockup's dial text is balanced around the centre, and nothing on home runs into the keys at any watch size.
+  func testHomeLayoutFitsEveryWatch() {
+    XCTAssertEqual(HomeLayout.dialBelowClock, 74.7, accuracy: 0.01)
+    XCTAssertLessThan(HomeLayout.labelBaseline, 0)
+    XCTAssertGreaterThan(HomeLayout.wordBaseline, 0)
+    for (w, row) in ClockRow.measured {
+      let s = Double(w) / HomeLayout.designWidth
+      let height = [162: 197.0, 176: 215, 184: 224, 187: 223, 198: 242, 205: 251, 208: 248, 211: 257][w]!
+      let sy = height / HomeLayout.designHeight
+      let dial = row.centreY + HomeLayout.dialBelowClock * s
+      // the dial clears the clock row (its text is about 12 pt tall), and the bars clear the keys
+      XCTAssertGreaterThan((dial - HomeLayout.dialOuter * s) - (row.centreY + 6), 6, "\(w) pt: dial into the clock row")
+      let barBottom = dial + (HomeLayout.barBelowCentre + 0.75 + 2) * s
+      let keysTop = (HomeLayout.keysCentreY - HomeLayout.keysHeight / 2) * sy
+      XCTAssertGreaterThanOrEqual(keysTop - barBottom, HomeLayout.minGap, "\(w) pt: readings into the keys")
+    }
+  }
+
+  /// The clock row comes from the table for every watch watchOS 26 runs on, and a later watch gets a sensible guess.
+  func testClockRow() {
+    XCTAssertEqual(ClockRow.row(width: 208, height: 248), ClockRow.Row(centreY: 25.5, side: 17))   // 46 mm
+    XCTAssertEqual(ClockRow.row(width: 187, height: 223), ClockRow.Row(centreY: 22.5, side: 14.5)) // 42 mm
+    XCTAssertEqual(ClockRow.measured.count, 8)
+    let guess = ClockRow.row(width: 220, height: 266)
+    XCTAssertEqual(guess.centreY, 27.6, accuracy: 0.05)
+    XCTAssertEqual(guess.side, 17.2, accuracy: 0.05)
+    for (w, r) in ClockRow.measured {
+      XCTAssertGreaterThan(r.centreY, 10, "\(w)")
+      XCTAssertLessThan(r.centreY, 30, "\(w)")
+    }
   }
 }
