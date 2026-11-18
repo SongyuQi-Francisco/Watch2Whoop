@@ -45,6 +45,40 @@ watch: undo ─► (still on the watch: dropped there) or an `undo` event ─►
 Undo needs the server when the write had already gone out; without a connection the phone keeps the undo and tries again
 with the next watch event or when the watch link wakes.
 
+## Where voice and the watch-face widgets plug in (before 2.1.0)
+
+Both come after phase 2a, each in its own PR; 2a leaves these places for them.
+
+**Voice (hold to talk: a meal by voice, one question to Jarvis; plan 2.2 / 2.3 / 4.3 / 4.5)**
+
+| Where | What changes |
+|---|---|
+| `WatchShared/WatchHome.swift` `WatchVoice.derive` | The only availability rule: from a new optional context field (the user's AI kind, voice-direct on / off), the watch's own token and the watch's network. The home screen's core and the hold already follow it. |
+| `Watch2WhoopWatch/WatchModel.swift` `coreHold()` | The `.available` case starts the voice flow (M1 → M2 → M3 for a meal, J1 → J4 for a question). |
+| `WatchShared/WatchLink.swift` | One optional block for voice in `WatchContext` (decoded leniently, like the others). The login code for the watch's own token goes by `sendMessage` / `transferUserInfo`, never in the context (it is kept and resent). |
+| `Features/Watch/PhoneWatchLink.swift` | Fill that block from the phone's AI choice; ask `POST /v1/account/web-login-code` for the watch and hand the code over; tell the watch on sign-out. |
+| new watch files | Recorder (16 kHz WAV, ≤ 30 s, foreground only), Keychain token store, the HTTPS client for `/v1/assistant/transcribe` and `/chat`, screens M1 / M2 / J1–J4. `project.yml`: the watch's `NSMicrophoneUsageDescription` (+ `en.lproj` / `zh-Hans.lproj`). |
+
+Watch out for: a hold that also has to end (release = send, slide up = cancel) needs a press gesture with an "ended"
+callback, not `onLongPressGesture(perform:)` as now; the tap (quick log) must keep working while the core is dimmed;
+the watch's own network is not the phone's (`WatchSyncState.offline` is the phone's), so voice needs its own check;
+backend changes (login-code purpose, revoking the watch's token on sign-out, short answers for `page: "watch"`) come
+first.
+
+**Watch-face widgets and Smart Stack (plan 2.5, phase 3)**
+
+| Where | What changes |
+|---|---|
+| `project.yml` | A WidgetKit extension target embedded in the watch app, compiling `WatchShared/`; the App Group capability on the watch app and the extension (and the App ID in the developer account). |
+| `WatchShared/WatchStore.swift` | `defaults` becomes the App Group suite (the only change there); the widget reads `context()` and `session()`. |
+| `Watch2WhoopWatch/WatchModel.swift` | After a new context or a session step: `WidgetCenter.shared.reloadTimelines(ofKind:)`. A widget tap opens a URL → a `WatchRoute` (`.start` for 「开始训练」). |
+
+Watch out for: the extension cannot use WatchConnectivity or the app's standard defaults (hence `WatchStore`); reloads
+are budgeted (V6), so a timeline should carry its own future entry at `dataAt + WatchParams.staleAfterMin` to turn
+grey without a push; numbers come only from `WatchToday` and the rules in `WatchHome` / `WatchSyncState`, so a
+complication can never show what the home screen would not; moving the store to the App Group needs a one-time copy of
+the old keys (the queue holds undelivered events).
+
 ## Building
 
 The watch app is **embedded in the iPhone app** (owner, 2026-11-15: it ships with 2.1.0, together with the redesigned iPhone app). The iPhone target depends on

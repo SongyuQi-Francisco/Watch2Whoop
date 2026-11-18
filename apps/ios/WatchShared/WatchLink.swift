@@ -47,6 +47,11 @@ struct WatchPlan: Codable, Equatable {
 
 /// The phone's latest state for the watch (application context). Every field after `sentAt` came with phase 2a; a
 /// context stored by an older build decodes with them nil.
+///
+/// How it grows (voice availability in phase 2b, what the watch-face widgets show in phase 3): each new block is an
+/// optional field with its own Codable type, decoded leniently (see `init(from:)`): an older watch ignores a field it
+/// does not know, and a block it cannot read (a newer enum case) becomes nil instead of losing the whole context. Keep
+/// the context small (WatchConnectivity keeps only the newest copy; no secrets: a token never travels in it).
 struct WatchContext: Codable, Equatable {
   var signedIn: Bool
   /// nil = no plan for `planFor` (rest day), or the phone has not loaded today's plan (then `planFor` is not today).
@@ -71,6 +76,18 @@ struct WatchContext: Codable, Equatable {
     self.planFor = planFor ?? plan?.day
     self.today = today
     self.quick = quick
+  }
+
+  /// The four phase-1 fields are required; every later block is optional and lenient (one unreadable block = nil).
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    signedIn = try c.decode(Bool.self, forKey: .signedIn)
+    lang = try c.decode(String.self, forKey: .lang)
+    sentAt = try c.decode(Date.self, forKey: .sentAt)
+    plan = (try? c.decodeIfPresent(WatchPlan.self, forKey: .plan)) ?? nil
+    planFor = (try? c.decodeIfPresent(String.self, forKey: .planFor)) ?? nil
+    today = (try? c.decodeIfPresent(WatchToday.self, forKey: .today)) ?? nil
+    quick = (try? c.decodeIfPresent(WatchQuick.self, forKey: .quick)) ?? nil
   }
 }
 

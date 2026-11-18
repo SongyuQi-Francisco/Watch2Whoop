@@ -177,7 +177,7 @@ enum SetText {
 
 /// The Jarvis core (mockups `core()`, the phone's approved geometry): a dark disc, 24 ticks, three segments, an outlined
 /// inverted triangle with a lit inner one. Drawn in a 58 × 58 box scaled to `size`. `dim`: voice is not available
-/// (mockup S7: the inner triangle at 35 %, no glow) — in phase 2a always, voice comes later.
+/// (mockup S7: the inner triangle at 35 %, no glow; `WatchVoice`).
 struct JarvisCoreMark: View {
   var size: CGFloat
   var dim = false

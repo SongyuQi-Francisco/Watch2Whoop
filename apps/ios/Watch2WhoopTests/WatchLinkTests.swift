@@ -478,6 +478,62 @@ final class WatchHomeTests: XCTestCase {
     XCTAssertEqual(WatchCodec.event(WatchCodec.message(u))?.target, "m")
   }
 
+  /// Phase 2a has no voice: the core is dimmed and a hold is refused; 2b changes only `WatchVoice.derive`.
+  func testVoiceIsUnavailableUntilItShips() {
+    XCTAssertEqual(WatchVoice.derive(context: ctx(), sync: .linked(minutesAgo: 1)), .unavailable(.notYet))
+    XCTAssertEqual(WatchVoice.derive(context: nil, sync: .signedOut), .unavailable(.signedOut))
+    XCTAssertFalse(WatchHome.derive(context: ctx(), today: day, sync: .linked(minutesAgo: 1)).voice.isAvailable)
+    XCTAssertTrue(WatchVoice.available.isAvailable)
+  }
+
+  /// A newer phone may send blocks this watch does not know (voice, widget data) or a state it cannot read: the
+  /// context still decodes, the unknown is ignored and an unreadable block is nil.
+  func testContextToleratesFutureFields() throws {
+    let newer = """
+    {"signedIn": true, "lang": "zh", "sentAt": 1800000000000, "planFor": "2026-01-02",
+     "voice": {"mode": "api", "direct": true}, "complications": {"families": ["circular"]},
+     "today": {"day": "2026-01-02", "recovery": 82, "computedAt": 1800000000000, "phone": {"kind": "teleporting"}},
+     "quick": {"day": "2026-01-02", "meals": [{"id": 1, "name": "Oats", "slot": "Breakfast", "kcal": 420}], "results": {}}}
+    """
+    let c = try XCTUnwrap(WatchCodec.context([WatchCodec.contextKey: Data(newer.utf8)]))
+    XCTAssertEqual(c.planFor, "2026-01-02")
+    XCTAssertNil(c.today)                          // its phone state is unknown here: the block is dropped, not the context
+    XCTAssertEqual(c.quick?.meals.map(\.id), [1])
+    XCTAssertNil(WatchCodec.context([WatchCodec.contextKey: Data(#"{"lang": "zh"}"#.utf8)]))   // phase-1 fields stay required
+  }
+
+  /// Everything the watch keeps lives in one store (the widgets' step moves it to an App Group suite).
+  func testStoreKeepsEverythingInOnePlace() throws {
+    let suite = "watch-store-test"
+    let d = try XCTUnwrap(UserDefaults(suiteName: suite))
+    d.removePersistentDomain(forName: suite)
+    defer { d.removePersistentDomain(forName: suite) }
+    let store = WatchStore(defaults: d)
+    XCTAssertNil(store.context())
+    XCTAssertTrue(store.queue().isEmpty)
+    let c = ctx(planFor: day, quick: WatchQuick(day: day, meals: [meal(1)], waterMl: 250, kcal: 600, kcalGoal: 2300))
+    store.save(c)
+    var q = WatchEventQueue()
+    q.enqueue(.quick(.water, id: "w", day: day, at: t0, ml: 250))
+    store.save(q)
+    var logs = WatchQuickLogs()
+    logs.add(WatchQuickLog.water(250, id: "w", day: day, at: t0))
+    store.save(logs)
+    var s = SetSession(plan: plan([ex("bench")]), newId: counter())
+    _ = s.primary(at: t0)
+    store.save(SavedSession(session: s, savedAt: t0))
+    let again = WatchStore(defaults: d)
+    XCTAssertEqual(again.context(), c)
+    XCTAssertEqual(again.queue(), q)
+    XCTAssertEqual(again.quickLogs(), logs)
+    XCTAssertEqual(again.session()?.session, s)
+    again.save(nil as SavedSession?)
+    XCTAssertNil(store.session())
+    store.clear()
+    XCTAssertNil(again.context())
+    XCTAssertTrue(again.quickLogs().items.isEmpty)
+  }
+
   func testHomeKeysAndNumbers() {
     let linked = WatchSyncState.linked(minutesAgo: 2)
     // D1: today's plan → its name

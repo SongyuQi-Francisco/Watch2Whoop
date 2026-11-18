@@ -29,6 +29,8 @@ struct WatchHome: Equatable {
   var key: Key
   /// The quick-log screen has something to offer (a quick meal or the water tile).
   var canQuickLog: Bool
+  /// Hold on the Jarvis core = talk (plan 2.2 / 2.3). Unavailable = the core is dimmed (mockup S7).
+  var voice: WatchVoice
 
   static func derive(context c: WatchContext?, today: String, sync: WatchSyncState) -> WatchHome {
     let t = c?.today.flatMap { $0.day == today ? $0 : nil }
@@ -45,7 +47,36 @@ struct WatchHome: Equatable {
     if let lo = t?.usualLo, let hi = t?.usualHi { usual = min(lo, hi)...max(lo, hi) }
     return WatchHome(recovery: t?.recovery, tone: t?.recovery == nil ? nil : t?.tone, usual: usual, verdict: t?.recovery == nil ? nil : t?.verdict,
                      reason: t?.recovery == nil ? t?.reason : nil, sleep: t?.sleep, strain: t?.strain, grey: sync.greysNumbers,
-                     key: key, canQuickLog: !(q?.meals.isEmpty ?? true) || q?.waterMl != nil)
+                     key: key, canQuickLog: !(q?.meals.isEmpty ?? true) || q?.waterMl != nil,
+                     voice: WatchVoice.derive(context: c, sync: sync))
+  }
+}
+
+/// Whether holding the Jarvis core can start talking (plan 2.2 voice meal, 2.3 one question). The one place the rule
+/// lives, so the voice phase (2b) only changes `derive`; the home screen draws the core from it and
+/// `WatchModel.coreHold()` either starts listening or plays the refusal.
+enum WatchVoice: Equatable {
+  enum Reason: Equatable {
+    /// Phase 2a: voice is not on the watch yet.
+    case notYet
+    /// Nobody is signed in on the phone.
+    case signedOut
+    /// No network for the request (voice needs the server; quick log does not).
+    case offline
+    /// The account's AI cannot take voice from the watch (subscription AIs via MCP, plan 2.2).
+    case noAI
+  }
+
+  case available
+  case unavailable(Reason)
+
+  var isAvailable: Bool { self == .available }
+
+  /// Phase 2a: always `.notYet`. Phase 2b reads the phone's answer about the user's AI (a new optional field of the
+  /// context), the watch's own token and the watch's network here, and returns the reasons above.
+  static func derive(context: WatchContext?, sync: WatchSyncState) -> WatchVoice {
+    guard context?.signedIn == true else { return .unavailable(.signedOut) }
+    return .unavailable(.notYet)
   }
 }
 

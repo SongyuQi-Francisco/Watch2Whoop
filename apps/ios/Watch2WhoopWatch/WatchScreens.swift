@@ -102,11 +102,11 @@ struct HomeScreen: View {
     .handGestureShortcut(.primaryAction, isEnabled: m.path.isEmpty)
   }
 
-  /// The Jarvis core: tap = quick log; hold = talk, which is not on the watch yet (dimmed, mockup S7).
+  /// The Jarvis core: tap = quick log; hold = talk (`WatchModel.coreHold`), dimmed while voice is unavailable (mockup S7).
   private var core: some View {
     let refused = m.shows(m.voiceRefusedAt, for: 2)
     return ZStack(alignment: .topTrailing) {
-      JarvisCoreMark(size: 40 * W.k, dim: true)
+      JarvisCoreMark(size: 40 * W.k, dim: !m.home.voice.isAvailable)
       if refused {
         Image(systemName: "mic.slash").font(.system(size: 9 * W.k, weight: .bold)).foregroundStyle(W.mid)
           .padding(3 * W.k).background(Circle().fill(Color.black)).offset(x: 4 * W.k, y: -4 * W.k)

@@ -25,11 +25,8 @@ final class WatchModel: ObservableObject {
   private let link = WatchLinkClient()
   private let workout = WorkoutController()
   private var ticker: AnyCancellable?
-  private var defaults = UserDefaults.standard
-  private static let contextKey = "w2w.watch.context.v1"
-  private static let queueKey = "w2w.watch.queue.v1"
-  private static let logsKey = "w2w.watch.quicklogs.v1"
-  private static let sessionKey = "w2w.watch.session.v1"
+  /// All the watch keeps (one place, so the widgets' step can move it to an App Group: `WatchStore`).
+  private var store = WatchStore()
   /// Debug builds: the interactive seed (`W2W_WATCH_SEED`) plays the phone; frozen demos (`W2W_WATCH_DEMO`) stop the clock.
   private var seed: String?
   private var frozen = false
@@ -40,13 +37,13 @@ final class WatchModel: ObservableObject {
     if let s = env["W2W_WATCH_SEED"], !s.isEmpty, (env["W2W_WATCH_DEMO"] ?? "").isEmpty {
       seed = s
       // its own storage, so the seed never lands in (or reads) a real phone's context
-      defaults = UserDefaults(suiteName: "w2w.watch.seed") ?? .standard
-      if s == "reset" { defaults.removePersistentDomain(forName: "w2w.watch.seed") }
+      store = WatchStore(defaults: UserDefaults(suiteName: "w2w.watch.seed") ?? .standard)
+      if s == "reset" { store.clear() }
     }
     #endif
-    queue = WatchEventQueue.load(defaults.data(forKey: Self.queueKey))
-    quickLogs = WatchQuickLogs.load(defaults.data(forKey: Self.logsKey))
-    context = WatchCodec.decode(WatchContext.self, defaults.data(forKey: Self.contextKey))
+    queue = store.queue()
+    quickLogs = store.quickLogs()
+    context = store.context()
     if let lang = context?.lang { Lang.override = lang }
   }
 
@@ -151,11 +148,18 @@ final class WatchModel: ObservableObject {
   /// The Jarvis core: tap = the quick-log tiles (plan 2.2; the owner's choice: tap = quick log, hold = talk).
   func coreTap() { path = [.quick] }
 
-  /// Hold on the core = talk. Voice is not on the watch yet (phase 2b): the core stays dimmed and says so with a haptic.
+  /// Hold on the core = talk (the owner's choice: tap = quick log, hold = talk). THE entry point of voice: phase 2b
+  /// starts listening (mockup M1 / J1) in the `.available` case; `WatchVoice.derive` decides. Until then the core is
+  /// dimmed and a hold only says so (mockup S7: a mark on the core and the failure haptic).
   func coreHold() {
-    voiceRefusedAt = Date()
-    now = Date()
-    Haptics.failed()
+    switch home.voice {
+    case .available:
+      break   // phase 2b: start the voice flow here (record → the watch's own token → /v1/assistant/transcribe)
+    case .unavailable:
+      voiceRefusedAt = Date()
+      now = Date()
+      Haptics.failed()
+    }
   }
 
   /// 「计划没同步」 / the sync mark: ask the phone for today's plan and numbers again (S9's retry; S1 「立即同步」).
@@ -301,7 +305,7 @@ final class WatchModel: ObservableObject {
     queue.heard(at: Date())
     now = Date()
     saveQueue()
-    defaults.set(WatchCodec.encode(c), forKey: Self.contextKey)
+    store.save(c)
     flush()
   }
 
@@ -321,15 +325,15 @@ final class WatchModel: ObservableObject {
     saveQueue()
   }
 
-  private func saveQueue() { defaults.set(queue.data(), forKey: Self.queueKey) }
-  private func saveLogs() { defaults.set(quickLogs.data(), forKey: Self.logsKey) }
+  private func saveQueue() { store.save(queue) }
+  private func saveLogs() { store.save(quickLogs) }
 
   // MARK: - a running session survives a relaunch
 
   private func sessionChanged(from old: SetSession?) {
     guard !frozen else { return }
     guard let s = session, s.phase != .finished, s.phase != .ready else {
-      if old != nil { defaults.removeObject(forKey: Self.sessionKey) }
+      if old != nil { store.save(nil as SavedSession?) }
       return
     }
     // heart-rate samples alone are not worth a write; every step of the session is
@@ -337,13 +341,13 @@ final class WatchModel: ObservableObject {
        o.weightKg == s.weightKg, o.reps == s.reps, o.durationS == s.durationS, o.focus == s.focus {
       return
     }
-    defaults.set(WatchCodec.encode(SavedSession(session: s, savedAt: Date())), forKey: Self.sessionKey)
+    store.save(SavedSession(session: s, savedAt: Date()))
   }
 
   /// On launch: a session that was running comes back where it was (its workout too); one left for hours is ended, so
   /// its day is submitted on the phone like any other ending.
   private func restoreSession() {
-    guard let saved = WatchCodec.decode(SavedSession.self, defaults.data(forKey: Self.sessionKey)) else { return }
+    guard let saved = store.session() else { return }
     if saved.resumable(now: Date()) {
       session = saved.session
       if seed == nil { workout.recover() }
@@ -354,7 +358,7 @@ final class WatchModel: ObservableObject {
     for case .emit(let e) in fx { queue.enqueue(e) }
     saveQueue()
     if seed == nil { workout.recover(thenEnd: true) }
-    defaults.removeObject(forKey: Self.sessionKey)
+    store.save(nil as SavedSession?)
   }
 
   #if DEBUG
