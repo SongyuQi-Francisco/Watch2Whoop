@@ -281,6 +281,7 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 - 2026-10-22：同意书 2026-10-22.1 和托底确认要点写明「呼吸频率 / 血氧 / 手腕温度等每日指标」和「采购清单、家里存货、已连接的超市、商品价格和购买记录」（#81 核对时发现这两类之前没写明，但已经在发），托底的单独同意版本升到 2026-10-22；和心电图 / 心跳间期那次改版（#79）一起，用户只需要重新确认一次。
 - 公网 nginx（`deploy/ali/public/watch2whoop.https.conf`）：`Permissions-Policy` 原来是 `microphone=()`（禁止录音）→ `microphone=(self)`；`/v1/` 的请求体上限 2 MB 发几张照片就会超 → `/v1/assistant/chat` 单独 16 MB、SSE 不缓冲、读超时 300 秒，`/v1/assistant/transcribe` 3 MB。今天页的 CSP 加了 `img-src blob:`、`media-src 'self' blob:`（读选中的照片 / 视频）。
 - 托底多了 3 个写工具：`add_lab_results`（化验单照片）、`log_metric_snapshot`（手表 / InBody 截图）、`add_supplement`（补剂瓶子），照旧每次写之前确认。
+- **Apple Watch（2026-11-19，`ai/watch.py`、`account/watch.py`、迁移 1190）**：手表用自己的设备 token（手机申请一次性码 → 手表换 token；scope `watch` 只能用在 transcribe / chat / chat/confirm / chat events，读写权限不超过申请它的手机 token，手机 token 失效它就失效）。语音转文字和手机共用每人每天的条数上限，录音照样不存。对话带 `page: "watch"`（或用手表的 token）时，每次调用的系统提示后面加一段「先给数、最多两句」的手表规则，自己的 key 和托底 AI 都一样；工具、写入直接执行、删除 / 撤销要确认、预算、托底额度和同意都不变。用量和审计标出手表：`ai_usage.client` / `asr_usage.client` = `watch`，审计通道 `api:<kind>:watch`。详见 `body_engine/README.md`「Apple Watch voice」。
 - 验证：`tests/test_ai_fallback.py` 19 个（图片 / 8 帧上限、估算按每张 1024 token、旧同意要重新确认、语音：关闭时 503、格式 / 时长校验、每天 / 每分钟限次、识别服务挂了也计数、要登录、413）。真实调用（本地测试账号，无真实数据）：一张 InBody 图正确读出了体重和体脂率（¥0.0008）；浏览器里用 ffmpeg 生成的 13 秒视频走完整流程：抽 5 帧 + 声音识别进输入框 → 发送 → DeepSeek 从画面读出 InBody 数值、从文字读出午餐（¥0.03）。
 
 ### 9.12 自由选择 Jarvis 用哪个 AI、停用后回落（2026-10-18，`ai/choice.py`、迁移 `190_ai_choice.sql`）

@@ -14,6 +14,8 @@ Changes need a token with write (Today page cookie writes also need X-Body-Web: 
 - GET/PUT /v1/users/{user}/ai-choice: which AI Jarvis uses (choice.py): own provider / fallback / butler; takes effect at once
 - POST /v1/assistant/transcribe: voice -> text (asr.py, local recognition; body = 16 kHz mono WAV made by the page);
   ?fix=1 and POST /v1/assistant/voice-fix: correction with the user's own terms (voice_fix.py, flag jarvis_orbit)
+Apple Watch (account/watch.py, watch.py): its device token works on transcribe, chat, chat/confirm and chat events only
+(voice_user / stream_voice_user), and there only on the conversations its watch started; everything else refuses it.
 """
 import json
 import logging
@@ -28,6 +30,7 @@ from starlette.concurrency import run_in_threadpool
 from ..i18n import L, lang
 from ..rollout import flags
 from . import asr, catalog, chat, choice, crypto, fallback, oauth, posture, providers, quota_cards, runs, tokens, voice_fix
+from . import watch
 from . import posture_params
 from . import quota_cards_params as qcp
 from .web import mcp as web_mcp
@@ -48,13 +51,20 @@ def current_user(request: Request, conn=Depends(get_conn)) -> dict:
     return api.current_user(request, conn, request.headers.get("authorization"))
 
 
-def stream_user(request: Request) -> dict:
-    """current_user on a connection of its own, committed and returned at once, for the chat streams. A stream stays open
-    for minutes; holding the login's transaction that long keeps the row lock of its session / token (last_seen_at) and
-    blocks every other request of the same login, the resume of the same turn included (#114)."""
+def voice_user(request: Request, conn=Depends(get_conn)) -> dict:
+    """current_user, or the Apple Watch device token (account/watch.py): only for the voice endpoints."""
+    from .. import api
+    return api.resolve_user(request, conn, request.headers.get("authorization"), watch_ok=True)
+
+
+def stream_voice_user(request: Request) -> dict:
+    """voice_user on a connection of its own, committed and returned at once, for the chat streams (chat, chat/confirm,
+    chat events). A stream stays open for minutes; holding the login's transaction that long keeps the row lock of its
+    session / token (last_seen_at) and blocks every other request of the same login, the resume of the same turn
+    included (#114)."""
     from .. import api
     with api.pool.connection() as conn:
-        return api.current_user(request, conn, request.headers.get("authorization"))
+        return api.resolve_user(request, conn, request.headers.get("authorization"), watch_ok=True)
 
 
 def _self_only(viewer: dict, user: str, write: bool = False) -> int:
@@ -394,10 +404,11 @@ def _sse_response(body) -> StreamingResponse:
 
 
 @router.post("/v1/assistant/chat")
-def post_chat(body: ChatIn, viewer=Depends(stream_user)):
+def post_chat(body: ChatIn, viewer=Depends(stream_voice_user)):
     """In-Today-page chat: uses the current user's own default API provider. Returns text/event-stream:
     conversation -> text (many) -> tool / usage -> confirm (a write awaits confirmation, the stream ends here) or done; error on failure.
-    Not set up / subscription type / budget used up: 409 / 402, detail = {code, message, assistant_url?}."""
+    Not set up / subscription type / budget used up: 409 / 402, detail = {code, message, assistant_url?}.
+    page "watch" (and every request with the Apple Watch's token): short answers for the watch screen (watch.py)."""
     # A read-only login can chat too (read tools work as usual), write tools are rejected (chat.py decides by token_scopes)
     return _start_run(viewer, lambda conn: chat.start_chat(conn, viewer, body.message,
                                                            [i.model_dump() for i in body.images], body.conversation_id,
@@ -405,7 +416,7 @@ def post_chat(body: ChatIn, viewer=Depends(stream_user)):
 
 
 @router.post("/v1/assistant/chat/confirm")
-def post_confirm(body: ConfirmIn, viewer=Depends(stream_user)):
+def post_confirm(body: ConfirmIn, viewer=Depends(stream_voice_user)):
     """Confirm / reject a pending write, then continue the conversation (also SSE)."""
     def start(conn):
         row, conv, provider, adapter = chat.prepare_confirm(conn, viewer, body.call_id, body.approve)
@@ -414,15 +425,22 @@ def post_confirm(body: ConfirmIn, viewer=Depends(stream_user)):
 
 
 @router.get("/v1/assistant/chat/{conv_id}/events")
-def chat_events_after(conv_id: int, after: int = Query(0, ge=0), viewer=Depends(stream_user)):
+def chat_events_after(conv_id: int, after: int = Query(0, ge=0), viewer=Depends(stream_voice_user)):
     """Resume a turn (#114): the events numbered above `after` (the SSE `id:` of the last one received), live while the turn
     still runs, then to its end (done / confirm / error). Only your own conversations (404 otherwise). When the turn is no
     longer in memory (ended over run_params.KEEP_SECONDS ago, or the server restarted) a single `resync` event: reload the
-    conversation from GET /v1/assistant/conversations/{id}."""
+    conversation from GET /v1/assistant/conversations/{id}.
+    The Apple Watch's token: only the conversations its watch started (404 otherwise)."""
+    from .. import api
+    if watch.is_watch(viewer):
+        with api.pool.connection() as conn:
+            try:
+                chat.conversation_for(conn, viewer, conv_id)
+            except chat.ChatError as e:
+                raise HTTPException(e.status, e.message)
     run = runs.get(viewer["id"], conv_id)
     if run is not None:
         return _sse_response(runs.sse(run, after))
-    from .. import api
     with api.pool.connection() as conn:
         try:
             chat.conversation_view(conn, viewer["id"], conv_id)   # 404 for a conversation that is not yours
@@ -432,16 +450,17 @@ def chat_events_after(conv_id: int, after: int = Query(0, ge=0), viewer=Depends(
 
 
 @router.post("/v1/assistant/transcribe")
-async def transcribe(request: Request, fix: bool = Query(False), conn=Depends(get_conn), viewer=Depends(current_user)):
+async def transcribe(request: Request, fix: bool = Query(False), conn=Depends(get_conn), viewer=Depends(voice_user)):
     """Voice -> text. Body: audio/wav (PCM16 mono, <= 60 s). Returns {text, seconds, used_today, per_day}; the page puts the text
     in the input box for the user to check before sending. The audio is never stored. Errors: detail = {code, message}.
     fix=1 (Jarvis voice input, flag jarvis_orbit): the text is corrected with the user's own terms (voice_fix.py) and the
-    answer adds `fixed` (the replacements) and `raw` (the text before, when something changed)."""
+    answer adds `fixed` (the replacements) and `raw` (the text before, when something changed).
+    The Apple Watch's token works here too (same per-person limits; asr.py)."""
     if int(request.headers.get("content-length") or 0) > asr.MAX_BYTES:
         raise HTTPException(413, {"code": "too_large", "message": asr.too_large_message()})
     data = await request.body()
     try:
-        out = await run_in_threadpool(asr.transcribe, conn, viewer["id"], data)
+        out = await run_in_threadpool(asr.transcribe, conn, viewer["id"], data, watch.client_of(viewer))
     except asr.AsrError as e:
         raise HTTPException(e.status, {"code": e.code, "message": e.message})
     if fix and out.get("text") and flags.enabled(conn, viewer["id"], "jarvis_orbit"):

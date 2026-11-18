@@ -92,10 +92,11 @@ def search_cost_cny(provider_name: str) -> float:
     return P.PRICE_USD[provider_name] * P.USD_CNY
 
 
-def _record(conn, user_id: int, provider: dict, conv_id: int | None, purpose: str, model: str, cost_cny: float) -> None:
-    conn.execute("""INSERT INTO ai_usage (user_id, provider_id, conversation_id, kind, model, cost_usd, cost_cny, purpose)
-                    VALUES (%s,%s,%s,%s,%s,0,%s,%s)""",
-                 (user_id, provider.get("id"), conv_id, provider["kind"], model, round(cost_cny, 6), purpose))
+def _record(conn, user_id: int, provider: dict, conv_id: int | None, purpose: str, model: str, cost_cny: float,
+            client: str | None = None) -> None:
+    conn.execute("""INSERT INTO ai_usage (user_id, provider_id, conversation_id, kind, model, cost_usd, cost_cny, purpose, client)
+                    VALUES (%s,%s,%s,%s,%s,0,%s,%s,%s)""",
+                 (user_id, provider.get("id"), conv_id, provider["kind"], model, round(cost_cny, 6), purpose, client))
 
 
 def _limit_error(conn, user_id: int, name: str) -> str | None:
@@ -116,11 +117,13 @@ def _limit_error(conn, user_id: int, name: str) -> str | None:
 
 
 # ---------------------------------------------------------------- run
-def run(conn: psycopg.Connection, user_id: int, provider: dict, conv_id: int | None, name: str, args: dict) -> dict:
+def run(conn: psycopg.Connection, user_id: int, provider: dict, conv_id: int | None, name: str, args: dict,
+        client: str | None = None) -> dict:
     """Run web_search / web_fetch for the caller (always their own request). Limits refused -> PermissionError (the chat
     loop / the MCP server passes the text to the model); a blocked page is a normal result with blocked=true and tell_user.
     provider: the chat's provider row, or ai/web/mcp.PROVIDER for MCP (ai_usage.kind 'mcp', no provider_id). The limits
-    count every row of this user whatever the channel, so the chat and MCP share one daily allowance and one quota."""
+    count every row of this user whatever the channel, so the chat and MCP share one daily allowance and one quota.
+    client: ai_usage.client ('watch' for the Apple Watch, ai/watch.py)."""
     if name not in NAMES:
         raise ValueError(f"没有这个工具：{name}")
     error = _limit_error(conn, user_id, name)
@@ -131,9 +134,9 @@ def run(conn: psycopg.Connection, user_id: int, provider: dict, conv_id: int | N
         if not query:
             raise ValueError("query 不能为空")
         p, results = S.search(query, S.country_for(_tz(conn, user_id)))   # SearchError: nothing billed, nothing counted
-        _record(conn, user_id, provider, conv_id, "web_search", p.name, search_cost_cny(p.name))
+        _record(conn, user_id, provider, conv_id, "web_search", p.name, search_cost_cny(p.name), client)
         return {"query": query, "results": results, "note": P.UNTRUSTED_NOTE}
-    _record(conn, user_id, provider, conv_id, "web_fetch", "fetch", 0.0)   # every attempt counts: no retry loops
+    _record(conn, user_id, provider, conv_id, "web_fetch", "fetch", 0.0, client)   # every attempt counts: no retry loops
     try:
         page = F.fetch(str(args.get("url") or ""))
     except F.Blocked as e:

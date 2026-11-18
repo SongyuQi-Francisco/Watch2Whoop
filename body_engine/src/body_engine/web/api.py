@@ -105,13 +105,24 @@ def login(body: LoginIn, request: Request, response: Response, conn=Depends(get_
 
 class LoginCodeIn(BaseModel):
     code: str = Field(min_length=8, max_length=40)
-    client: str = Field("web", pattern="^(web|app)$")   # app: the native iOS app (#340 N8) gets the device token, no cookie
+    # app: the native iOS app (#340 N8) gets the device token, no cookie; watch: the Apple Watch redeems the code its phone
+    # asked for (account/watch.py) and gets its own narrow token, no cookie
+    client: str = Field("web", pattern="^(web|app|watch)$")
 
 
 @router.post("/v1/web/login-code")
 def login_with_code(body: LoginCodeIn, request: Request, response: Response, conn=Depends(get_conn)):
     """Log in with a one-time login code (from the Watch2Whoop app's setup info / QR code): issue a token specific to this
-    device and set the same cookie. client=app: no cookie; the answer carries that token (Bearer for the native app)."""
+    device and set the same cookie. client=app: no cookie; the answer carries that token (Bearer for the native app).
+    client=watch: only a watch code (POST /v1/account/watch-code) and only the watch token (scope watch + the phone's
+    read / write, usable on the voice endpoints only); a sign-in code never works there, nor a watch code anywhere else."""
+    if body.client == "watch":
+        from ..account import watch as watch_tokens   # account imports web
+        res = watch_tokens.redeem(conn, body.code)
+        if res is None:
+            raise HTTPException(401, "登录码无效、已用过或已过期")
+        token, user = res
+        return {**_me(user), "token": token}
     if body.client == "app":
         token = login_codes.redeem_token(conn, body.code)
         user = auth.user_for_token(conn, token) if token else None

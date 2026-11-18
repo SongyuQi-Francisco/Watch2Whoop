@@ -102,13 +102,23 @@ def get_conn():
 
 
 def current_user(request: Request, conn=Depends(get_conn), authorization: Annotated[str | None, Header()] = None) -> dict:
-    """Bearer token or Today page cookie. The AI-client-only MCP token (scope mcp) is invalid here; it only works on /mcp."""
+    """Bearer token or Today page cookie. The AI-client-only MCP token (scope mcp) is invalid here; it only works on /mcp.
+    So are the upload-only and the Apple Watch tokens (auth.RESTRICTED_SCOPES)."""
+    return resolve_user(request, conn, authorization)
+
+
+def resolve_user(request: Request, conn, authorization: str | None, watch_ok: bool = False) -> dict:
+    """current_user; watch_ok: an Apple Watch device token (auth.user_for_watch_token) is accepted too. Only the voice
+    endpoints pass it (ai/api.py: transcribe, chat, chat/confirm, chat events; account/watch.py says why)."""
     if authorization is None:  # no Bearer header: Today page cookie login
         user = web_session.user_for_request(conn, request)
     elif not authorization.startswith("Bearer "):
         raise HTTPException(401, "缺少 Bearer token")
     else:
-        user = auth.user_for_token(conn, authorization.removeprefix("Bearer ").strip())
+        token = authorization.removeprefix("Bearer ").strip()
+        user = auth.user_for_token(conn, token)
+        if user is None and watch_ok:
+            user = auth.user_for_watch_token(conn, token)
         if user is None:
             raise HTTPException(401, "token 无效或已吊销")
     # Self-signed-up accounts waiting for an invite code only reach /v1/account*; disabled ones nothing (account/api.py)
