@@ -39,8 +39,8 @@ def create(conn: psycopg.Connection, user_id: int, label: str | None = None, hou
            parent_token_id: int | None = None) -> str:
     """Issue a one-time login code and return the plaintext (shown only this once). `minutes` replaces `hours` for a short-lived code.
     purpose / parent_token_id: a watch code (account/watch.py) and the phone token that asked for it."""
-    if purpose not in (PURPOSE_LOGIN, PURPOSE_WATCH):
-        raise ValueError(f"purpose 只能是 {PURPOSE_LOGIN} / {PURPOSE_WATCH}")
+    if purpose not in (PURPOSE_LOGIN, PURPOSE_WATCH):   # a programming error, never shown to a user
+        raise ValueError(f"unknown login code purpose {purpose!r}")
     scopes = scopes or ["read", "write"]
     if not set(scopes) <= ALLOWED_SCOPES:
         raise ValueError(f"scopes 只能是 {sorted(ALLOWED_SCOPES)}")
