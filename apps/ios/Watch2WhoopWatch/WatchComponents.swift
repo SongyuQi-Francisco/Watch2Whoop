@@ -51,16 +51,19 @@ struct SetPills: View {
 /// The sync mark (plan 2.6): icon shape = state, text = an age or a count, never a clock time (the phone capsule's icons).
 struct SyncMark: View {
   var state: WatchSyncState
+  /// Size factor (home draws it at the canvas's scale; elsewhere the watch's `W.k`).
+  var scale: CGFloat = W.k
   var onTap: () -> Void
 
   var body: some View {
     if let p = parts {
       let (icon, color, label) = p
       Button(action: onTap) {
-        HStack(spacing: 3) {
-          Image(systemName: icon).font(W.font(11, .semibold)).foregroundStyle(color)
-          Text(label).font(W.font(12.5)).foregroundStyle(color == W.text2 || color == W.text ? W.text2 : color)
-            .lineLimit(1).minimumScaleFactor(0.8)
+        HStack(spacing: 3 * scale) {
+          Image(systemName: icon).font(.system(size: 11 * scale, weight: .semibold)).foregroundStyle(color)
+          Text(label).font(.system(size: 12.5 * scale, weight: .medium).monospacedDigit())
+            .foregroundStyle(color == W.text2 || color == W.text ? W.text2 : color)
+            .lineLimit(1).fixedSize()
         }
       }
       .buttonStyle(.plain)
@@ -236,8 +239,8 @@ struct RecoveryDial: View {
     GeometryReader { g in
       let d = min(g.size.width, g.size.height)
       ZStack {
-        ring(k: d / 114)   // the mockup's dial is 2 × 57 pt
-        labels(k: d / 114).offset(y: 2 * d / 114)
+        ring(k: d / CGFloat(2 * HomeLayout.dialOuter))   // the mockup's dial: arc radius 57 pt, 4 pt stroke
+        labels(k: d / CGFloat(2 * HomeLayout.dialOuter))
       }
       .frame(width: d, height: d)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -254,7 +257,7 @@ struct RecoveryDial: View {
   private func ring(k: CGFloat) -> some View {
     Canvas { ctx, size in
       let c = CGPoint(x: size.width / 2, y: size.height / 2)
-      let r = min(size.width, size.height) / 2 - 2 * k
+      let r = CGFloat(HomeLayout.dialRadius) * k
       func p(_ rr: CGFloat, _ deg: Double) -> CGPoint {
         let a = deg * .pi / 180
         return CGPoint(x: c.x + rr * CGFloat(sin(a)), y: c.y - rr * CGFloat(cos(a)))
@@ -285,20 +288,156 @@ struct RecoveryDial: View {
     }
   }
 
+  /// 「恢复」, the number and the word, placed from the dial's centre (`HomeLayout`): the number's digits centred on it
+  /// with 「%」 hung beside them, the two labels by their baselines.
   private func labels(k: CGFloat) -> some View {
-    VStack(spacing: 0) {
+    let L = HomeLayout.self
+    return ZStack {
+      Color.clear
       Text(tr("恢复", "Recovery")).font(.system(size: 10.5 * k, weight: .medium)).tracking((Lang.isZh ? 2 : 0.5) * k)
-        .foregroundStyle(W.text2)
-      HStack(alignment: .firstTextBaseline, spacing: 1) {
-        Text(home.recovery.map { String(Int($0.rounded())) } ?? "—")
-          .font(.system(size: 42 * k, weight: .light).monospacedDigit()).tracking(-1.5 * k)
-          .foregroundStyle(home.grey ? W.text2 : W.text)
-        if home.recovery != nil { Text("%").font(.system(size: 12 * k, weight: .medium)).foregroundStyle(W.text2) }
-      }
+        .foregroundStyle(W.text2).fixedSize()
+        .centredBaseline(CGFloat(L.labelBaseline) * k)
+      CenteredNumber(text: home.recovery.map { String(Int($0.rounded())) } ?? "—", size: CGFloat(L.numberSize) * k,
+                     color: home.grey ? W.text2 : W.text, unit: home.recovery == nil ? nil : "%", unitSize: 12 * k,
+                     unitGap: CGFloat(L.unitGap) * k, unitRaise: CGFloat(L.unitRaise) * k)
       Text(home.verdict ?? home.reason ?? " ").font(.system(size: 11.5 * k, weight: .medium))
         .foregroundStyle(home.grey || home.verdict == nil ? W.text2 : W.text).lineLimit(1).minimumScaleFactor(0.6)
         .frame(maxWidth: 66 * k)   // the chord inside the ticks at that height
+        .centredBaseline(CGFloat(L.wordBaseline) * k)
     }
+  }
+}
+
+/// A number centred on its own (owner, 2026-11-19: 「数字没有居中」): its digits' ink box sits on the centre of the
+/// enclosing `ZStack` (plus `dy`), and its unit (「%」, 「/18」) hangs after it without moving it (`DialText`). Used in
+/// every dial and ring: home, the start screen, the rest countdown, the summary.
+struct CenteredNumber: View {
+  var text: String
+  var size: CGFloat
+  var weight: Font.Weight = .light
+  var color: Color = W.text
+  /// Tabular figures, only for a number that ticks (the countdown): they keep it still, but put the ink of a 「1」 off
+  /// centre, so a number that does not change uses proportional figures.
+  var monospaced = false
+  var unit: String? = nil
+  var unitSize: CGFloat = 12
+  var unitWeight: Font.Weight = .medium
+  var unitColor: Color = W.text2
+  var unitGap: CGFloat = 2
+  /// The unit's baseline this far above the number's.
+  var unitRaise: CGFloat = 0
+  /// The digits' ink centre this far below the centre (the mockups put some numbers off the ring's centre on purpose).
+  var dy: CGFloat = 0
+
+  var body: some View {
+    HungUnitLayout(gap: unitGap, raise: unitRaise, inkHalf: CGFloat(DialText.digitHeight(Double(size))) / 2, dy: dy) {
+      Text(text).font(monospaced ? .system(size: size, weight: weight).monospacedDigit() : .system(size: size, weight: weight))
+        .foregroundStyle(color).lineLimit(1).fixedSize()
+      if let unit {
+        Text(unit).font(.system(size: unitSize, weight: unitWeight)).foregroundStyle(unitColor).lineLimit(1).fixedSize()
+      }
+    }
+    .accessibilityElement(children: .combine)
+  }
+}
+
+/// The layout behind `CenteredNumber`: it is as big as the number alone (so the number is what gets centred), the unit
+/// is placed after the number's right edge (`gap`) with its baseline `raise` above the number's, outside the bounds, and
+/// the layout's vertical centre guide is the digits' ink centre (`DialText`) moved by `dy`.
+struct HungUnitLayout: Layout {
+  var gap: CGFloat
+  var raise: CGFloat
+  /// Half the digits' ink height.
+  var inkHalf: CGFloat
+  var dy: CGFloat
+
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    subviews.first?.sizeThatFits(.unspecified) ?? .zero
+  }
+
+  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    guard let number = subviews.first else { return }
+    let n = number.dimensions(in: .unspecified)
+    number.place(at: bounds.origin, proposal: .unspecified)
+    guard subviews.count > 1 else { return }
+    let unit = subviews[1]
+    let u = unit.dimensions(in: .unspecified)
+    let x = CGFloat(DialText.unitLeading(centerX: Double(bounds.midX), numberWidth: Double(n.width), gap: Double(gap)))
+    unit.place(at: CGPoint(x: x, y: bounds.minY + n[.lastTextBaseline] - raise - u[.lastTextBaseline]), proposal: .unspecified)
+  }
+
+  func explicitAlignment(of guide: VerticalAlignment, in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews,
+                         cache: inout ()) -> CGFloat? {
+    guard let number = subviews.first else { return nil }
+    let baseline = number.dimensions(in: .unspecified)[.lastTextBaseline]
+    switch guide {
+    case .center: return bounds.minY + baseline - inkHalf - dy
+    case .lastTextBaseline, .firstTextBaseline: return bounds.minY + baseline
+    default: return nil
+    }
+  }
+}
+
+extension View {
+  /// In a `ZStack` with centre alignment: this text's baseline goes `dy` below the stack's centre.
+  func centredBaseline(_ dy: CGFloat) -> some View {
+    alignmentGuide(VerticalAlignment.center) { $0[.lastTextBaseline] - dy }
+  }
+}
+
+/// A full-screen canvas in the mockups' coordinates (home; plan 3: one screen = one drawing): children are placed in
+/// screen points with `place(...)`, the safe area is ignored (watchOS 26 draws the clock over the content), `s` scales the
+/// mockups' 208 pt width to this watch and `clock` is the system clock's row (`ClockRow`).
+struct DesignCanvas<Content: View>: View {
+  let content: (CanvasMetrics) -> Content
+
+  init(@ViewBuilder content: @escaping (CanvasMetrics) -> Content) {
+    self.content = content
+  }
+
+  var body: some View {
+    GeometryReader { g in
+      ZStack(alignment: .topLeading) {
+        Color.clear.frame(width: g.size.width, height: g.size.height)
+        content(CanvasMetrics(size: g.size))
+      }
+    }
+    .ignoresSafeArea()
+  }
+}
+
+/// The screen a `DesignCanvas` draws on.
+struct CanvasMetrics {
+  var size: CGSize
+  /// The mockups' 208 pt width → this watch.
+  var s: CGFloat { size.width / CGFloat(HomeLayout.designWidth) }
+  var sy: CGFloat { size.height / CGFloat(HomeLayout.designHeight) }
+  var clock: ClockRow.Row { ClockRow.row(width: Double(size.width), height: Double(size.height)) }
+}
+
+extension View {
+  /// In a `DesignCanvas`: the view's centre at (x, y).
+  func place(centerX x: CGFloat, centerY y: CGFloat) -> some View {
+    alignmentGuide(HorizontalAlignment.leading) { $0[HorizontalAlignment.center] - x }
+      .alignmentGuide(VerticalAlignment.top) { $0[VerticalAlignment.center] - y }
+  }
+
+  /// In a `DesignCanvas`: the view's leading edge at `x`, its vertical centre at `y`.
+  func place(leading x: CGFloat, centerY y: CGFloat) -> some View {
+    alignmentGuide(HorizontalAlignment.leading) { $0[HorizontalAlignment.leading] - x }
+      .alignmentGuide(VerticalAlignment.top) { $0[VerticalAlignment.center] - y }
+  }
+
+  /// In a `DesignCanvas`: a text's leading edge at `x`, its baseline at `y`.
+  func place(leading x: CGFloat, baseline y: CGFloat) -> some View {
+    alignmentGuide(HorizontalAlignment.leading) { $0[HorizontalAlignment.leading] - x }
+      .alignmentGuide(VerticalAlignment.top) { $0[.lastTextBaseline] - y }
+  }
+
+  /// In a `DesignCanvas`: a text's trailing edge at `x`, its baseline at `y`.
+  func place(trailing x: CGFloat, baseline y: CGFloat) -> some View {
+    alignmentGuide(HorizontalAlignment.leading) { $0[HorizontalAlignment.trailing] - x }
+      .alignmentGuide(VerticalAlignment.top) { $0[.lastTextBaseline] - y }
   }
 }
 

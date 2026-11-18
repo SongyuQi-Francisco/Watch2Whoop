@@ -800,3 +800,49 @@ final class PhoneWatchTodayTests: XCTestCase {
     XCTAssertFalse(PhoneWatchBridge.sameExceptTimes(a, nil))
   }
 }
+
+/// The watch's dial and top-row geometry (owner's acceptance 2026-11-19: 「数字没有居中」).
+final class WatchLayoutTests: XCTestCase {
+  /// The number is centred on its own; the unit starts after its right edge, whatever the number's width.
+  func testUnitHangsWithoutMovingTheNumber() {
+    // "82" 40 pt wide on the axis x = 104: it spans 84…124, the unit starts 2.5 pt after it
+    XCTAssertEqual(DialText.unitLeading(centerX: 104, numberWidth: 40, gap: 2.5), 126.5, accuracy: 1e-9)
+    // a wider number moves only the unit
+    XCTAssertEqual(DialText.unitLeading(centerX: 104, numberWidth: 60, gap: 2.5), 136.5, accuracy: 1e-9)
+    // the digits' ink box is centred on the centre: baseline half the digit height below it
+    XCTAssertEqual(DialText.baseline(centerY: 100, size: 42), 100 + 42 * DialText.digitHeightEm / 2, accuracy: 1e-9)
+    XCTAssertEqual(DialText.digitHeight(42), 28.56, accuracy: 0.01)   // measured 28.5 pt on the simulator
+  }
+
+  /// The mockup's dial text is balanced around the centre, and nothing on home runs into the keys at any watch size.
+  func testHomeLayoutFitsEveryWatch() {
+    XCTAssertEqual(HomeLayout.dialBelowClock, 74.7, accuracy: 0.01)
+    XCTAssertLessThan(HomeLayout.labelBaseline, 0)
+    XCTAssertGreaterThan(HomeLayout.wordBaseline, 0)
+    for (w, row) in ClockRow.measured {
+      let s = Double(w) / HomeLayout.designWidth
+      let height = [162: 197.0, 176: 215, 184: 224, 187: 223, 198: 242, 205: 251, 208: 248, 211: 257][w]!
+      let sy = height / HomeLayout.designHeight
+      let dial = row.centreY + HomeLayout.dialBelowClock * s
+      // the dial clears the clock row (its text is about 12 pt tall), and the bars clear the keys
+      XCTAssertGreaterThan((dial - HomeLayout.dialOuter * s) - (row.centreY + 6), 6, "\(w) pt: dial into the clock row")
+      let barBottom = dial + (HomeLayout.barBelowCentre + 0.75 + 2) * s
+      let keysTop = (HomeLayout.keysCentreY - HomeLayout.keysHeight / 2) * sy
+      XCTAssertGreaterThanOrEqual(keysTop - barBottom, HomeLayout.minGap, "\(w) pt: readings into the keys")
+    }
+  }
+
+  /// The clock row comes from the table for every watch watchOS 26 runs on, and a later watch gets a sensible guess.
+  func testClockRow() {
+    XCTAssertEqual(ClockRow.row(width: 208, height: 248), ClockRow.Row(centreY: 25.5, side: 17))   // 46 mm
+    XCTAssertEqual(ClockRow.row(width: 187, height: 223), ClockRow.Row(centreY: 22.5, side: 14.5)) // 42 mm
+    XCTAssertEqual(ClockRow.measured.count, 8)
+    let guess = ClockRow.row(width: 220, height: 266)
+    XCTAssertEqual(guess.centreY, 27.6, accuracy: 0.05)
+    XCTAssertEqual(guess.side, 17.2, accuracy: 0.05)
+    for (w, r) in ClockRow.measured {
+      XCTAssertGreaterThan(r.centreY, 10, "\(w)")
+      XCTAssertLessThan(r.centreY, 30, "\(w)")
+    }
+  }
+}

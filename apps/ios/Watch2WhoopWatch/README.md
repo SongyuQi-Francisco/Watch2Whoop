@@ -45,6 +45,17 @@ watch: undo ─► (still on the watch: dropped there) or an `undo` event ─►
 Undo needs the server when the write had already gone out; without a connection the phone keeps the undo and tries again
 with the next watch event or when the watch link wakes.
 
+## Layout rules (owner's acceptance 2026-11-19)
+
+- **Numbers in dials and rings are centred on their own**: `CenteredNumber` (its `HungUnitLayout`) puts the digits'
+  ink box on the ring's centre and hangs the unit (「%」, 「/18」) after the number without moving it; other text is
+  placed by its baseline from the centre (`centredBaseline`). The geometry is `DialText` in `WatchShared/WatchLayout.swift`
+  (unit-tested). Used on home, the start screen, the rest countdown and the summary.
+- **Home is one drawing** (`DesignCanvas`, `HomeLayout`): the mockup's coordinates scaled by the screen width, hung from
+  the system clock's row. watchOS 26 gives no layout value for that row (no top safe area without toolbar items; a
+  `topBarLeading` item sits about 7 pt below the clock), so `ClockRow` holds the measured row of every watch it runs
+  on; the sync mark sits on it, as far from the left edge as the clock is from the right.
+
 ## Where voice and the watch-face widgets plug in (before 2.1.0)
 
 Both come after phase 2a, each in its own PR; 2a leaves these places for them.
