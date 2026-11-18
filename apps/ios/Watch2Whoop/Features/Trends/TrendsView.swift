@@ -28,11 +28,10 @@ enum TrendsSheet: Identifiable {
   }
 }
 
-/// The Trends tab (#340 N4), like the page's: 指标 (今天 = the end day's full metric list against the personal baseline,
-/// status cards first (#357); 7 / 30 / 90 / 365 days = every WHOOP metric with its range mean and "vs 上期", status cards
-/// as of the end date), 睡眠 (the last 14 nights) and 报告 (weekly / monthly report). Read from the local database
-/// first, refreshed through the sync layer; the end date looks back. Numbers and charts only; words in the sheets. With
-/// flag `trends_v2` each category folds (TrendsFold.swift).
+/// The 身体 tab, 2.1.0 (docs/design/2.0.1 `05-body`, drilldown option C′): level 1 is the first glance only (range menu, the
+/// score over the range, 心肺 · 身体年龄 · 周报) and nothing below it. The bars (or the ladder, or a swipe up) open level 2,
+/// `BodyAllPage`: 指标 · 睡眠 · 报告, the 2.0.0 lists of the tab. A number opens level 3, its metric page. Read from the
+/// local database first, refreshed through the sync layer; the end date looks back. Numbers and charts only.
 struct TrendsView: View {
   enum Mode: String, CaseIterable { case metrics, sleep, report
     var label: String {
@@ -48,8 +47,7 @@ struct TrendsView: View {
   @EnvironmentObject private var app: AppModel
   @StateObject private var store: TrendsStore
   @State private var sheet: TrendsSheet?
-  @State private var showReport = false
-  @State private var path: [SleepRoute] = []
+  @State private var path: [LevelRoute] = []
   @SceneStorage("w2w.trends.mode") private var mode: Mode = .metrics
 
   init(session: AccountSession) {
@@ -60,73 +58,71 @@ struct TrendsView: View {
     NavigationStack(path: $path) {
       page
         .toolbar(.hidden, for: .navigationBar)
-        .navigationDestination(for: SleepRoute.self) { r in
-          SleepDetailView(initialDate: r.date) { key, title in sheet = .explain(key: key, title: title) }
-        }
+        .navigationDestination(for: LevelRoute.self) { r in level(r) }
     }
     .sheet(item: $sheet) { s in
       TrendsSheetView(sheet: s, page: store.page, end: store.end, store: store, close: { sheet = nil })
         .environmentObject(session)
     }
-    .sheet(isPresented: $showReport) {
-      SheetContainer(title: tr("周报", "Weekly report"), close: { showReport = false }) {
-        ReportView(end: store.end) { key, title in
-          showReport = false
-          DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { sheet = .explain(key: key, title: title) }
-        }
-      }
-      .environmentObject(session)
-      .presentationDetents([.medium, .large])
-      .presentationDragIndicator(.visible)
-    }
     .onAppear { if !store.isObserving { store.observe(session) } }
     .task { await store.refresh() }
-    // 「全部指标 →」 on Today (also when this tab is created by that tap: the publisher replays the pending request)
+    // a Jarvis card or a row of 全部功能 (also when this tab is created by that tap: the publisher replays the request)
     .onReceive(TrendsLink.shared.$pending) { r in
       guard r != nil else { return }
       DispatchQueue.main.async {
         guard let r = TrendsLink.shared.take() else { return }
         mode = r.mode
-        path = []
+        path = [.all(r.mode)]
         store.apply(r)
       }
     }
   }
 
+  /// Level 1: the first glance and nothing below it (no false floor: drilldown README section 9).
   private var page: some View {
-    ScrollViewReader { proxy in
-      ScrollView(.vertical, showsIndicators: false) {
-        LazyVStack(alignment: .leading, spacing: 0) {
-          BodyGlancePage(page: store.page, range: store.range, end: store.end, loading: store.loading, session: session,
-                         run: glanceActions)
-            .id("top")
-          // below the fold (vertical scroll only): every 2.0.0 view of the tab, by category
-          SegControl(items: Mode.allCases.map { ($0, $0.label) }, selected: mode) { mode = $0 }
-            .padding(.top, 150)
-          switch mode {
-          case .metrics: metrics
-          case .sleep: TrendsSleepView(end: store.end) { day in path.append(SleepRoute(date: day)) }.padding(.top, 14)
-          case .report: ReportView(end: store.end) { key, title in sheet = .explain(key: key, title: title) }.padding(.top, 10)
-          }
-          Color.clear.frame(height: 1).id("bottom")
-        }
+    ScrollView(.vertical, showsIndicators: false) {
+      BodyGlancePage(page: store.page, range: store.range, end: store.end, loading: store.loading, session: session,
+                     run: glanceActions)
         .padding(.horizontal, Metrics.gutter)
-        .padding(.bottom, 32)
         .frame(maxWidth: Metrics.maxContentWidth)
         .frame(maxWidth: .infinity)
-      }
-      .background(Palette.bg.ignoresSafeArea())
-      .statusBarCover()
-      .clearOfJarvisKey()
-      .refreshable { await store.refresh() }
-      .onAppear {
-        if PerfProbe.trendsScroll { autoScroll(proxy) }
-        #if DEBUG
-        TrendsDevShot.apply(proxy: proxy, mode: { mode = $0 }, range: { store.setRange($0) }, end: { store.select($0) },
-                            sheet: { sheet = $0 }, page: { store.page })
-        #endif
-      }
     }
+    .background(Palette.bg.ignoresSafeArea())
+    .statusBarCover()
+    .clearOfJarvisKey()
+    .refreshable { await store.refresh() }
+    .simultaneousGesture(DragGesture(minimumDistance: 40).onEnded { v in
+      if LevelNav.isSwipeUp(v.translation.width, v.translation.height) { openLevel(.all(mode)) }
+    })
+    .onAppear {
+      if PerfProbe.trendsScroll { autoLevel() }
+      #if DEBUG
+      TrendsDevShot.apply(path: { path = $0 }, mode: { mode = $0 }, range: { store.setRange($0) }, end: { store.select($0) },
+                          sheet: { sheet = $0 }, page: { store.page })
+      #endif
+    }
+  }
+
+  // MARK: - levels 2 and 3
+
+  @ViewBuilder private func level(_ r: LevelRoute) -> some View {
+    switch r {
+    case .all:
+      BodyAllPage(store: store, mode: $mode, push: { path.append($0) }, up: { path = [] }, sheet: { sheet = $0 })
+    case .metric(let id):
+      MetricPage(id: id, end: store.end, range: store.range, crumb: .range(BodyGlancePage.rangeTitle(store.range)), today: nil,
+                 push: { path.append($0) }, up: { path = LevelNav.up(path, second: .all(mode)) },
+                 explain: { key, title in sheet = .explain(key: key, title: title) })
+    case .night(let d):
+      SleepDetailView(initialDate: d) { key, title in sheet = .explain(key: key, title: title) }
+    case .day:
+      EmptyView()   // 今天's own level
+    }
+  }
+
+  private func openLevel(_ r: LevelRoute) {
+    guard path.isEmpty else { return }
+    path = [r]
   }
 
   // MARK: - the first glance's taps
@@ -136,34 +132,24 @@ struct TrendsView: View {
       setRange: { store.setRange($0) },
       pickEnd: { sheet = .calendar },
       backToToday: { store.select(nil) },
-      open: { sheet = $0 },
-      report: { showReport = true },
+      level: { r in
+        if case .all(let m) = r { mode = m }
+        openLevel(r)
+      },
+      all: { openLevel(.all(mode)) },
       syncNow: { Task { _ = await HealthSyncService.shared.syncNow(); await store.refresh() } },
       syncCenter: { app.route = .syncCenter })
   }
 
-  // MARK: - metrics
-
-  @ViewBuilder private var metrics: some View {
-    TrendsMetricsContent(page: store.page, range: store.range, loading: store.loading, offline: store.offline,
-                         foldOn: session.flags.contains(TrendsFold.flag), setRange: { store.setRange($0) }, open: { sheet = $0 })
-    SyncStatusLine(sync: session.sync, hasData: store.page != nil).padding(.top, 18)
-  }
-
-  /// `W2W_PERF=1 W2W_PERF_SCROLL_TRENDS=1`: scroll the tab down and up three times while the frame meter counts.
-  private func autoScroll(_ proxy: ScrollViewProxy) {
+  /// `W2W_PERF=1 W2W_PERF_SCROLL_TRENDS=1`: open the level-2 list once the range's data is on screen (frame meter counts).
+  private func autoLevel() {
     Task { @MainActor in
-      // after the range's data is on screen and the refresh is done
       for _ in 0..<40 where store.page == nil || store.loading { try? await Task.sleep(nanoseconds: 250_000_000) }
       try? await Task.sleep(nanoseconds: 1_500_000_000)
       PerfProbe.shared.startFrames()
-      for _ in 0..<3 {
-        withAnimation(.easeInOut(duration: 2)) { proxy.scrollTo("bottom", anchor: .bottom) }
-        try? await Task.sleep(nanoseconds: 2_200_000_000)
-        withAnimation(.easeInOut(duration: 2)) { proxy.scrollTo("top", anchor: .top) }
-        try? await Task.sleep(nanoseconds: 2_200_000_000)
-      }
-      PerfProbe.shared.stopFrames(label: "trends_scroll_\(store.range.rawValue)d")
+      path = [.all(.metrics)]
+      try? await Task.sleep(nanoseconds: 2_200_000_000)
+      PerfProbe.shared.stopFrames(label: "trends_level2_\(store.range.rawValue)d")
     }
   }
 }
@@ -336,38 +322,15 @@ struct TrendsSheetView: View {
     }
   }
 
-  /// Mean z-score of each contributor over the range, and the latest day's (app.js recoveryTrendHtml sheet).
+  /// The range mean, the end day and the previous period, then each contributor's z-score (app.js recoveryTrendHtml sheet).
   @ViewBuilder private var recovery: some View {
     let s = page?.data.series["recovery"]
-    let names: [(String, String)] = [("hrv", "HRV"), ("rhr", tr("静息心率", "Resting HR")), ("resp_rate", tr("呼吸频率", "Respiratory rate")),
-                                     ("sleep_performance", tr("睡眠表现", "Sleep performance"))]
-    let zs = (s?.contributors ?? []).compactMap { $0 }
-    let last = (s?.contributors ?? []).last { $0 != nil } ?? nil
     let fig = page.flatMap { p in s.map { TrendCards.figures($0, p.data, digits: 0, unit: nil) } }
     VStack(alignment: .leading, spacing: 0) {
       KVRow(label: fig?.meanLabel ?? tr("区间均值", "Range mean"), value: s?.mean.map { TodayModel.fmt($0) })
       if let fig { KVRow(label: fig.dayLabel, value: fig.day) }
       KVRow(label: tr("上期", "Previous"), value: s?.prevMean.map { TodayModel.fmt($0) })
-      let rows = names.compactMap { k, label -> (String, Double, Double?)? in
-        let xs = zs.compactMap { $0[k] }
-        return xs.isEmpty ? nil : (label, xs.reduce(0, +) / Double(xs.count), last?[k])
-      }
-      if !rows.isEmpty {
-        Text(tr("相对基线（z）", "Against baseline (z)")).font(Typo.section).foregroundColor(Palette.text2).padding(.top, 16).padding(.bottom, 6)
-        VStack(alignment: .leading, spacing: 12) {
-          ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
-            VStack(alignment: .leading, spacing: 5) {
-              HStack {
-                Text(r.0).font(Typo.body).foregroundColor(Palette.text)
-                Spacer()
-                Text(TrendsFormat.signed(r.1, digits: 2)).font(Typo.bodyStrong.monospacedDigit()).foregroundColor(r.1 > 0 ? Palette.good : r.1 < 0 ? Palette.bad : Palette.text2)
-                Text("· \(tr("最近", "latest")) \(r.2.map { TrendsFormat.signed($0, digits: 2) } ?? "—")").font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text3)
-              }
-              DiffBar(fraction: max(-1, min(1, r.1 / 2)), tone: r.1 > 0 ? .good : r.1 < 0 ? .bad : .text)
-            }
-          }
-        }
-      }
+      RecoveryContributors(series: s).padding(.top, 16)
       ExplainBody(kind: "metric", key: "recovery", day: end, head: false).padding(.top, 8)
     }
   }
@@ -434,32 +397,32 @@ struct StatusTileBody: View {
 }
 
 #if DEBUG
-/// Debug builds only, for simulator screenshots: `SIMCTL_CHILD_W2W_DEV_TRENDS=<mode>[,<days>][,<end>]`
-/// (`metrics,1` = 今天, `metrics,365`, `sleep`, `report`),
-/// `SIMCTL_CHILD_W2W_DEV_TRENDS_SHEET=explain:<key>|status:<key>|card:<card id>|recovery|calendar` (`card:` opens a range
-/// card's own sheet, with its mean and end-day figures), `SIMCTL_CHILD_W2W_DEV_TRENDS_SCROLL=<anchor>` (`status`,
-/// `card.<key>`, `day.<group>`, `bottom`).
+/// Debug builds only, for simulator screenshots: `SIMCTL_CHILD_W2W_DEV_TRENDS=<mode>[,<days>][,<end>]` (`metrics,365`,
+/// `sleep`, `report`: opens level 2 in that mode), `SIMCTL_CHILD_W2W_DEV_TRENDS_LEVEL=metric:<id>` (a metric page straight
+/// from the first glance), `SIMCTL_CHILD_W2W_DEV_TRENDS_SHEET=explain:<key>|status:<key>|calendar|bodyAge`.
 enum TrendsDevShot {
-  static func apply(proxy: ScrollViewProxy, mode: @escaping (TrendsView.Mode) -> Void, range: @escaping (TrendRange) -> Void,
-                    end: @escaping (String) -> Void, sheet: @escaping (TrendsSheet) -> Void, page: @escaping () -> TrendsPage?) {
+  static func apply(path: @escaping ([LevelRoute]) -> Void, mode: @escaping (TrendsView.Mode) -> Void,
+                    range: @escaping (TrendRange) -> Void, end: @escaping (String) -> Void, sheet: @escaping (TrendsSheet) -> Void,
+                    page: @escaping () -> TrendsPage?) {
     let env = ProcessInfo.processInfo.environment
+    var route: [LevelRoute] = []
     if let t = env["W2W_DEV_TRENDS"] {
       let p = t.split(separator: ",").map(String.init)
-      if let m = p.first.flatMap(TrendsView.Mode.init(rawValue:)) { mode(m) }
+      if let m = p.first.flatMap(TrendsView.Mode.init(rawValue:)) {
+        mode(m)
+        route = [.all(m)]
+      }
       if p.count > 1, let n = Int(p[1]), let r = TrendRange(rawValue: n) { range(r) }
       if p.count > 2, p[2].count == 10 { end(p[2]) }
     }
+    if let l = env["W2W_DEV_TRENDS_LEVEL"], l.hasPrefix("metric:") { route.append(.metric(String(l.dropFirst(7)))) }
     DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-      if let a = env["W2W_DEV_TRENDS_SCROLL"] { proxy.scrollTo(a, anchor: .top) }
+      if !route.isEmpty { path(route) }
       let s = env["W2W_DEV_TRENDS_SHEET"] ?? ""
-      if s == "recovery" { sheet(.recovery) }
-      else if s == "calendar" { sheet(.calendar) }
+      if s == "calendar" { sheet(.calendar) }
+      else if s == "bodyAge" { sheet(.bodyAge) }
       else if s.hasPrefix("explain:") { sheet(.explain(key: String(s.dropFirst(8)), title: String(s.dropFirst(8)))) }
       else if s.hasPrefix("status:"), let t = page()?.status.tiles.first(where: { $0.key == String(s.dropFirst(7)) }) { sheet(.status(t)) }
-      else if s.hasPrefix("card:"), let p = page(),
-              let c = TrendCards.groups(p).flatMap(\.cards).first(where: { $0.id == String(s.dropFirst(5)) }) {
-        sheet(c.sheet ?? .explain(key: c.explain, title: c.title, figures: c.figures))
-      }
     }
   }
 }

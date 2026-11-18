@@ -38,6 +38,10 @@ struct ChartSpec: Equatable {
   var label = ""
   /// Day labels under the plot (first, middle, last).
   var xAxis = true
+  /// The user's usual range as a flat band with dashed edges (a metric page, drilldown `c-metric`).
+  var usual: ClosedRange<Double>? = nil
+  /// The newest reading of the main layer as a dot in this colour (the day against the usual).
+  var lastTone: Tone? = nil
 
   /// y range: every reading, plus the reference band where it is nearest to them (the page's chartRange, FB-2).
   static func range(_ nums: [Double], min omin: Double?, max omax: Double?, zone: ClosedRange<Double>?) -> ClosedRange<Double> {
@@ -70,6 +74,7 @@ struct ChartSpec: Equatable {
       default: nums += (l.values + l.lo + l.hi).compactMap { $0 }
       }
     }
+    if let u = usual { nums += [u.lowerBound, u.upperBound] }
     return Self.range(nums, min: min, max: max, zone: zone)
   }
 }
@@ -181,11 +186,22 @@ struct TrendChartBody: View, Equatable {
                       yStart: .value("v", Swift.max(y.lowerBound, z.lowerBound)), yEnd: .value("v", Swift.min(y.upperBound, z.upperBound)))
           .foregroundStyle(Palette.good.opacity(0.10))
       }
+      if let u = spec.usual {
+        RectangleMark(xStart: .value("x", 0.0), xEnd: .value("x", Double(n)), yStart: .value("v", u.lowerBound), yEnd: .value("v", u.upperBound))
+          .foregroundStyle(Palette.band)
+        ForEach([u.lowerBound, u.upperBound], id: \.self) { b in
+          RuleMark(y: .value("v", b)).foregroundStyle(Palette.bandLine).lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
+        }
+      }
       ForEach(spec.guides, id: \.self) { g in
         RuleMark(y: .value("v", g)).foregroundStyle(Palette.text3.opacity(0.6)).lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
       }
       ForEach(Array(spec.layers.enumerated()), id: \.offset) { li, l in
         layerMarks(l, index: li, y: y, n: n)
+      }
+      if let t = spec.lastTone, let l = spec.layers.first(where: \.main), let i = l.values.lastIndex(where: { $0 != nil }), let v = l.values[i] {
+        PointMark(x: .value("x", Double(i) + 0.5), y: .value("v", Self.mapped(v, right: l.rightAxis, y: y)))
+          .symbolSize(44).foregroundStyle(t == .text ? Palette.text : t.color)
       }
     }
     .chartXScale(domain: 0...Double(Swift.max(1, n)))
@@ -382,15 +398,5 @@ private struct ChartTouchCatcher: UIViewRepresentable {
       if g.state == .began { owner?.pressBegan() }
       if g.state == .began || g.state == .changed { owner?.press(g.location(in: g.view).x) }
     }
-  }
-}
-
-/// A chart with its own selection, for places that only need the marks (sheets).
-struct TrendChart: View {
-  let spec: ChartSpec
-  let selection: ChartSelection
-
-  var body: some View {
-    TrendChartBody(spec: spec, selection: selection).equatable()
   }
 }

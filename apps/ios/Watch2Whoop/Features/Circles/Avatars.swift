@@ -88,29 +88,6 @@ struct AvatarView: View {
   }
 }
 
-/// A row of overlapping avatars (the summary card, a circle's members).
-struct AvatarStack: View {
-  let people: [(url: String?, name: String)]
-  var size: CGFloat = 28
-  var max = 5
-
-  var body: some View {
-    HStack(spacing: -size * 0.3) {
-      ForEach(Array(people.prefix(max).enumerated()), id: \.offset) { _, p in
-        AvatarView(url: p.url, name: p.name, size: size)
-          .overlay(Circle().stroke(Palette.bg, lineWidth: 2))
-      }
-      if people.count > max {
-        Text("+\(people.count - max)")
-          .font(.system(size: size * 0.36, weight: .semibold)).foregroundColor(Palette.text2)
-          .frame(width: size, height: size)
-          .background(Circle().fill(Palette.surface2))
-          .overlay(Circle().stroke(Palette.bg, lineWidth: 2))
-      }
-    }
-  }
-}
-
 /// Change a picture: choose from the library (PhotosPicker, no permission prompt) or take one with the camera, or remove
 /// it. The picture is cropped to a centred square and sent as a 512-pixel JPEG (the server crops and shrinks it again,
 /// images/params.py), which also drops the photo's metadata (location, device).

@@ -9,14 +9,12 @@ import GRDB
 
 /// A detail opened over the Today tab (inside `TodaySheet.detail`).
 enum TodayDetail: Equatable, Identifiable {
-  case stress, sleepCoach, bodyAge, bedtimeGoal, sleepHelp
+  case sleepCoach, bedtimeGoal, sleepHelp
   case lab(key: String, title: String)
 
   var id: String {
     switch self {
-    case .stress: return "stress"
     case .sleepCoach: return "sleepCoach"
-    case .bodyAge: return "bodyAge"
     case .bedtimeGoal: return "bedtimeGoal"
     case .sleepHelp: return "sleepHelp"
     case .lab(let k, _): return "lab:\(k)"
@@ -25,9 +23,7 @@ enum TodayDetail: Equatable, Identifiable {
 
   var title: String {
     switch self {
-    case .stress: return tr("压力", "Stress")
     case .sleepCoach: return tr("睡眠教练", "Sleep coach")
-    case .bodyAge: return tr("身体年龄", "Body age")
     case .bedtimeGoal: return tr("入睡目标", "Bedtime goal")
     case .sleepHelp: return tr("在手表上开启睡眠追踪", "Turn on sleep tracking on the watch")
     case .lab(_, let t): return t
@@ -37,7 +33,7 @@ enum TodayDetail: Equatable, Identifiable {
   /// A long list or a form: straight to the large detent.
   var large: Bool {
     switch self {
-    case .bodyAge, .bedtimeGoal, .lab: return true
+    case .bedtimeGoal, .lab: return true
     default: return false
     }
   }

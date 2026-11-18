@@ -16,12 +16,8 @@ struct TodayDetailBody: View {
 
   var body: some View {
     switch detail {
-    case .stress:
-      if let date { StressDetailView(day: date, past: past) }
     case .sleepCoach:
       SleepCoachDetailView(coach: coach, past: past) { open(.detail(.bedtimeGoal)) }
-    case .bodyAge:
-      BodyAgeView()
     case .bedtimeGoal:
       BedtimeGoalView()
     case .sleepHelp:
@@ -46,6 +42,8 @@ extension ScaleBar {
 struct StressDetailView: View {
   let day: String
   let past: String?
+  /// The explanation under it (off on the stress page, which has it at its own bottom).
+  var explains = true
   @EnvironmentObject private var session: AccountSession
   @StateObject private var store = DetailStore<StressDayModel>()
 
@@ -58,7 +56,7 @@ struct StressDetailView: View {
       } else {
         KVRow(label: tr("压力", "Stress"), value: nil, badge: store.offline ? (tr("离线", "Offline"), .text) : nil)
       }
-      ExplainBody(kind: "metric", key: "stress", day: past, head: false).padding(.top, 8)
+      if explains { ExplainBody(kind: "metric", key: "stress", day: past, head: false).padding(.top, 8) }
     }
     .onAppear {
       let day = self.day
@@ -224,6 +222,8 @@ struct SleepHelpView: View {
 /// 身体年龄: age against the calendar, pace of aging, the weekly history, each item's years by domain (app.js healthspanSheet).
 /// Content only; the sheet around it scrolls. Opened from Jarvis' card, from Trends' body-age card and from 我.
 struct BodyAgeView: View {
+  /// The explanation under it (off on the body-age page, which has it at its own bottom).
+  var explains = true
   @EnvironmentObject private var session: AccountSession
   @StateObject private var store = DetailStore<BodyAgeModel>()
 
@@ -236,7 +236,7 @@ struct BodyAgeView: View {
       } else {
         KVRow(label: tr("身体年龄", "Body age"), value: nil, badge: store.offline ? (tr("离线", "Offline"), .text) : nil)
       }
-      ExplainBody(kind: "metric", key: "body_age", day: nil, head: false).padding(.top, 8)
+      if explains { ExplainBody(kind: "metric", key: "body_age", day: nil, head: false).padding(.top, 8) }
     }
     .onAppear {
       store.start(session, fetch: BodyAgeDetail.fetch, parse: BodyAgeModel.init(json:)) { try BodyAgeDetail.read($0) }
@@ -323,36 +323,18 @@ extension TodayStore {
   }
 }
 
-/// ‹ › beside the date (the page's day-prev / day-next). The next day only on a look-back day.
-struct DayNavButtons: View {
-  let canGoNext: Bool
-  let step: (Int) -> Void
-
-  var body: some View {
-    HStack(spacing: 6) {
-      button(.chevronLeft, enabled: true, label: tr("前一天", "Previous day")) { step(-1) }
-      button(.chevronRight, enabled: canGoNext, label: tr("后一天", "Next day")) { step(1) }
-    }
-  }
-
-  private func button(_ icon: Icon.Name, enabled: Bool, label: String, run: @escaping () -> Void) -> some View {
-    Button(action: run) {
-      Icon(icon, size: 16).foregroundColor(enabled ? Palette.text2 : Palette.text3)
-        .frame(width: 32, height: 32)
-        .background(Circle().fill(Palette.surface))
-    }
-    .buttonStyle(PressScale())
-    .disabled(!enabled)
-    .accessibilityLabel(label)
-  }
-}
-
 /// Swipe right for the previous day, left for the next (app.js: at least 70 pt, mostly sideways). Vertical scrolling wins.
 struct DaySwipe: ViewModifier {
   let step: (Int) -> Void
+  /// Drags that start this close to the left edge are left alone (on a pushed page that is the system's swipe back).
+  var edge: CGFloat = 0
+  /// A mostly upward drag (a first glance: it opens level 2, LevelNav.isSwipeUp).
+  var up: (() -> Void)?
 
   func body(content: Content) -> some View {
     content.simultaneousGesture(DragGesture(minimumDistance: 40).onEnded { v in
+      if let up, LevelNav.isSwipeUp(v.translation.width, v.translation.height) { up(); return }
+      guard v.startLocation.x > edge else { return }
       guard abs(v.translation.width) > 70, abs(v.translation.height) < abs(v.translation.width) * 0.6 else { return }
       step(v.translation.width > 0 ? -1 : 1)
     })

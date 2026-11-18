@@ -1,0 +1,45 @@
+{
+  "_doc": "Entry inventory of the iPhone app (project rule 'every view has a visible door', docs/design/2.0.1/drilldown/README.md section 9). One entry per case of the destination enums below: where it is opened from (root = the first screen of a tab, or 'member' = the read-only page of someone else), how many taps from there, and the kind of door (tap = a visible control, gesture = a long press, swipe or drag that may only repeat a visible door). Watch2WhoopTests/ReachabilityTests.swift fails when a case has no entry, no tap door within 2 taps, or an entry names a case that no longer exists. A pull request that adds, moves or removes a screen updates this file in the same change.",
+  "enums": ["LevelRoute", "TodaySheet", "TodayDetail", "TrendsSheet"],
+  "destinations": {
+    "LevelRoute.day": [
+      {"root": "today", "taps": 1, "kind": "tap", "door": "the dial (恢复 ›), the depth ladder, the 关注 / 体征 face (at 需要注意 / 体征)"},
+      {"root": "today", "taps": 1, "kind": "gesture", "door": "swipe up on the first glance"}
+    ],
+    "LevelRoute.all": [
+      {"root": "body", "taps": 1, "kind": "tap", "door": "the bars, the depth ladder, the 周报 face (报告)"},
+      {"root": "body", "taps": 1, "kind": "gesture", "door": "swipe up on the first glance"}
+    ],
+    "LevelRoute.metric": [
+      {"root": "today", "taps": 1, "kind": "tap", "door": "the 睡眠 / 负荷 reading (›)"},
+      {"root": "today", "taps": 2, "kind": "tap", "door": "dial → any row of 今日详情 (31 metrics), 需要注意, 体征, 今日核心"},
+      {"root": "body", "taps": 1, "kind": "tap", "door": "the hero's label (平均恢复 › and the other two scores), the 心肺 / 身体年龄 face"},
+      {"root": "body", "taps": 2, "kind": "tap", "door": "bars → any row of 指标"}
+    ],
+    "LevelRoute.night": [
+      {"root": "today", "taps": 2, "kind": "tap", "door": "睡眠 reading → 整晚"},
+      {"root": "body", "taps": 2, "kind": "tap", "door": "bars → 睡眠 → a night (3), or the 平均睡眠 hero → 整晚 (2)"}
+    ],
+    "TodaySheet.calendar": [{"root": "today", "taps": 1, "kind": "tap", "door": "the date"}],
+    "TodaySheet.weight": [{"root": "today", "taps": 2, "kind": "tap", "door": "dial → ＋ on the 体重 row (记体重)"}],
+    "TodaySheet.reminders": [{"root": "today", "taps": 2, "kind": "tap", "door": "dial → 提醒 chip; one reminder opens in place in the list"}],
+    "TodaySheet.status": [{"root": "today", "taps": 2, "kind": "tap", "door": "dial → a 当前状态 card"}],
+    "TodaySheet.explain": [{"root": "today", "taps": 2, "kind": "tap", "door": "睡眠 reading → 需求 / 深睡 / 规律性 row; dial → a 身体状态 card"}],
+    "TodaySheet.load": [{"root": "today", "taps": 2, "kind": "tap", "door": "负荷 reading → 训练状态 row (CTL, ATL, TSB)"}],
+    "TodaySheet.detail": [{"root": "today", "taps": 1, "kind": "tap", "door": "the empty dial's step (sleep help); dial → 今晚 chip (2)"}],
+    "TodaySheet.recovery": [{"root": "member", "taps": 1, "kind": "tap", "door": "the recovery ring of someone else's 今天"}],
+    "TodaySheet.strain": [{"root": "member", "taps": 1, "kind": "tap", "door": "the strain ring of someone else's 今天"}],
+    "TodaySheet.coach": [{"root": "member", "taps": 1, "kind": "tap", "door": "the strain target card (今日核心) of someone else's 今天"}],
+    "TodaySheet.monitor": [{"root": "member", "taps": 1, "kind": "tap", "door": "the 健康监测 card of someone else's 今天"}],
+    "TodayDetail.sleepCoach": [{"root": "today", "taps": 2, "kind": "tap", "door": "dial → 今晚 chip"}],
+    "TodayDetail.bedtimeGoal": [{"root": "today", "taps": 2, "kind": "tap", "door": "睡眠 reading → 入睡目标 row; also 我 → 入睡目标"}],
+    "TodayDetail.sleepHelp": [{"root": "today", "taps": 1, "kind": "tap", "door": "the empty dial (no sleep tracked)"}],
+    "TodayDetail.lab": [{"root": "today", "taps": 2, "kind": "tap", "door": "dial → a 身体状态 card with a lab value; also 我 → 健康档案 → 化验"}],
+    "TrendsSheet.calendar": [{"root": "body", "taps": 2, "kind": "tap", "door": "range menu → 选择结束日期"}],
+    "TrendsSheet.status": [{"root": "body", "taps": 2, "kind": "tap", "door": "bars → a 当前状态 card"}],
+    "TrendsSheet.explain": [{"root": "body", "taps": 2, "kind": "tap", "door": "周报 face → a row of the report"}],
+    "TrendsSheet.recovery": [{"root": "member", "taps": 1, "kind": "tap", "door": "the recovery card's title in someone else's 身体"}],
+    "TrendsSheet.regularity": [{"root": "member", "taps": 1, "kind": "tap", "door": "the sleep regularity card's title in someone else's 身体"}],
+    "TrendsSheet.bodyAge": [{"root": "member", "taps": 1, "kind": "tap", "door": "the body age card's title in someone else's 身体 (as its explanation)"}]
+  }
+}

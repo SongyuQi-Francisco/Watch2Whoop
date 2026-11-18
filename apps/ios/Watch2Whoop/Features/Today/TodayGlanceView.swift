@@ -1,21 +1,10 @@
 import SwiftUI
 
-/// What a tap on the Today page opens (2.0.1): the three L1 sheets of the hero and its readings.
-enum TodayL1: String, Identifiable {
-  case recovery, strain, sleep
-  /// The attention face: what is off on the day, and the way to 体征 (the health monitor).
-  case attention
-  var id: String { rawValue }
-
-  /// Height of the half sheet (design: recovery 444, strain / sleep a little taller for their fourth row).
-  var height: CGFloat { self == .recovery || self == .attention ? 444 : 500 }
-}
-
 /// What the page asks of `TodayView` (the page's state stays there).
 struct TodayGlanceActions {
-  var l1: (TodayL1) -> Void
-  var sheet: (TodaySheet) -> Void
-  var open: (TodayOpen) -> Void
+  /// A door to a level below (2.1.0, drilldown option C′): 今日详情 (the dial, the ladder, the attention / 体征 face, a
+  /// swipe up) or a metric page straight from here (the two readings).
+  var level: (LevelRoute) -> Void
   var calendar: () -> Void
   var backToToday: () -> Void
   /// One day back (−1) or forward (+1): the swipe, and the dial's VoiceOver actions.
@@ -25,12 +14,12 @@ struct TodayGlanceActions {
   var recoveryNext: (RecoveryNext.Action) -> Void
   var food: () -> Void
   var circles: () -> Void
-  var training: () -> Void
 }
 
-/// The first glance of Today (docs/design/2.0.1 `01-today`): date + sync capsule, the recovery dial, two readings (sleep,
-/// strain), one row of three faces (体征 or 关注, 饮食, 圈子). Below the fold: the sync nudges, a second face row (训练,
-/// 今晚, 提醒), each only when it has something. No section titles, no sentences.
+/// The first glance of Today (docs/design/2.0.1 `01-today`, drilldown `c-today` C′): date + the depth ladder + sync
+/// capsule, the recovery dial, two readings (sleep, strain), one row of three faces (体征 or 关注, 饮食, 圈子). Nothing below
+/// it: 训练 · 今晚 · 提醒 and the sync nudges live on 今日详情. The dial and the readings carry the door mark 「›」 (they have
+/// no card fill; the faces have the shape of a button already). No section titles, no sentences.
 struct TodayGlancePage: View, Equatable {
   static func == (a: TodayGlancePage, b: TodayGlancePage) -> Bool {
     a.model == b.model && a.isPast == b.isPast && a.circlesOn == b.circlesOn && a.day == b.day
@@ -74,10 +63,16 @@ struct TodayGlancePage: View, Equatable {
         Button(action: run.backToToday) { Chip(label: tr("回到今天", "Today")) }.buttonStyle(PressScale())
       }
       Spacer(minLength: 0)
+      // a look-back day's 「回到今天」 takes the middle: the ladder moves next to the capsule
+      if isPast { ladder }
       TodaySyncCapsule(card: model.sync, page: session.sync, tap: run.syncTap, center: run.syncCenter)
     }
     .frame(height: 44)
+    // the ladder sits in the middle of the header (dd.css `.hdr .ladder.mid`), whatever the date and the capsule take
+    .overlay { if !isPast { ladder } }
   }
+
+  private var ladder: some View { LevelLadder(level: 1, down: { run.level(.day(anchor: nil)) }) }
 
   private var dateTitle: String { Self.dateTitle(model.date) }
 
@@ -96,13 +91,16 @@ struct TodayGlancePage: View, Equatable {
   private var hero: some View {
     let d = g.recovery, side = Self.dialSide, k = side / 280
     return Button {
-      if d.value == nil, let n = model.recoveryNext { run.recoveryNext(n.action) } else { run.l1(.recovery) }
+      if d.value == nil, let n = model.recoveryNext { run.recoveryNext(n.action) } else { run.level(.day(anchor: nil)) }
     } label: {
       TickDial(fraction: TodayGlanceRules.dialFraction(d.value), tone: d.tone,
                usual: d.usual.map { ($0.lowerBound / 100)...($0.upperBound / 100) },
                zones: TodayGlanceRules.recoveryZones.map { $0 / 100 }, side: side) {
         VStack(spacing: 0) {
-          Text(tr("恢复", "Recovery")).font(.system(size: 13, weight: .medium)).tracking(2).foregroundColor(Palette.text2)
+          HStack(spacing: 3) {
+            Text(tr("恢复", "Recovery")).font(.system(size: 13, weight: .medium)).tracking(2).foregroundColor(Palette.text2)
+            if d.value != nil || model.recoveryNext == nil { DoorMark() }
+          }
           if let v = d.value {
             Text(TodayModel.fmt(v)).font(Typo.hero(100 * k)).tracking(-3 * k).foregroundColor(Palette.text)
               .lineLimit(1).minimumScaleFactor(0.6)
@@ -126,10 +124,11 @@ struct TodayGlancePage: View, Equatable {
     .frame(maxWidth: .infinity)
     .contextMenu {
       Button { askAI(Self.recoveryPrompt(model)) } label: { Text(tr("问 Jarvis：恢复", "Ask Jarvis: recovery")) }
-      Button { run.l1(.recovery) } label: { Text(tr("看详情", "Details")) }
+      Button { run.level(.day(anchor: nil)) } label: { Text(tr("今日详情", "Today's details")) }
     }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(dialLabel)
+    .accessibilityHint(d.value == nil && model.recoveryNext != nil ? "" : tr("打开今日详情", "Opens today's details"))
     .accessibilityAddTraits(.isButton)
     .accessibilityActions {
       Button(tr("前一天", "Previous day")) { run.step(-1) }
@@ -159,17 +158,19 @@ struct TodayGlancePage: View, Equatable {
 
   private var readings: some View {
     HStack(alignment: .top, spacing: 20) {
-      reading(g.sleep, label: tr("睡眠", "Sleep"), l1: .sleep)
-      reading(g.strain, label: tr("负荷", "Strain"), l1: .strain)
+      reading(g.sleep, label: tr("睡眠", "Sleep"), metric: "sleep_score")
+      reading(g.strain, label: tr("负荷", "Strain"), metric: "strain")
     }
   }
 
-  private func reading(_ x: TodayGlance.Gauge, label: String, l1: TodayL1) -> some View {
-    Button { run.l1(l1) } label: {
+  private func reading(_ x: TodayGlance.Gauge, label: String, metric: String) -> some View {
+    Button { run.level(.metric(metric)) } label: {
       VStack(alignment: .leading, spacing: 8) {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
           Text(x.text ?? "—").font(Typo.reading).foregroundColor(x.text == nil ? Palette.text2 : Palette.text)
           Text(label).font(Typo.label).foregroundColor(Palette.text2)
+          Spacer(minLength: 0)
+          DoorMark()
         }
         BulletGauge(value: x.value, max: x.max, usual: x.usual, target: x.target, step: x.step, majors: x.majors, tone: x.tone)
       }
@@ -179,6 +180,7 @@ struct TodayGlancePage: View, Equatable {
     .buttonStyle(PressScale())
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("\(label) \(x.text ?? "—")")
+    .accessibilityHint(tr("打开\(label)的趋势", "Opens the \(label.lowercased()) trend"))
     .accessibilityAddTraits(.isButton)
   }
 
@@ -195,8 +197,8 @@ struct TodayGlancePage: View, Equatable {
   }
 }
 
-/// Slot 1: the attention face when something is off on the day (tap = the attention sheet, which also leads to 体征), else
-/// 体征 (the health monitor), else nothing. When the page shows old data it says so (kit-states stale: refresh-cw, the
+/// Slot 1: the attention face when something is off on the day (tap = 今日详情 at 需要注意, with 体征 under it), else
+/// 体征 (tap = 今日详情 at 体征), else nothing. When the page shows old data it says so (kit-states stale: refresh-cw, the
 /// number in text2, the age in mid; a tap syncs).
 struct TodaySlotOne: View {
   let model: TodayModel
@@ -207,65 +209,24 @@ struct TodaySlotOne: View {
     let age = TodayGlanceRules.staleAge(page: sync.status, card: model.sync)
     let g = model.glance
     if let a = model.attention.first {
-      Button { age != nil ? run.syncTap() : run.l1(.attention) } label: {
+      Button { age != nil ? run.syncTap() : run.level(.day(anchor: "attention")) } label: {
         Face(icon: .circleAlert, label: a.label, number: a.value, unit: a.unit, dimmed: age != nil, dot: age == nil ? a.tone : nil, age: age) {
           if !g.attentionWeek.isEmpty { Lollipops(values: g.attentionWeek, tone: a.tone) } else { Color.clear }
         }
       }
       .buttonStyle(PressScale())
       .contextMenu {
-        Button { run.l1(.attention) } label: { Text(tr("看详情", "Details")) }
-        if !model.vitals.isEmpty { Button { run.sheet(.monitor) } label: { Text(tr("体征", "Vitals")) } }
+        Button { run.level(.day(anchor: "attention")) } label: { Text(tr("看详情", "Details")) }
+        if !model.vitals.isEmpty { Button { run.level(.day(anchor: "vitals")) } label: { Text(tr("体征", "Vitals")) } }
       }
     } else if !model.vitals.isEmpty {
       let c = TodayGlanceRules.vitalsCount(model.vitals)
-      Button { age != nil ? run.syncTap() : run.sheet(.monitor) } label: {
+      Button { age != nil ? run.syncTap() : run.level(.day(anchor: "vitals")) } label: {
         Face(icon: .heartPulse, label: tr("体征", "Vitals"), number: "\(c.ok)/\(c.total)", dimmed: age != nil, age: age) {
           VitalPills(vitals: model.vitals)
         }
       }
       .buttonStyle(PressScale())
-    }
-  }
-}
-
-/// Below the fold of Today: the sync nudges, then 训练 · 今晚 · 提醒 as faces, each only when it has something.
-struct TodayMoreFaces: View, Equatable {
-  static func == (a: TodayMoreFaces, b: TodayMoreFaces) -> Bool { a.model == b.model }
-  let model: TodayModel
-  let run: TodayGlanceActions
-
-  var body: some View {
-    let newReminders = model.reminders.filter { $0.status == "new" }.count
-    if model.training != nil || model.tonight != nil || !model.reminders.isEmpty {
-      HStack(spacing: 8) {
-        if let t = model.training {
-          Button(action: run.training) {
-            // logged exercises, else the sessions planned for the day, else a rest day
-            let planned = t.logged.isEmpty && !t.planned.isEmpty
-            Face(icon: .dumbbell, label: tr("训练", "Training"),
-                 number: t.restDay ? tr("休息", "Rest") : "\(planned ? t.planned.count : t.logged.count)",
-                 unit: t.restDay ? nil : (planned ? tr("项计划", "planned") : tr("个动作", "moves"))) { Color.clear }
-          }
-          .buttonStyle(PressScale())
-        }
-        if let c = model.tonight, let b = c.bedtime {
-          Button { run.sheet(.detail(.sleepCoach)) } label: {
-            Face(icon: .moon, label: tr("今晚", "Tonight"), number: b) {
-              if let need = c.need { Text(TodayModel.hm(need)).font(Typo.unit).foregroundColor(Palette.text2) } else { Color.clear }
-            }
-          }
-          .buttonStyle(PressScale())
-        }
-        if !model.reminders.isEmpty {
-          Button { run.sheet(.reminders) } label: {
-            Face(icon: .bell, label: tr("提醒", "Reminders"), number: "\(newReminders > 0 ? newReminders : model.reminders.count)",
-                 dot: model.reminders.first { $0.status == "new" }?.tone == .bad ? .bad : (newReminders > 0 ? .mid : nil)) { Color.clear }
-          }
-          .buttonStyle(PressScale())
-        }
-      }
-      .id("more")
     }
   }
 }
@@ -427,18 +388,5 @@ struct TodaySyncCapsule: View {
       .onLongPressGesture(perform: center)
       .accessibilityAddTraits(.isButton)
       .accessibilityAction(named: Text(tr("同步中心", "Sync center")), center)
-  }
-}
-
-extension View {
-  /// A hero's L1 half sheet (direction.md 7): its own height and large; the page behind is not dimmed and stays usable
-  /// while the sheet is at its height (iOS 16.4+; before that a plain dimmed sheet).
-  @ViewBuilder func l1Detents(_ height: CGFloat) -> some View {
-    let sheet = presentationDetents([.height(height), .large]).presentationDragIndicator(.visible)
-    if #available(iOS 16.4, *) {
-      sheet.presentationBackgroundInteraction(.enabled(upThrough: .height(height))).presentationCornerRadius(32)
-    } else {
-      sheet
-    }
   }
 }

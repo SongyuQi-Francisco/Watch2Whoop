@@ -1,5 +1,10 @@
 import SwiftUI
 
+/// Route of the sleep night page inside the read-only view of someone else.
+struct SleepRoute: Hashable {
+  var date: String?
+}
+
 /// Someone else's pages, read-only (app.js viewMember / `#viewing`): opened from a member card or 「我」, over the whole app, so
 /// neither the tab bar nor Jarvis is reachable behind it. The banner stays on top with the way out; closing drops
 /// everything that was fetched (`MemberViewStore`). While the app is not in front the content is covered, so the system's

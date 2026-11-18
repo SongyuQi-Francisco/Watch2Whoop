@@ -140,6 +140,15 @@ enum Rhythm {
 
   static var isShort: Bool { UIScreen.main.bounds.height < shortScreen }
 
+  /// A face of a first glance (docs/design/2.0.1 kit `--face`): 120 pt, 112 on a short screen (drilldown `*-se` mockups),
+  /// so the first glance fits above the Jarvis key on a 667 pt phone (ReachabilityTests).
+  static let faceHeight: CGFloat = 120
+  static let faceHeightShort: CGFloat = 112
+  static var face: CGFloat { isShort ? faceHeightShort : faceHeight }
+  /// 身体's hero number on a short screen (drilldown `c-body-se`: `--k: 0.76`, as 今天's dial shrinks there).
+  static let heroScaleShort: CGFloat = 0.76
+  static var heroScale: CGFloat { isShort ? heroScaleShort : 1 }
+
   /// A gap of the first glance, for this screen.
   static func gap(_ v: CGFloat) -> CGFloat { gap(v, short: isShort) }
   static func gap(_ v: CGFloat, short: Bool) -> CGFloat { short ? (v * shortScale).rounded() : v }

@@ -225,8 +225,8 @@ final class TodayGlanceTests: XCTestCase {
   }
 
   private static let noop = TodayGlanceActions(
-    l1: { _ in }, sheet: { _ in }, open: { _ in }, calendar: {}, backToToday: {}, step: { _ in }, syncTap: {}, syncCenter: {},
-    recoveryNext: { _ in }, food: {}, circles: {}, training: {})
+    level: { _ in }, calendar: {}, backToToday: {}, step: { _ in }, syncTap: {}, syncCenter: {},
+    recoveryNext: { _ in }, food: {}, circles: {})
 
   /// A day without a recovery score and with `flag` as the reason.
   private static func noScore(_ flag: String) -> TodayModel {
