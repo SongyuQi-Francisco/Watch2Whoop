@@ -119,3 +119,11 @@ EQUIPMENT_CARD_KEY = "equipment"  # profile card item where the user's equipment
 REVIEW_MIN_DAYS = 4               # get_week_review_context: fewer scored / food-logged days than this -> a `needs` line
 REVIEW_NOTES_PER_ITEM = 3         # journal notes shown per item in the week review
 REVIEW_NOTE_CHARS = 60
+
+# Apple Watch answers (ai/watch.py; docs/watch-app-plan.md 2.3 "回答 = 一张卡 + 最多两行字", mockups J3 / J4 in
+# docs/design/watch/: a conclusion of at most 4 characters, one card, then "continue on the phone"). Sent with every call
+# of a watch request (page "watch" or the watch's own token), for every provider and the fallback AI alike.
+WATCH_MAX_SENTENCES = 2
+WATCH_MAX_CHARS_ZH = 40          # about two lines on the 42 mm screen (187 pt wide, 15 pt text)
+WATCH_MAX_WORDS_EN = 25
+WATCH_HEADLINE_CHARS_ZH = 4      # J3: the conclusion in the first line (「可以练」)

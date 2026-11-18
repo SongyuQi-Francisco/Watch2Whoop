@@ -458,21 +458,41 @@ def auto_spec(tool: str, args: dict, v2: bool = False, reads: bool = False) -> d
 
 # write tool -> the ids a meal card carries for undo (issue #445): log_food's entries, a quick meal's / recipe's log
 WRITTEN = ("log_food", "log_meal_template", "log_recipe")
+MAX_WRITTEN_FOODS = 6
+
+
+def _sum(values) -> float | None:
+    vals = [float(v) for v in values if isinstance(v, (int, float))]
+    return round(sum(vals), 1) if vals else None
 
 
 def written(tool: str, res) -> dict | None:
     """What a successful food write wrote, for the app's own undo without asking the AI again:
-    {"tool", "date", "entry_ids", "log_id"}. log_id (quick meal / recipe) undoes the whole logging
-    (DELETE /v1/users/me/meal-logs/{log_id}); otherwise each entry id goes to DELETE /nutrition/entries/{id}?date=.
+    {"tool", "date", "entry_ids", "log_id", "meal", "foods", "calories", "protein_g"}. log_id (quick meal / recipe) undoes
+    the whole logging (DELETE /v1/users/me/meal-logs/{log_id}); otherwise each entry id goes to
+    DELETE /nutrition/entries/{id}?date=. meal (the slot, when all of it went to one), foods (names, at most
+    MAX_WRITTEN_FOODS), calories / protein_g (of this write only; None when unknown): the Apple Watch's receipt after a
+    meal said by voice (docs/watch-app-plan.md 2.2, mockup M3) without reading the whole day's entries.
     None for other tools, an empty write (everything skipped as a duplicate) or a result without ids."""
     if tool not in WRITTEN or not isinstance(res, dict):
         return None
     rows = res.get("created") if tool == "log_food" else res.get("entries")
-    ids = [str(r["id"]) for r in rows or [] if isinstance(r, dict) and r.get("id") is not None]
+    rows = [r for r in rows or [] if isinstance(r, dict)]
+    ids = [str(r["id"]) for r in rows if r.get("id") is not None]
     if not ids:
         return None
-    day = res.get("date") or next((r.get("date") for r in rows if isinstance(r, dict) and r.get("date")), None)
-    return {"tool": tool, "date": day, "entry_ids": ids, "log_id": res.get("log_id")}
+    day = res.get("date") or next((r.get("date") for r in rows if r.get("date")), None)
+    if tool == "log_food":
+        meals = {r.get("meal") for r in rows}
+        meal = meals.pop() if len(meals) == 1 else None
+        foods = [str(r["food"]) for r in rows if r.get("food")]
+        kcal, protein = _sum(r.get("calories") for r in rows), _sum(r.get("protein_g") for r in rows)
+    else:   # a quick meal / recipe: its name and its own totals
+        tot = res.get("totals") if isinstance(res.get("totals"), dict) else {}
+        meal, foods = res.get("meal"), [str(res["name"])] if res.get("name") else []
+        kcal, protein = _sum([tot.get("kcal")]), _sum([tot.get("protein_g")])
+    return {"tool": tool, "date": day, "entry_ids": ids, "log_id": res.get("log_id"), "meal": meal,
+            "foods": foods[:MAX_WRITTEN_FOODS], "calories": kcal, "protein_g": protein}
 
 
 def spec_key(a: dict) -> tuple:

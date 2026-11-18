@@ -14,7 +14,10 @@ Account (Bearer or cookie; also for `pending` accounts):
   POST   /v1/account/ow-invitation         fresh Open Wearables invitation code for this user's sync account (active only;
                                            409 sync_engine in the sync mode app, #219 S5b)
   POST   /v1/account/web-login-code        one-time Today page login code (the app logs its WebView in with it)
-  POST   /v1/account/logout                revoke the Bearer token used (app sign-out)
+  POST   /v1/account/watch-code {device?}  one-time code for this phone's Apple Watch (Bearer only; account/watch.py): the
+                                           watch redeems it with POST /v1/web/login-code {code, client: "watch"}
+  GET    /v1/account/watch-tokens          the user's live watch tokens; DELETE /v1/account/watch-tokens/{id} ends one
+  POST   /v1/account/logout                revoke the Bearer token used (app sign-out); its watch token ends with it
   DELETE /v1/account {confirm: "DELETE"}   delete the account and all its data
   POST   /v1/account/identities/email {email, code}          bind another e-mail (code from /v1/auth/email/start); active only
   POST   /v1/account/identities/apple {identity_token, nonce, authorization_code} bind the user's Apple ID (token from the app); active only
@@ -43,6 +46,7 @@ from .. import auth
 from ..friends import codes as circle_codes, store as friends_store
 from ..web import activation, login_codes, login_limit, me_links, session
 from . import apple_tokens, delete as account_delete, identities, invites, mailer, open_signup, params, provision, signin
+from . import watch as watch_tokens
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["account"])
@@ -350,8 +354,9 @@ def _existing_account_for_code(conn, code: str) -> int | None:
                               RETURNING user_id""", (activation._sha(norm),)).fetchone()
     elif len(norm) == login_codes.LENGTH:
         row = conn.execute("""UPDATE web_login_codes SET used_at = now()
-                              WHERE code_sha256 = %s AND used_at IS NULL AND expires_at > now() RETURNING user_id""",
-                           (login_codes._sha(norm),)).fetchone()
+                              WHERE code_sha256 = %s AND used_at IS NULL AND expires_at > now() AND purpose = %s
+                              RETURNING user_id""",   # a watch code never signs anyone in (account/watch.py)
+                           (login_codes._sha(norm), login_codes.PURPOSE_LOGIN)).fetchone()
     else:
         return None
     return row["user_id"] if row else None
@@ -452,6 +457,36 @@ def web_login_code(conn=Depends(get_conn), viewer=Depends(current_user)):
     return {"code": code, "expires_in": WEB_LOGIN_CODE_MINUTES * 60}
 
 
+class WatchCodeIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    device: str | None = Field(None, max_length=params.WATCH_DEVICE_MAX_LEN)   # the watch's name, shown in the list
+
+
+@router.post("/v1/account/watch-code")
+def watch_code(body: WatchCodeIn | None = None, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """A one-time code (10 minutes) the phone hands to its Apple Watch over WatchConnectivity; the watch redeems it for
+    its own narrow device token (account/watch.py). Never more than the caller has: read-only phone -> read-only watch.
+    403 detail: account_pending; bearer_only (a cookie session or a restricted token); no_scope."""
+    try:
+        return watch_tokens.mint_code(conn, viewer, body.device if body else None)
+    except watch_tokens.Refused as e:
+        raise HTTPException(403, e.code)
+
+
+@router.get("/v1/account/watch-tokens")
+def list_watch_tokens(conn=Depends(get_conn), viewer=Depends(current_user)):
+    """The user's live watch tokens: {watches: [{id, device, scopes, created_at, last_used_at, this_phone}]}."""
+    return {"watches": watch_tokens.list_watches(conn, viewer["id"], viewer.get("token_id"))}
+
+
+@router.delete("/v1/account/watch-tokens/{token_id}", status_code=204)
+def revoke_watch_token(token_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """End one of the user's own watch tokens (any of the user's logins may: it only takes access away). 404 not_found."""
+    if not watch_tokens.revoke(conn, viewer["id"], token_id):
+        raise HTTPException(404, "not_found")
+    return Response(status_code=204)
+
+
 @router.post("/v1/account/logout", status_code=204)
 def app_logout(request: Request, conn=Depends(get_conn), viewer=Depends(current_user)):
     authz = request.headers.get("authorization") or ""
@@ -459,6 +494,8 @@ def app_logout(request: Request, conn=Depends(get_conn), viewer=Depends(current_
         conn.execute("UPDATE api_tokens SET revoked_at = now() WHERE token_sha256 = %s AND revoked_at IS NULL",
                      (auth.hash_token(authz.removeprefix("Bearer ").strip()),))
         me_links.end_logins(conn, viewer["id"])   # browser logins this app opened (web/me_links.py)
+        if viewer.get("token_id") is not None:   # this phone's watch (account/watch.py)
+            watch_tokens.end_for_phone(conn, viewer["id"], viewer["token_id"])
     if viewer.get("token_id") is not None:   # this phone stops getting pushes for the account (notify/, #175)
         conn.execute("DELETE FROM push_devices WHERE api_token_id = %s", (viewer["token_id"],))
     return Response(status_code=204)

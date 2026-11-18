@@ -29,13 +29,21 @@ def test_auto_cards_only_for_known_write_tools():
 
 def test_written_ids_of_food_writes():
     """issue #445: the meal card after an AI food write carries what was written, so the app undoes it itself."""
-    res = {"created": [{"id": "e1", "date": "2026-10-20", "food": "米饭"}, {"id": 7, "date": "2026-10-20", "food": "蛋"}],
+    res = {"created": [{"id": "e1", "date": "2026-10-20", "meal": "lunch", "food": "米饭", "calories": 230, "protein_g": 4.3},
+                       {"id": 7, "date": "2026-10-20", "meal": "lunch", "food": "蛋", "calories": 78, "protein_g": 6.3}],
            "skipped_duplicates": [], "warnings": []}
+    # + what the Apple Watch's receipt shows (docs/watch-app-plan.md 2.2, M3): the slot, the names, this meal's totals
     assert cards.written("log_food", res) == {"tool": "log_food", "date": "2026-10-20", "entry_ids": ["e1", "7"],
-                                              "log_id": None}
-    meal = {"log_id": 12, "date": "2026-10-21", "entries": [{"id": "e3", "food": "燕麦"}]}
+                                              "log_id": None, "meal": "lunch", "foods": ["米饭", "蛋"],
+                                              "calories": 308.0, "protein_g": 10.6}
+    two = {"created": [{**res["created"][0]}, {**res["created"][1], "meal": "dinner", "calories": None}]}
+    w = cards.written("log_food", two)
+    assert w["meal"] is None and w["calories"] == 230.0   # two slots: no single one; an unknown value is left out
+    meal = {"log_id": 12, "date": "2026-10-21", "meal": "breakfast", "name": "燕麦碗", "entries": [{"id": "e3", "food": "燕麦"}],
+            "totals": {"kcal": 420, "protein_g": 18.5}}
     assert cards.written("log_meal_template", meal) == {"tool": "log_meal_template", "date": "2026-10-21",
-                                                        "entry_ids": ["e3"], "log_id": 12}
+                                                        "entry_ids": ["e3"], "log_id": 12, "meal": "breakfast",
+                                                        "foods": ["燕麦碗"], "calories": 420.0, "protein_g": 18.5}
     assert cards.written("log_recipe", {**meal, "log_id": 13})["log_id"] == 13
     assert cards.written("log_food", {"created": [], "skipped_duplicates": [{"food": "米饭"}]}) is None   # nothing written
     assert cards.written("log_weight", {"date": "2026-10-20"}) is None

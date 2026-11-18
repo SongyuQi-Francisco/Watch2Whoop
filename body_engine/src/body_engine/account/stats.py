@@ -103,7 +103,7 @@ def collect(conn: psycopg.Connection, days: int = 7, signals: tuple[str, ...] = 
                 if _has_column(conn, "open_signups", "mode") else "NULL"} AS open_mode,
                {"c.kind AS code_kind, r.inviter_user_id, inv.display_name AS inviter_name," if referrals else
                 "NULL AS code_kind, NULL::int AS inviter_user_id, NULL AS inviter_name,"}
-               (SELECT min(used_at) FROM web_login_codes l WHERE l.user_id = u.id) AS first_login_code,
+               (SELECT min(used_at) FROM web_login_codes l WHERE l.user_id = u.id AND l.purpose = 'login') AS first_login_code,
                (SELECT max(date) FROM daily_metrics d WHERE d.user_id = u.id) AS data_through,
                {last}
         FROM users u
