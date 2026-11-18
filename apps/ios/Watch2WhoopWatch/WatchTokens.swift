@@ -16,6 +16,7 @@ enum W {
   static let mid = hex(0xD3AE63)
   static let bad = hex(0xDE7F69)
   static let train = hex(0x5FB3BD)
+  static let sleep = hex(0x8D93E4)
   /// Ring and gauge tracks (text a.16, Palette.track dark).
   static let track = text.opacity(0.16)
   /// Sets still to do on the set ring and the progress pills (mockups: text a.26).
@@ -35,9 +36,32 @@ enum W {
     return min(1.08, max(0.85, w / 208))
   }()
 
+  /// A pushed screen's content starts this far below its safe-area top: under the system back key (watchOS 26 draws it
+  /// over the content), where the mockups have the status row.
+  static var pushedTop: CGFloat { 20 * k }
+
   static func font(_ size: CGFloat, _ weight: Font.Weight = .medium) -> Font {
     .system(size: size * k, weight: weight).monospacedDigit()
   }
+
+  /// A state colour by the phone's name for it.
+  static func tone(_ t: WatchTone?) -> Color {
+    switch t {
+    case .good: return good
+    case .mid: return mid
+    case .bad: return bad
+    case nil: return text
+    }
+  }
+}
+
+/// Jarvis only (plan 3: the ice accent and the core belong to Jarvis; every other screen is ink on black). The same
+/// values as the phone's `CockpitPalette` (Features/Jarvis/Cockpit/CockpitView.swift) and the mockups' `C.ice`,
+/// `C.panel` and the core's fill.
+enum WJarvis {
+  static let ice = W.hex(0x8FDCFF)
+  static let panel = W.hex(0x0B0E12)
+  static let core = W.hex(0x08090B)
 }
 
 /// The haptics of plan 2.1 (「触感」 rows of the mockups).
@@ -51,6 +75,9 @@ enum Haptics {
     case .end: d.play(.stop)
     }
   }
+
+  /// M4 「撤销后一下」.
+  static func undone() { WKInterfaceDevice.current().play(.directionDown) }
 
   /// S5 「补交完成一下」 / S6 「失败震动」.
   static func delivered() { WKInterfaceDevice.current().play(.directionUp) }
