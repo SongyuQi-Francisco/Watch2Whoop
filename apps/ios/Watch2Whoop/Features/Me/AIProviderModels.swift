@@ -148,7 +148,7 @@ struct AIFallback: Decodable, Equatable {
   var used = false
   var points: [String] = []
   var pointsTranslated = false
-  /// This month's money (`spent_cny` / `quota_cny`): the 我 face's 「¥1.2 / ¥3」.
+  /// This month's money (`spent_cny` / `quota_cny`): only turned into the 我 face's percentage used, never shown.
   var spentCny: Double?
   var quotaCny: Double?
 
