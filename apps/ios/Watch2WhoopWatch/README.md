@@ -1,17 +1,31 @@
-# Watch2Whoop for Apple Watch (phase 1: logging sets)
+# Watch2Whoop for Apple Watch (phase 1: logging sets; phase 2a: today at a glance and quick log)
 
-The first demo of [`docs/watch-app-plan.md`](../../../docs/watch-app-plan.md) (on its own branch until that PR merges):
-logging sets during a strength session. Start today's planned training → one big pair of numbers per set (weight ×
-reps, the Digital Crown adjusts) → one tap or Double Tap logs it → the rest countdown with live heart rate and a haptic
-at zero → next set / next exercise → summary. No voice, no complications, no "today" glance yet.
+The watch app of [`docs/watch-app-plan.md`](../../../docs/watch-app-plan.md), drawn after the approved mockups in
+`docs/design/watch/` (both on the `claude/watch-app-plan-296f6e` branch until that PR merges).
+
+- **Home = 「今天一眼」** (plan 2.4, mockups D1 / D2, S1–S7): the recovery dial (number, arc in its zone colour, your
+  usual as a grey lane, a word of at most 4 characters), sleep and strain with their bars, and two keys: the left capsule
+  (today's plan → the training start screen; 「记一餐」 on a day without training; 「计划没同步」 when today's plan has not
+  reached the watch, tap = ask the phone again) and the Jarvis core (tap = quick log). Double Tap = the left capsule.
+  The numbers are the phone's (its Today, computed on the phone); the watch computes nothing and draws a missing number
+  as 「—」. The sync mark at the top left has the phone capsule's states: 「2分前」, syncing, old data (numbers grey,
+  「6时前」), phone away (「待传 N」), catching up, failed (「重试」), offline, and the phone's own problems.
+- **Training** (plan 2.1, phase 1): T1 start → set → logged → rest → … → summary, as before; T1 is now opened from home
+  (back = home) and the summary's 「完成」 returns home. A running session is saved at every step and resumed when the app
+  opens again (its HealthKit workout is recovered); one left for more than `WatchParams.resumeWithinHours` is ended.
+- **Quick log** (plan 2.2, mockups M3–M5): up to three quick meals (the phone's most used, made and ordered on the phone)
+  and water. A tap logs at once (no AI, offline OK) and shows the receipt: the meal, kcal, protein, and the day's bar
+  when the phone's intake is known; 「撤销」 → the confirm screen (撤销 / 保留). Back from the receipt = home.
+- **Not yet** (phase 2b and later): hold to talk / voice (the core is drawn dimmed, mockup S7's "voice unavailable"; a
+  hold only gives a failure tap), Jarvis questions, complications, Smart Stack, Siri.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `apps/ios/WatchShared/` | Plain Foundation, compiled into the iPhone app and the watch app: the plan / event / context types and their WatchConnectivity encoding (`WatchLink.swift`), the session state machine (`SetSession.swift`), the rest countdown (`RestTimer.swift`), the offline queue and the sync mark's state (`WatchEventQueue.swift`), tunables (`WatchParams.swift`). Unit-tested in `Watch2WhoopTests/WatchLinkTests.swift`. |
-| `apps/ios/Watch2WhoopWatch/` | The watch app (SwiftUI, watchOS 11+): screens T1–T10 and the sync states of `docs/design/watch/`, HealthKit workout (`WorkoutController.swift`), WatchConnectivity (`WatchLinkClient.swift`), the glue (`WatchModel.swift`). Colours are the iPhone's dark tokens (`WatchTokens.swift`, checked by `scripts/check_sources.py`). |
-| `apps/ios/Watch2Whoop/Features/Watch/PhoneWatchLink.swift` | The iPhone side: pushes today's plan to the watch, merges the watch's set events into the day's draft and lets the existing local-first write / offline queue send it; an `end` event submits the day. No backend change. |
+| `apps/ios/WatchShared/` | Plain Foundation, compiled into the iPhone app and the watch app: the plan / event / context types and their WatchConnectivity encoding (`WatchLink.swift`: `WatchContext` with today's numbers `WatchToday` and the tiles `WatchQuick`; one event type for sets, the end, quick meals, drinks and undo), the home rules, the watch's quick logs and the receipt bar, routes and the saved session (`WatchHome.swift`), the session state machine (`SetSession.swift`), the rest countdown (`RestTimer.swift`), the offline queue and the sync mark's state (`WatchEventQueue.swift`), tunables (`WatchParams.swift`). Unit-tested in `Watch2WhoopTests/WatchLinkTests.swift`. |
+| `apps/ios/Watch2WhoopWatch/` | The watch app (SwiftUI, watchOS 11+): home, T1–T10, M3–M5 and the sync states of `docs/design/watch/` (`WatchScreens.swift`, `WatchComponents.swift`: dial, readings, Jarvis core, tiles), HealthKit workout (`WorkoutController.swift`), WatchConnectivity (`WatchLinkClient.swift`), the glue (`WatchModel.swift`), Debug-only synthetic data (`WatchDemoData.swift`). Colours are the iPhone's dark tokens (`WatchTokens.swift`, checked by `scripts/check_sources.py`; the Jarvis ice is `WJarvis`, the phone's `CockpitPalette`). Icons are SF Symbols, as in phase 1. |
+| `apps/ios/Watch2Whoop/Features/Watch/PhoneWatchLink.swift` | The iPhone side: pushes today's plan, today's numbers (its own `TodayStore`: recovery, sleep, strain, its sync capsule) and the quick-log tiles (`FoodStore`'s quick meals, water when on) to the watch; merges the watch's set events into the day's draft (an `end` event submits the day); logs the watch's quick meals and drinks with `FoodStore.log` / `addWater` (the watch's event id is the write's `client_id`) and undoes them with `FoodStore.undoWrite`. No backend change. |
 
 ## Data path
 
@@ -19,8 +33,17 @@ at zero → next set / next exercise → summary. No voice, no complications, no
 watch: set logged ─► WatchEventQueue (kept on the watch) ─► transferUserInfo ─► iPhone: WatchEventMerge (dedupe by id)
        ─► TrainingStore.saveDraft (PUT /training/session/{day}, offline queue) ─► end event ─► TrainingStore.submit
 watch: HKWorkoutSession ends ─► one strength workout in Health ─► the phone's existing Health sync ─► workouts / strain
-iPhone: TrainingStore session ─► WatchPlanBuilder ─► updateApplicationContext ─► watch start screen
+iPhone: TrainingStore session ─► WatchPlanBuilder ─┐
+iPhone: TodayStore (phone's scores) ─► WatchTodayBuilder ─┼─► updateApplicationContext ─► watch home / T1 / M5
+iPhone: FoodStore quick meals ─► WatchQuickBuilder ──────┘
+watch: quick meal / water ─► WatchEventQueue ─► transferUserInfo ─► iPhone: FoodStore.log / addWater (client_id = event id)
+       ─► offline queue ─► POST /meal-templates/{id}/log, POST /water
+watch: undo ─► (still on the watch: dropped there) or an `undo` event ─► iPhone: queued write dropped, or the same POST
+       again (the server answers from its client_id store, nothing new is written) ─► DELETE /meal-logs/{id}, /water/{id}
 ```
+
+Undo needs the server when the write had already gone out; without a connection the phone keeps the undo and tries again
+with the next watch event or when the watch link wakes.
 
 ## Building
 
@@ -39,8 +62,50 @@ watchOS platform in Xcode (Settings → Components → watchOS); without it the 
 - Without a paired watch, or with the watch app not installed, the iPhone side does nothing (`WatchLinkGate`: no
   training store, no network pull, no push; only the one-time `WCSession.activate()`).
 
-The `Watch2WhoopWatch` scheme alone builds just the watch app (simulator screenshots, running on a watch from Xcode).
-Simulator screenshots (Debug): `SIMCTL_CHILD_W2W_WATCH_DEMO=t1…t10|s1…s9` shows one mockup screen with synthetic data.
+The `Watch2WhoopWatch` scheme alone builds just the watch app (simulator screenshots, running on a watch from Xcode):
+`xcodebuild -target Watch2WhoopWatch -sdk watchsimulator CODE_SIGNING_ALLOWED=NO build`.
+
+## Trying it in the simulator (Debug builds only)
+
+There is no phone in a watch simulator, so Debug builds bring their own synthetic data (nickname 小林, every number made
+up). Nothing of it is stored where a real phone's context lives.
+
+**Interactive seed** (acceptance): the app runs normally with the clock going, and a synthetic phone answers: today's
+context dated **today** (built at every launch, so it can never be yesterday's), recovery 82 / sleep 88 / strain 2.8, the
+「上肢 A」 plan, three quick meals and water. Events are "delivered" after 0.8 s and quick logs counted into the day's
+intake, so the receipt bar, the sync mark and undo behave as with a phone. It has its own storage
+(`UserDefaults` suite `w2w.watch.seed`): a session started there is resumed at the next seeded launch.
+
+```bash
+xcrun simctl launch --terminate-running-process <watch-udid> org.watch2whoop.app.watchkitapp
+```
+
+with `SIMCTL_CHILD_W2W_WATCH_SEED` set in the environment of that command:
+
+| `W2W_WATCH_SEED` | What the phone says |
+|---|---|
+| `1` | training day (D1) |
+| `rest` | no training today (D2: 「记一餐」) |
+| `noplan` | the phone's plan is yesterday's (「计划没同步」 inside home) |
+| `stale` | the newest data is more than six hours old (S3: grey numbers, 「6时前」) |
+| `signedout` | signed out (S8) |
+| `reset` | like `1`, after clearing the seed's storage (queue, quick logs, a saved session) |
+
+For example: `SIMCTL_CHILD_W2W_WATCH_SEED=1 xcrun simctl launch --terminate-running-process <udid> org.watch2whoop.app.watchkitapp`
+(the bundle id is the placeholder's; with your own `W2W_BUNDLE_ID` it is `<that>.watchkitapp`). Add
+`-AppleLanguages "(en)" -w2w.native.lang.v1 en` for English. A plain launch (no variable) is the real app.
+
+**Frozen screens** (screenshots): `SIMCTL_CHILD_W2W_WATCH_DEMO=<id>` shows one mockup screen, the clock stopped:
+
+| id | Screen |
+|---|---|
+| `d1`, `d2` | home: training day, day without training |
+| `s1`, `s2`, `s3`, `s5`, `s6`, `s7` | home with the sync mark: linked, phone syncing, old data, catching up, failed, offline |
+| `s9` | home with 「计划没同步」 |
+| `s4` | set screen with the phone away |
+| `s8` | not signed in |
+| `t1`…`t10` | training: start (pushed from home), set, crown, logged, rest, next exercise, summary |
+| `m5`, `m3`, `m3w`, `m4` | quick log: tiles, meal receipt, water receipt, undo confirm |
 
 ## Releasing (TestFlight)
 
@@ -64,9 +129,11 @@ For the person who archives and uploads (the full checklist is `docs/ios-native-
    Watch2Whoop → Show App on Apple Watch, if it does not appear by itself). Or run the `Watch2WhoopWatch` scheme with the
    watch as destination.
 4. First start on the watch: allow heart rate (read) and workouts (write) in the Health sheet.
-5. Open 记录 once on the iPhone so today's plan reaches the watch.
+5. Open the iPhone app once so today's plan, numbers and quick meals reach the watch.
 
 ## 中文（给发版的人）
+
+- 2.1.0 的手表端 = 第 1 期（训练记组）+ 第 2a 期（首屏「今天一眼」、快记、导航、中途退出后接着练）。语音（按住说话）、表盘小组件还没有。
 
 - 从 2.1.0 起手表 app **嵌在 iPhone app 里**，打 `Watch2Whoop` scheme 的包时自动带上，一次上传两个都有。Xcode 要先装 watchOS 平台（Settings → Components → watchOS），没装 iPhone app 也编不过。
 - 开发者账号里要有手表 app 自己的 App ID：**`<iPhone 的 Bundle ID>.watchkitapp`**，勾 **HealthKit**。自动签名时 Xcode 会自己注册（选 `Watch2WhoopWatch` target → Signing & Capabilities，同一个 Team，勾 Automatically manage signing）；账号不允许时到 developer.apple.com → Identifiers 手动加，再回 Xcode 点 Try Again。
