@@ -1,7 +1,7 @@
 import Foundation
 
 /// The rest countdown between sets (mockup T6). Pure value: the screen asks it for the time left at `now`.
-struct RestTimer: Equatable {
+struct RestTimer: Equatable, Codable {
   var start: Date
   /// Planned rest in seconds; the crown changes it in `WatchParams.restStepSec` steps.
   var total: Int

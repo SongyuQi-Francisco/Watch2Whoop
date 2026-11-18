@@ -2,10 +2,12 @@ import Combine
 import Foundation
 import WatchConnectivity
 
-// The iPhone's half of the watch link (docs/watch-app-plan.md 4.4 and 4.6, phase 1: logging sets). The phone stays the
-// only writer of the training day: it pushes today's plan to the watch, merges the watch's set events into the day's
-// draft and lets the existing local-first write and offline queue send it (`TrainingStore.saveDraft` / `submit`). No
-// new endpoint, no backend change.
+// The iPhone's half of the watch link (docs/watch-app-plan.md 4.4 and 4.6). The phone stays the only writer: it pushes
+// today's plan, today's numbers (its own Today: recovery, sleep, strain and its sync capsule; the watch computes nothing)
+// and the quick-log tiles to the watch; it merges the watch's set events into the day's draft (`TrainingStore.saveDraft` /
+// `submit`) and logs the watch's quick meals and drinks with the same calls as its own quick-meal strip and water card
+// (`FoodStore.log` / `addWater`, the watch's event id as the write key), so the existing local-first write and offline
+// queue send them. No new endpoint, no backend change.
 
 /// Today's plan as the watch needs it.
 enum WatchPlanBuilder {
@@ -22,6 +24,63 @@ enum WatchPlanBuilder {
     }
     guard !exercises.isEmpty else { return nil }
     return WatchPlan(day: s.day, title: s.title, exercises: exercises)
+  }
+}
+
+/// Today's numbers for the watch (plan 2.4, phase 2a): what the phone's Today shows, never recomputed.
+enum WatchTodayBuilder {
+  static func today(_ m: TodayModel, day: String?, capsule: SyncCapsuleState, offline: Bool, now: Date) -> WatchToday? {
+    guard let day else { return nil }
+    let g = m.glance
+    let rec = g.recovery.value
+    return WatchToday(day: day, recovery: rec, tone: rec.map(tone), usualLo: g.recovery.usual?.lowerBound,
+                      usualHi: g.recovery.usual?.upperBound, verdict: rec.map(verdict), reason: rec == nil ? g.recovery.reason : nil,
+                      sleep: g.sleep.value, strain: g.strain.value, computedAt: now,
+                      dataAt: m.sync?.minutes.map { now.addingTimeInterval(-Double($0) * 60) }, phone: phone(capsule, offline: offline))
+  }
+
+  static func tone(_ v: Double) -> WatchTone {
+    switch TodayModel.zone(v) {
+    case .good: return .good
+    case .mid: return .mid
+    default: return .bad
+    }
+  }
+
+  /// The watch's word under the number: at most 4 characters / 2 English words (plan 3), by the phone's zone; the
+  /// mockups' words (D1 「可上强度」, D2 「正常练」).
+  static func verdict(_ v: Double) -> String {
+    switch tone(v) {
+    case .good: return tr("可上强度", "Push hard")
+    case .mid: return tr("正常练", "Train normally")
+    case .bad: return tr("先恢复", "Recover first")
+    }
+  }
+
+  /// The phone's capsule as the watch's mark shows it.
+  static func phone(_ c: SyncCapsuleState, offline: Bool) -> WatchPhoneSync {
+    switch c {
+    case .ok: return WatchPhoneSync(.ok)
+    case .busy: return WatchPhoneSync(.busy)
+    case .stale(let l): return offline ? WatchPhoneSync(.offline, l) : WatchPhoneSync(.stale, l)
+    case .behind(let l): return WatchPhoneSync(.behind, l)
+    case .off: return WatchPhoneSync(.off, tr("同步已关", "Sync off"))
+    case .failed: return WatchPhoneSync(.failed)
+    }
+  }
+}
+
+/// The quick-log tiles for the watch (plan 2.2): the phone's most used quick meals (the ones that log in one tap: a
+/// template whose grams still need confirming opens a sheet on the phone, so it is not offered), water when it is on.
+enum WatchQuickBuilder {
+  static func quick(templates: [MealTemplate], nutrition: NutritionDay?, day: String, water: Bool,
+                    results: [String: Bool]) -> WatchQuick {
+    let meals = MealTemplate.byUse(templates).filter { !$0.needsConfirmation }.prefix(WatchParams.quickMealsMax).map {
+      WatchQuickMeal(id: $0.id, name: $0.name, slot: $0.meal.title, kcal: $0.totals.kcal, proteinG: $0.totals.protein)
+    }
+    let n = nutrition?.date == day ? nutrition : nil
+    return WatchQuick(day: day, meals: Array(meals), waterMl: water ? WatchParams.waterQuickMl : nil, kcal: n?.intake.kcal,
+                      kcalGoal: n?.goal.kcal, results: results)
   }
 }
 
@@ -60,6 +119,8 @@ enum WatchEventMerge {
         while list.count <= i { list.append(SetRow(reps: ex.target.reps, weightKg: ex.target.weightKg, durationS: ex.target.durationS, done: false)) }
         list[i] = SetRow(reps: e.reps, weightKg: e.weightKg, durationS: e.durationS, done: true)
         out[slug] = list
+      case .meal, .water, .undo:
+        continue   // quick logs are not training: the bridge's quick-log path handles them
       }
       applied.append(e.id)
       done.insert(e.id)
@@ -68,15 +129,51 @@ enum WatchEventMerge {
   }
 }
 
-/// Ids already merged, and events held for another day, kept across launches (UserDefaults; a few KB at most).
+/// Ids already merged, events held for another day, and the watch's recent quick logs with whether each is counted in the
+/// day now (its undo needs the original; the watch's receipt needs the count), kept across launches (UserDefaults; a
+/// few KB at most).
 struct PhoneWatchInbox: Codable, Equatable {
+  struct Quick: Codable, Equatable {
+    var event: WatchSetEvent
+    /// In the day's intake now: logged (sent or queued); false = undone, or the phone could not log it.
+    var counted: Bool
+  }
+
   var seen: [String] = []
   var held: [WatchSetEvent] = []
+  var quick: [Quick] = []
+  /// Undo events that could not reach the server yet: tried again with the next event or when the watch link wakes.
+  var undoLater: [WatchSetEvent] = []
+
+  init() {}
+
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    seen = try c.decodeIfPresent([String].self, forKey: .seen) ?? []
+    held = try c.decodeIfPresent([WatchSetEvent].self, forKey: .held) ?? []
+    quick = try c.decodeIfPresent([Quick].self, forKey: .quick) ?? []
+    undoLater = try c.decodeIfPresent([WatchSetEvent].self, forKey: .undoLater) ?? []
+  }
 
   mutating func remember(_ ids: [String]) {
     seen.append(contentsOf: ids)
     if seen.count > WatchParams.phoneSeenIdsKept { seen.removeFirst(seen.count - WatchParams.phoneSeenIdsKept) }
   }
+
+  mutating func logged(_ e: WatchSetEvent, counted: Bool) {
+    quick.removeAll { $0.event.id == e.id }
+    quick.append(Quick(event: e, counted: counted))
+    if quick.count > WatchParams.phoneResultsKept { quick.removeFirst(quick.count - WatchParams.phoneResultsKept) }
+  }
+
+  mutating func uncount(_ id: String) {
+    for i in quick.indices where quick[i].event.id == id { quick[i].counted = false }
+  }
+
+  func original(_ id: String) -> Quick? { quick.first { $0.event.id == id } }
+
+  /// What the watch's receipt reads: id → counted.
+  var results: [String: Bool] { Dictionary(quick.map { ($0.event.id, $0.counted) }, uniquingKeysWith: { $1 }) }
 
   static let key = "w2w.native.watchInbox.v1"
   static func load(_ d: UserDefaults = .standard) -> PhoneWatchInbox { WatchCodec.decode(PhoneWatchInbox.self, d.data(forKey: key)) ?? PhoneWatchInbox() }
@@ -92,18 +189,25 @@ enum WatchLinkGate {
   }
 }
 
-/// WatchConnectivity on the phone. Attached to the signed-in account; it only starts its work (today's training, the
-/// pushes) once the system reports a paired watch with the app installed (`WatchLinkGate`), and stops when that ends.
+/// WatchConnectivity on the phone. Attached to the signed-in account; it only starts its work (today's training, numbers
+/// and quick meals, the pushes) once the system reports a paired watch with the app installed (`WatchLinkGate`), and stops
+/// when that ends.
 @MainActor
 final class PhoneWatchBridge: NSObject, ObservableObject {
   static let shared = PhoneWatchBridge()
 
   private var account: AccountSession?
   private var store: TrainingStore?
+  private var today: TodayStore?
+  private var food: FoodStore?
   private var cancellable: AnyCancellable?
   private var inbox = PhoneWatchInbox.load()
   private var queued: [WatchSetEvent] = []
+  private var quickQueued: [WatchSetEvent] = []
   private var working = false
+  private var quickWorking = false
+  private var lastPushed: WatchContext?
+  private var lastTodayRefresh: Date?
 
   private var wc: WCSession? { WCSession.isSupported() ? WCSession.default : nil }
 
@@ -130,44 +234,118 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
   func detach() {
     let wasLinked = linked
     account = nil
-    stopStore()
-    if wasLinked { pushContext(WatchContext(signedIn: false, plan: nil, lang: Lang.code, sentAt: Date())) }
+    stopStores()
+    lastPushed = nil
+    if wasLinked { send(WatchContext(signedIn: false, plan: nil, lang: Lang.code, sentAt: Date())) }
   }
 
   /// A watch appeared or went away (activation, pairing, app installed / removed): start or stop the work.
   fileprivate func update() {
-    guard linked, let account else { stopStore(); return }
+    guard linked, let account else { stopStores(); return }
     if store == nil {
       let s = TrainingStore(session: account)
+      let t = TodayStore(session: account)   // reads the local copy (first value at once); the Today tab refreshes it
+      let f = FoodStore(session: account, cardOnly: true)
       store = s
-      cancellable = s.$session.removeDuplicates().sink { [weak self] t in self?.push(WatchPlanBuilder.plan(from: t)) }
+      today = t
+      food = f
+      // anything the watch shows changed: one push after things settle (updateApplicationContext keeps the newest only)
+      let changes: [AnyPublisher<Void, Never>] = [
+        s.$session.map { _ in () }.eraseToAnyPublisher(), t.$model.map { _ in () }.eraseToAnyPublisher(),
+        f.$templates.map { _ in () }.eraseToAnyPublisher(), f.$nutrition.map { _ in () }.eraseToAnyPublisher(),
+        account.sync.$status.map { _ in () }.eraseToAnyPublisher(),
+        HealthSyncService.shared.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
+        account.$flags.map { _ in () }.eraseToAnyPublisher(),
+      ]
+      cancellable = Publishers.MergeMany(changes).debounce(for: .milliseconds(600), scheduler: RunLoop.main)
+        .sink { [weak self] in self?.push() }
       Task {
         await s.refresh()
+        await f.refresh()
         await drain()
+        await drainQuick()
+        push()
       }
     } else {
-      push(WatchPlanBuilder.plan(from: store?.session))
+      push()
+      Task { await drainQuick() }
     }
   }
 
-  private func stopStore() {
+  private func stopStores() {
     cancellable = nil
     store = nil
+    today?.stop()
+    today = nil
+    food?.stop()
+    food = nil
   }
 
-  private func push(_ plan: WatchPlan?) {
-    pushContext(WatchContext(signedIn: true, plan: plan, lang: Lang.code, sentAt: Date()))
+  /// The watch's whole context from the phone's stores, sent when it differs from the last one in more than its times.
+  private func push(force: Bool = false) {
+    guard linked, let account, let store else { return }
+    let now = Date()
+    let userToday = today?.userToday ?? account.db.userToday()
+    let capsule = SyncCapsuleState.of(overall: HealthSyncService.shared.diagnosis.overall, page: account.sync.status,
+                                      card: today?.model.sync)
+    let t = today.flatMap { WatchTodayBuilder.today($0.model, day: $0.userToday, capsule: capsule, offline: account.sync.status == .offline, now: now) }
+    let q = food.map { f in
+      WatchQuickBuilder.quick(templates: f.templates, nutrition: f.nutrition, day: userToday, water: account.flags.contains("water"),
+                              results: inbox.results)
+    }
+    let c = WatchContext(signedIn: true, plan: WatchPlanBuilder.plan(from: store.session), lang: Lang.code, sentAt: now,
+                         planFor: store.session?.day, today: t, quick: q)
+    guard force || !Self.sameExceptTimes(c, lastPushed) else { return }
+    lastPushed = c
+    send(c)
   }
 
-  private func pushContext(_ c: WatchContext) {
+  /// Two contexts that differ only in when they were made (a push of the same numbers would only wake the watch).
+  static func sameExceptTimes(_ a: WatchContext, _ b: WatchContext?) -> Bool {
+    guard var b else { return false }
+    var a = a
+    let t0 = Date(timeIntervalSince1970: 0)
+    a.sentAt = t0
+    b.sentAt = t0
+    a.today?.computedAt = t0
+    b.today?.computedAt = t0
+    // the data's age moves with `now`: equal within a minute
+    if let x = a.today?.dataAt, let y = b.today?.dataAt, abs(x.timeIntervalSince(y)) < 60 { b.today?.dataAt = x }
+    return a == b
+  }
+
+  private func send(_ c: WatchContext) {
     guard linked, let wc else { return }
     try? wc.updateApplicationContext(WatchCodec.message(c))
   }
 
   fileprivate func received(_ e: WatchSetEvent) {
-    queued.append(e)
-    if store == nil { update() }
-    Task { await drain() }
+    if e.isTraining {
+      queued.append(e)
+      if store == nil { update() }
+      Task { await drain() }
+    } else {
+      quickQueued.append(e)
+      if food == nil { update() }
+      Task { await drainQuick() }
+    }
+  }
+
+  /// 「Send me the plan and today's numbers again」 (the watch's 「计划没同步」 key, its sync mark).
+  fileprivate func requested() async {
+    guard account != nil else {
+      send(WatchContext(signedIn: false, plan: nil, lang: Lang.code, sentAt: Date()))
+      return
+    }
+    update()
+    await store?.refresh()
+    // the Today numbers come from the server's documents and the phone's own scoring: at most once a minute from here
+    if let t = today, Date().timeIntervalSince(lastTodayRefresh ?? .distantPast) > 60 {
+      lastTodayRefresh = Date()
+      await t.refresh()
+    }
+    await food?.refresh()
+    push(force: true)
   }
 
   /// Merges what arrived (and what was held) into today's draft, saves it the local-first way, submits on 「end」.
@@ -188,6 +366,74 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
     }
     if r.ended { _ = await store.submit() }
     if !queued.isEmpty { await drain() }
+  }
+
+  /// The watch's quick meals, drinks and undos, in the order they happened, each once (its id is the write's key, so a
+  /// transfer that arrives twice is stored once here and on the server).
+  private func drainQuick() async {
+    guard !quickWorking, let food else { return }
+    let events = (inbox.undoLater + quickQueued).sorted { $0.at < $1.at }
+    guard !events.isEmpty else { return }
+    quickWorking = true
+    defer { quickWorking = false }
+    quickQueued.removeAll()
+    inbox.undoLater.removeAll()
+    for e in events {
+      let retry = e.kind == .undo && inbox.seen.contains(e.id)
+      guard retry || !inbox.seen.contains(e.id) else { continue }
+      switch e.kind {
+      case .meal, .water:
+        inbox.logged(e, counted: await logQuick(e, food: food))
+      case .undo:
+        guard let target = e.target, let orig = inbox.original(target), orig.counted else { break }
+        if await undoQuick(orig.event, food: food) {
+          inbox.uncount(target)
+        } else {
+          inbox.undoLater.append(e)   // no connection: again later
+        }
+      case .set, .end:
+        break
+      }
+      if !retry { inbox.remember([e.id]) }
+      inbox.save()
+    }
+    push()
+    if !quickQueued.isEmpty { await drainQuick() }
+  }
+
+  /// Logs one tile the way the phone's own strip / water card does. Counted = it is in the day now (sent or queued).
+  private func logQuick(_ e: WatchSetEvent, food: FoodStore) async -> Bool {
+    let out: WriteOutcome
+    switch e.kind {
+    case .meal:
+      // the watch's tap is the decision (the receipt has its undo): another logging of a meal already logged today is kept
+      guard let id = e.templateId, let t = food.templates.first(where: { $0.id == id }) else { return false }
+      out = await food.log(t, again: true, day: e.day, clientId: e.id)
+    case .water:
+      out = await food.addWater(e.ml ?? WatchParams.waterQuickMl, day: e.day, at: e.at, clientId: e.id)
+    default:
+      return false
+    }
+    if !out.saved { return LocalRecords.outboxState(food.db, clientId: e.id) != nil }   // stored before a relaunch
+    return out.sent || out.queued
+  }
+
+  private func undoQuick(_ e: WatchSetEvent, food: FoodStore) async -> Bool {
+    switch e.kind {
+    case .meal:
+      guard let id = e.templateId else { return true }
+      return await food.undoWrite(clientId: e.id, path: FoodAPI.logTemplate(id), body: ["date": e.day, "allow_duplicates": true]) { j in
+        (j["log_id"] as? NSNumber).map { FoodAPI.mealLog($0.intValue) }
+      }
+    case .water:
+      let at = ISO8601DateFormatter.localWithOffset.string(from: e.at)
+      return await food.undoWrite(clientId: e.id, path: FoodAPI.waterPath,
+                                  body: ["ml": e.ml ?? WatchParams.waterQuickMl, "source": "button", "at": at]) { j in
+        ((j["entry"] as? [String: Any])?["id"] as? NSNumber).map { FoodAPI.waterEntry(String($0.intValue)) }
+      }
+    default:
+      return true
+    }
   }
 }
 
@@ -213,14 +459,6 @@ extension PhoneWatchBridge: WCSessionDelegate {
 
   nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
     guard message[WatchCodec.requestKey] != nil else { return }
-    Task { @MainActor in
-      guard self.account != nil else {
-        self.pushContext(WatchContext(signedIn: false, plan: nil, lang: Lang.code, sentAt: Date()))
-        return
-      }
-      self.update()
-      await self.store?.refresh()
-      self.push(WatchPlanBuilder.plan(from: self.store?.session))
-    }
+    Task { @MainActor in await self.requested() }
   }
 }

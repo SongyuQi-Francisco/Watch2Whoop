@@ -57,6 +57,14 @@ struct WatchEventQueue: Codable, Equatable {
     items[i].state = .failed
   }
 
+  /// Takes back an event the phone has not got (undo of a quick log right after it): only while it is pending or its
+  /// transfer failed. False once it was handed to WatchConnectivity; then the phone gets an `undo` event instead.
+  mutating func cancel(_ id: String) -> Bool {
+    guard let i = items.firstIndex(where: { $0.event.id == id }), items[i].state != .sending else { return false }
+    items.remove(at: i)
+    return true
+  }
+
   /// S6's 「重试」: the failed ones go back to pending.
   mutating func retryFailed() {
     for i in items.indices where items[i].state == .failed { items[i].state = .pending }
@@ -78,32 +86,69 @@ struct WatchEventQueue: Codable, Equatable {
   static func load(_ data: Data?) -> WatchEventQueue { WatchCodec.decode(WatchEventQueue.self, data) ?? WatchEventQueue() }
 }
 
-/// The sync mark (plan 2.6, mockups S1–S9): the icon's shape is the state, the text is an age or a count.
+/// The sync mark (plan 2.6, mockups S1–S7): the icon's shape is the state, the text is an age or a count, never a clock
+/// time. It joins two things: the watch's own link to the phone (the event queue) and the phone's capsule about its data,
+/// aged on the watch (a phone that has gone quiet cannot say so itself).
 enum WatchSyncState: Equatable {
   /// S8: the phone has never told us who is signed in, or it signed out.
   case signedOut
-  /// S9: no plan for today on the watch.
-  case noPlan
   /// S6: a transfer failed; tap = retry.
   case failed(Int)
   /// S2 / S5: handing over; `done` of `total` in this batch.
   case catchingUp(done: Int, total: Int)
-  /// S4: the phone is not reachable; `n` sets are kept on the watch.
+  /// S4: the phone is not reachable; `n` events are kept on the watch.
   case away(Int)
-  /// S1: all handed over; minutes since we last heard from the phone (nil = never).
+  /// S2: the phone is syncing its data.
+  case phoneSyncing
+  /// S7: the phone could not reach the server (its numbers are its last copy).
+  case offline
+  /// The phone needs the user (permission, sync off, missing days): the phone capsule's label, shown as it is.
+  case behind(String)
+  /// The phone's own sync failed.
+  case phoneFailed
+  /// S3: the numbers are older than `WatchParams.staleAfterMin` minutes: drawn grey, with their age.
+  case stale(minutesAgo: Int)
+  /// S1: fine; minutes since the newest data (nil = unknown).
   case linked(minutesAgo: Int?)
 
-  /// The state to show. `sessionRunning`: during a session the plan on the watch is used even if it became yesterday's.
-  static func derive(context: WatchContext?, queue: WatchEventQueue, reachable: Bool, today: String,
-                     sessionRunning: Bool, now: Date) -> WatchSyncState {
+  /// The numbers are drawn grey (S3: 「不冒充最新」).
+  var greysNumbers: Bool {
+    if case .stale = self { return true }
+    return false
+  }
+
+  static func derive(context: WatchContext?, queue: WatchEventQueue, reachable: Bool, now: Date,
+                     staleAfter: Int = WatchParams.staleAfterMin) -> WatchSyncState {
     guard let context, context.signedIn else { return .signedOut }
-    if !sessionRunning && (context.plan == nil || context.plan?.day != today) && queue.isEmpty { return .noPlan }
     if queue.failed > 0 { return .failed(queue.failed) }
     if !queue.isEmpty {
       if !reachable { return .away(queue.waiting) }
       return .catchingUp(done: queue.deliveredInBatch, total: queue.deliveredInBatch + queue.waiting)
     }
-    let ago = queue.lastContact.map { max(0, Int(now.timeIntervalSince($0) / 60)) }
+    // the age of what is on screen: the newest data behind the numbers, else the last time we heard from the phone
+    let since = context.today?.dataAt ?? queue.lastContact ?? context.today?.computedAt
+    let ago = since.map { max(0, Int(now.timeIntervalSince($0) / 60)) }
+    let heardAgo = now.timeIntervalSince(queue.lastContact ?? context.sentAt)
+    if let phone = context.today?.phone {
+      switch phone.kind {
+      case .busy where heardAgo <= WatchParams.phoneBusyFreshSec: return .phoneSyncing
+      case .failed: return .phoneFailed
+      case .offline: return .offline
+      case .behind, .off: return .behind(phone.label ?? tr("需处理", "Check"))
+      case .stale: return .stale(minutesAgo: ago ?? staleAfter)
+      default: break
+      }
+    }
+    if let ago, ago >= staleAfter { return .stale(minutesAgo: ago) }
     return .linked(minutesAgo: ago)
+  }
+
+  /// 「2分前」 / 「6时前」 / 「3天前」: the age grammar of the phone's capsule.
+  static func age(_ minutes: Int?) -> String {
+    guard let m = minutes else { return "—" }
+    if m < 1 { return tr("刚刚", "now") }
+    if m < WatchParams.ageHoursAfterMin { return tr("\(m)分前", "\(m)m ago") }
+    if m < 24 * 60 { return tr("\(m / 60)时前", "\(m / 60)h ago") }
+    return tr("\(m / (24 * 60))天前", "\(m / (24 * 60))d ago")
   }
 }

@@ -47,6 +47,30 @@ final class WorkoutController: NSObject {
     }
   }
 
+  /// The app was closed or the watch restarted during a session (phase 2a: a running session is resumed on launch):
+  /// take the system's running workout back, or end it when the session on the watch was left for hours. No workout to
+  /// recover = the light mode (sets only).
+  func recover(thenEnd: Bool = false) {
+    guard session == nil, HKHealthStore.isHealthDataAvailable() else { light = session == nil; return }
+    store.recoverActiveWorkoutSession { [weak self] s, _ in
+      DispatchQueue.main.async {
+        guard let self else { return }
+        guard let s else {
+          self.light = !thenEnd
+          return
+        }
+        let b = s.associatedWorkoutBuilder()
+        b.dataSource = HKLiveWorkoutDataSource(healthStore: self.store, workoutConfiguration: s.workoutConfiguration)
+        s.delegate = self
+        b.delegate = self
+        self.session = s
+        self.builder = b
+        self.light = false
+        if thenEnd { s.end() }
+      }
+    }
+  }
+
   /// Ends the session; the builder saves the workout once the session says it has ended.
   func end() {
     guard let s = session else { return }
