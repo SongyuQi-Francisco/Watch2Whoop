@@ -222,6 +222,8 @@ def test_app_mode_owner_is_read_from_the_server_copy(client, dsn, world, monkeyp
     for mod in derived_kinds.kinds().values():
         monkeypatch.setattr(mod, "recompute", lambda conn, uid, day, uploaded: uploaded[day])
     monkeypatch.setattr(appscores, "server_rows", lambda conn, uid, days, end=None: {})
+    from body_engine.sync import refresh   # this test is not about where the score spot check runs: in the request
+    monkeypatch.setattr(refresh, "SCORES_INLINE", True)
     from test_native_s9 import daily_rows, healthspan_rows, reminder_rows, sleep_rows, stress_rows, workout_row
 
     today = datetime.now(ZoneInfo(TZ)).date()

@@ -367,6 +367,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 
 - 只收**和服务器同一个算法版本**（`scores/params.ALGO_VERSION`）的行。版本不同时回 `stale_algo`，什么都不存，服务器照常算分，app 应该先去更新算法包。
 - **抽查**：每个 `bundle_version` 第一次上传时抽查一次，之后最多每 6 小时一次。抽的是上传里最近 14 天内最新的一天（不含今天）。服务器用 Python 把这一天重算一遍，逐项比较，容差在 `nativesync/params.CHECK_TOLERANCE`，每次结果记进 `app_score_checks`。
+  - 抽查不在请求里做（2026-11 起，[api-memory.md](api-memory.md) 第二轮）：重算要加载这个人的全部原始历史，在 API 进程里会撑爆内存。上传先放进 `app_score_pending`，接口马上回 `ok`、`check = {date, queued: true}`、`stored = 0`；每分钟的 `sync-refresh-run`（每小时任务兜底）抽查后再按下面的规则存，结果和原来一样，只晚约一分钟；在这之前到的上传并进同一份。同一个抽查开始 3 次都没做完就放弃：行照常存成 app 的（未抽查，不改信任状态），记进 `app_score_state.checks_given_up`，6 小时内不再抽查。`BODY_SYNC_SCORES=inline` 时照旧在请求里做。
   - 一致：这次上传的行全部存进 `daily_scores`，标 `origin = app`、`bundle_version`。
   - 超出容差：这一天存服务器自己的结果，这次上传的其他天都不存；这个用户标记为「不可信」，每小时任务重新给他全量算分，并且马上排队重算上传的这段日期。以后哪次抽查通过了，再恢复由 app 算。
 - **服务器什么时候停算**：同时满足下面四条，就算「由 app 算分」：最近 3 天内上传过、算法版本和服务器一致、最近一次抽查通过、管理员没有强制让服务器算。这期间：

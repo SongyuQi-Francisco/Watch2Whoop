@@ -8,6 +8,10 @@ Upload: {"algo_version", "bundle_version", "days": [{"date", "row": {daily_score
   app_score_checks. A difference beyond the tolerance: the server's row is stored for that day, nothing else of the upload,
   the user's app scoring is marked untrusted (the hourly job scores them again) and a recompute of the uploaded range is
   queued. The next passing check trusts the app again.
+- Where the check runs (_check_inline): a check loads the user's whole raw history, far too much for the API process
+  (it was OOM-killed at its limit, docs/api-memory.md), so by default the upload only parks its rows in
+  app_score_pending and queues the check; the per-minute job (sync/refresh.run_queued) or the hourly job (batch.py)
+  runs it (run_pending) and stores what the request used to, about a minute later. Inline only with BODY_SYNC_SCORES=inline.
 - Stored rows go to daily_scores with origin = app (+ bundle_version): the AI, MCP, the Today page and every reader keep
   reading daily_scores, so they always see what is stored, whoever computed it.
 
@@ -156,10 +160,88 @@ def _check_day(rows: dict[date, dict], today: date) -> date | None:
 
 
 # ---------------------------------------------------------------- upload
+def _check_inline() -> bool:
+    """Where the spot check runs. Inline (in the request) only where the API itself recomputes the scores
+    (BODY_SYNC_SCORES=inline: single-machine setups with memory to spare). Otherwise queued: a check loads the user's
+    whole raw history (origin - 365 days; a year of samples is 200-300 MB of Python objects for a few seconds), which
+    killed the API process at its memory limit 32 times in 9 days (docs/api-memory.md), so the per-minute job
+    (sync-refresh-run, a one-off container) runs it, and the hourly job if that one does not run."""
+    from ..sync import refresh
+    return refresh.SCORES_INLINE
+
+
+def _pending(conn: psycopg.Connection, uid: int) -> dict | None:
+    return conn.execute("SELECT * FROM app_score_pending WHERE user_id = %s", (uid,)).fetchone()
+
+
+def _gave_up_recently(s: dict | None) -> bool:
+    """A queued check of this user was given up within CHECK_EVERY_HOURS (run_pending): no new one until then."""
+    t = s and s.get("last_given_up_at")
+    return bool(t and t > datetime.now(t.tzinfo) - timedelta(hours=P.CHECK_EVERY_HOURS))
+
+
+def _store_unchecked(conn: psycopg.Connection, uid: int, algo_version: str, bundle_version: str | None,
+                     rows: dict[date, dict], gave_up: bool) -> None:
+    """Store rows as the app's without a check, when the server could not run one (a given-up check, and the uploads
+    of the CHECK_EVERY_HOURS after it). Why not the server's rows: the check failed because the server could not compute
+    them, so there are none; dropping the app's would leave the user without scores on the server, silently. The JS
+    bundle matches Python to ~1e-13 in the golden tests, and nothing about the app is learnt from a server failure, so
+    trust, the checked bundle and the last check stay as they were: the next check of this bundle runs when due, and the
+    rows are told apart by daily_scores.bundle_version. gave_up counts it in app_score_state (checks_given_up,
+    last_given_up_at), which the deployment's health check reports. A user without state yet starts untrusted. Commits."""
+    if rows:
+        E.write(conn, uid, list(rows.values()), min(rows), max(rows), only=set(rows), origin="app",
+                bundle_version=bundle_version)
+    conn.execute(
+        """INSERT INTO app_score_state AS s (user_id, algo_version, bundle_version, last_upload_at, uploads, days_stored,
+                                             trusted, checks_given_up, last_given_up_at)
+           VALUES (%(u)s, %(a)s, NULL, now(), 1, %(n)s, FALSE, %(g)s, CASE WHEN %(gave)s THEN now() END)
+           ON CONFLICT (user_id) DO UPDATE SET last_upload_at = now(), uploads = s.uploads + 1,
+             days_stored = s.days_stored + EXCLUDED.days_stored, checks_given_up = s.checks_given_up + EXCLUDED.checks_given_up,
+             last_given_up_at = coalesce(EXCLUDED.last_given_up_at, s.last_given_up_at), updated_at = now()""",
+        {"u": uid, "a": algo_version, "n": len(rows), "g": 1 if gave_up else 0, "gave": gave_up})
+    conn.commit()
+
+
+def _rows_json(rows: dict[date, dict]) -> dict:
+    return {d.isoformat(): {k: v for k, v in r.items() if k != "date"} for d, r in rows.items()}
+
+
+def _rows_of(data: dict) -> dict[date, dict]:
+    return {date.fromisoformat(k): {**v, "date": date.fromisoformat(k)} for k, v in data.items()}
+
+
+def _queue_check(conn: psycopg.Connection, uid: int, algo_version: str, bundle_version: str | None, day: date,
+                 rows: dict[date, dict], merge: bool) -> None:
+    """Keep the upload for the queued check of `day` (merge = add to the one already waiting, the newest row of a day
+    wins; else replace it) and wake the per-minute job. Commits."""
+    from ..sync import refresh
+    conn.execute(
+        """INSERT INTO app_score_pending AS p (user_id, algo_version, bundle_version, check_date, rows)
+           VALUES (%(u)s, %(a)s, %(b)s, %(d)s, %(r)s)
+           ON CONFLICT (user_id) DO UPDATE SET
+             rows = CASE WHEN %(merge)s THEN p.rows || EXCLUDED.rows ELSE EXCLUDED.rows END,
+             algo_version = EXCLUDED.algo_version, bundle_version = EXCLUDED.bundle_version,
+             check_date = CASE WHEN %(merge)s THEN p.check_date ELSE EXCLUDED.check_date END,
+             attempts = CASE WHEN %(merge)s THEN p.attempts ELSE 0 END,
+             queued_at = CASE WHEN %(merge)s THEN p.queued_at ELSE now() END, updated_at = now()""",
+        {"u": uid, "a": algo_version, "b": bundle_version, "d": day, "r": Jsonb(_rows_json(rows)), "merge": merge})
+    conn.commit()
+    # today = no wider recompute than the usual window; the job runs the check before it (sync/refresh.run_queued)
+    refresh.queue_scores(conn, uid, datetime.now(ZoneInfo(_tz_name(conn, uid))).date())
+
+
+def _tz_name(conn: psycopg.Connection, uid: int) -> str:
+    return conn.execute("SELECT timezone FROM users WHERE id = %s", (uid,)).fetchone()["timezone"]
+
+
 def upload(conn: psycopg.Connection, uid: int, algo_version: str, bundle_version: str | None, days: list[dict],
-           force_check: bool = False) -> dict:
-    """Store the app's rows (see the module doc). Commits. Raises ValueError for a malformed upload."""
-    tz = ZoneInfo(conn.execute("SELECT timezone FROM users WHERE id = %s", (uid,)).fetchone()["timezone"])
+           force_check: bool = False, inline: bool | None = None) -> dict:
+    """Store the app's rows (see the module doc). Commits. Raises ValueError for a malformed upload.
+    When a check is due (or one is already waiting for this bundle) and it is not run inline (_check_inline), the rows
+    wait in app_score_pending: the answer is "ok" with check {"date", "queued": true} and nothing stored yet; the job
+    stores them (or the server's row of the checked day) when the check is done (run_pending)."""
+    tz = ZoneInfo(_tz_name(conn, uid))
     today = datetime.now(tz).date()
     rows: dict[date, dict] = {}
     for item in days:
@@ -171,11 +253,35 @@ def upload(conn: psycopg.Connection, uid: int, algo_version: str, bundle_version
         return {"status": "stale_algo", "stored": 0, "server_algo_version": SP.ALGO_VERSION, "check": None,
                 "app_scoring": active(conn, uid)}
     s = state(conn, uid)
+    due = force_check or _check_due(s, bundle_version)
+    if not (_check_inline() if inline is None else inline):
+        p = _pending(conn, uid)
+        waiting = (p is not None and p["algo_version"] == algo_version and p["bundle_version"] == bundle_version)
+        if due and not waiting and rows and _gave_up_recently(s):   # the last queued check could not be finished
+            _store_unchecked(conn, uid, algo_version, bundle_version, rows, gave_up=False)
+            return {"status": "ok", "stored": len(rows), "check": {"unchecked": True},
+                    "server_algo_version": SP.ALGO_VERSION, "app_scoring": active(conn, uid),
+                    "data_version": store.data_version(conn, uid)}
+        day = p["check_date"] if waiting else (_check_day(rows, today) if due else None)
+        if rows and day is not None:
+            _queue_check(conn, uid, algo_version, bundle_version, day, rows, merge=waiting)
+            return {"status": "ok", "stored": 0, "check": {"date": day.isoformat(), "queued": True},
+                    "server_algo_version": SP.ALGO_VERSION, "app_scoring": active(conn, uid),
+                    "data_version": store.data_version(conn, uid)}
+        due = False   # no recent day to check (an upload of older days only): stored as before
+    day = _check_day(rows, today) if due else None
+    server = server_rows(conn, uid, [day], end=today).get(day) if day is not None else None
+    return _finish(conn, uid, algo_version, bundle_version, rows, day, server, tz)
+
+
+def _finish(conn: psycopg.Connection, uid: int, algo_version: str, bundle_version: str | None, rows: dict[date, dict],
+            day: date | None, server: dict | None, tz: ZoneInfo) -> dict:
+    """The check's outcome (day None = no check): keep it in app_score_checks, store the rows (passed / no check) or the
+    server's row of the checked day (failed), update the state (a queued upload counts when the job finishes it: that
+    is when its rows reach daily_scores); a failed check queues a recompute of the uploaded range. Commits."""
     check = None
     stored_rows = rows
-    day = _check_day(rows, today) if (force_check or _check_due(s, bundle_version)) else None
     if day is not None:
-        server = server_rows(conn, uid, [day], end=today).get(day)
         diffs = diff(rows[day], server) if server is not None else {}
         ok = server is None or not diffs
         conn.execute("""INSERT INTO app_score_checks (user_id, date, algo_version, bundle_version, ok, diffs)
@@ -183,7 +289,7 @@ def upload(conn: psycopg.Connection, uid: int, algo_version: str, bundle_version
                      (uid, day, algo_version, bundle_version, ok, Jsonb(diffs)))
         check = {"date": day.isoformat(), "ok": ok, "diffs": diffs, "compared": server is not None}
         if not ok:   # the server wins: its row for the checked day, nothing else of this upload
-            log.warning("app scores of user %s (bundle %s) differ on %s: %s", uid, bundle_version, day, diffs)
+            log.warning("app scores of user %s (bundle %s) differ on %s: %s", uid, bundle_version, day, sorted(diffs))
             E.write(conn, uid, [server], day, day)
             stored_rows = {}
     if stored_rows:
@@ -209,3 +315,60 @@ def upload(conn: psycopg.Connection, uid: int, algo_version: str, bundle_version
     return {"status": "ok" if ok_now else "mismatch", "stored": len(stored_rows), "check": check,
             "server_algo_version": SP.ALGO_VERSION, "app_scoring": active(conn, uid),
             "data_version": store.data_version(conn, uid)}
+
+
+def run_pending(conn: psycopg.Connection, uid: int) -> dict | None:
+    """The queued spot check of this user (see upload), in a job process: recompute the checked day in Python, compare,
+    then store the waiting rows (passed) or the server's row of that day (failed), as an inline check would have.
+    Uploads that arrived while the check ran are taken with it; a newer bundle's upload that replaced the waiting one is
+    left for the next run. A check that was started CHECK_MAX_ATTEMPTS times without finishing (its job process died, e.g.
+    at its memory limit) is given up so it cannot hold up the queue every minute: the waiting rows are stored unchecked
+    and counted (_store_unchecked), never dropped. Commits. None = nothing was waiting."""
+    p = _pending(conn, uid)
+    conn.commit()
+    if p is None:
+        return None
+    if p["algo_version"] != SP.ALGO_VERSION:   # the server's algorithm changed since: the app scores and uploads again
+        conn.execute("DELETE FROM app_score_pending WHERE user_id = %s AND updated_at = %s", (uid, p["updated_at"]))
+        conn.commit()
+        return {"status": "stale_algo", "stored": 0}
+    if p["attempts"] >= P.CHECK_MAX_ATTEMPTS:   # the check itself keeps dying: store the rows unchecked, count it
+        got = conn.execute("""DELETE FROM app_score_pending WHERE user_id = %s AND algo_version = %s
+                              AND bundle_version IS NOT DISTINCT FROM %s RETURNING rows""",
+                           (uid, p["algo_version"], p["bundle_version"])).fetchone()
+        if got is None:
+            conn.rollback()
+            return {"status": "replaced"}
+        rows = _rows_of(got["rows"])
+        _store_unchecked(conn, uid, p["algo_version"], p["bundle_version"], rows, gave_up=True)
+        log.warning("queued app score check of user %s given up after %s attempts; %s days stored unchecked",
+                    uid, p["attempts"], len(rows))
+        return {"status": "gave_up", "stored": len(rows)}
+    conn.execute("UPDATE app_score_pending SET attempts = attempts + 1 WHERE user_id = %s", (uid,))
+    conn.commit()
+    tz = ZoneInfo(_tz_name(conn, uid))
+    day = p["check_date"]
+    server = server_rows(conn, uid, [day], end=datetime.now(tz).date()).get(day)
+    got = conn.execute("""DELETE FROM app_score_pending WHERE user_id = %s AND algo_version = %s
+                          AND bundle_version IS NOT DISTINCT FROM %s AND check_date = %s RETURNING rows""",
+                       (uid, p["algo_version"], p["bundle_version"], day)).fetchone()
+    if got is None or day.isoformat() not in got["rows"]:
+        conn.rollback()
+        return {"status": "replaced"}
+    return _finish(conn, uid, p["algo_version"], p["bundle_version"], _rows_of(got["rows"]), day, server, tz)
+
+
+def run_pending_safe(conn: psycopg.Connection, uid: int) -> dict | None:
+    """run_pending for the jobs, summed up for their logs (status, stored, checked day, pass / fail and the names of the
+    fields beyond the tolerance, never values). A failure is logged and the upload keeps waiting (the next run tries)."""
+    try:
+        res = run_pending(conn, uid)
+    except Exception as e:  # noqa: BLE001
+        conn.rollback()
+        log.warning("queued app score check failed for user %s: %s", uid, type(e).__name__)
+        return {"error": f"{type(e).__name__}: {str(e)[:300]}"}
+    if res is None:
+        return None
+    c = res.get("check") or {}
+    return {"status": res.get("status"), "stored": res.get("stored"),
+            **({"date": c.get("date"), "ok": c.get("ok"), "fields": sorted(c.get("diffs") or {})} if c else {})}
