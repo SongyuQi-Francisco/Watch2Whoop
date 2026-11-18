@@ -6,14 +6,14 @@ import SwiftUI
 /// frame of the next second, `dropped` = frames lost in it). The numbers before / after a performance change come from
 /// the same steps (apps/ios/README.md「模拟器测流畅度」). `SIMCTL_CHILD_W2W_PERF_SCRIPT=`
 /// - `tabs`: every tab three times (cold, then warm twice), then on Today a sheet and the sleep page open and close three
-///   times each, then the Jarvis chat (when the AI is in the app); at the end the median of each step;
+///   times each (the reminders sheet, 今日详情), then the Jarvis chat (when the AI is in the app); at the end the median of each step;
 /// - `W2W_PERF_SCRIPT_DELAY=<s>`: wait that long after the tabs appear first (default 8, for the first sync).
 @MainActor
 enum PerfScript {
   /// What the Today tab lets the script do (registered by TodayView while it is on screen).
   struct TodayHooks {
     let sheet: (TodaySheet?) -> Void
-    let push: (SleepRoute?) -> Void
+    let push: (LevelRoute?) -> Void
   }
 
   static var today: TodayHooks?
@@ -39,11 +39,11 @@ enum PerfScript {
     }
     if let h = today {
       for _ in 0..<3 {
-        await step("today-sheet-open") { h.sheet(.recovery) }
+        await step("today-sheet-open") { h.sheet(.reminders) }
         await step("today-sheet-close") { h.sheet(nil) }
       }
       for _ in 0..<3 {
-        await step("today-page-push") { h.push(SleepRoute(date: nil)) }
+        await step("today-page-push") { h.push(.day(anchor: nil)) }
         await step("today-page-pop") { h.push(nil) }
       }
     }

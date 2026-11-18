@@ -1,199 +1,10 @@
 import SwiftUI
 
-/// The L1 sheets of Today (docs/design/2.0.1 `02-today-open`, `03-strain-open`, `04-sleep-open`): one chart, at most four
-/// rows, two exits (全部指标 · 问 Jarvis), 「非诊断」 in the title row. Rows open the metric's explain sheet.
-struct TodayL1Sheet: View {
-  let kind: TodayL1
-  let model: TodayModel
-  let session: AccountSession
-  let close: () -> Void
-  /// A row: the metric's explain sheet (key, title); the training state row opens the load sheet.
-  let explain: (String, String) -> Void
-  let load: () -> Void
-  /// The attention sheet: one of its items, and 体征 (the health monitor).
-  let openItem: (TodayOpen) -> Void
-  let monitor: () -> Void
-  /// 全部指标.
-  let allMetrics: (TodayL1) -> Void
-  @Environment(\.askAI) private var askAI
+// Parts of the day's levels (2.1.0): the strain curve, the sleep night block and the rows. They were the bodies of the
+// 2.0.1 L1 half sheets (`02-today-open`, `03-strain-open`, `04-sleep-open`); the half sheets are gone (drilldown option
+// C′), their charts now head the metric pages of strain and sleep (MetricHeads.swift).
 
-  var body: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      titleRow
-      ScrollView(.vertical, showsIndicators: false) {
-        VStack(alignment: .leading, spacing: 0) {
-          switch kind {
-          case .recovery: recovery
-          case .strain: strain
-          case .sleep: TodaySleepL1(session: session, date: model.sleepDate, explain: explain)
-          case .attention: attention
-          }
-          exits.padding(.top, 16)
-        }
-        .padding(.horizontal, Metrics.gutter)
-        .padding(.bottom, 24)
-      }
-    }
-    .background(Palette.sheet.ignoresSafeArea())
-    .sheetSurface()
-  }
-
-  private var title: String {
-    switch kind {
-    case .recovery: return tr("恢复", "Recovery")
-    case .strain: return tr("负荷", "Strain")
-    case .sleep: return tr("睡眠", "Sleep")
-    case .attention: return tr("关注", "Attention")
-    }
-  }
-
-  private var titleRow: some View {
-    HStack(spacing: 10) {
-      Text(title).font(.system(size: 20, weight: .semibold)).foregroundColor(Palette.text)
-      DisclaimerTag(kind: .medical)
-      Spacer()
-      Button(action: close) {
-        Icon(.x, size: 18).foregroundColor(Palette.text2)
-          .frame(width: 32, height: 32)
-          .background(Circle().fill(Palette.inSheet))
-          .frame(width: 44, height: 44)
-          .contentShape(Rectangle())
-      }
-      .buttonStyle(PressScale())
-      .accessibilityLabel(tr("关闭", "Close"))
-    }
-    .padding(.leading, Metrics.gutter).padding(.trailing, Metrics.gutter - 6).padding(.top, 14).padding(.bottom, 4)
-  }
-
-  // MARK: recovery: 30 days on your usual band + HRV, resting HR, breathing
-
-  @ViewBuilder private var recovery: some View {
-    let g = model.glance
-    if let u = g.recovery.usual {
-      HStack(spacing: 6) {
-        RoundedRectangle(cornerRadius: 1).fill(Palette.band)
-          .overlay(RoundedRectangle(cornerRadius: 1).stroke(Palette.bandLine, style: StrokeStyle(lineWidth: 1, dash: [2, 2])))
-          .frame(width: 14, height: 8)
-        Text("\(tr("常态", "Usual")) \(TodayModel.fmt(u.lowerBound))–\(TodayModel.fmt(u.upperBound))")
-          .font(.system(size: 12, weight: .medium).monospacedDigit()).foregroundColor(Palette.text2)
-      }
-      .padding(.top, 6)
-    }
-    if !g.month.isEmpty {
-      UsualBars(values: g.month, usual: g.recovery.usual, tone: g.recovery.tone).frame(height: 76).padding(.top, 10)
-      DateLabels(dates: g.monthDates).padding(.top, 6)
-    }
-    rows(g.recoveryRows).padding(.top, 12)
-  }
-
-  // MARK: strain: today's number against the target + steps, active energy, exercise, training state
-
-  @ViewBuilder private var strain: some View {
-    let s = model.glance.strain
-    HStack(alignment: .firstTextBaseline, spacing: 6) {
-      Text(s.text ?? "—").font(.system(size: 40, weight: .light).monospacedDigit()).foregroundColor(Palette.text)
-      Text(model.isPast ? tr("全天", "Day") : tr("现在", "Now")).font(Typo.label).foregroundColor(Palette.text2)
-      Spacer()
-      if let day = model.glance.strainDay, let f = day.forecast {
-        Text("···").font(.system(size: 15, weight: .heavy)).foregroundColor(Palette.train)
-        Text(tr("预计", "Expected")).font(Typo.label).foregroundColor(Palette.text2)
-        Text(TodayModel.fmt(f, digits: 1)).font(.system(size: 22, weight: .regular).monospacedDigit()).foregroundColor(Palette.text)
-        if let n = TodayGlanceRules.forecastCount(day) { Text(n).font(Typo.label).foregroundColor(Palette.text2) }
-      } else if let t = s.target {
-        Text(tr("目标", "Target")).font(Typo.label).foregroundColor(Palette.text2)
-        Text("\(TodayModel.fmt(t.lowerBound, digits: 1))–\(TodayModel.fmt(t.upperBound, digits: 1))")
-          .font(.system(size: 22, weight: .regular).monospacedDigit()).foregroundColor(Palette.text)
-      }
-    }
-    .padding(.top, 4)
-    if let day = model.glance.strainDay {
-      StrainDayChart(day: day, target: s.target, max: s.max, majors: s.majors, live: !model.isPast).frame(height: 120).padding(.top, 12)
-    } else {
-      BulletGauge(value: s.value, max: s.max, target: s.target, step: 1, majors: s.majors, tone: s.tone).padding(.top, 14)
-      HStack {
-        ForEach(["0", "7", "14", "21"], id: \.self) { l in
-          Text(l).font(Typo.axis).foregroundColor(Palette.text2)
-          if l != "21" { Spacer() }
-        }
-      }
-      .padding(.top, 4)
-    }
-    rows(model.glance.strainRows).padding(.top, 12)
-  }
-
-  // MARK: attention: what is off on the day (worst first), then 体征
-
-  @ViewBuilder private var attention: some View {
-    AttentionList(items: model.attention) { openItem($0.open) }.padding(.top, 8)
-    if !model.vitals.isEmpty {
-      let c = TodayGlanceRules.vitalsCount(model.vitals)
-      Button(action: monitor) {
-        HStack(spacing: 10) {
-          Icon(.heartPulse, size: 16).foregroundColor(Palette.text2)
-          Text(tr("体征", "Vitals")).font(.system(size: 15, weight: .medium)).foregroundColor(Palette.text2)
-          Spacer()
-          Text("\(c.ok)/\(c.total)").font(Typo.row).foregroundColor(Palette.text)
-          Icon(.chevronRight, size: 13).foregroundColor(Palette.text3)
-        }
-        .frame(minHeight: 46)
-        .contentShape(Rectangle())
-      }
-      .buttonStyle(PressScale())
-      .overlay(alignment: .bottom) { Rectangle().fill(Palette.hair).frame(height: 1) }
-      .padding(.top, 8)
-    }
-  }
-
-  // MARK: rows and exits
-
-  private func rows(_ list: [TodayGlance.Row]) -> some View {
-    VStack(spacing: 0) {
-      ForEach(list) { r in
-        L1RowView(row: r) {
-          if r.id == "tsb" { load() } else if let e = r.explain { explain(e.key, e.title) }
-        }
-      }
-    }
-  }
-
-  private var exits: some View {
-    HStack(spacing: 12) {
-      Button { allMetrics(kind) } label: {
-        HStack(spacing: 4) {
-          Text(tr("全部指标", "All metrics")).font(.system(size: 16, weight: .semibold))
-          Icon(.chevronRight, size: 14).foregroundColor(Palette.text2)
-        }
-        .foregroundColor(Palette.text)
-        .frame(maxWidth: .infinity, minHeight: 50)
-        .background(Capsule().fill(Palette.inSheet))
-      }
-      .buttonStyle(PressScale())
-      Button { close(); DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { askAI(prompt) } } label: {
-        HStack(spacing: 6) {
-          Icon(.orbit, size: 17)
-          Text(tr("问 Jarvis", "Ask Jarvis")).font(.system(size: 16, weight: .semibold))
-        }
-        .foregroundColor(Palette.text)
-        .frame(maxWidth: .infinity, minHeight: 50)
-        .background(Capsule().fill(Palette.inSheet))
-      }
-      .buttonStyle(PressScale())
-    }
-  }
-
-  private var prompt: String {
-    switch kind {
-    case .recovery: return TodayGlancePage.recoveryPrompt(model)
-    case .strain:
-      let v = model.glance.strain.text ?? "—"
-      return tr("我今天负荷 \(v)，接下来怎么练合适？", "My strain is \(v) today. How should I train for the rest of the day?")
-    case .sleep: return tr("帮我看看昨晚睡得怎么样", "How did I sleep last night?")
-    case .attention: return tr("帮我看看今天需要注意的指标", "Which of my numbers need attention today?")
-    }
-  }
-}
-
-/// The strain sheet's day (docs/design/2.0.1 `03-strain-open`): cumulative strain from 00:00 to 24:00 on the 0–21 scale,
+/// The strain page's day (docs/design/2.0.1 `03-strain-open`): cumulative strain from 00:00 to 24:00 on the 0–21 scale,
 /// today's target as a band, the latest point as 「现在」 and a dashed line from it to the expected strain at 24:00. No curve
 /// (`values` empty): the axes and a short reason, never a made-up line.
 struct StrainDayChart: View {
@@ -271,36 +82,22 @@ struct StrainDayChart: View {
   }
 }
 
-/// Three date labels under a chart: first, middle, last.
-struct DateLabels: View {
-  let dates: [String]
-
-  var body: some View {
-    HStack {
-      Text(TodayModel.shortDay(dates.first))
-      Spacer()
-      Text(TodayModel.shortDay(dates.isEmpty ? nil : dates[dates.count / 2]))
-      Spacer()
-      Text(TodayModel.shortDay(dates.last))
-    }
-    .font(Typo.axis).foregroundColor(Palette.text2)
-  }
-}
-
-/// One L1 row: label · graphic (spark on the usual band, or a bullet) · value + unit · change vs usual · chevron.
+/// One row of a level (今日详情, 相关, the strain and sleep heads): label · graphic (spark on the usual band, or a bullet) ·
+/// value + unit · change vs usual · chevron.
 struct L1RowView: View {
   let row: TodayGlance.Row
+  var labelWidth: CGFloat = 74
   let tap: () -> Void
 
   var body: some View {
     Button(action: tap) {
       HStack(spacing: 10) {
         Text(row.label).font(.system(size: 15, weight: .medium)).foregroundColor(Palette.text2).lineLimit(1)
-          .minimumScaleFactor(0.8).frame(width: 74, alignment: .leading)
+          .minimumScaleFactor(0.7).frame(width: labelWidth, alignment: .leading)
         graphic.frame(height: 22).frame(maxWidth: .infinity)
         HStack(alignment: .firstTextBaseline, spacing: 2) {
           Text(row.value ?? "—").font(Typo.row).foregroundColor(Palette.text)
-          if let u = row.unit { Text(u).font(Typo.unit).foregroundColor(Palette.text2) }
+          if let u = row.unit, row.value != nil { Text(u).font(Typo.unit).foregroundColor(Palette.text2) }
         }
         .lineLimit(1)
         .frame(minWidth: 80, alignment: .trailing)
@@ -353,9 +150,9 @@ struct CentredBar: View {
   }
 }
 
-// MARK: - sleep L1
+// MARK: - the sleep night block
 
-/// The sleep sheet: last night's duration, the hypnogram on a clock axis, need / deep / regularity / lowest HR.
+/// The sleep pages' night: last night's duration, the hypnogram on a clock axis, need / deep / regularity / lowest HR.
 struct TodaySleepL1: View {
   let session: AccountSession
   let date: String?

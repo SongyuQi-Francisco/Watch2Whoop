@@ -46,6 +46,24 @@ without both languages is not merged.
 `L()` / `tl()`（按 `X-Body-Lang`），报错的英文加进 `errors_en.py`；app 用 `tr('中文', 'English')`。CI 里的 i18n 测试会拦住
 缺英文或漏掉 `tr()` 的改动。
 
+## Every view has a door / 每个页面都有入口
+Rules of the iPhone app's screens (2.1.0, `docs/design/2.0.1/drilldown/README.md` section 9):
+1. **No false floor.** A tab's first screen either has nothing below it, or its next block is cut by the fold with at least
+   `LevelParams.peek` (48 pt) of it showing above the Jarvis key. No blank spacer taller than `LevelParams.maxBlankGap`
+   (56 pt) inside a tab root's scroll content.
+2. **Every view has a visible door**, at most two taps from a tab's first screen. A gesture (long press, swipe, double tap,
+   context menu) may repeat a visible door, never be the only one.
+3. **A number opens its own depth, in its own tab.** Only a face that names another tab's subject (饮食, 圈子) switches tabs.
+4. **The inventory is part of the change.** A PR that adds, moves or removes a screen updates `apps/ios/reachability.json`.
+
+`Watch2WhoopTests/ReachabilityTests.swift` enforces them: every `View` is built somewhere, every destination case is opened
+outside `#if DEBUG` and has an inventory entry with a tap door within two taps, no tab root has a spacer above the limit, and
+the first screens of 今天 and 身体 fit above the key.
+
+首屏下面要么什么都没有，要么下一块被屏幕底边切开、在 Jarvis 键上方露出至少 48 pt，不放超过 56 pt 的空白；每个页面离某个 tab 的首屏
+最多点两下、要有看得见的入口（手势只能是重复的入口）；数字点进去是它自己的详情，不跨 tab；加 / 挪 / 删页面要同时改
+`apps/ios/reachability.json`。`ReachabilityTests` 会检查。
+
 ## What's new for users / 面向用户的更新
 **A pull request that changes something a user can see adds one entry** to `body_engine/src/body_engine/whatsnew/entries.py`:
 the day it ships, one short spoken sentence in Chinese and in English, and optionally a link into the Today page. Every user gets

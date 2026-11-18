@@ -152,7 +152,7 @@ await session.sync.refresh(.today(date: nil))      // 或 .changes
 session.sync.enqueue(kind: "water", group: "water", method: .post, path: "/v1/users/me/water", body: json)
 ```
 
-`SyncCoordinator.status`（idle / syncing / offline / failed）给页面显示一行小字（`SyncStatusLine`）。有缓存的时候永远先显示缓存，不出现阻塞式的加载遮罩。
+`SyncCoordinator.status`（idle / syncing / offline / failed）由每个 tab 首屏右上角的同步胶囊显示（`TodaySyncCapsule`；2.1.0 起不再有页面底部那一行小字）。有缓存的时候永远先显示缓存，不出现阻塞式的加载遮罩。
 
 ### 5.2 拉取
 
@@ -436,7 +436,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 | `today.coach:<日期>`、`today.monitor:<日期>` | `/strain-coach`、`/health-monitor` | 负荷目标、健康监测 |
 | `memory:me` | `/memory` → `status` | 身体状态卡（点体重 = 记体重） |
 | `sync:overview` | `/sync/overview?in_app=1` | 同步卡 |
-| `circles:overview` | `/v1/friends/overview`（`friends` 开关） | 只用来决定显不显示圈子卡；卡片本身是 N7 的 `CircleSummaryCard()`（N2b 换上） |
+| `circles:overview` | `/v1/friends/overview`（`friends` 开关） | 只用来决定显不显示圈子卡；2.1.0 起是今天首屏的圈子面（`TodayCirclesFace`）（N2b 换上） |
 | `days:<年-月>` | `/days?month=` | 顶部日期 → 月历回看 |
 | `sleep:night:<日期>` / `latest` | `/sleep/night`（`sleep_detail` 开关） | 睡眠详情 |
 | `explain:<kind>:<键>:<日期>` | `/explain/metric/…`、`/explain/status/…` | 讲解弹层 |
@@ -477,7 +477,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 - **前一天 / 后一天**：日期旁两个按钮，也可以在页面上左右滑动（最小滑动距离 40 pt）；今天不能再往后。
 - **睡眠详情的「规则要点」**（#405，`SleepDetailView`）：这一晚的几条发现（带色点）和一个「问 AI」按钮。
 - **训练卡和肌肉负荷小卡**（#402，`Features/Record/TodayTrainingCards.swift`）：训练卡读今天文档的 `training` 块（计划或已记录的内容），肌肉负荷小卡读 `training:muscle`（开关 `muscle_load`；看过去的日子时不显示）；两张卡只展示和链接，记录仍在记录 → 训练。
-- **饮食卡**（#400，`Features/Food/TodayFoodCard.swift`）：今天吃了多少对目标、三大营养素、今天还有快捷记餐；点开是这一天的明细，点一条和饮食 tab 是同一个弹层。它用 `FoodStore(cardOnly: true)`，只观察今天文档和快捷记餐模板（`food:templates`），不另外请求 `GET /today`，也不解析食谱库等别的文档，免得拖慢最先打开的 tab。
+- **饮食卡**（#400；2.1.0 起是今天首屏的饮食面 `TodayFoodFace`，原来的 `TodayFoodCard` 已删）：今天吃了多少对目标、三大营养素、今天还有快捷记餐；点开是这一天的明细，点一条和饮食 tab 是同一个弹层。它用 `FoodStore(cardOnly: true)`，只观察今天文档和快捷记餐模板（`food:templates`），不另外请求 `GET /today`，也不解析食谱库等别的文档，免得拖慢最先打开的 tab。
 - **同步入口**（#406，`Features/Sync/SyncEntry.swift`）：同步是 P0，今天页有这几处直接进同步中心：标题栏的同步按钮（按同步状态变色）、同步卡（点整行进同步中心，右边的按钮立即同步）；同步卡住时标题下面出现横幅（点它进同步中心，横幅上的按钮重试；先看手机自己的诊断，再看服务器 overview 的 `issue`）；没卡住时才可能出现「补全历史数据」的提醒卡，节奏由服务器定（首次同步后 1 / 3 / 7 天，之后每周），一个提醒日只算一次（`/sync/history/seen`）。横幅和提醒只出现在今天自己的页面，回看过去的日子时不出现。
 
 **本机算分**（N2b，`Sync/ScoringSync.swift`、`LocalScoring.swift`、`LocalRawStore.swift`、`DeltaRemote.swift`、`AlgoBundles.swift`）
@@ -602,7 +602,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 - `W2W_PERF_SCRIPT=tabs`（Debug，`App/PerfScript.swift`）：自动把每个 tab 切两遍（第一次 / 再次），再在今天页开关一个弹层、推入和退出睡眠页，有 app 内 AI 时再开关一次对话；每一步记 `first`（从这一步到下一帧，即主线程被它占了多久）、`worst`、`dropped`。改性能前后用同一套步骤比较。
 - 今天页用 `LazyVStack`，首帧只建屏幕上的部分。
 - 2.0.1：今天页的数据模型（解析本地文档的 JSON、算整页的数）在数据库观察的后台队列里建，只有首帧那一份同步建；卡片区 `TodayDayCards`（还有 2.0.1 的 `TodayGlancePage`、趋势页的 `TrendsMetricsContent`）按模型做 `Equatable`，不比较闭包：开弹层、推入子页面、切 tab 只改页面自己的状态，不再把整页卡片重建、重排一遍。
-- Debug 版截图用的环境变量：`W2W_DEV_SHEET`、`W2W_DEV_SLEEP`、`W2W_DEV_DATE`、`W2W_DEV_SCROLL`（`TodayView.swift` 的 `DevShot`；滚动锚点 `n3.food` 到饮食卡）、`W2W_DEV_TODAYFOOD=day`（打开饮食卡的明细）。
+- Debug 版截图用的环境变量：`W2W_DEV_LEVEL=day|day:<锚点>|metric:<id>|night`（2.1.0 的层级：今日详情、指标页、整晚；逗号分隔成一条路径）、`W2W_DEV_SHEET`、`W2W_DEV_SLEEP`、`W2W_DEV_DATE`（`TodayView.swift` 的 `DevShot`）；身体页 `W2W_DEV_TRENDS=<mode>[,<天数>]`（打开第 2 层）、`W2W_DEV_TRENDS_LEVEL=metric:<id>`、`W2W_DEV_TODAYFOOD=day`（打开饮食卡的明细）。
 
 ### 9.2 N7 圈子：数据从哪来、写怎么走
 
@@ -612,7 +612,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 - **队列的改动**（共享，N7 加的）：`drain` 先原子地「领取」一条（`UPDATE … WHERE state = 'pending'`），两个 drain 同时跑也不会重复发送；`sending` 带 120 秒租约，app 发送中被杀掉后会再发。
 - **隐私**：只显示接口给的内容，服务器每次读都按对方的共享范围判断；切到某个圈子时成员、动态、排行榜只含这个圈子里的人和他们在这里勾选的内容。
 - **通知**：`AppDelegate` 设 `UNUserNotificationCenter` 的 delegate（`App/NotificationTaps.swift`），点通知把 payload 的 `url`（`/app/?tab=friends&feed=<id>`）交给 `AppModel.handle(link:)` → `Route.circles(post:)` → `MainTabView` 的 `.circleRouting` 切到朋友 tab → 动态滚到这条、打开评论。app 在前台时 `circle.*` 通知也弹横幅。`watch2whoop://circle?code=…` 和今天页的邀请链接 `/app/?circle=…` 打开加入页。分享出去的邀请链接是落地页 `/app/join.html#<码>`，链接怎么解析见第 3 节（`App/AppLinks.swift`）。
-- **给别的页面用**：`CircleSummaryCard()`（`Features/Circles/CircleSummaryCard.swift`）：头像、几位朋友、今天几人练了、最新一条动态、红点；点了默认切到朋友 tab，也可以传 `onOpen`。和朋友 tab 共用一个 store，`friends` 开关关着时不显示。
+- **给别的页面用**（2.1.0 已删，换成今天首屏的圈子面 `TodayCirclesFace`）：原来的 `CircleSummaryCard()`：头像、几位朋友、今天几人练了、最新一条动态、红点；点了默认切到朋友 tab，也可以传 `onOpen`。和朋友 tab 共用一个 store，`friends` 开关关着时不显示。
 - **开关**：`friends`（tab）、`circle_feed`（动态）、`circles_by_circle`（圈子切换条、排行榜只在选了圈子时有）、`circle_prefs`（置顶 / 静音 / 归档）、`avatars`（上传头像）、`member_remarks`（备注名）、`circle_join_trail`（圈主看到每人怎么进来的）。关着的接口回 404，那一块不显示。
 - **模拟器截图**（Debug 版）：`SIMCTL_CHILD_W2W_DEV_LINK=/app/?tab=friends&feed=<id>`（等于点了通知）、`SIMCTL_CHILD_W2W_DEV_CIRCLES=members|board|feed[:圈子 id]`、`SIMCTL_CHILD_W2W_DEV_SKIP_HEALTH=1`（跳过健康权限弹层）。
 ### 9.2 N6 Jarvis（`Features/Jarvis/`）

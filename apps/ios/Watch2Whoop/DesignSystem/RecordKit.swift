@@ -257,6 +257,22 @@ struct RecordStatusLine: View {
 
 /// Days as the server writes them (`YYYY-MM-DD`, the user's local day), for the record pages.
 enum RecordDay {
+  /// Days in a month 「2028-02」 (30 when it does not parse).
+  static func daysIn(_ month: String) -> Int {
+    let p = month.split(separator: "-").compactMap { Int($0) }
+    guard p.count == 2 else { return 30 }
+    var c = Calendar(identifier: .gregorian)
+    c.timeZone = TimeZone(identifier: "UTC")!
+    guard let d = c.date(from: DateComponents(year: p[0], month: p[1], day: 1)) else { return 30 }
+    return c.range(of: .day, in: .month, for: d)?.count ?? 30
+  }
+
+  /// 「一」…「日」 / "Mo"…"Su" for ISO weekday 1 (Monday) … 7.
+  static func weekdayName(_ wd: Int) -> String {
+    let names = [tr("一", "Mo"), tr("二", "Tu"), tr("三", "We"), tr("四", "Th"), tr("五", "Fr"), tr("六", "Sa"), tr("日", "Su")]
+    return names[max(0, min(6, wd - 1))]
+  }
+
   static func string(_ d: Date, _ zone: TimeZone = .current) -> String {
     var cal = Calendar(identifier: .gregorian)
     cal.timeZone = zone

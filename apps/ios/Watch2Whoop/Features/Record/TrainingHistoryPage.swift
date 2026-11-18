@@ -67,7 +67,7 @@ struct TrainingHistoryPage: View {
     let cols = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
     return LazyVGrid(columns: cols, spacing: 6) {
       ForEach(0..<7, id: \.self) { i in
-        Text(TrainingSection.weekdayName(i + 1)).font(.system(size: 13, weight: .medium)).foregroundColor(Palette.text2)
+        Text(RecordDay.weekdayName(i + 1)).font(.system(size: 13, weight: .medium)).foregroundColor(Palette.text2)
           .frame(height: 30)
       }
       ForEach(Array(cells.enumerated()), id: \.offset) { _, c in
