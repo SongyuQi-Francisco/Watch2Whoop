@@ -9,7 +9,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from starlette.routing import Route
 
-from . import auth, errors_en, obs, plugins, queries
+from . import auth, errors_en, memtrim, obs, plugins, queries
 from .i18n import LangMiddleware, is_en
 from .account import api as account_api
 from .client import policy as upgrade_policy
@@ -71,7 +71,8 @@ async def lifespan(app: FastAPI):
     pool = ConnectionPool(settings.dsn, kwargs={"row_factory": dict_row}, min_size=1, max_size=10, open=True)
     # remote MCP session manager (/mcp); jobs of BODY_PLUGIN_DIR plugins; new OW uploads -> scores within minutes (sync/ow_watch.py)
     # silent pushes to the native app when a user's data changed (notify/silent.py; nothing without APNs)
-    async with mcp_app.lifespan(), plugins.scheduler(), ow_watch.watcher(), notify_silent.watcher():
+    # memory glibc keeps after a big request goes back to the system every minute (memtrim.py, docs/api-memory.md)
+    async with mcp_app.lifespan(), plugins.scheduler(), ow_watch.watcher(), notify_silent.watcher(), memtrim.trimmer():
         yield
     pool.close()
 
@@ -102,13 +103,23 @@ def get_conn():
 
 
 def current_user(request: Request, conn=Depends(get_conn), authorization: Annotated[str | None, Header()] = None) -> dict:
-    """Bearer token or Today page cookie. The AI-client-only MCP token (scope mcp) is invalid here; it only works on /mcp."""
+    """Bearer token or Today page cookie. The AI-client-only MCP token (scope mcp) is invalid here; it only works on /mcp.
+    So are the upload-only and the Apple Watch tokens (auth.RESTRICTED_SCOPES)."""
+    return resolve_user(request, conn, authorization)
+
+
+def resolve_user(request: Request, conn, authorization: str | None, watch_ok: bool = False) -> dict:
+    """current_user; watch_ok: an Apple Watch device token (auth.user_for_watch_token) is accepted too. Only the voice
+    endpoints pass it (ai/api.py: transcribe, chat, chat/confirm, chat events; account/watch.py says why)."""
     if authorization is None:  # no Bearer header: Today page cookie login
         user = web_session.user_for_request(conn, request)
     elif not authorization.startswith("Bearer "):
         raise HTTPException(401, "缺少 Bearer token")
     else:
-        user = auth.user_for_token(conn, authorization.removeprefix("Bearer ").strip())
+        token = authorization.removeprefix("Bearer ").strip()
+        user = auth.user_for_token(conn, token)
+        if user is None and watch_ok:
+            user = auth.user_for_watch_token(conn, token)
         if user is None:
             raise HTTPException(401, "token 无效或已吊销")
     # Self-signed-up accounts waiting for an invite code only reach /v1/account*; disabled ones nothing (account/api.py)

@@ -29,8 +29,6 @@ enum BodyScore: String, CaseIterable, Identifiable {
   var percent: Bool { self == .recovery }
   /// 1 = higher is better, 0 = neither (strain): only a better / worse change takes a colour.
   var better: Int { self == .strain ? 0 : 1 }
-  /// The score's own explanation key (explain sheet).
-  var explainKey: String { seriesKey }
 }
 
 /// What the 身体 hero draws for one score over the tab's range.

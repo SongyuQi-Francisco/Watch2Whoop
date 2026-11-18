@@ -169,6 +169,17 @@ extension View {
     }
   }
 
+  /// An L1 half sheet (direction.md 7; 记录 → 饮食 keeps them): its own height and large; the page behind is not dimmed and
+  /// stays usable while the sheet is at its height (iOS 16.4+; before that a plain dimmed sheet).
+  @ViewBuilder func l1Detents(_ height: CGFloat) -> some View {
+    let sheet = presentationDetents([.height(height), .large]).presentationDragIndicator(.visible)
+    if #available(iOS 16.4, *) {
+      sheet.presentationBackgroundInteraction(.enabled(upThrough: .height(height))).presentationCornerRadius(32)
+    } else {
+      sheet
+    }
+  }
+
   /// The page's background behind the status bar, so what is scrolled up does not show under the clock (regression O3).
   func statusBarCover(_ color: Color = Palette.bg) -> some View {
     safeAreaInset(edge: .top, spacing: 0) { Color.clear.frame(height: 0).background(color) }

@@ -32,6 +32,11 @@ no quota used, and the system prompt of every fallback call gets the scope rules
 Cards (cards.py, rollout flag jarvis_rich): the model may call show_card, and the write tools in cards.AUTO get one by
 themselves; each becomes a `card` event and is kept on its ai_tool_calls row for conversation_view.
 
+Apple Watch (watch.py, docs/watch-app-plan.md 2.3): a request with page "watch" or the watch's own device token gets the
+short-answer rules as a per-call extra of the system prompt (every provider, the fallback too); the watch token only
+reaches conversations its watch started (ai_conversations.client), and its calls are marked in ai_usage.client and in
+the audit channel (`api:<kind>:watch`). Nothing else differs.
+
 Events (produced by chat_events / start_chat, run to the end in the background and numbered by runs.py, streamed as SSE by api.py):
 conversation, text, tool, card, confirm, usage, notice, error, done.
 """
@@ -54,6 +59,7 @@ from ..dl_app import APP
 from ..i18n import L, is_en
 from ..toolspec import fill_defaults
 from . import adapters, cards, catalog, choice, context, crypto, fallback, naming, parity, posture, prompt, providers, scope_guard, web
+from . import watch
 from .choice import owner_assistant_url  # noqa: F401  (web/api.py and older callers import it from here)
 from . import fallback_params as fp
 from . import params as ai_params
@@ -134,19 +140,21 @@ def check_budget(conn: psycopg.Connection, user_id: int, provider: dict) -> tupl
     return spent, budget
 
 
-def _record_usage(conn, user_id, provider, conv_id, usage, purpose: str = "chat") -> float:
+def _record_usage(conn, user_id, provider, conv_id, usage, purpose: str = "chat", client: str | None = None) -> float:
     """Returns the cost in the provider's budget currency: USD for the user's own providers, CNY for the fallback
-    (cost_usd stays 0 there: it is not the user's money and must not count against their own budgets)."""
+    (cost_usd stays 0 there: it is not the user's money and must not count against their own budgets).
+    client: 'watch' for a call made for the Apple Watch (watch.client_of), else None."""
     if fallback.is_fallback(provider):
         cost, cost_usd, cost_cny = fallback.cost_cny(usage), 0.0, fallback.cost_cny(usage)
     else:
         cost = cost_usd = catalog.cost_usd(provider["model"], usage, provider["price_in_per_mtok"], provider["price_out_per_mtok"])
         cost_cny = None
     conn.execute("""INSERT INTO ai_usage (user_id, provider_id, conversation_id, kind, model, input_tokens, output_tokens,
-                      cache_read_tokens, cache_write_tokens, cost_usd, cost_cny, purpose) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                      cache_read_tokens, cache_write_tokens, cost_usd, cost_cny, purpose, client)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                  (user_id, provider["id"], conv_id, provider["kind"], provider["model"], usage.get("input_tokens", 0),
                   usage.get("output_tokens", 0), usage.get("cache_read_tokens", 0), usage.get("cache_write_tokens", 0),
-                  round(cost_usd, 6), round(cost_cny, 6) if cost_cny is not None else None, purpose))
+                  round(cost_usd, 6), round(cost_cny, 6) if cost_cny is not None else None, purpose, client))
     return cost
 
 
@@ -175,6 +183,15 @@ def _conversation(conn, user_id: int, conv_id: int) -> dict:
     if row is None:
         raise ChatError("not_found", L("没有这个对话", "No such conversation"), status=404)
     return row
+
+
+def conversation_for(conn, viewer: dict, conv_id: int) -> dict:
+    """The viewer's conversation; a watch token only reaches the ones its watch started (the same 404 otherwise), so a
+    lost watch never opens the phone's conversation history or confirms the phone's pending deletes."""
+    conv = _conversation(conn, viewer["id"], conv_id)
+    if watch.is_watch(viewer) and conv.get("client") != watch.CLIENT:
+        raise ChatError("not_found", L("没有这个对话", "No such conversation"), status=404)
+    return conv
 
 
 def _add_message(conn, conv_id: int, user_id: int, role: str, content: list, native=None, native_key=None,
@@ -231,7 +248,8 @@ def _context(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.A
         except (ChatError, adapters.AdapterError):
             result = None   # go on with the old summary + the recent turns; the budget check of the real call reports quota
         if result is not None:
-            cost = _record_usage(conn, viewer["id"], provider, conv["id"], result.usage, purpose="compact")
+            cost = _record_usage(conn, viewer["id"], provider, conv["id"], result.usage, purpose="compact",
+                                 client=watch.client_of(viewer))
             yield _usage_event(provider, result.usage, cost, spent, budget)
             new = context.clean_summary(result.text)
             if new:
@@ -310,7 +328,7 @@ def _exec_raw(conn, viewer: dict, provider: dict, call_row_id: int, name: str,
         args = APP.views[fallback.VIEW].call_args(TOOLS_BY_NAME[name], args)
     res = None
     try:
-        res = run_tool(conn, viewer["id"], f"api:{provider['kind']}", name, args,
+        res = run_tool(conn, viewer["id"], watch.channel(f"api:{provider['kind']}", viewer), name, args,
                        provider_id=provider["id"], model=provider["model"])
         status, text = "done", _result_text(_for_model(viewer["id"], name, args, res))
     except Exception as e:  # Permission, parameter and database errors are passed to the model as they are
@@ -326,9 +344,9 @@ def _exec_web(conn, viewer: dict, provider: dict, call_row_id: int, name: str, a
     """The server's web_search / web_fetch (ai/web): usage and limits per user, audited like any other tool."""
     conv_id = conn.execute("SELECT conversation_id FROM ai_tool_calls WHERE id = %s AND user_id = %s",
                            (call_row_id, viewer["id"])).fetchone()["conversation_id"]
-    channel = f"api:{provider['kind']}"
+    channel = watch.channel(f"api:{provider['kind']}", viewer)
     try:   # no savepoint: a page read that fails after its ai_usage row still counts (no retry loops)
-        res = web.run(conn, viewer["id"], provider, conv_id, name, args)
+        res = web.run(conn, viewer["id"], provider, conv_id, name, args, client=watch.client_of(viewer))
         status, text = "done", _result_text(res)
         run_audit(conn, viewer["id"], channel, name, args, True, None, provider["id"], provider["model"])
     except Exception as e:  # limits, search API errors, bad URLs: passed to the model as they are
@@ -586,6 +604,8 @@ def _turns(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Ada
     extras = [cards.prompt(v2, product)] if rich else []
     if scoped:
         extras.append(scope_guard.PROMPT)
+    if watch.short(viewer):   # the Apple Watch: a number first, at most two sentences (watch.py)
+        extras.append(watch.PROMPT)
     for rnd in range(rounds):
         system, history = yield from _context(conn, viewer, provider, conv, adapter)
         system = compose_system(system, extras, parity.prompt(fb) if scrub else None)
@@ -621,7 +641,7 @@ def _turns(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Ada
             return
         if scrub:   # stored as the user saw it streamed (_scrub_events gives the same text)
             result.text = naming.scrub(result.text, output=True)
-        cost = _record_usage(conn, viewer["id"], provider, conv["id"], result.usage)
+        cost = _record_usage(conn, viewer["id"], provider, conv["id"], result.usage, client=watch.client_of(viewer))
         turn_cost += cost
         yield _usage_event(provider, result.usage, cost, spent, budget)
         if last and result.tool_calls:   # a model that ignored tool_choice: the calls are dropped, never run, and so is the
@@ -718,7 +738,9 @@ def chat_events(conn: psycopg.Connection, viewer: dict, message: str, images: li
     allow_owner_fallback: only `body-engine ai-fallback try` (lets the deployer, who has the butler link, test the fallback).
     page: the Today page id the message is sent from (ai/params.PAGE_GROUPS); a page new to the conversation adds its groups
     (unknown ids are ignored; over the budget the oldest pages' groups are dropped).
-    purpose: what the pictures are for (posture_params.PURPOSES); posture photos do not stay on the server (posture.py)."""
+    purpose: what the pictures are for (posture_params.PURPOSES); posture photos do not stay on the server (posture.py).
+    page "watch" (or the watch's own token): short answers for the watch screen (watch.py)."""
+    viewer = watch.for_request(viewer, page)
     provider, adapter, conv, content = prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fallback, page, purpose)
     return _run(conn, viewer, provider, adapter, conv, content, _scope_check(conn, viewer, provider, message, content))
 
@@ -744,14 +766,15 @@ def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fal
     check_budget(conn, viewer["id"], provider)
     adapter = make_adapter(provider, viewer["id"])
     if conversation_id is None:
-        conv = conn.execute("""INSERT INTO ai_conversations (user_id, provider_id, images_for, title, system_prompt, pages, own_only)
-                               VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
+        conv = conn.execute("""INSERT INTO ai_conversations (user_id, provider_id, images_for, title, system_prompt, pages, own_only,
+                                                            client)
+                               VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
                             (viewer["id"], provider["id"], posture.ai_key(provider), (message or "图片")[:40],
                              prompt.build_system_prompt(conn, viewer["id"], lite=fb),
                              [page] if toolsets.known_page(page) else [],
-                             not _shared_with(conn, viewer["id"]))).fetchone()
+                             not _shared_with(conn, viewer["id"]), watch.client_of(viewer))).fetchone()
     else:
-        conv = _conversation(conn, viewer["id"], conversation_id)
+        conv = conversation_for(conn, viewer, conversation_id)
         _use_ai(conn, conv, provider)
         allowed, _ = _tool_sets(conn, viewer["id"], provider, bool(conv.get("own_only")))
         pages = toolsets.visit_page(allowed, conv["pages"], page, *_page_cut(conn, viewer["id"], provider))
@@ -765,6 +788,7 @@ def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fal
 def start_chat(conn: psycopg.Connection, viewer: dict, message: str, images: list[dict] | None,
                conversation_id: int | None, page: str | None = None, purpose: str | None = None) -> tuple[int, Iterator[dict]]:
     """chat_events for the Today page: also returns the conversation id, which keys the background turn (runs.py, #114)."""
+    viewer = watch.for_request(viewer, page)
     provider, adapter, conv, content = prepare_chat(conn, viewer, message, images, conversation_id, page=page, purpose=purpose)
     return conv["id"], _run(conn, viewer, provider, adapter, conv, content, _scope_check(conn, viewer, provider, message, content))
 
@@ -816,7 +840,10 @@ def prepare_confirm(conn, viewer: dict, call_id: int, approve: bool):
         raise ChatError("decided", L("这个操作已经处理过了", "This action was already handled"))
     if approve and "write" not in (viewer.get("token_scopes") or []):
         raise ChatError("read_only", L("这次登录是只读的，不能写", "This login is read-only; it can't write"), status=403)
-    conv = _conversation(conn, viewer["id"], row["conversation_id"])
+    try:
+        conv = conversation_for(conn, viewer, row["conversation_id"])
+    except ChatError:   # a phone conversation's pending write is not the watch's to decide: as if there were none
+        raise ChatError("not_found", L("没有这个待确认的操作", "No such pending action"), status=404) from None
     # An approved write still runs when the fallback quota ran out meanwhile (the loop then stops before the next model call)
     provider = resolve_provider(conn, viewer["id"], need_quota=False)
     adapter = make_adapter(provider, viewer["id"])

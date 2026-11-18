@@ -5,15 +5,19 @@ struct BodyGlanceActions {
   var setRange: (TrendRange) -> Void
   var pickEnd: () -> Void
   var backToToday: () -> Void
-  var open: (TrendsSheet) -> Void
-  var report: () -> Void
+  /// A door to a level below (2.1.0, drilldown option C′): a metric page (the hero's number, a face), level 2 in a mode
+  /// (周报 = 报告).
+  var level: (LevelRoute) -> Void
+  /// Level 2 in the mode last used (the bars, the ladder).
+  var all: () -> Void
   var syncNow: () -> Void
   var syncCenter: () -> Void
 }
 
-/// The first glance of 身体 (docs/design/2.0.1 `05-body`): range menu + sync capsule, the selected score over the range
-/// (mean, change vs the previous period, bars on your usual; swipe or page dots = 恢复 / 睡眠 / 负荷), one row of faces
-/// (心肺, 身体年龄, 周报). Below it `TrendsView` keeps every 2.0.0 view (指标 by category, 睡眠, 报告).
+/// The first glance of 身体 (docs/design/2.0.1 `05-body`, drilldown `c-body` C′): range menu + the depth ladder + sync
+/// capsule, the selected score over the range (mean, change vs the previous period, bars on your usual; swipe or page dots
+/// = 恢复 / 睡眠 / 负荷), one row of faces (心肺, 身体年龄, 周报). Nothing below it. The score's label carries the door mark
+/// 「›」 and opens its metric page, the bars open level 2 (every trend of the range, 睡眠, 报告), each face its own page.
 struct BodyGlancePage: View {
   let page: TrendsPage?
   let range: TrendRange
@@ -56,10 +60,15 @@ struct BodyGlancePage: View {
           .accessibilityLabel(tr("回到今天", "Back to today"))
       }
       Spacer(minLength: 0)
+      // a look-back's 「截至」 chip takes the middle: the ladder moves next to the capsule
+      if end != nil { ladder }
       TodaySyncCapsule(card: nil, page: session.sync, tap: run.syncNow, center: run.syncCenter)
     }
     .frame(height: 44)
+    .overlay { if end == nil { ladder } }
   }
+
+  private var ladder: some View { LevelLadder(level: 1, down: run.all) }
 
   /// 「近 30 天」 / "Last 30 d"; the one-day range of 2.0.0 reads 「今天」.
   static func rangeTitle(_ r: TrendRange) -> String {
@@ -71,16 +80,26 @@ struct BodyGlancePage: View {
   @ViewBuilder private var hero: some View {
     let h = page.map { BodyGlanceRules.hero($0.data, score: score, range: range) }
     VStack(alignment: .leading, spacing: 0) {
-      Text(score.label).font(.system(size: 13, weight: .medium)).tracking(2).foregroundColor(Palette.text2)
-        .frame(height: 16)
-      mean(h).padding(.top, 4)
-      Button { openScore() } label: {
+      Button(action: openScore) {
+        VStack(alignment: .leading, spacing: 0) {
+          HStack(spacing: 3) {
+            Text(score.label).font(.system(size: 13, weight: .medium)).tracking(2).foregroundColor(Palette.text2)
+            DoorMark()
+          }
+          .frame(height: 16)
+          mean(h).padding(.top, 4)
+        }
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(PressScale())
+      .accessibilityHint(tr("打开\(score.label)的趋势", "Opens the \(score.label.lowercased()) trend"))
+      Button(action: run.all) {
         UsualBars(values: h?.bars ?? [], usual: h?.usual, max: score.max, tone: h?.lastTone ?? .text)
           .frame(height: BodyParams.barsHeightHere)
           .contentShape(Rectangle())
       }
       .buttonStyle(PressScale())
-      .accessibilityLabel(score.label)
+      .accessibilityLabel(tr("全部趋势", "All trends"))
       dateRow(h?.dates ?? []).padding(.top, 6)
       pageDots.padding(.top, Rhythm.gap(20))
     }
@@ -92,23 +111,25 @@ struct BodyGlancePage: View {
     .contextMenu {
       Button { askAI(prompt(h)) } label: { Text(tr("问 Jarvis：\(score.label)", "Ask Jarvis: \(score.label)")) }
       Button(action: openScore) { Text(tr("看详情", "Details")) }
+      Button(action: run.all) { Text(tr("全部趋势", "All trends")) }
     }
     .accessibilityAction(named: Text(tr("下一个分数", "Next score"))) { step(1) }
     .accessibilityAction(named: Text(tr("上一个分数", "Previous score"))) { step(-1) }
   }
 
   @ViewBuilder private func mean(_ h: BodyHero?) -> some View {
+    let k = Rhythm.heroScale
     HStack(alignment: .lastTextBaseline, spacing: 0) {
       if let m = h?.mean {
-        Text(TodayModel.fmt(m, digits: score.digits)).font(Typo.hero(100)).tracking(-3).foregroundColor(Palette.text)
+        Text(TodayModel.fmt(m, digits: score.digits)).font(Typo.hero(100 * k)).tracking(-3 * k).foregroundColor(Palette.text)
           .lineLimit(1).minimumScaleFactor(0.6)
           .overlay(alignment: .topTrailing) {
             if score.percent {
-              Text("%").font(.system(size: 20, weight: .light)).foregroundColor(Palette.text2).offset(x: 18, y: 12)
+              Text("%").font(.system(size: 20 * k, weight: .light)).foregroundColor(Palette.text2).offset(x: 18 * k, y: 12 * k)
             }
           }
       } else {
-        Text(loading ? " " : "—").font(Typo.hero(100)).foregroundColor(Palette.text2)
+        Text(loading ? " " : "—").font(Typo.hero(100 * k)).foregroundColor(Palette.text2)
       }
       if let d = h?.delta {
         VStack(alignment: .leading, spacing: 3) {
@@ -116,11 +137,11 @@ struct BodyGlancePage: View {
             .foregroundColor(h?.deltaTone == .text ? Palette.text : (h?.deltaTone ?? .text).color)
           Text(tr("比上期", "vs before")).font(Typo.label).foregroundColor(Palette.text2)
         }
-        .padding(.leading, score.percent ? 34 : 18)
+        .padding(.leading, (score.percent ? 34 : 18) * k)
       }
       Spacer(minLength: 0)
     }
-    .frame(height: 100)
+    .frame(height: 100 * k)
     .accessibilityElement(children: .combine)
   }
 
@@ -158,11 +179,8 @@ struct BodyGlancePage: View {
     withAnimation(.easeOut(duration: 0.2)) { score = all[j] }
   }
 
-  private func openScore() {
-    if score == .recovery { run.open(.recovery) } else {
-      run.open(.explain(key: score.explainKey, title: score.label))
-    }
-  }
+  /// The score's own metric page, in the tab's range.
+  private func openScore() { run.level(.metric(score.seriesKey)) }
 
   private func prompt(_ h: BodyHero?) -> String {
     let n = BodyGlanceRules.window(range)
@@ -176,18 +194,18 @@ struct BodyGlancePage: View {
   private var faces: some View {
     HStack(spacing: 8) {
       if let d = page?.data, let hrv = BodyGlanceRules.hrv(d) {
-        Button { run.open(.explain(key: "hrv", title: "HRV")) } label: {
+        Button { run.level(.metric("hrv")) } label: {
           Face(icon: .heart, label: tr("心肺", "Cardio"), number: TodayModel.fmt(hrv.last), unit: "ms") {
             BandSpark(values: hrv.values, usual: hrv.usual)
           }
         }
         .buttonStyle(PressScale())
       }
-      BodyAgeFace(session: session) { run.open(.bodyAge) }
+      BodyAgeFace(session: session) { run.level(.metric("body_age")) }
       if let d = page?.data {
         let days = BodyGlanceRules.trainingDays(d)
         if days.contains(where: { $0 != nil }) {
-          Button(action: run.report) {
+          Button { run.level(.all(.report)) } label: {
             Face(icon: .calendarDays, label: tr("周报", "Weekly"), number: "\(days.filter { $0 == true }.count)",
                  unit: tr("天训练", "d trained")) {
               WeekTrainingDots(days: days)

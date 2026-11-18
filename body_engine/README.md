@@ -123,6 +123,7 @@ Body age / pace of ageing, stress, today's strain target, sleep coach, health mo
 | `GET /v1/users/{user}/reminders/runs?start=&end=` | The result of each rule on each evaluation: triggered / not_triggered / insufficient_data / error and the reason |
 | `POST /v1/web/login` · `POST /v1/web/logout` · `GET /v1/web/me` | Today-page login: body `{"token"}` is exchanged for an httpOnly cookie; me = current user + family members that can be switched to (shares) + local date + `assistant_url` (the "Ask the butler" (「问管家」) link, given only to the deployer `BODY_ASSISTANT_USER_ID`, default 1) + `ai` (`{mode: api \| mcp \| none, kind, display_name, model}`, decides whether "Ask the butler" is in-page chat or a redirect) + version |
 | `POST /v1/web/login-code` | Log in with a one-time login code (the setup QR code of the Watch2Whoop app): body `{"code"}` (12 characters, tolerant of case, spaces and -) → issues this device a dedicated token (named `app:<label>`, the plaintext never leaves the server) and sets the same cookie; a code can be used once and expires, anything invalid is always 401. With `"client": "app"` (the native iOS app, #340 N8) no cookie is set and the answer carries that device token for the Keychain (Bearer). To issue a code: `body-engine login-code --user-id N [--label Mum-iPhone] [--hours 72] [--scopes read,write]` (table `web_login_codes`, migration 120) |
+| `POST /v1/account/watch-code` · `GET /v1/account/watch-tokens` · `DELETE /v1/account/watch-tokens/{id}` | Apple Watch device token (see "Apple Watch voice" below): the signed-in phone (Bearer API token only) asks for a one-time code `{device?}` → `{code, expires_in: 600, scopes}`; the watch redeems it with `POST /v1/web/login-code {code, client: "watch"}` → `{…me, token}` (scope `watch` + the phone's read / write). The list / revoke are the user's own; signing out on the phone ends its watch |
 | `POST /v1/web/activate` | Redeem a reusable activation code (page `/app/activate.html#<code>`): body `{"code"}` (16 characters) → `{setup_link, sync, note}`, a fresh `watch2whoop://setup?…` link with a new one-time login code (1 hour) and, when configured, a new OW invitation code. No auth; invalid / revoked / expired is always 401 and counts against the per-IP login failure limit (429). See "Activation links" below |
 | `GET /v1/users/{user}/days?month=YYYY-MM` | Calendar for looking back in the Today page: for each day of the month `{date, future, scores, sleep, training, metrics, has_data, recovery, sleep_score, strain, zone}` (categories not granted are null and listed in `hidden`) + `first` (the earliest day within the data you may see; an Apple Health history import can reach back to 2016), `today`. Each category follows its own shares scope (scores / sleep / training / metrics), with the same authorization as /today; reads this database only, does not connect to SparkyFitness |
 | `GET /v1/users/{user}/today?date=` | Today-page aggregate: scores (empty scores carry the reason from flags, latest recovery / sleep, CTL/ATL/TSB interpretation), **sleep** (main sleep onset / wake-up, minutes per stage, stage-chart segments `stages`, bedtimes of the last 7 nights `recent`; scope sleep), today's reminders, today's planned workout (banned / caution / progression advice), today's nutrition vs target; each block is authorized separately by shares |
@@ -594,6 +595,48 @@ Every diet limit is the user's own; the code holds no one's limits. A user witho
 - **Chat loop** (`chat.py`): system prompt = `ai/system_prompt.md` + this user's profile and long-term memory (fixed when the conversation starts and never changed afterwards: prompt caching and Claude's preserved thinking require the history to be append-only); the local time is prepended to each user message; read tools run directly, write tools first send `confirm` and wait for the user to tap; the monthly budget (`monthly_budget_usd`, default $5, by calendar month in the user's time zone; skipped when unit prices are $0 or `needs_key=False`) is checked before each model call, and `ai_usage` is recorded; audit `assistant_audit.channel = api:<kind>`, with `provider_id` and `model`. One message makes at most 8 model calls in a row; one conversation holds at most 160 messages.
 - **Adapters** (`adapters/`): `anthropic_api.py` (Messages API streaming, default claude-opus-5-5, effort medium, automatic prompt caching, refusal fallbacks="default"), `openai_api.py` (OpenAI uses the Responses API, store=False; compatible endpoints use Chat Completions + the base_url the user enters, http allowed only for the local machine), `gemini_api.py` (google-genai, automatic function calling turned off, `cached_content_token_count` split into `cache_read_tokens`), `fake.py` (for tests). The price table is in `catalog.py` (unknown models are estimated at the most expensive tier; a custom unit price can be set on the provider).
 - **Tests**: `tests/test_ai.py` (separate database `body_test_ai`, fake adapter, no paid API calls): keys do not leak, A's and B's configs are invisible to each other, ciphertext is bound to the user, a conversation uses only its own key and own memory, read-tool loop + audit, write operations need confirmation (nobody else can confirm), rejection and "ignore it and just send a new message", read-only login, images, budget rejection, free-tier $0 unit price, subscription redirect (including `gemini_plan_mcp`), the retired `gemini_cli` (not in the catalog, old rows can only be deleted), remote MCP (token scope, read-only, revocation, can only see your own data, audit channel).
+
+## Apple Watch voice (`account/watch.py`, `ai/watch.py`, migration 1190; plan `docs/watch-app-plan.md` 2.2, 2.3, 4.3–4.5)
+
+Hold to talk on the watch: the watch records, sends the audio to `POST /v1/assistant/transcribe`, shows the text for 1.5 s
+(cancel possible) and sends it to `POST /v1/assistant/chat` with `page: "watch"`. A meal is logged by the AI's write tools
+and comes back as a meal card; a question gets a short answer. Records the watch makes without AI (quick meals, water,
+sets, undo) still go through the phone (WatchConnectivity → the phone's offline queue).
+
+- **Pairing**: the phone calls `POST /v1/account/watch-code {device?}` with its own Bearer token (not a cookie session, not
+  an AI-client / upload / watch token; the account must be active) → a 10-minute one-time code (`web_login_codes.purpose =
+  'watch'`, `parent_token_id` = the phone's token), handed over WatchConnectivity (`sendMessage` / `transferUserInfo`, never
+  the application context). The watch redeems it with `POST /v1/web/login-code {code, client: "watch"}` → `{id,
+  display_name, timezone, …, token}` and keeps the token in its Keychain. A watch code never signs anyone in (`client`
+  web / app, an existing account's code in `redeem-invite`), and a sign-in code never gives a watch token. A new code from
+  the same phone voids its unused one; redeeming it replaces that phone's earlier watch token.
+- **What the token can do**: scope `watch` is restricted (`auth.RESTRICTED_SCOPES`): every endpoint refuses it except
+  `POST /v1/assistant/transcribe`, `POST /v1/assistant/chat`, `POST /v1/assistant/chat/confirm` and
+  `GET /v1/assistant/chat/{id}/events` (`api.resolve_user(watch_ok=True)`), and there only for its own user and the
+  conversations its watch started (`ai_conversations.client = 'watch'`; others are 404). Its read / write are the phone
+  token's: a read-only phone pairs a read-only watch (write tools refused, confirming a delete 403 `read_only`). No Today
+  page cookie, no uploads, no MCP, no codes or tokens from it (`tests/test_watch_voice.py` sweeps every route).
+- **Ends with the phone**: valid only while the phone token it hangs off is live (`api_tokens.parent_token_id`, checked on
+  every request): `POST /v1/account/logout`, `token-revoke` by name or `--all`, an expiry or deleting the account end it
+  at once. The user lists / ends watches with `GET /v1/account/watch-tokens` → `{watches: [{id, device, scopes,
+  created_at, last_used_at, this_phone}]}` and `DELETE /v1/account/watch-tokens/{id}` (204, 404 `not_found`).
+- **Short answers**: a chat request with `page: "watch"` or the watch's token gets `ai/watch.PROMPT` (number first, at
+  most 2 sentences / 40 characters, no markdown, writes say what was logged; limits in `ai/params.py`) as a per-call extra
+  of the system prompt, for every provider and the fallback AI. Same tools, writes run directly, deleting / undoing still
+  waits for `/chat/confirm`, same budgets, the fallback's allowance, consent and tool set. A conversation continued on
+  the phone gets its usual answers again.
+- **Which device**: from the token, never the request: `ai_conversations.client`, `ai_usage.client`, `asr_usage.client`
+  = `'watch'`, and the audit / write-log channel `api:<kind>:watch`.
+- **Voice → text**: the same limits as the phone, per person (`asr.ASR_PER_DAY` a day, `ASR_PER_MINUTE` a minute, shared
+  with the phone), audio never stored. Send RIFF/WAVE, 16-bit integer PCM, mono, 8–48 kHz (16 kHz recommended: 30 s ≈
+  0.96 MB), 0.3–60 s, `Content-Type: audio/wav`; a WAVE_FORMAT_EXTENSIBLE header and extra chunks (FLLR, LIST) are fine,
+  float samples / stereo / m4a / CAF are `bad_audio`. The public proxy caps this body lower than `asr.MAX_BYTES`
+  (`docs/ai-assistant-plan.md` §9.11).
+- **Meal receipt and undo**: after a food write the chat sends a `card` event (type `meal`, the day's `totals` / `goal` /
+  `entries`) whose `written` list says what this write added: `{tool, date, entry_ids, log_id, meal, foods, calories,
+  protein_g}` (`ai/cards.written`). Undo from the watch goes to the phone with these ids (the phone calls
+  `DELETE /v1/users/me/meal-logs/{log_id}` or `DELETE /v1/users/me/nutrition/entries/{id}?date=`); without the phone, saying
+  "撤销" makes Jarvis propose the undo, which waits for `POST /v1/assistant/chat/confirm` from the watch.
 
 ## Self-service sign-up (`src/body_engine/account/`, migration 230)
 Design, mail provider setup and deploy steps: [`docs/self-signup-plan.md`](../docs/self-signup-plan.md).

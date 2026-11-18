@@ -210,7 +210,7 @@ enum RecordGlance {
     let lead = RecordDay.weekday(first) - 1
     var out: [HistoryCell?] = Array(repeating: nil, count: max(0, lead))
     let byDate = Dictionary(m.days.map { ($0.date, $0) }, uniquingKeysWith: { a, _ in a })
-    for i in 0..<TrainingCalendarView.daysIn(m.month) {
+    for i in 0..<RecordDay.daysIn(m.month) {
       let date = RecordDay.add(first, i)
       let d = byDate[date]
       let trained = (d?.sessions ?? 0) > 0 && d?.intensity != "rest"

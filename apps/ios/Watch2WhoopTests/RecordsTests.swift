@@ -89,7 +89,7 @@ final class LocalRecordsTests: XCTestCase {
     XCTAssertEqual(RecordDay.monday("2026-01-08"), "2026-01-05")
     XCTAssertEqual(TrainingMonth.add("2026-12", 1), "2027-01")
     XCTAssertEqual(TrainingMonth.add("2026-01", -1), "2025-12")
-    XCTAssertEqual(TrainingCalendarView.daysIn("2028-02"), 29)
+    XCTAssertEqual(RecordDay.daysIn("2028-02"), 29)
     XCTAssertEqual(RecordFormat.num(1234.5, 1), "1234.5")
     XCTAssertEqual(RecordFormat.num(nil), "—")
   }

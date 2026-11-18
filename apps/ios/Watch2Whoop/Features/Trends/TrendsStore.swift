@@ -36,7 +36,8 @@ enum TrendRange: Int, CaseIterable, Identifiable {
   var docDays: Int { self == .today ? TodayParams.trendsDays : rawValue }
 }
 
-/// 「全部指标 →」 on the Today tab (#357): switches to Trends, mode 指标, range 今天, ending on the day Today shows.
+/// A link into the 身体 tab from elsewhere (a Jarvis card, a row of 全部功能): its level 2 in one mode (指标 · 睡眠 · 报告),
+/// up to today. 2.1.0: the day's full list lives on 今天 → 今日详情, so nothing switches tabs to show a day any more.
 @MainActor
 final class TrendsLink: ObservableObject {
   static let shared = TrendsLink()
@@ -44,17 +45,14 @@ final class TrendsLink: ObservableObject {
   struct Request: Equatable {
     /// nil = the user's today.
     var end: String?
-    /// nil = keep the tab's range (a Jarvis card only picks the mode).
-    var range: TrendRange? = .today
+    /// nil = keep the tab's range.
+    var range: TrendRange?
     var mode: TrendsView.Mode = .metrics
   }
 
   @Published private(set) var pending: Request?
 
-  /// `day`: the day the Today tab shows (nil = today).
-  func open(day: String?) { pending = Request(end: day) }
-
-  /// A Jarvis card's button or a row of 全部功能: this mode, up to today, in the range the tab has.
+  /// This mode, up to today, in the range the tab has.
   func open(mode: TrendsView.Mode) { pending = Request(end: nil, range: nil, mode: mode) }
 
   /// The pending request, once.
@@ -152,15 +150,21 @@ final class TrendsStore: ObservableObject {
   private var cancellable: AnyDatabaseCancellable?
   private weak var session: AccountSession?
   /// The range picked in this run of the app (kept while the app runs). 2.0.1: a fresh launch starts on 30 days, the
-  /// range of the 身体 hero (`05-body`, 「近 30 天」); 「全部指标」 on Today still switches to 「今天」 (#357).
+  /// range of the 身体 hero (`05-body`, 「近 30 天」). Metric pages keep their own range (`remember` off).
   static var sessionRange: TrendRange = .month
 
-  init(session: AccountSession? = nil) {
-    range = Self.sessionRange
+  /// Whether a range picked here is the one the 身体 tab starts with next time (off for a metric page's own switch).
+  private let remember: Bool
+
+  /// `range` nil = the range picked last in this run; `end` = the range's last day (nil = the user's today).
+  init(session: AccountSession? = nil, range: TrendRange? = nil, end: String? = nil, remember: Bool = true) {
+    self.remember = remember
+    self.range = range ?? Self.sessionRange
+    self.end = end
     // frame-meter runs (PerfProbe): `W2W_PERF_TRENDS_DAYS=365` picks the range
-    if PerfProbe.enabled, let n = ProcessInfo.processInfo.environment["W2W_PERF_TRENDS_DAYS"].flatMap(Int.init),
+    if remember, PerfProbe.enabled, let n = ProcessInfo.processInfo.environment["W2W_PERF_TRENDS_DAYS"].flatMap(Int.init),
        let r = TrendRange(rawValue: n) {
-      range = r
+      self.range = r
     }
     if let session { observe(session) }
   }
@@ -185,12 +189,12 @@ final class TrendsStore: ObservableObject {
   func setRange(_ r: TrendRange) {
     guard r != range, let session else { return }
     range = r
-    Self.sessionRange = r
+    if remember { Self.sessionRange = r }
     observe(session)
     Task { await refresh() }
   }
 
-  /// A request from 「全部指标 →」: range and end date at once, one reload.
+  /// A request of `TrendsLink`: range and end date at once, one reload.
   func apply(_ r: TrendsLink.Request) {
     let d = (r.end == userToday) ? nil : r.end
     let newRange = r.range ?? range

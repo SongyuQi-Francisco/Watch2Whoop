@@ -1,27 +1,22 @@
 import SwiftUI
 
-/// Route of the sleep detail page (a sub-page of Today).
-struct SleepRoute: Hashable {
-  var date: String?
-}
-
-/// The Today tab, 2.0.1 (docs/design/2.0.1 `01-today`–`04-sleep-open`, `kit-states`): one recovery dial, two readings
-/// (sleep, strain), one row of faces (体征 or 关注, 饮食, 圈子); below the fold 训练 · 今晚 · 提醒 and the sync nudges.
-/// The dial and the readings open L1 half sheets (`TodayL1Sheet`); their rows open the explain sheets, 「全部指标」 leads to
-/// 身体 (or the sleep night page). Everything is read from the local database (first frame from the cache), refreshed
-/// through the sync layer; numbers and short labels only. The date on top looks back at any day, a swipe changes it.
+/// The Today tab, 2.1.0 (docs/design/2.0.1 `01-today`, drilldown option C′): level 1 is the first glance only, one recovery
+/// dial, two readings (sleep, strain), one row of faces (体征 or 关注, 饮食, 圈子), and nothing below it. The dial (or the
+/// ladder in the header, or a swipe up) opens level 2, 今日详情: every number of the day. A number opens level 3, its
+/// metric page (chart, range, related metrics, explanation). Back is one step; the small dial in a level's header goes up
+/// one level. Everything is read from the local database (first frame from the cache), refreshed through the sync layer;
+/// numbers and short labels only. The date on top looks back at any day, a swipe changes it.
 struct TodayView: View {
   @EnvironmentObject private var session: AccountSession
   @EnvironmentObject private var app: AppModel
   @StateObject private var store: TodayStore
   @State private var sheet: TodaySheet?
   @State private var showConsent = false
-  @State private var path: [SleepRoute] = []
+  @State private var path: [LevelRoute] = []
   @State private var toast: Toast?
   @SceneStorage("w2w.tab") private var tab: AppTab = .today
   @SceneStorage("w2w.record.segment") private var recordSegment: RecordTab.Segment = .training
   @State private var trainingOpen = false
-  @State private var l1: TodayL1?
   // Flag `slim_mode` (#126, DailyQuote.swift). Off, or with the normal look, nothing of it is drawn.
   @StateObject private var quotes = DailyQuoteStore()
   @State private var quoteLink: QuoteLink?
@@ -36,19 +31,7 @@ struct TodayView: View {
     NavigationStack(path: $path) {
       page
         .toolbar(.hidden, for: .navigationBar)
-        .navigationDestination(for: SleepRoute.self) { r in
-          SleepDetailView(initialDate: r.date) { key, title in sheet = .explain(kind: "metric", key: key, title: title) }
-        }
-        .sheet(item: $l1) { k in
-          TodayL1Sheet(kind: k, model: store.model, session: session, close: { l1 = nil },
-                       explain: { key, title in after { sheet = .explain(kind: "metric", key: key, title: title) } },
-                       load: { after { sheet = .load } },
-                       openItem: { o in after { open(o) } },
-                       monitor: { after { sheet = .monitor } },
-                       allMetrics: { k in after { allMetrics(k) } })
-            .environmentObject(session)
-            .l1Detents(k.height)
-        }
+        .navigationDestination(for: LevelRoute.self) { r in level(r) }
     }
     .sheet(item: $sheet) { s in
       TodaySheetView(sheet: s, model: store.model, store: store, open: { sheet = $0 }, close: { sheet = nil })
@@ -82,6 +65,7 @@ struct TodayView: View {
     .sheet(item: $quoteLink) { SafariView(url: $0.url) { quoteLink = nil }.ignoresSafeArea() }
   }
 
+  /// Level 1: the first glance and nothing below it (no false floor: drilldown README section 9).
   private var page: some View {
     ScrollViewReader { proxy in
       ScrollView(.vertical, showsIndicators: false) {
@@ -93,18 +77,9 @@ struct TodayView: View {
             .id("top")
             .onAppear { if store.hasData { PerfProbe.shared.ringsShown() } }
             .onChange(of: store.hasData) { if $0 { PerfProbe.shared.ringsShown() } }
-          // below the fold (vertical scroll only): 训练 · 今晚 · 提醒, then the sync nudges and the slim look's quote
-          // the first glance ends with the face row; the key sits in the gap under it, so this row starts below the fold
-          TodayMoreFaces(model: store.model, run: glanceActions).equatable().padding(.top, 150)
-          if !store.model.isPast {
-            SyncNudges(card: store.model.sync, coverage: store.model.coverage) { await store.refresh() }.padding(.top, 16)
-          }
-          if showsQuote { dailyQuote.padding(.top, 16) }
-          Color.clear.frame(height: 24)   // the Jarvis key's band is the page's own (clearOfJarvisKey)
           Color.clear.frame(height: 1).id("bottom")
         }
         .padding(.horizontal, Metrics.gutter)
-        .padding(.bottom, 32)
         .frame(maxWidth: Metrics.maxContentWidth)
         .frame(maxWidth: .infinity)
       }
@@ -113,20 +88,52 @@ struct TodayView: View {
       .clearOfJarvisKey()
       .refreshable { await store.refresh() }
       .toast($toast)
-      .modifier(DaySwipe { store.step($0) })
+      .modifier(DaySwipe(step: { store.step($0) }, up: { openLevel(.day(anchor: nil)) }))
       .onAppear {
         if store.hasData && PerfProbe.autoScroll { autoScroll(proxy) }
         #if DEBUG
         PerfScript.today = PerfScript.TodayHooks(sheet: { sheet = $0 }, push: { r in if let r { path.append(r) } else { path.removeAll() } })
-        DevShot.apply(proxy: proxy, sheet: { sheet = $0 }, push: { path.append($0) }, day: { store.select($0) })
-        // `SIMCTL_CHILD_W2W_DEV_L1=recovery|strain|sleep`: opens that L1 sheet (2.0.1 screenshots)
-        if let k = ProcessInfo.processInfo.environment["W2W_DEV_L1"].flatMap(TodayL1.init(rawValue:)) {
-          DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { l1 = k }
-        }
+        DevShot.apply(sheet: { sheet = $0 }, path: { path = $0 }, day: { store.select($0) })
         #endif
       }
       .onChange(of: store.hasData) { has in if has && PerfProbe.autoScroll { autoScroll(proxy) } }
     }
+  }
+
+  // MARK: - levels 2 and 3
+
+  @ViewBuilder private func level(_ r: LevelRoute) -> some View {
+    switch r {
+    case .day(let anchor):
+      TodayDayPage(anchor: anchor, store: store, session: session, run: dayActions, footer: showsQuote ? AnyView(dailyQuote) : nil)
+    case .metric(let id):
+      MetricPage(id: id, end: store.date, range: LevelParams.metricDefaultRange,
+                 crumb: .dial(store.model.glance.recovery.value, store.model.glance.recovery.tone), today: store.model,
+                 push: { path.append($0) }, up: { path = LevelNav.up(path, second: .day(anchor: nil)) },
+                 explain: { key, title in sheet = .explain(kind: "metric", key: key, title: title) },
+                 load: { sheet = .load }, bedtime: store.model.isPast ? nil : { sheet = .detail(.bedtimeGoal) })
+    case .night(let d):
+      SleepDetailView(initialDate: d) { key, title in sheet = .explain(kind: "metric", key: key, title: title) }
+    case .all:
+      EmptyView()   // 身体's own level
+    }
+  }
+
+  private var dayActions: TodayDayActions {
+    TodayDayActions(
+      push: { path.append($0) },
+      up: { path = [] },
+      sheet: { sheet = $0 },
+      calendar: { sheet = .calendar },
+      backToToday: { store.select(nil) },
+      step: { store.step($0) },
+      training: { trainingOpen = true })
+  }
+
+  /// A door of the first glance: level 2 or a metric page straight from it (back then returns to the first glance).
+  private func openLevel(_ r: LevelRoute) {
+    guard path.isEmpty else { return }
+    path = [r]
   }
 
   // MARK: - daily quote (flag slim_mode): the same quote on any day looked at, the user's today decides which
@@ -156,13 +163,11 @@ struct TodayView: View {
     return zh[max(0, min(6, i))]
   }
 
-  // MARK: - what the page's taps do
+  // MARK: - what the first glance's taps do
 
   private var glanceActions: TodayGlanceActions {
     TodayGlanceActions(
-      l1: { l1 = $0 },
-      sheet: { sheet = $0 },
-      open: open,
+      level: openLevel,
       calendar: { sheet = .calendar },
       backToToday: { store.select(nil) },
       step: { store.step($0) },
@@ -175,24 +180,7 @@ struct TodayView: View {
         JarvisPageLink.shared.segment = .food
         tab = .record
       },
-      circles: { tab = .circles },
-      training: { trainingOpen = true })
-  }
-
-  /// After the L1 sheet has gone: one sheet at a time.
-  private func after(_ f: @escaping () -> Void) {
-    l1 = nil
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: f)
-  }
-
-  /// 「全部指标」 of an L1 sheet: 身体 for the day (recovery, strain), the sleep night page (sleep).
-  private func allMetrics(_ k: TodayL1) {
-    if k == .sleep {
-      path.append(SleepRoute(date: store.model.sleepDate))
-    } else {
-      TrendsLink.shared.open(day: store.date)
-      tab = .trends
-    }
+      circles: { tab = .circles })
   }
 
   /// 记录 → 训练 (the muscle card, 训练历史, 逐组记录).
@@ -201,37 +189,12 @@ struct TodayView: View {
     tab = .record
   }
 
-  private func open(_ o: TodayOpen) {
-    switch o {
-    case .coach: sheet = .coach
-    case .metric("stress", _): sheet = .detail(.stress)
-    case .metric(let k, let t): sheet = .explain(kind: "metric", key: k, title: t)
-    case .status(let t): sheet = .status(t)
-    }
-  }
-
   /// The button under an empty recovery ring (app.js recoveryNext).
   private func runRecoveryNext(_ a: RecoveryNext.Action) {
     switch a {
     case .consent: showConsent = true
     case .sync: app.route = .syncCenter
     case .sleepHelp: sheet = .detail(.sleepHelp)
-    }
-  }
-
-  private func handle(_ a: TodayModel.Action) {
-    switch a {
-    case .recovery: sheet = .recovery
-    case .strain: sheet = .strain
-    case .load: sheet = .load
-    case .coach: sheet = .coach
-    case .monitor: sheet = .monitor
-    case .weight: sheet = .weight
-    case .allReminders: sheet = .reminders
-    case .reminder(let id): sheet = .reminder(id)
-    case .sleepDetail(let d): path.append(SleepRoute(date: d ?? store.model.sleepDate))
-    case .explainMetric(let k, let t): sheet = .explain(kind: "metric", key: k, title: t)
-    case .explainStatus(let k, let t): sheet = .explain(kind: "status", key: k, title: t)
     }
   }
 
@@ -378,7 +341,7 @@ struct TodayDayCards: View, Equatable {
         SectionTitle(title: tr("提醒", "Reminders"), trailing: m.reminders.count > 3 ? tr("全部 \(m.reminders.count)", "All \(m.reminders.count)") : nil) {
           show(.reminders)
         }
-        ForEach(m.topReminders) { r in ReminderRow(reminder: r) { show(.reminder(r.id)) } }
+        ReminderList(reminders: m.topReminders)
       }
       .padding(.top, 22)
     }
@@ -421,29 +384,28 @@ struct TodayDayCards: View, Equatable {
 }
 
 #if DEBUG
-/// Debug builds only, for simulator screenshots: `SIMCTL_CHILD_W2W_DEV_SCROLL=<anchor id>` (`attention`, `core`,
-/// `allMetrics`, `bottom`),
-/// `SIMCTL_CHILD_W2W_DEV_SHEET=recovery|strain|load|coach|monitor|calendar|weight|stress|sleepCoach|bodyAge|sleepHelp|lab:<key>|explain:<kind>:<key>`,
-/// `SIMCTL_CHILD_W2W_DEV_SLEEP=1` (open the sleep detail page), `SIMCTL_CHILD_W2W_DEV_DATE=YYYY-MM-DD` (look back).
+/// Debug builds only, for simulator screenshots: `SIMCTL_CHILD_W2W_DEV_LEVEL=day|day:<anchor>|metric:<id>|night`
+/// (`day:attention`, `metric:hrv`: a metric page straight from the first glance; `day,metric:hrv`: through 今日详情),
+/// `SIMCTL_CHILD_W2W_DEV_SHEET=load|coach|monitor|calendar|weight|reminders|sleepCoach|sleepHelp|lab:<key>|explain:<kind>:<key>`,
+/// `SIMCTL_CHILD_W2W_DEV_SLEEP=1` (the night page), `SIMCTL_CHILD_W2W_DEV_DATE=YYYY-MM-DD` (look back).
 enum DevShot {
-  static func apply(proxy: ScrollViewProxy, sheet: @escaping (TodaySheet) -> Void, push: @escaping (SleepRoute) -> Void,
-                    day: @escaping (String) -> Void) {
+  static func apply(sheet: @escaping (TodaySheet) -> Void, path: @escaping ([LevelRoute]) -> Void, day: @escaping (String) -> Void) {
     let env = ProcessInfo.processInfo.environment
     if let d = env["W2W_DEV_DATE"], d.count == 10 { day(d) }
     DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-      if let a = env["W2W_DEV_SCROLL"] { proxy.scrollTo(a, anchor: .bottom) }
-      if env["W2W_DEV_SLEEP"] == "1" { push(SleepRoute(date: nil)) }
+      if let l = env["W2W_DEV_LEVEL"] {
+        path(l.split(separator: ",").compactMap { route(String($0)) })
+      } else if env["W2W_DEV_SLEEP"] == "1" {
+        path([.night(nil)])   // the App Store screenshots' sleep page (scripts/appstore_screenshots.sh)
+      }
       switch env["W2W_DEV_SHEET"] ?? "" {
-      case "recovery": sheet(.recovery)
-      case "strain": sheet(.strain)
       case "load": sheet(.load)
       case "coach": sheet(.coach)
       case "monitor": sheet(.monitor)
       case "calendar": sheet(.calendar)
       case "weight": sheet(.weight)
-      case "stress": sheet(.detail(.stress))
+      case "reminders": sheet(.reminders)
       case "sleepCoach": sheet(.detail(.sleepCoach))
-      case "bodyAge": sheet(.detail(.bodyAge))
       case "sleepHelp": sheet(.detail(.sleepHelp))
       case let x where x.hasPrefix("lab:"): sheet(.detail(.lab(key: String(x.dropFirst(4)), title: String(x.dropFirst(4)))))
       case let x where x.hasPrefix("explain:"):
@@ -454,6 +416,14 @@ enum DevShot {
     }
   }
 
+  /// `day`, `day:<anchor>`, `metric:<id>`, `night`.
+  static func route(_ s: String) -> LevelRoute? {
+    if s == "day" { return .day(anchor: nil) }
+    if s.hasPrefix("day:") { return .day(anchor: String(s.dropFirst(4))) }
+    if s.hasPrefix("metric:") { return .metric(String(s.dropFirst(7))) }
+    if s == "night" { return .night(nil) }
+    return nil
+  }
 }
 #endif
 
@@ -583,68 +553,5 @@ struct StatusCell: View {
     }
     .buttonStyle(PressScale())
     .accessibilityElement(children: .combine)
-  }
-}
-
-/// Sync state: a dot, the server's short label, how long ago. The row opens the sync center; the button at its end syncs now.
-struct SyncCardView: View {
-  let card: TodayModel.SyncCard
-  @ObservedObject var sync: SyncCoordinator
-  @ObservedObject private var health = HealthSyncService.shared
-  let open: () -> Void
-  let syncNow: () -> Void
-
-  var body: some View {
-    HStack(spacing: 0) {
-      Button(action: open) {
-        HStack(spacing: 10) {
-          Circle().fill(card.tone == .text ? Palette.text3 : card.tone.color).frame(width: 8, height: 8)
-          Text(card.label).font(Typo.body).foregroundColor(Palette.text).lineLimit(1)
-          Spacer(minLength: 6)
-          if let a = card.ago { Text(a).font(Typo.caption).foregroundColor(Palette.text2) }
-        }
-        .padding(.leading, 14).padding(.vertical, 14)
-        .contentShape(Rectangle())
-      }
-      .buttonStyle(PressScale())
-      .accessibilityLabel("\(tr("同步中心", "Sync center")) \(card.label)")
-      Button(action: syncNow) {
-        Group {
-          if sync.status == .syncing || health.running { ProgressView().scaleEffect(0.7).tint(Palette.text3) }
-          else { Icon(.refreshCw, size: 16).foregroundColor(Palette.text3) }
-        }
-        .frame(width: 44, height: 44)
-        .contentShape(Rectangle())
-      }
-      .buttonStyle(PressScale())
-      .disabled(health.running)
-      .accessibilityLabel(tr("立即同步", "Sync now"))
-    }
-    .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
-  }
-}
-
-/// Small line under the page: updating / offline / error, so cached data is never mistaken for fresh (N0).
-struct SyncStatusLine: View {
-  @ObservedObject var sync: SyncCoordinator
-  let hasData: Bool
-
-  var body: some View {
-    HStack(spacing: 6) {
-      switch sync.status {
-      case .syncing:
-        ProgressView().scaleEffect(0.7).tint(Palette.text3)
-        Text(tr("更新中", "Updating"))
-      case .offline:
-        Text(hasData ? tr("离线，显示上次的数据", "Offline, showing the last data") : tr("离线", "Offline"))
-      case .failed(let m):
-        Text(m).lineLimit(2)
-      case .idle:
-        EmptyView()
-      }
-    }
-    .font(Typo.label)
-    .foregroundColor(Palette.text3)
-    .frame(maxWidth: .infinity)
   }
 }

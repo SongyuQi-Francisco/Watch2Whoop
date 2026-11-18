@@ -12,8 +12,13 @@ MCP_SCOPE = "mcp"
 # Upload-only token of the Watch2Whoop app (rawdata/ingest.py): usable only for POST /v1/ingest/*; it cannot read anything,
 # and normal /v1 endpoints and the Today page login reject it. Minted by the logged-in Today page (POST /v1/web/ingest-token).
 INGEST_SCOPE = "ingest"
+# Apple Watch device token (account/watch.py, docs/watch-app-plan.md 4.5): only for voice -> text and the in-app chat
+# (ai/api.py: transcribe, chat, chat/confirm, chat events), always together with the read / write scopes of the phone
+# token it was made from, and valid only while that token is (parent_token_id). Minted through a one-time code with
+# purpose 'watch' that the signed-in phone asks for (POST /v1/account/watch-code).
+WATCH_SCOPE = "watch"
 # Tokens with one of these scopes only work on their own endpoint
-RESTRICTED_SCOPES = [MCP_SCOPE, INGEST_SCOPE]
+RESTRICTED_SCOPES = [MCP_SCOPE, INGEST_SCOPE, WATCH_SCOPE]
 # "Last used" stamps (api_tokens.last_used_at, web_sessions.last_seen_at and expires_at) are written at most this often.
 # Writing them on every request kept the row locked until that request's transaction ended, so all requests of one login
 # ran one after another: the Today page's ~20 parallel start-up reads queued behind the slowest (2026-10-26).
@@ -32,10 +37,12 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def create_token(conn: psycopg.Connection, user_id: int, name: str, scopes: list[str]) -> str:
+def create_token(conn: psycopg.Connection, user_id: int, name: str, scopes: list[str],
+                 parent_token_id: int | None = None) -> str:
+    """parent_token_id: the token this one hangs off (a watch token's phone token, account/watch.py)."""
     token = TOKEN_PREFIX + secrets.token_urlsafe(32)
-    conn.execute("INSERT INTO api_tokens (user_id, name, token_sha256, scopes) VALUES (%s, %s, %s, %s)",
-                 (user_id, name, hash_token(token), scopes))
+    conn.execute("INSERT INTO api_tokens (user_id, name, token_sha256, scopes, parent_token_id) VALUES (%s, %s, %s, %s, %s)",
+                 (user_id, name, hash_token(token), scopes, parent_token_id))
     return token
 
 
@@ -85,11 +92,13 @@ def user_for_token(conn: psycopg.Connection, token: str) -> dict | None:
 
 
 def user_for_ingest_token(conn: psycopg.Connection, token: str) -> dict | None:
-    """Identity for POST /v1/ingest/*: the app's account token (scope write) or its upload-only token (scope ingest)."""
+    """Identity for POST /v1/ingest/*: the app's account token (scope write) or its upload-only token (scope ingest).
+    AI-client and watch tokens never upload, even though they may carry write."""
     row = conn.execute(
         """SELECT id, user_id, scopes, (last_used_at IS NULL OR last_used_at < now() - %s::interval) AS stale FROM api_tokens
-           WHERE token_sha256 = %s AND revoked_at IS NULL AND NOT (%s = ANY(scopes))
-             AND ('write' = ANY(scopes) OR %s = ANY(scopes))""", (TOUCH_EVERY, hash_token(token), MCP_SCOPE, INGEST_SCOPE)).fetchone()
+           WHERE token_sha256 = %s AND revoked_at IS NULL AND NOT (scopes && %s::text[])
+             AND ('write' = ANY(scopes) OR %s = ANY(scopes))""",
+        (TOUCH_EVERY, hash_token(token), [MCP_SCOPE, WATCH_SCOPE], INGEST_SCOPE)).fetchone()
     if row is None:
         return None
     if row["stale"]:
@@ -97,6 +106,26 @@ def user_for_ingest_token(conn: psycopg.Connection, token: str) -> dict | None:
     obs.note_user(row["user_id"])
     user = conn.execute("SELECT * FROM users WHERE id = %s", (row["user_id"],)).fetchone()
     return {**user, "token_id": row["id"], "token_scopes": row["scopes"]}
+
+
+def user_for_watch_token(conn: psycopg.Connection, token: str) -> dict | None:
+    """Identity of an Apple Watch device token (scope watch), or None. Only the endpoints that ask for it accept it
+    (api.resolve_user(watch_ok=True)). Valid only while the phone token it was made from is live: whichever way that one
+    ends (sign-out, revoke by name or all, account deleted), the watch ends with it."""
+    row = conn.execute(
+        """SELECT t.id, t.user_id, t.scopes, (t.last_used_at IS NULL OR t.last_used_at < now() - %s::interval) AS stale
+           FROM api_tokens t JOIN api_tokens p ON p.id = t.parent_token_id AND p.user_id = t.user_id
+           WHERE t.token_sha256 = %s AND t.revoked_at IS NULL AND %s = ANY(t.scopes)
+             AND p.revoked_at IS NULL AND (p.expires_at IS NULL OR p.expires_at > now())
+             AND NOT (p.scopes && %s::text[])""",
+        (TOUCH_EVERY, hash_token(token), WATCH_SCOPE, RESTRICTED_SCOPES)).fetchone()
+    if row is None:
+        return None
+    if row["stale"]:
+        touch(conn, "api_tokens", row["id"], "last_used_at = now()")
+    obs.note_user(row["user_id"])
+    user = conn.execute("SELECT * FROM users WHERE id = %s", (row["user_id"],)).fetchone()
+    return {**user, "token_id": row["id"], "token_scopes": row["scopes"], "auth": "watch", "client": WATCH_SCOPE}
 
 
 # A scope that a wider scope also grants: whoever may see someone's food may see whether they met their goals

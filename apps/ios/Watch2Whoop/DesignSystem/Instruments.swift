@@ -170,7 +170,7 @@ struct Face<Graphic: View>: View {
       graphic().frame(height: 26, alignment: .bottom)
     }
     .padding(.horizontal, 12).padding(.vertical, 14)
-    .frame(maxWidth: .infinity, minHeight: 120, maxHeight: 120, alignment: .topLeading)
+    .frame(maxWidth: .infinity, minHeight: Rhythm.face, maxHeight: Rhythm.face, alignment: .topLeading)
     .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
     .contentShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
   }

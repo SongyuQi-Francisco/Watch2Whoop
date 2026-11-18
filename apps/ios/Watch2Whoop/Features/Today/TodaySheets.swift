@@ -2,8 +2,9 @@ import SwiftUI
 
 /// Sheets opened from the Today tab (one at a time).
 enum TodaySheet: Identifiable, Equatable {
-  case recovery, strain, load, coach, monitor, calendar, weight, reminders
-  case reminder(Int)
+  case recovery, strain, load, coach, monitor, calendar, weight
+  /// The reminders, each one expanding in the list (2.1.0: no sheet of its own any more).
+  case reminders
   case explain(kind: String, key: String, title: String)
   /// A status card of 今日核心 / 需要注意 (#357), the same sheet as Trends'.
   case status(TrendStatus.Tile)
@@ -20,7 +21,6 @@ enum TodaySheet: Identifiable, Equatable {
     case .monitor: self = .monitor
     case .weight: self = .weight
     case .allReminders: self = .reminders
-    case .reminder(let id): self = .reminder(id)
     case .explainMetric(let k, let t): self = .explain(kind: "metric", key: k, title: t)
     case .explainStatus(let k, let t): self = .explain(kind: "status", key: k, title: t)
     case .sleepDetail: return nil
@@ -45,7 +45,6 @@ enum TodaySheet: Identifiable, Equatable {
     case .calendar: return "calendar"
     case .weight: return "weight"
     case .reminders: return "reminders"
-    case .reminder(let id): return "reminder:\(id)"
     case .explain(let k, let key, _): return "explain:\(k):\(key)"
     case .status(let t): return "status:\(t.key)"
     case .detail(let d): return "detail:\(d.id)"
@@ -70,7 +69,7 @@ struct TodaySheetView: View {
 
   private var detents: Set<PresentationDetent> {
     switch sheet {
-    case .reminder, .load, .coach: return [.medium]
+    case .load, .coach: return [.medium]
     case .calendar, .weight: return [.large]
     case .detail(let d) where d.large: return [.large]
     default: return [.medium, .large]
@@ -88,7 +87,6 @@ struct TodaySheetView: View {
     case .calendar: return tr("选择日期", "Pick a day")
     case .weight: return tr("记体重", "Log weight")
     case .reminders: return "\(tr("提醒", "Reminders")) · \(model.reminders.count)"
-    case .reminder: return tr("提醒", "Reminder")
     case .explain(_, _, let t): return t
     case .status(let t): return t.label
     case .detail(let d): return d.title
@@ -148,27 +146,7 @@ struct TodaySheetView: View {
       }
       .padding(.top, 6)
     case .reminders:
-      VStack(spacing: 8) {
-        ForEach(model.reminders) { r in ReminderRow(reminder: r) { open(.reminder(r.id)) } }
-      }
-    case .reminder(let id):
-      if let r = model.reminders.first(where: { $0.id == id }) {
-        VStack(alignment: .leading, spacing: 12) {
-          Text(r.title).font(.system(size: 17, weight: .semibold)).foregroundColor(Palette.text).fixedSize(horizontal: false, vertical: true)
-          HStack(spacing: 6) {
-            ToneBadge(text: levelLabel(r.level), tone: r.tone)
-            if let d = r.date { ToneBadge(text: TodayModel.shortDay(d)) }
-          }
-          if !model.isPast && member == nil {
-            HStack(spacing: 10) {
-              if r.status == "new" { action(tr("已看", "Seen")) { store.setReminder(id, status: "seen"); close() } }
-              else { action(tr("标为未读", "Mark unread")) { store.setReminder(id, status: "new"); close() } }
-              action(tr("不再提醒", "Dismiss")) { store.setReminder(id, status: "dismissed"); close() }
-            }
-            .padding(.top, 6)
-          }
-        }
-      }
+      ReminderList(reminders: model.reminders, set: model.isPast || member != nil ? nil : { id, status in store.setReminder(id, status: status) })
     case .explain(let kind, let key, _):
       ExplainBody(kind: kind, key: key, day: day)
     case .status(let t):
@@ -185,23 +163,6 @@ struct TodaySheetView: View {
     case .detail(let detail):
       TodayDetailBody(detail: detail, date: model.date ?? store.userToday, past: day, coach: model.tonight, open: open, close: close)
     }
-  }
-
-  private func levelLabel(_ l: String) -> String {
-    switch l {
-    case "alert": return tr("重要", "Important")
-    case "warning": return tr("注意", "Heads-up")
-    default: return tr("提示", "Tip")
-    }
-  }
-
-  private func action(_ title: String, _ run: @escaping () -> Void) -> some View {
-    Button(action: run) {
-      Text(title).font(Typo.bodyStrong).foregroundColor(Palette.text)
-        .frame(maxWidth: .infinity, minHeight: 44)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.inSheet))
-    }
-    .buttonStyle(PressScale())
   }
 
   @ViewBuilder private func flags(_ f: [String]) -> some View {
@@ -275,23 +236,68 @@ struct RangeBar: View {
   }
 }
 
-/// A reminder card row: level dot, title, chevron (app.js reminderRow).
-struct ReminderRow: View {
-  let reminder: TodayModel.Reminder
-  let action: () -> Void
+/// The reminders, newest first: a tap opens one in place (its level, its date and, on my own today, 已看 / 不再提醒), a
+/// second tap closes it. 2.1.0 (owner's answer 5): a single reminder no longer opens a layer of its own.
+struct ReminderList: View {
+  let reminders: [TodayModel.Reminder]
+  /// Marks a reminder (`seen`, `new`, `dismissed`); nil = read only (a look-back day, someone else's page).
+  var set: ((Int, String) -> Void)?
+  @State private var open: Int?
 
   var body: some View {
-    Button(action: action) {
-      HStack(spacing: 10) {
-        Circle().fill(reminder.tone == .text ? Palette.text3 : reminder.tone.color).frame(width: 8, height: 8)
-        Text(reminder.title).font(Typo.body).foregroundColor(reminder.status == "seen" ? Palette.text2 : Palette.text)
-          .lineLimit(2).multilineTextAlignment(.leading)
-        Spacer(minLength: 6)
-        Icon(.chevronRight, size: 16).foregroundColor(Palette.text3)
+    VStack(spacing: 8) {
+      ForEach(reminders) { r in row(r) }
+    }
+  }
+
+  private func row(_ r: TodayModel.Reminder) -> some View {
+    let on = open == r.id
+    return VStack(alignment: .leading, spacing: 12) {
+      Button { withAnimation(.easeOut(duration: 0.2)) { open = on ? nil : r.id } } label: {
+        HStack(alignment: .top, spacing: 10) {
+          Circle().fill(r.tone == .text ? Palette.text3 : r.tone.color).frame(width: 8, height: 8).padding(.top, 6)
+          Text(r.title).font(on ? .system(size: 16, weight: .semibold) : Typo.body)
+            .foregroundColor(r.status == "seen" && !on ? Palette.text2 : Palette.text)
+            .lineLimit(on ? nil : 2).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+          Spacer(minLength: 6)
+          Icon(.chevronDown, size: 16).foregroundColor(Palette.text3).rotationEffect(.degrees(on ? 180 : 0)).padding(.top, 2)
+        }
+        .contentShape(Rectangle())
       }
-      .padding(14)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
+      .buttonStyle(PressScale())
+      .accessibilityValue(on ? tr("已展开", "Expanded") : tr("已收起", "Collapsed"))
+      if on {
+        HStack(spacing: 6) {
+          ToneBadge(text: Self.levelLabel(r.level), tone: r.tone)
+          if let d = r.date { ToneBadge(text: TodayModel.shortDay(d)) }
+        }
+        if let set {
+          HStack(spacing: 10) {
+            if r.status == "new" { action(tr("已看", "Seen")) { set(r.id, "seen"); open = nil } }
+            else { action(tr("标为未读", "Mark unread")) { set(r.id, "new"); open = nil } }
+            action(tr("不再提醒", "Dismiss")) { set(r.id, "dismissed"); open = nil }
+          }
+        }
+      }
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
+  }
+
+  static func levelLabel(_ l: String) -> String {
+    switch l {
+    case "alert": return tr("重要", "Important")
+    case "warning": return tr("注意", "Heads-up")
+    default: return tr("提示", "Tip")
+    }
+  }
+
+  private func action(_ title: String, _ run: @escaping () -> Void) -> some View {
+    Button(action: run) {
+      Text(title).font(Typo.bodyStrong).foregroundColor(Palette.text)
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.inSheet))
     }
     .buttonStyle(PressScale())
   }

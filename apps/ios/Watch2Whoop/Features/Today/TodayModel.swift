@@ -45,7 +45,6 @@ struct TodayModel: Equatable {
     case sleepDetail(String?)
     case explainMetric(String, String)
     case explainStatus(String, String)
-    case reminder(Int)
   }
 
   struct Ring: Equatable {
@@ -202,8 +201,10 @@ struct TodayModel: Equatable {
   var training: TodayTraining?
   var muscle: MuscleLoad?
   var detail = Detail()
-  /// The 2.0.1 Today: dial, readings and the L1 sheets' numbers (TodayGlance.swift).
+  /// The 2.0.1 Today: dial, readings and the numbers of the strain head (TodayGlance.swift).
   var glance = TodayGlance()
+  /// The day's `/trends` document (61 days ending on the day) with the phone's own status cards: 今日详情's rows.
+  var trendsDay: TodayTrends?
   var error: String?
   /// Server's hrv kind and the user's zone (for the phone's own computation).
   var hrvKind: String?
@@ -334,6 +335,7 @@ struct TodayModel: Equatable {
 
     // ---- 需要注意 and 今日核心 (#357): the day's Trends document, the phone's own status cards laid over it
     let day = TodayTrends(json: inp.trends, local: inp.trendsLocal, day: date)
+    trendsDay = day
     attention = TodayAttentionRules.select(trends: day, vitals: vitals)
     core = TodayCoreCards.build(coach: coach, trends: day)
 
@@ -392,6 +394,15 @@ struct TodayModel: Equatable {
 
   /// Every reminder shown on the card (at most 3).
   var topReminders: [Reminder] { Array(reminders.prefix(3)) }
+
+  /// The first glance's own numbers for the scores, so the levels below never show another value for them.
+  var levelOverrides: [String: Double] {
+    var o: [String: Double] = [:]
+    if let v = glance.recovery.value { o["recovery"] = v }
+    if let v = glance.sleep.value { o["sleep_score"] = v }
+    if let v = glance.strain.value { o["strain"] = v }
+    return o
+  }
 
   // MARK: - formatting (the page's I18N.num / hm / shortDay)
 

@@ -49,3 +49,10 @@ STORE_SIGNUP_FLAG = "store_signup"
 def referrals_enabled() -> bool:
     import os
     return (os.environ.get(REFERRALS_ENV) or "").strip().lower() in ("1", "true", "yes", "on")
+
+# Apple Watch device token (account/watch.py, docs/watch-app-plan.md 4.5). The phone hands the code to its watch over
+# WatchConnectivity right away, so it only needs to live as long as the Today page's own one-time code
+# (account/api.WEB_LOGIN_CODE_MINUTES, the plan's "10 分钟有效").
+WATCH_CODE_MINUTES = 10
+WATCH_DEVICE_DEFAULT = "Apple Watch"   # the token's name is watch:<device>; the phone may send the watch's own name
+WATCH_DEVICE_MAX_LEN = 40

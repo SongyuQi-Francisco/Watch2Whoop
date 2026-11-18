@@ -314,6 +314,10 @@ def run_queued(conn: psycopg.Connection, user_id: int | None = None, scorer=None
             conn.commit()
             continue
         switched = _native_switch(conn, uid)
+        # an app score upload waiting for its spot check (nativesync/appscores.py): before the recompute, so the plan
+        # below already knows whether the app is trusted
+        from ..nativesync import appscores
+        checked = appscores.run_pending_safe(conn, uid)
         if resync.pending(conn, uid):
             # its last step recomputes the scores from the start of its range, which covers the usual window too
             out.append({"user_id": uid, "resync": resync.run_step(conn, uid, **(resync_kw or {}))})
@@ -326,6 +330,7 @@ def run_queued(conn: psycopg.Connection, user_id: int | None = None, scorer=None
                 continue
         res = run_scores(conn, uid, scorer=scorer)
         out.append({"user_id": uid, **({"switch": switched} if switched else {}),
+                    **({"app_score_check": checked} if checked else {}),
                     **({"import": _brief(imported)} if imported else {}), **res})
     return out
 

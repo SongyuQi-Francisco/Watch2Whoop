@@ -256,11 +256,13 @@ final class TodayCoreTests: XCTestCase {
     XCTAssertTrue(past.contains("trends:61:2026-03-20"))
   }
 
+  /// 2.1.0: nothing switches to 身体 to show a day any more (the day is 今天 → 今日详情); a link only picks 身体's mode and
+  /// keeps its range. A metric page's own range switch never changes the range 身体 starts with.
   @MainActor
-  func testAllMetricsLinkOpensTrendsTodayOnTheSameDay() {
+  func testTrendsLinkPicksAModeAndKeepsTheRange() {
     let link = TrendsLink()
-    link.open(day: "2026-03-20")
-    XCTAssertEqual(link.pending, TrendsLink.Request(end: "2026-03-20", range: .today, mode: .metrics))
+    link.open(mode: .report)
+    XCTAssertEqual(link.pending, TrendsLink.Request(end: nil, range: nil, mode: .report))
     let r = link.take()
     XCTAssertNil(link.pending)
     XCTAssertNil(link.take())
@@ -271,12 +273,12 @@ final class TodayCoreTests: XCTestCase {
     let store = TrendsStore()
     XCTAssertEqual(store.range, .quarter)   // kept while the app runs
     store.apply(r!)
-    XCTAssertEqual(store.range, .today)
-    XCTAssertEqual(store.end, "2026-03-20")
-    XCTAssertEqual(TrendsStore.sessionRange, .today)
-    // from today's Today: no end date (the user's today)
-    link.open(day: nil)
-    store.apply(link.take()!)
+    XCTAssertEqual(store.range, .quarter)
     XCTAssertNil(store.end)
+
+    let metric = TrendsStore(range: .week, end: "2026-03-20", remember: false)
+    XCTAssertEqual(metric.range, .week)
+    XCTAssertEqual(metric.end, "2026-03-20")
+    XCTAssertEqual(TrendsStore.sessionRange, .quarter)
   }
 }
