@@ -1,200 +1,5 @@
 import SwiftUI
 
-/// 记录 → 训练: the muscle load map, today's plan with set-by-set logging (banned / caution exercises marked with the
-/// user's own reason), the week, suggestions, the user's exercise restrictions and the history calendar. The library, split
-/// picker, custom exercises and training settings open as sheets from here (TrainingSheets.swift).
-struct TrainingSection: View {
-  @ObservedObject var store: TrainingStore
-  @Binding var toast: Toast?
-  @State private var sheet: TrainingSheet?
-  /// Asked from inside a sheet: goes to Jarvis when the sheet has gone.
-  @State private var askAfterClose: String?
-  @Environment(\.askAI) private var askAI
-  @State private var removing: RemoveTarget?
-  @State private var detailDay: String?
-  @State private var open: Set<String> = []
-
-  init(store: TrainingStore, toast: Binding<Toast?>) {
-    self.store = store
-    _toast = toast
-  }
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 22) {
-      RecordStatusLine(offline: store.offline, refreshing: store.refreshing && store.session == nil)
-      if let m = store.muscle { MuscleLoadCard(load: m, open: { sheet = .muscle($0, $1) }, goals: { sheet = .goals }) }
-      todayCard.id("n5.today")
-      if let w = store.week {
-        TrainingWeekCard(week: w, today: store.today, openDay: { d in if d > store.today { sheet = .planDay(d) } else { detailDay = d } },
-                         split: { sheet = .split }, library: { sheet = .library }, connectLog: { sheet = .log }).id("n5.week")
-      }
-      if let w = store.week, !w.suggestions.isEmpty { suggestions(w) }
-      ExerciseLimitsCard(rules: ExerciseRule.merged(store.rules, week: store.week)) { sheet = .exercise($0.ref) }.id("n5.limits")
-      TrainingCalendarView(store: store) { detailDay = $0 }.id("n5.calendar")
-    }
-    .task {
-      await store.refresh()
-      if open.isEmpty, let first = store.session?.loggable.first { open.insert(first.slug) }   // the first exercise opens by itself
-      if sheet == nil, let dev = RecordDevShot.value("W2W_DEV_TRAINING") { sheet = TrainingSheet.dev(dev, muscle: store.muscle) }
-    }
-    .sheet(item: $sheet, onDismiss: {
-      if let p = askAfterClose {
-        askAfterClose = nil
-        askAI(p)
-      }
-    }) { s in
-      TrainingSheetHost(store: store, start: s, ask: { prompt in
-        askAfterClose = prompt
-        sheet = nil
-      }) { message in
-        sheet = nil
-        if let message { toast = message }
-      }
-      .presentationDetents([.large])
-    }
-    .sheet(item: Binding(get: { detailDay.map { DayRef(day: $0) } }, set: { detailDay = $0?.day })) { ref in
-      SheetContainer(title: tr("训练 · \(RecordDay.short(ref.day))", "Training · \(RecordDay.short(ref.day))"), close: { detailDay = nil }) {
-        TrainingDaySheet(store: store, day: ref.day)
-      }
-      .presentationDetents([.medium, .large])
-    }
-    .modifier(RemoveExerciseDialogs(target: $removing, store: store, say: { toast = $0 }))
-  }
-
-  // MARK: today
-
-  @ViewBuilder private var todayCard: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack {
-        SectionHeader(title: tr("今天", "Today"))
-        if let s = store.session, s.changed { Badge(label: tr("已调整", "Changed"), tone: .mid) }
-        if let s = store.session, !s.title.isEmpty {
-          Text(s.title).font(Typo.label).foregroundColor(Palette.text2).lineLimit(1)
-        }
-      }
-      if let s = store.session {
-        if s.exercises.isEmpty {
-          Card { EmptyNote(text: s.restDay ? tr("休息", "Rest day") : tr("无计划", "No plan")) }
-        } else {
-          if let r = s.readiness { Banner(text: r.label, tone: r.tone) }
-          Text(planLine(s)).font(Typo.label.monospacedDigit()).foregroundColor(Palette.text2)
-          VStack(spacing: 10) {
-            ForEach(ExerciseBlock.blocks(s.exercises)) { b in
-              if b.isSuperset {
-                SupersetBlock { ForEach(b.items) { e in exerciseCard(e, s) } }
-              } else {
-                exerciseCard(b.items[0], s)
-              }
-            }
-          }
-          if s.canLog && !s.loggable.isEmpty { submitFooter(s) }
-        }
-        if s.canEditPlan, !s.removed.isEmpty {
-          RemovedRow(removed: s.removed) { slug in restore(slug, s.day) }
-        }
-      } else {
-        Card { EmptyNote(text: store.refreshing ? "…" : tr("暂无", "None")) }
-      }
-    }
-  }
-
-  /// 8 个动作 · 约 60 分钟 · 3/24 (training-day.js planSub).
-  private func planLine(_ s: TrainingSession) -> String {
-    var parts = [tr("\(s.exercises.count) 个动作", "\(s.exercises.count) exercises")]
-    if let m = s.minutes { parts.append(tr("约 \(m) 分钟", "about \(m) min")) }
-    let sets = s.loggable.flatMap { store.rows[$0.slug] ?? [] }
-    if !sets.isEmpty { parts.append("\(sets.filter(\.done).count)/\(sets.count)") }
-    return parts.joined(separator: " · ")
-  }
-
-  private func exerciseCard(_ e: PlannedExercise, _ s: TrainingSession) -> some View {
-    ExerciseCard(e: e, rows: store.rows[e.slug] ?? [], canLog: s.canLog, open: open.contains(e.slug),
-                 toggle: { if open.contains(e.slug) { open.remove(e.slug) } else { open.insert(e.slug) } },
-                 edit: { change in store.edit(e.slug, change) },
-                 swapTo: s.canEditPlan ? { c in swap(e, c) } : nil,
-                 baseURL: store.api.baseURL, sex: store.muscle?.sex ?? "male",
-                 guide: e.unresolved ? nil : { sheet = .exercise(e.slug) },
-                 remove: s.canEditPlan ? { removing = removeTarget(e, s) } : nil)
-  }
-
-  private func removeTarget(_ e: PlannedExercise, _ s: TrainingSession) -> RemoveTarget {
-    RemoveTarget(slug: e.slug, name: e.name, date: s.day, isToday: s.day == store.today, dayOfWeek: e.dayOfWeek, sessionName: e.sessionName,
-                 sessionTitle: e.sessionTitle, addedForDay: e.addedForDay)
-  }
-
-  private func restore(_ slug: String, _ day: String) {
-    Task { if let error = await store.restore(slug, day: day) { toast = Toast(error) } }
-  }
-
-  /// An exercise the library did not recognise, replaced in the weekly plan by one of its candidates.
-  private func swap(_ e: PlannedExercise, _ c: SwapCandidate) {
-    Task {
-      let error = await store.swap(e.slug, for: c)
-      toast = Toast(error ?? tr("已换成 \(c.name)", "Swapped for \(c.name)"))
-    }
-  }
-
-  private func submitFooter(_ s: TrainingSession) -> some View {
-    let done = store.rows.reduce(0) { n, kv in n + (s.loggable.contains { $0.slug == kv.key } ? kv.value.filter { $0.done && $0.hasValue }.count : 0) }
-    let label = s.pendingSubmit != nil ? tr("提交中 · \(done) 组", "Submitting · \(done) sets")
-      : s.submitted ? tr("已提交 \(done) 组", "Submitted \(done) sets")
-      : s.changedSinceSubmit ? tr("重新提交 \(done) 组", "Submit again · \(done) sets") : tr("提交 \(done) 组", "Submit \(done) sets")
-    return VStack(spacing: 6) {
-      if let log = s.trainingLog, log != "connected" {
-        SecondaryButton(title: tr("先连接训练记录", "Connect the training log first")) { sheet = .log }
-      }
-      PrimaryButton(title: label) { submit(false) }
-        .disabled(done == 0 || s.submitted || s.pendingSubmit != nil)
-        .opacity(done == 0 || s.submitted || s.pendingSubmit != nil ? 0.45 : 1)
-      if !store.saveState.isEmpty {
-        Text(store.saveState).font(Typo.label).foregroundColor(Palette.text3)
-      }
-    }
-  }
-
-  private func submit(_ allow: Bool) {
-    Task {
-      let (out, draft) = await store.submit(allowDuplicate: allow)
-      if out.sent, draft, !allow {
-        toast = Toast(tr("今天已经记过这些动作", "These exercises are already logged today"), actionTitle: tr("仍然提交", "Submit anyway")) {
-          submit(true)
-        }
-      } else {
-        toast = Toast(out.sent ? tr("已提交", "Submitted") : out.message)
-      }
-    }
-  }
-
-  // MARK: suggestions
-
-  private func suggestions(_ w: TrainingWeek) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
-      SectionHeader(title: tr("建议", "Suggestions"))
-      RowGroup {
-        ForEach(Array(w.suggestions.enumerated()), id: \.element.id) { n, x in
-          if n > 0 { RowDivider(inset: 0) }
-          Button { sheet = .suggestion(x) } label: {
-            HStack(spacing: 8) {
-              Text(x.name).font(Typo.body).foregroundColor(Palette.text).lineLimit(1)
-              Spacer()
-              Badge(label: x.nextKg.map { "→ \(RecordFormat.num($0, 1)) kg" } ?? tr("建议", "Suggestion"), tone: x.warning ? .mid : .good)
-              Icon(.chevronRight, size: 14).foregroundColor(Palette.text3)
-            }
-            .padding(.vertical, 11)
-            .contentShape(Rectangle())
-          }
-          .buttonStyle(PressScale())
-        }
-      }
-    }
-  }
-
-  static func weekdayName(_ wd: Int) -> String {
-    let names = [tr("一", "Mo"), tr("二", "Tu"), tr("三", "We"), tr("四", "Th"), tr("五", "Fr"), tr("六", "Sa"), tr("日", "Su")]
-    return names[max(0, min(6, wd - 1))]
-  }
-}
-
 /// The muscle load map with its range control and list. `open` and `goals` nil = read-only (someone else's page).
 struct MuscleLoadCard: View {
   let load: MuscleLoad
@@ -377,7 +182,7 @@ struct TrainingWeekCard: View {
             ForEach(w.days) { d in
               Button { openDay(d.date) } label: {
                 VStack(spacing: 4) {
-                  Text(TrainingSection.weekdayName(RecordDay.weekday(d.date))).font(.system(size: 11, weight: .medium)).foregroundColor(Palette.text3)
+                  Text(RecordDay.weekdayName(RecordDay.weekday(d.date))).font(.system(size: 11, weight: .medium)).foregroundColor(Palette.text3)
                   Text(String(Int(d.date.suffix(2)) ?? 0)).font(.system(size: 15, weight: d.date == today ? .bold : .medium).monospacedDigit())
                     .foregroundColor(d.date > today ? Palette.text3 : Palette.text)
                   Circle().fill(d.trained ? (TrainingMonth.tone(d.intensity) ?? .good).color : Palette.surface2).frame(width: 7, height: 7)
@@ -484,11 +289,6 @@ extension ExerciseRule {
   }
 }
 
-private struct DayRef: Identifiable {
-  let day: String
-  var id: String { day }
-}
-
 /// A number of the week (app.js msum).
 private struct WeekNumber: View {
   let label: String
@@ -506,29 +306,6 @@ private struct WeekNumber: View {
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .accessibilityElement(children: .combine)
-  }
-}
-
-/// The exercises of one superset ("A + B" in the plan) drawn together under a 「超级组」 label; each keeps its own sets and weights.
-private struct SupersetBlock<Content: View>: View {
-  let content: Content
-
-  init(@ViewBuilder content: () -> Content) {
-    self.content = content()
-  }
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      HStack(spacing: 6) {
-        Icon(.link, size: 13)
-        Text(tr("超级组", "Superset"))
-      }
-      .font(Typo.label).foregroundColor(Palette.text2)
-      .padding(.horizontal, 6)
-      content
-    }
-    .padding(8)
-    .overlay(RoundedRectangle(cornerRadius: Metrics.cardRadius + 8, style: .continuous).stroke(Palette.hair, lineWidth: 1))
   }
 }
 

@@ -235,28 +235,3 @@ struct StatusTileView: View {
     .accessibilityElement(children: .combine)
   }
 }
-
-/// The 「问 Jarvis」 bar (flag `ui_ai_first`): a typed question goes out at once to the Jarvis chat.
-struct AskJarvisBar: View {
-  let example: String
-  @State private var text = ""
-
-  var body: some View {
-    HStack(spacing: 8) {
-      Icon(.sparkles, size: 16).foregroundColor(Palette.text2)
-      TextField(tr("问 Jarvis：\(example)", "Ask Jarvis: \(example)"), text: $text)
-        .font(Typo.body)
-        .submitLabel(.send)
-        .onSubmit(send)
-    }
-    .padding(.horizontal, 14).frame(minHeight: 44)
-    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Palette.surface))
-  }
-
-  private func send() {
-    let q = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !q.isEmpty else { return }
-    JarvisRouter.current?.send(prompt: q)
-    text = ""
-  }
-}

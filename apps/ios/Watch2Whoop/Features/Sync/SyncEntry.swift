@@ -104,29 +104,6 @@ struct SyncStuck: Equatable {
   }
 }
 
-/// The header's way to the sync center: one tap from the top of Today, in the state's colour.
-struct SyncHeaderButton: View {
-  @EnvironmentObject private var app: AppModel
-  @ObservedObject private var sync = HealthSyncService.shared
-
-  var body: some View {
-    let d = sync.diagnosis
-    Button { app.route = .syncCenter } label: {
-      ZStack {
-        Circle().fill(Palette.surface)
-        if d.overall == .syncing {
-          ProgressView().scaleEffect(0.7).tint(Palette.text2)
-        } else {
-          Icon(.refreshCw, size: 17).foregroundColor(d.overall == .attention ? Palette.mid : Palette.text2)
-        }
-      }
-      .frame(width: 36, height: 36)
-    }
-    .buttonStyle(PressScale())
-    .accessibilityLabel("\(tr("同步中心", "Sync center")) \(d.headline)")
-  }
-}
-
 /// Under the Today header, only for today's own page: sync is stuck (a banner: tap = the sync center, its button retries),
 /// else the reminder to fill in history. The reminder's rhythm is the server's; a reminder day is reported once
 /// (`/sync/history/seen`, one row per local day on the server).

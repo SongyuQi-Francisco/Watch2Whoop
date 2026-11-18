@@ -1,25 +1,7 @@
 import SwiftUI
 
-/// 训练历史: a month grid, each trained day dotted by intensity; the month's totals; tap a day → its detail.
-struct TrainingCalendarView: View {
-  @ObservedObject var store: TrainingStore
-  let openDay: (String) -> Void
-
-  var body: some View {
-    TrainingMonthCard(month: store.month, calendar: store.calendar, today: store.today, showMonth: { store.showMonth($0) }, openDay: openDay)
-  }
-
-  static func daysIn(_ month: String) -> Int {
-    let p = month.split(separator: "-").compactMap { Int($0) }
-    guard p.count == 2 else { return 30 }
-    var c = Calendar(identifier: .gregorian)
-    c.timeZone = TimeZone(identifier: "UTC")!
-    guard let d = c.date(from: DateComponents(year: p[0], month: p[1], day: 1)) else { return 30 }
-    return c.range(of: .day, in: .month, for: d)?.count ?? 30
-  }
-}
-
-/// The month grid and its totals, from plain values (`TrainingCalendarView`, the read-only view of someone else).
+/// 训练历史: the month grid, each trained day dotted by intensity, and its totals; tap a day → its detail. From plain
+/// values (记录 → 训练历史, the read-only view of someone else).
 struct TrainingMonthCard: View {
   let month: String
   let calendar: TrainingMonth?
@@ -70,12 +52,12 @@ struct TrainingMonthCard: View {
     let byDate = Dictionary(days.map { ($0.date, $0) }, uniquingKeysWith: { a, _ in a })
     let first = "\(month)-01"
     let lead = RecordDay.weekday(first) - 1
-    let count = TrainingCalendarView.daysIn(month)
+    let count = RecordDay.daysIn(month)
     let cells: [String?] = Array(repeating: nil, count: lead) + (0..<count).map { RecordDay.add(first, $0) }
     return VStack(spacing: 6) {
       HStack(spacing: 0) {
         ForEach(1...7, id: \.self) { wd in
-          Text(TrainingSection.weekdayName(wd)).font(.system(size: 11, weight: .medium)).foregroundColor(Palette.text3).frame(maxWidth: .infinity)
+          Text(RecordDay.weekdayName(wd)).font(.system(size: 11, weight: .medium)).foregroundColor(Palette.text3).frame(maxWidth: .infinity)
         }
       }
       LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 6) {
