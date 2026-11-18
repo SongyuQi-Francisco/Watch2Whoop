@@ -1,6 +1,8 @@
 # iOS 原生 1.0.9：只能在真机上验证的项目（#340 N9）
 
-> 给负责人和 TestFlight 内测组。模拟器回归见 [`ios-native-1.0.9-regression.md`](ios-native-1.0.9-regression.md)；模拟器做不到的（真的手表、后台调度、相机、麦克风、推送、120Hz、耗电、从 TestFlight 覆盖升级）都在这里。
+> **已归档（2026-11-19）**：1.0.9 从未发布，内容并入 2.0.0。2.x 的真机清单见 [`../ios-native-2.0-device-checklist.md`](../ios-native-2.0-device-checklist.md)。下面的相对链接指向 `docs/` 里的文件，在归档位置要加 `../`。
+
+> 给负责人和 TestFlight 内测组。模拟器回归见 [`ios-native-1.0.9-regression.md`](../ios-native-1.0.9-regression.md)；模拟器做不到的（真的手表、后台调度、相机、麦克风、推送、120Hz、耗电、从 TestFlight 覆盖升级）都在这里。
 > 每项写「步骤 → 预期」。不对的地方截图，在 #340 回复：哪一项、手机型号、iOS 版本、大概几点。截图里不要露出别人的数据。
 > 「中控」那一列的检查要用服务器的命令，只有部署者能做。
 

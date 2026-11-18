@@ -1,5 +1,11 @@
 # Client apps: platforms, layout and releases
 
+> **Status (2026-11-19): development is iOS native only** — [`apps/ios/`](../apps/ios/README.md) (SwiftUI, with the embedded
+> Apple Watch app). The Flutter app (`apps/watch2whoop/`) is historical and unmaintained; Android and HarmonyOS are not
+> planned. Sections 1–3 below are the earlier multi-platform plan (Flutter, WebView, Android, HarmonyOS, the rename to
+> `apps/flutter`) and are kept as history: do not follow them. **Section 4 (versioning and releases) still applies** to
+> `apps/ios` (tags `app-ios-v*`, `apps/ios/CHANGELOG.md`).
+
 [English](#english) · [中文摘要](#中文摘要)
 
 ---
