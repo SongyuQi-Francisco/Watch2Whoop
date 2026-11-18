@@ -62,6 +62,7 @@ Rules of the iPhone app's screens (2.1.0, `docs/design/2.0.1/drilldown/README.md
    context menu) may repeat a visible door, never be the only one.
 3. **A number opens its own depth, in its own tab.** Only a face that names another tab's subject (饮食, 圈子) switches tabs.
 4. **The inventory is part of the change.** A PR that adds, moves or removes a screen updates `apps/ios/reachability.json`.
+5. **Dials and rings**: the digits sit on the axis and the unit hangs outside without shifting them (not checked by a test).
 
 `Watch2WhoopTests/ReachabilityTests.swift` enforces them: every `View` is built somewhere, every destination case is opened
 outside `#if DEBUG` and has an inventory entry with a tap door within two taps, no tab root has a spacer above the limit, and
