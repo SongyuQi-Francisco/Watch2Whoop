@@ -27,7 +27,7 @@ tags it and the workflow publishes this section as the release notes. The Flutte
 - 训练有计时了：打勾第一组开始计时，训练页和「记录 → 训练」的组数环里都显示已练时间；离线打勾的开始时间会随补交一起带上。 / Training now has a timer: it starts with the first ticked set and shows on the session page and under the set ring of Log → Training; a set ticked offline keeps its start time when it is sent later.
 - 肌肉负荷可以切「本周 | 4 周」，4 周按 4 周的推荐区间着色；动作库显示总数，可以收藏动作、只看收藏。 / Muscle load switches between "Week | 4 wk", four weeks coloured against the four-week range; the library shows how many exercises it has, and exercises can be starred and filtered to the starred ones.
 - 训练历史卡片显示当天的心率区间条和练到的肌肉；「身体」的周报面按训练记录数训练天数。 / Training history cards show the day's heart-rate zones and the muscles worked; the Weekly face of Body counts training days from the training log.
-- 「我」：用托底 AI 时显示本月「已用 ¥ / 额度 ¥」；「共享」显示有几个人能看你的数据和他们的头像，点开看完整名单（共享给我的仍在下面一行）；消息和圈子动态显示未读来自谁。 / Me: on the fallback AI the AI face shows this month's money spent of the allowance; Sharing shows how many people can see your data with their faces, a tap opens the full list (Shared with me stays a row below); Messages and the circle feed show who the unread are from.
+- 「我」：用托底 AI 时显示本月额度已用的百分比（不显示金额）；「共享」显示有几个人能看你的数据和他们的头像，点开看完整名单（共享给我的仍在下面一行）；消息和圈子动态显示未读来自谁。 / Me: on the fallback AI the AI face shows the share of this month's allowance used (a percentage, no money); Sharing shows how many people can see your data with their faces, a tap opens the full list (Shared with me stays a row below); Messages and the circle feed show who the unread are from.
 
 ## 2.0.0
 

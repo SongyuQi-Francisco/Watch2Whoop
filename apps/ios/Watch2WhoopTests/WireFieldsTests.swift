@@ -2,7 +2,7 @@ import XCTest
 @testable import Watch2Whoop
 
 /// 2.1.0: the fields PR #452 added to the server, as the app reads and draws them (timer, 4-week muscle load, library
-/// count and stars, history cards, weekly training days, the AI money, who can see me, unread faces). Every name and
+/// count and stars, history cards, weekly training days, the AI allowance used, who can see me, unread faces). Every name and
 /// number is made up; a field an older server lacks must leave the old empty state.
 final class WireFieldsTests: XCTestCase {
   override func setUp() {
@@ -219,20 +219,28 @@ final class WireFieldsTests: XCTestCase {
       {"options": [{"key": "fallback", "label": "Jarvis", "current": true, "spent_cny": 1.2, "quota_cny": 3.0}]}
       """.utf8))
     let f = try XCTUnwrap(MeAIFace.of(choice: choice, list: nil))
-    XCTAssertEqual(f.spentCny, 1.2)
-    XCTAssertEqual(f.quotaCny, 3)
-    XCTAssertEqual(MeAIFace.money(1.2), "¥1.2")
-    XCTAssertEqual(MeAIFace.money(3), "¥3")
+    XCTAssertEqual(f.usedPct, 40)
     XCTAssertFalse(f.low)
     let list = try JSONDecoder().decode(AIProviderList.self, from: Data("""
       {"providers": [], "fallback": {"remaining_pct": 10, "spent_cny": 2.7, "quota_cny": 3}}
       """.utf8))
     let old = try JSONDecoder().decode(AIChoice.self, from: Data(#"{"options": [{"key": "fallback", "label": "Jarvis", "current": true}]}"#.utf8))
     let g = try XCTUnwrap(MeAIFace.of(choice: old, list: list))
-    XCTAssertEqual(g.spentCny, 2.7)
+    XCTAssertEqual(g.usedPct, 90)
     XCTAssertTrue(g.low)
     let none = try XCTUnwrap(MeAIFace.of(choice: old, list: nil))
-    XCTAssertNil(none.spentCny)
+    XCTAssertNil(none.usedPct)
+  }
+
+  func testAIUsedPercentRoundsAndCaps() {
+    XCTAssertEqual(MeAIFace.usedPct(spent: 1.2, quota: 3), 40)
+    XCTAssertEqual(MeAIFace.usedPct(spent: 0.01, quota: 3), 0)
+    XCTAssertEqual(MeAIFace.usedPct(spent: 2.99, quota: 3), 100)
+    XCTAssertEqual(MeAIFace.usedPct(spent: 4.5, quota: 3), 100)
+    XCTAssertEqual(MeAIFace.usedPct(spent: -1, quota: 3), 0)
+    XCTAssertNil(MeAIFace.usedPct(spent: 1, quota: 0))
+    XCTAssertNil(MeAIFace.usedPct(spent: nil, quota: 3))
+    XCTAssertNil(MeAIFace.usedPct(spent: 1, quota: nil))
   }
 
   // MARK: - 7 / 8. faces
