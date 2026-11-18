@@ -6,6 +6,9 @@
 - The code is 12 characters, alphabet without the easily confused 0 O 1 I (about 60 bits), so brute force is not realistic; any redemption failure is a 401 without saying why.
 - Issue a code: `body-engine login-code --user-id N [--label 妈妈的iPhone] [--hours 72] [--scopes read,write]`,
   or deploy/open-wearables/invite.py --body-user-id N (generates the "setup info" together with the OW invite code).
+- `purpose`: every code here is a sign-in code ('login'). A watch code ('watch', account/watch.py) lives in the same table
+  but only POST /v1/web/login-code with client=watch takes it, and it only ever gives the narrow watch token: every
+  sign-in path (redeem_token here, an existing account's code in account/api.py) only takes 'login' codes.
 """
 import hashlib
 import secrets
@@ -20,6 +23,7 @@ LENGTH = 12
 DEFAULT_HOURS = 72
 MAX_HOURS = 24 * 90   # 90 days: the App Review demo needs a code that lasts a whole TestFlight build; normal packs still default to 7 days
 ALLOWED_SCOPES = {"read", "write"}
+PURPOSE_LOGIN, PURPOSE_WATCH = "login", "watch"   # web_login_codes.purpose (migration 1190)
 
 
 def normalize(code: str) -> str:
@@ -31,8 +35,12 @@ def _sha(code: str) -> str:
 
 
 def create(conn: psycopg.Connection, user_id: int, label: str | None = None, hours: int = DEFAULT_HOURS,
-           scopes: list[str] | None = None, minutes: int | None = None) -> str:
-    """Issue a one-time login code and return the plaintext (shown only this once). `minutes` replaces `hours` for a short-lived code."""
+           scopes: list[str] | None = None, minutes: int | None = None, purpose: str = PURPOSE_LOGIN,
+           parent_token_id: int | None = None) -> str:
+    """Issue a one-time login code and return the plaintext (shown only this once). `minutes` replaces `hours` for a short-lived code.
+    purpose / parent_token_id: a watch code (account/watch.py) and the phone token that asked for it."""
+    if purpose not in (PURPOSE_LOGIN, PURPOSE_WATCH):   # a programming error, never shown to a user
+        raise ValueError(f"unknown login code purpose {purpose!r}")
     scopes = scopes or ["read", "write"]
     if not set(scopes) <= ALLOWED_SCOPES:
         raise ValueError(f"scopes 只能是 {sorted(ALLOWED_SCOPES)}")
@@ -43,9 +51,10 @@ def create(conn: psycopg.Connection, user_id: int, label: str | None = None, hou
     if conn.execute("SELECT 1 FROM users WHERE id = %s", (user_id,)).fetchone() is None:
         raise ValueError(f"没有用户 {user_id}")
     code = "".join(secrets.choice(ALPHABET) for _ in range(LENGTH))
-    conn.execute("""INSERT INTO web_login_codes (user_id, code_sha256, scopes, label, expires_at)
-                    VALUES (%s, %s, %s, %s, now() + make_interval(mins => %s))""",
-                 (user_id, _sha(code), scopes, (label or "")[:60] or None, hours * 60 if minutes is None else minutes))
+    conn.execute("""INSERT INTO web_login_codes (user_id, code_sha256, scopes, label, expires_at, purpose, parent_token_id)
+                    VALUES (%s, %s, %s, %s, now() + make_interval(mins => %s), %s, %s)""",
+                 (user_id, _sha(code), scopes, (label or "")[:60] or None, hours * 60 if minutes is None else minutes,
+                  purpose, parent_token_id))
     return code
 
 
@@ -62,8 +71,8 @@ def redeem_token(conn: psycopg.Connection, code: str) -> str | None:
         return None
     row = conn.execute(
         """UPDATE web_login_codes SET used_at = now()
-           WHERE code_sha256 = %s AND used_at IS NULL AND expires_at > now()
-           RETURNING id, user_id, scopes, label""", (_sha(code),)).fetchone()
+           WHERE code_sha256 = %s AND used_at IS NULL AND expires_at > now() AND purpose = %s
+           RETURNING id, user_id, scopes, label""", (_sha(code), PURPOSE_LOGIN)).fetchone()
     if row is None:
         return None
     token = auth.create_token(conn, row["user_id"], f"app:{row['label'] or 'login-code'}", list(row["scopes"]))

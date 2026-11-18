@@ -684,7 +684,8 @@ def test_asr_transcribe_and_limits(client, world, dsn, asr_on, monkeypatch):
     assert len(asr_on) == 1  # invalid audio never reaches the recogniser
     with db(dsn) as c:
         row = c.execute("SELECT * FROM asr_usage WHERE user_id = %s", (ids["F2"],)).fetchone()
-        assert row["ok"] and row["audio_ms"] == 2000 and set(row) == {"id", "user_id", "at", "audio_ms", "proc_ms", "ok", "error"}
+        assert row["ok"] and row["audio_ms"] == 2000 and row["client"] is None   # the phone / the page (watch: 'watch')
+        assert set(row) == {"id", "user_id", "at", "audio_ms", "proc_ms", "ok", "error", "client"}   # no audio, no text
     # Limits with "now" frozen at Sydney 00:30: a full day's recognitions at 00:10, then a full minute's at 00:29:50
     monkeypatch.setattr(asr, "_now", lambda: SYDNEY_00_30)
     with db(dsn) as c:

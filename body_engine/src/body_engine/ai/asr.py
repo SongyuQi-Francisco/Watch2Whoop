@@ -7,6 +7,11 @@ we check it and pass it to the local speech recognition container (deploy/asr/, 
   Each recognition is one row in asr_usage (duration and timing only, no audio, no text).
 - Works for everyone with in-page chat (own API provider or the fallback AI); without BODY_ASR_URL it is off and the page
   falls back to the keyboard's dictation.
+- The Apple Watch (ai/watch.py, its own device token) uses the same endpoint and the same limits: they count per person,
+  so the phone and the watch share one daily allowance; asr_usage.client = 'watch' marks its rows.
+- Accepted audio (check_wav): RIFF/WAVE, 16-bit integer PCM, one channel, 8–48 kHz, MIN_SECONDS–MAX_SECONDS, at most
+  MAX_BYTES. A WAVE_FORMAT_EXTENSIBLE header (what AVAudioRecorder / AVAudioFile may write) and extra chunks (LIST, FLLR,
+  JUNK) are fine; float samples, stereo, AAC / m4a / CAF are refused as bad_audio.
 """
 import io
 import json
@@ -111,7 +116,8 @@ def _post(data: bytes) -> dict:
                                     "Voice input is unavailable right now; use the keyboard's dictation"), 503)
 
 
-def transcribe(conn: psycopg.Connection, user_id: int, data: bytes) -> dict:
+def transcribe(conn: psycopg.Connection, user_id: int, data: bytes, client: str | None = None) -> dict:
+    """client: 'watch' when the Apple Watch sent it (asr_usage.client; counted in the same per-person limits)."""
     if not enabled():
         raise AsrError("asr_off", L("这台服务器没有开通语音识别，可以用键盘上的听写",
                                   "This server has no voice input; use the keyboard's dictation"), 503)
@@ -126,8 +132,8 @@ def transcribe(conn: psycopg.Connection, user_id: int, data: bytes) -> dict:
         err = e.code
         raise
     finally:  # counted even when it failed (a failing request still used the CPU / the quota)
-        conn.execute("INSERT INTO asr_usage (user_id, audio_ms, proc_ms, ok, error) VALUES (%s, %s, %s, %s, %s)",
-                     (user_id, round(seconds * 1000), round((time.monotonic() - t0) * 1000), ok, err))
+        conn.execute("INSERT INTO asr_usage (user_id, audio_ms, proc_ms, ok, error, client) VALUES (%s, %s, %s, %s, %s, %s)",
+                     (user_id, round(seconds * 1000), round((time.monotonic() - t0) * 1000), ok, err, client))
         conn.commit()
     text = (res.get("text") or "").strip()
     return {"text": text, "seconds": round(seconds, 1), "used_today": usage_today(conn, user_id), "per_day": ASR_PER_DAY}

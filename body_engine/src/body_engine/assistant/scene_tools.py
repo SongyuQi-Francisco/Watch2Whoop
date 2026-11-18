@@ -10,7 +10,8 @@ from . import scenes
 
 def _is_fallback(a: dict) -> bool:
     from ..ai import fallback   # ai.fallback imports the tool registry
-    return a.get("_channel") == f"api:{fallback.KIND}"   # the in-page chat's channel (ai/chat._exec)
+    # the in-page chat's channel (ai/chat._exec): api:<kind>, or api:<kind>:watch from the Apple Watch (ai/watch.py)
+    return (a.get("_channel") or "").split(":")[:2] == ["api", fallback.KIND]
 
 
 def _playbook(conn, uid: int, a: dict) -> dict:
