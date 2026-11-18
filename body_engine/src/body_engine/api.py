@@ -9,7 +9,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from starlette.routing import Route
 
-from . import auth, errors_en, obs, plugins, queries
+from . import auth, errors_en, memtrim, obs, plugins, queries
 from .i18n import LangMiddleware, is_en
 from .account import api as account_api
 from .client import policy as upgrade_policy
@@ -71,7 +71,8 @@ async def lifespan(app: FastAPI):
     pool = ConnectionPool(settings.dsn, kwargs={"row_factory": dict_row}, min_size=1, max_size=10, open=True)
     # remote MCP session manager (/mcp); jobs of BODY_PLUGIN_DIR plugins; new OW uploads -> scores within minutes (sync/ow_watch.py)
     # silent pushes to the native app when a user's data changed (notify/silent.py; nothing without APNs)
-    async with mcp_app.lifespan(), plugins.scheduler(), ow_watch.watcher(), notify_silent.watcher():
+    # memory glibc keeps after a big request goes back to the system every minute (memtrim.py, docs/api-memory.md)
+    async with mcp_app.lifespan(), plugins.scheduler(), ow_watch.watcher(), notify_silent.watcher(), memtrim.trimmer():
         yield
     pool.close()
 

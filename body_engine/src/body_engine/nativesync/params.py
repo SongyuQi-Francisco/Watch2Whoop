@@ -24,6 +24,7 @@ RAW_CELLULAR_DAYS = 90
 APP_RAW_DAYS = 60
 SEGMENT_DAYS = APP_RAW_DAYS + 2   # the sleep stream carries the server's stage segments of these recent nights
 HIST_MAX_DAYS = 430               # GET /v1/sync/scoring?hist_from=&hist_to=: one request covers the HRmax window and a bit
+HIST_CHUNK_DAYS = 31              # ... loaded a month at a time (memory follows the chunk, not the 430 days)
 MUSCLE_MAX_DAYS = 120             # ... &from=&to=: the muscle load of the days the phone recomputes
 
 # ---------------------------------------------------------------- the phone's full history (stream raw_history, history.py)
@@ -63,6 +64,7 @@ SCORE_INPUT_KINDS = ("workout", "strength")
 # and at most every CHECK_EVERY_HOURS otherwise (a recompute loads the user's history: seconds, not milliseconds).
 CHECK_EVERY_HOURS = 6
 CHECK_WITHIN_DAYS = 14            # only recent days are checked (the ones that are shown)
+CHECK_MAX_ATTEMPTS = 3            # a queued check whose job died this often is dropped (the server keeps its rows)
 # field -> largest difference that still counts as equal. The JS bundle matches Python to ~1e-13 before rounding
 # (packages/openbodyscore-js/README.md); these only absorb the last rounding step of each stored value.
 CHECK_TOLERANCE: dict[str, float] = {

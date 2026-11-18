@@ -251,6 +251,11 @@ def process_user(u: dict, steps: tuple, full: bool, skip: bool, max_age_hours: f
         fp = fingerprint(conn, uid, today)
         fp_extras = fingerprint(conn, uid, today, extras=True)
         if "compute-scores" in steps:
+            # an app score upload still waiting for its spot check (nativesync/appscores.py; normally the per-minute
+            # sync-refresh-run took it already): not in the fingerprint, so before the skip decision of the step below
+            from .nativesync import appscores
+            if (checked := appscores.run_pending_safe(conn, uid)) is not None:
+                lines.append(f"· user {uid} app 分数抽查（排队的）：{json.dumps(checked, default=str, ensure_ascii=False)[:300]}")
             if full:
                 step(f"compute-scores user {uid}（完整）", "compute-scores",
                      lambda: _step_compute_scores(conn, client, u, None), fp)

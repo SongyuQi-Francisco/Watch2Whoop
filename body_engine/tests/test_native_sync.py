@@ -431,8 +431,10 @@ def app_row(**kw):
 
 
 def test_app_scores_check_store_and_plan(client, users, dsn, monkeypatch):
+    from body_engine.sync import refresh
     ids, tok = users
     uid = ids["b"]
+    monkeypatch.setattr(refresh, "SCORES_INLINE", True)   # the check in the request (BODY_SYNC_SCORES=inline); queued: below
     today = datetime.now().date()
     d1, d2 = today - timedelta(days=2), today - timedelta(days=1)
     calls = []
@@ -494,6 +496,118 @@ def test_app_scores_check_store_and_plan(client, users, dsn, monkeypatch):
         from body_engine.scores import store as scores_store
         got = scores_store.scores(c, uid, d2, d2)
         assert got and (got[0]["recovery"] if isinstance(got, list) else got["days"][0]["recovery"]) == 60
+
+
+def test_app_scores_check_is_queued_out_of_the_api(client, users, dsn, monkeypatch):
+    """By default the spot check (a recompute over the user's whole raw history) never runs in the API process: the
+    upload parks its rows and the per-minute job checks and stores them (docs/api-memory.md)."""
+    from body_engine.sync import refresh
+    _, tok = users
+    with conn_of(dsn) as c:
+        uid = c.execute("""INSERT INTO users (display_name, role, timezone, consent_at, consent_version)
+                           VALUES ('q', 'member', %s, now(), '2026-10-22.2') RETURNING id""", (TZ,)).fetchone()["id"]
+        flags.cohort_add(c, uid, "native", actor="test")
+        token = auth.create_token(c, uid, "app", ["read", "write"])
+        c.commit()
+    flags.invalidate()
+    assert refresh.SCORES_INLINE is False
+    today = datetime.now(ZoneInfo(TZ)).date()
+    d0, d1, d2 = today - timedelta(days=3), today - timedelta(days=2), today - timedelta(days=1)
+    calls, server = [], {"recovery": 60}
+
+    def fake_server(conn, u, days, end=None):
+        calls.append(days)
+        return {d: {**{c: None for c in appscores.E.COLUMNS}, "date": d, **app_row(**server), "algo_version": SP.ALGO_VERSION}
+                for d in days}
+    monkeypatch.setattr(appscores, "server_rows", fake_server)
+    up = lambda body: client.put("/v1/users/me/scores/app", json=body, headers=H(token)).json()   # noqa: E731
+    row = lambda d, **kw: {"date": d.isoformat(), "row": app_row(**kw)}   # noqa: E731
+    body = {"algo_version": SP.ALGO_VERSION, "bundle_version": "0.2.0", "days": [row(d1), row(d2)]}
+    # first upload of a bundle: nothing recomputed or stored in the request, the check is queued for the job
+    first = up(body)
+    assert first["status"] == "ok" and first["stored"] == 0 and first["check"] == {"date": d2.isoformat(), "queued": True}
+    assert calls == [] and first["app_scoring"] is False
+    # an upload before the job ran joins the waiting one (the newest row of a day wins); still nothing computed
+    more = up({**body, "days": [row(d0), row(d1, recovery=61)]})
+    assert more["check"] == {"date": d2.isoformat(), "queued": True} and calls == []
+    with conn_of(dsn) as c:
+        p = c.execute("SELECT check_date, rows FROM app_score_pending WHERE user_id = %s", (uid,)).fetchone()
+        assert p["check_date"] == d2 and sorted(p["rows"]) == [d0.isoformat(), d1.isoformat(), d2.isoformat()]
+        assert p["rows"][d1.isoformat()]["recovery"] == 61
+        assert c.execute("SELECT count(*) AS n FROM daily_scores WHERE user_id = %s", (uid,)).fetchone()["n"] == 0
+        assert c.execute("SELECT status FROM sync_refresh WHERE user_id = %s", (uid,)).fetchone()["status"] == "scores_queued"
+        # the per-minute job (sync-refresh-run): check, then store all three days as the app's; the log has no values
+        out = refresh.run_queued(c, uid, scorer=lambda conn, u, client, start: {"rows": 0})
+        assert calls == [[d2]]
+        assert out[0]["app_score_check"] == {"status": "ok", "stored": 3, "date": d2.isoformat(), "ok": True, "fields": []}
+        got = c.execute("SELECT date, origin, recovery FROM daily_scores WHERE user_id = %s ORDER BY date", (uid,)).fetchall()
+        assert [(r["date"], r["origin"], r["recovery"]) for r in got] == [(d0, "app", 60), (d1, "app", 61), (d2, "app", 60)]
+        assert c.execute("SELECT count(*) AS n FROM app_score_pending WHERE user_id = %s", (uid,)).fetchone()["n"] == 0
+        assert appscores.active(c, uid) and appscores.run_pending_safe(c, uid) is None
+    # the same bundle again within CHECK_EVERY_HOURS: stored directly, as before
+    again = up({**body, "days": [row(d2, recovery=62)]})
+    assert again["stored"] == 1 and again["check"] is None and len(calls) == 1
+    # a new bundle that disagrees with Python: the job keeps the server's row, the app is no longer trusted
+    server["recovery"] = 50
+    bad = up({**body, "bundle_version": "0.2.1", "days": [row(d1, recovery=90), row(d2, recovery=90)]})
+    assert bad["check"] == {"date": d2.isoformat(), "queued": True}
+    with conn_of(dsn) as c:
+        res = appscores.run_pending_safe(c, uid)
+        assert res == {"status": "mismatch", "stored": 0, "date": d2.isoformat(), "ok": False, "fields": ["recovery"]}
+        got = {r["date"]: (r["origin"], r["recovery"]) for r in
+               c.execute("SELECT date, origin, recovery FROM daily_scores WHERE user_id = %s", (uid,)).fetchall()}
+        assert got[d2] == ("server", 50) and got[d1] == ("app", 61), "nothing else of a failed upload is stored"
+        assert appscores.plan(c, uid) == {"mode": "server"}
+    # a check whose job keeps dying (e.g. at the job's memory limit) is dropped after CHECK_MAX_ATTEMPTS starts
+    up({**body, "bundle_version": "0.2.3"})
+    with conn_of(dsn) as c:
+        def dies(conn, u, days, end=None):
+            raise MemoryError
+        monkeypatch.setattr(appscores, "server_rows", dies)
+        for _ in range(P.CHECK_MAX_ATTEMPTS):
+            assert appscores.run_pending_safe(c, uid) == {"error": "MemoryError: "}
+        assert appscores.run_pending_safe(c, uid) == {"status": "gave_up", "stored": 0}
+        assert appscores.run_pending_safe(c, uid) is None
+        monkeypatch.setattr(appscores, "server_rows", fake_server)
+    # the server's algorithm changed while an upload waited: dropped, the app uploads again with the new version
+    up({**body, "bundle_version": "0.2.2"})
+    with conn_of(dsn) as c:
+        c.execute("UPDATE app_score_pending SET algo_version = 'v0-old' WHERE user_id = %s", (uid,))
+        c.commit()
+        assert appscores.run_pending_safe(c, uid) == {"status": "stale_algo", "stored": 0}
+        assert len(calls) == 2
+
+
+def test_hr_histograms_by_month_equal_one_window(users, dsn, monkeypatch):
+    """GET /v1/sync/scoring's 430-day histograms are loaded a month at a time (memory); the counts must not change."""
+    from body_engine.nativesync import scoring
+    from body_engine.rawdata import samples as rx_samples
+    ids, _ = users
+    uid = ids["a"]
+    tz = ZoneInfo(TZ)
+    start = date(2025, 3, 1)
+    with conn_of(dsn) as c:
+        for i in range(75):   # every day: around local midnight (both sides), noon, and one sample both sources carry
+            d = start + timedelta(days=i)
+            midnight = datetime(d.year, d.month, d.day, tzinfo=tz)
+            for k, t in enumerate((midnight - timedelta(minutes=1), midnight + timedelta(seconds=30), midnight + timedelta(hours=12))):
+                c.execute("""INSERT INTO export_samples (user_id, kind, start_at, end_at, value, source)
+                             VALUES (%s, 'hr', %s, %s, %s, 'Watch')""", (uid, t, t, 55 + (i + k) % 30))
+            dup = midnight + timedelta(hours=8)
+            c.execute("""INSERT INTO export_samples (user_id, kind, start_at, end_at, value, source)
+                         VALUES (%s, 'hr', %s, %s, 70, 'Watch')""", (uid, dup, dup))
+            c.execute("""INSERT INTO hk_samples (user_id, hk_uuid, type, start_at, end_at, local_date, value, source)
+                         VALUES (%s, gen_random_uuid(), 'HKQuantityTypeIdentifierHeartRate', %s, %s, %s, 90, 'Watch')""",
+                      (uid, dup, dup, d))   # the live copy wins over export.xml's
+        c.commit()
+        monkeypatch.setattr(rx_samples, "reads_app", lambda conn, user_id: True)
+        lo, hi = start + timedelta(days=1), start + timedelta(days=72)
+        monkeypatch.setattr(P, "HIST_CHUNK_DAYS", 1000)
+        whole = scoring.hr_histograms(c, uid, tz, lo, hi, "sdnn")
+        for chunk in (31, 7, 1):
+            monkeypatch.setattr(P, "HIST_CHUNK_DAYS", chunk)
+            assert scoring.hr_histograms(c, uid, tz, lo, hi, "sdnn") == whole
+    assert len(whole) == 72 and all(sum(day.values()) == 4 and day.get("90") == 1 for day in whole.values())
 
 
 def test_hourly_job_follows_the_plan(dsn, users, monkeypatch):

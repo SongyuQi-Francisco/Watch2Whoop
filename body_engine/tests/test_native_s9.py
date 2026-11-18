@@ -81,6 +81,8 @@ def server_agrees(monkeypatch):
     for mod in derived_kinds.kinds().values():
         monkeypatch.setattr(mod, "recompute", lambda conn, uid, day, uploaded: uploaded[day])
     monkeypatch.setattr(appscores, "server_rows", lambda conn, uid, days, end=None: {})
+    from body_engine.sync import refresh   # this test is not about where the score spot check runs: in the request
+    monkeypatch.setattr(refresh, "SCORES_INLINE", True)
 
 
 def H(tok):
