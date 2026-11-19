@@ -8,7 +8,7 @@
 ## Overview
 AI models keep getting better and keep being replaced; what makes an AI useful *to you* is context. This project is the part that stays: a structured, self-hosted record of your body (watch data, food, training, weight, labs, supplements, symptoms, journal, goals and the AI's own long-term notes) exposed to whatever AI you use through MCP or an API key. A new model reads the full context once and knows you; switching models loses nothing.
 
-Bring your own AI: Claude / ChatGPT / Codex / Gemini subscriptions through MCP, or an API key from Anthropic, OpenAI, Google, DeepSeek, Qwen, any OpenAI-compatible endpoint or a local Ollama. Family-ready (one server, an account per person, opt-in sharing), private by default, built on open source (Open Wearables, PostgreSQL, FastAPI, Flutter).
+Bring your own AI: Claude / ChatGPT / Codex / Gemini subscriptions through MCP, or an API key from Anthropic, OpenAI, Google, DeepSeek, Qwen, any OpenAI-compatible endpoint or a local Ollama. Family-ready (one server, an account per person, opt-in sharing), private by default, built on open source (PostgreSQL, FastAPI, SwiftUI).
 
 <p align="center"><img src="images/readme/tour.gif" alt="Tour: today, trends, charts, sleep, profile" width="300"></p>
 
@@ -42,23 +42,23 @@ Bring your own AI: Claude / ChatGPT / Codex / Gemini subscriptions through MCP, 
 | Strength load | Logged sets × reps × weight | 🟡 |
 | ECG interpretation, blood pressure, smart alarm, haptics | Not possible with HealthKit data / without a watch app | ❌ |
 
-**One place to look, one AI to talk to:** the Today page (PWA, also embedded in the iOS app) shows everything; recording happens in your AI conversation. Open-source back ends run behind it.
+**One place to look, one AI to talk to:** the native iOS app (`apps/ios/`) shows everything; recording happens in your AI conversation. The web Today page still exists but is frozen. Open-source back ends run behind it.
 
 ### Architecture
 ```
  iPhone + Apple Watch                    Your server (Mac mini / Linux VPS), reachable only via Tailscale
  ┌──────────────────────┐   HTTPS   ┌──────────────────────────────────────────────────────────────┐
- │ iOS app (this repo)   │─────────▶│ Open Wearables      raw wearable data (HealthKit, Garmin, …)  │
- │  · HealthKit sync     │          │ Body Engine         scores, insights, records, rules, AI tools│
- │  · Today page inside  │◀─────────│   FastAPI + PostgreSQL, Today page (PWA), MCP endpoint        │
- │ (or iOS Shortcuts)    │          │ SparkyFitness       food diary, recipes, strength logs        │
+ │ iOS app (apps/ios)    │─────────▶│ Body Engine         scores, insights, records, rules, AI tools│
+ │  · own HealthKit sync │          │   FastAPI + PostgreSQL, MCP endpoint                          │
+ │  · scores on the phone│◀─────────│ Open Wearables      legacy sync path, being retired           │
+ │ (+ Apple Watch app)   │          │ SparkyFitness       legacy food diary, optional, retiring     │
  └──────────────────────┘          │ Grafana (optional)  long-term charts for the owner            │
  AI client (Claude / Codex / …) ──MCP─▶ Body Engine tools                                           │
                                     └──────────────────────────────────────────────────────────────┘
 ```
-- **One source of truth per data type:** raw wearable samples live in Open Wearables; food, strength and weight logs and everything derived or personal (scores, journal, labs, memory) in Body Engine. SparkyFitness held the logs before #252 and is now optional ([own-food-weight-storage.md](own-food-weight-storage.md)).
+- **One source of truth per data type:** the raw samples the app uploads, food, strength and weight logs and everything derived or personal (scores, journal, labs, memory) live in Body Engine; Open Wearables only holds the older, legacy copy of wearable samples. SparkyFitness held the logs before #252 and is now optional ([own-food-weight-storage.md](own-food-weight-storage.md)).
 - **Private by default:** services bind to `127.0.0.1` and are exposed only inside your Tailscale tailnet; nothing is opened to the public internet. An example Tailscale ACL isolates the server from your other devices.
-- **Built on open source:** [Open Wearables](https://github.com/the-momentum/open-wearables) (MIT), [Grafana](https://github.com/grafana/grafana).
+- **Built on open source:** [Grafana](https://github.com/grafana/grafana) (optional); [Open Wearables](https://github.com/the-momentum/open-wearables) (MIT) for the legacy sync path.
 
 ## Self-hosting
 The Quick Start is a demo. For your own data, deploy each service with its production setup (pinned images, Tailscale-only access, backups, scheduled jobs):
@@ -66,21 +66,21 @@ The Quick Start is a demo. For your own data, deploy each service with its produ
 2. Services: Body Engine (`docker compose up -d`), [Open Wearables](../deploy/open-wearables/README.md), optionally [Grafana](../deploy/grafana/README.md). SparkyFitness is not needed: turn on `own_food_only` for everyone (`body-engine flags set own_food_only --state all`) and the food / weight / workout logs live in Body Engine. Only an older deployment that still has data in SparkyFitness runs [it](../deploy/sparkyfitness/README.md) until the migration in [own-food-weight-storage.md](own-food-weight-storage.md) §13 is done.
 3. Your user and token: `cd body_engine && uv run body-engine user-add …` then `token-create` ([Body Engine README](../body_engine/README.md)).
 4. Expose the Today page inside your tailnet with `tailscale serve`, open it on your phone.
-5. Connect data: the [iOS app](../apps/watch2whoop/README.md), or the [iOS Shortcut](../shortcuts/README.md); optionally import your Apple Health history (`export.zip`) from the Today page.
-6. Scheduling, encrypted backups and health checks: [`deploy/ops/`](../deploy/ops/README.md) (macOS LaunchAgents; a Linux / systemd guide is on the roadmap).
+5. Connect data: the [iOS app](../apps/ios/README.md) (its own HealthKit sync engine). The [iOS Shortcut](../shortcuts/README.md) is being retired; an Apple Health history (`export.zip`) is imported by an admin with `body-engine import-apple-zip` ([body_engine/README.md](../body_engine/README.md)).
+6. Scheduling, backups and health checks: [`deploy/ops/`](../deploy/ops/README.md) is Mac-era tooling (macOS LaunchAgents) and historical; the maintainers' production runs on one Linux server with its own backups and its deployment scripts are not published here. A Linux / systemd guide is on the roadmap.
 
 The production set-up of each service (ports, env vars, upgrades) is in its own README: [`body_engine/`](../body_engine/README.md), [`deploy/open-wearables/`](../deploy/open-wearables/README.md), [`deploy/sparkyfitness/`](../deploy/sparkyfitness/README.md), [`deploy/grafana/`](../deploy/grafana/README.md), [`deploy/ops/`](../deploy/ops/README.md), [Tailscale ACL example](../deploy/tailscale/policy.hujson).
 
 ## Design documents
 Most design documents were written in Chinese while the project was built; they are kept as the detailed record.
 English developer documentation lives next to the code: [`body_engine/README.md`](../body_engine/README.md) (API, CLI, scoring, Today page),
-[`deploy/*/README.md`](../deploy) (deployment of each service) and [`apps/watch2whoop/README.md`](../apps/watch2whoop/README.md) (iOS app).
+[`deploy/*/README.md`](../deploy) (deployment of each service) and [`apps/ios/README.md`](../apps/ios/README.md) (iOS app).
 
 | Document | Language | What it covers |
 |---|---|---|
 | [system-design.md](system-design.md) | Chinese | Architecture, data ownership per component, table design, scoring algorithms, rules engine, Today page, training history, iOS app (§0 product principles, §16 training, §17 iOS app) |
 | [oss-extraction-plan.md](oss-extraction-plan.md) | English | Open-source extraction: which pieces are split out (scoring library first, `packages/openbodyscore/`, Apache-2.0), licences, package / repository plan, release checklist |
-| [apps.md](apps.md) | English + Chinese summary | Client apps: platform matrix (iOS, Android, HarmonyOS), shared client contract, `apps/` layout, app versioning and release tags, CI path filters |
+| [apps.md](apps.md) | English + Chinese summary | Client apps. Since 2026-11-18 development is iOS native only: the platform matrix (Flutter, Android, HarmonyOS), client contract and layout are the earlier plan, kept as history; **section 4, app versioning and release tags, still applies**; CI path filters |
 | [ai-assistant-plan.md](ai-assistant-plan.md) | Chinese | The AI coach ("body butler"): tools, memory, multi-user / multi-provider AI access (§9) |
 | [datalayer-design.md](datalayer-design.md) | Chinese | MCP "personal data layer" framework (#116; phases 1–4 merged into `body_engine/src/body_engine/datalayer/`, with its own [English README](../body_engine/src/body_engine/datalayer/README.md), and `dl_app.py`; example `examples/reading-notes/`): the boundary between the generic layer (tool registry, per-user authorization hooks, audit and write log, tool groups, playbooks, MCP transports) and Watch2Whoop's health features, interfaces, phased migration, open-source checklist, risks |
 | [ai-feedback-plan.md](ai-feedback-plan.md) | Chinese | AI self-reported feedback (design, awaiting the deployer's choice): a versioned root rule layer every AI receives, the `report_feedback` tool with server-side sanitisation / dedupe / rate limits, delivery options (public issues, private triage queue, e-mail digest, Discussions) |
@@ -118,7 +118,7 @@ English developer documentation lives next to the code: [`body_engine/README.md`
 | [ios-native-plan.md](ios-native-plan.md) | Chinese + English summary | **App speed: local-first + native iOS** (#247, plan awaiting review): baseline measurements with added latency (requests, bytes, serial round trips per action, five slowest paths), phase 1 speed-ups without a rewrite (static caching, start-up bundle, prefetch, optimistic writes, page shell in the app), phase 2 local data layer (document sync, offline write queue, static bundles, sync engine hook-up), phase 3+ SwiftUI migration tab by tab with WebView fallback, release cadence, rollback, owner decisions |
 | [ui-ai-first-research.md](ui-ai-first-research.md) | Chinese (English summary) | How AI-driven health apps (WHOOP, Oura, Bevel, Athlytic, Gentler Streak, Welltory, Apple Health, Garmin, Fitbit + Gemini), AI-native apps (ChatGPT, Claude, Perplexity) and progressive-disclosure examples (Duolingo, Notion, Linear, Arc) design the home screen, the AI entry, onboarding and data layers; comparison table with what to borrow |
 | [ui-ai-first-redesign.md](ui-ai-first-redesign.md) | Chinese (English summary) | **AI-first UI with progressive unlocking** (#279, v0.4; visual style unchanged, structure and interaction only): AI as the main entry, five-slot navigation with Circles kept first-level, day 1 = body overview + focus question, 24 modules brought to Today by focus / findings in the data / AI interaction / the user (nothing locked), metric tiers and three-layer detail pages, display rules, server-driven layout shared with the SwiftUI plan, phases, owner decisions; clickable prototype in [`ui-ai-first/`](ui-ai-first/) |
-| [ios-native-app.md](ios-native-app.md) | Chinese + English summary | **Native iOS app (SwiftUI, `apps/ios/`, #340)**: the contract every page agent (N1–N9) builds on — modules, per-account GRDB schema and migration rules, sync layer (legacy pull now, N2 delta pull / push, offline queue and conflict rules), JavaScriptCore algorithm bundle calling convention and verification, server endpoints per page and the new ones N2 adds, Keychain migration from the Flutter app, page list, testing and release |
+| [ios-native-app.md](ios-native-app.md) | Chinese + English summary | **Native iOS app (SwiftUI, `apps/ios/`, #340)**: starts with a table translating the code names (2.0.1, N0–N9, M1–M6, 1.0.9); the contract every page agent (N1–N9) builds on — modules, per-account GRDB schema and migration rules, sync layer (legacy pull now, N2 delta pull / push, offline queue and conflict rules), JavaScriptCore algorithm bundle calling convention and verification, server endpoints per page and the new ones N2 adds, Keychain migration from the Flutter app, page list, testing and release |
 | [appstore/README.md](appstore/README.md) | Chinese | **App Store listing materials** for the native iOS app: zh-Hans / en-US store texts with a limit checker (`render_listing.py`), App Store Connect answers (category, age rating, App Privacy), App Review notes template, simulator screenshot pipeline (synthetic data), checklist of what waits on the owner |
 | [ios-native-2.0.md](ios-native-2.0.md) | English | **iOS 2.0.0 contract (S0)**: every own-data computation moves to the phone (inventory, work packages M1–M6 / R1 / R2 / S9 in waves, local tables and uploads, `algo_version`, shadow compare and tolerances, flags, forced upgrade, OW / Shortcut retirement; S9's per-package primary grants and the rollout runbook) |
 | [ios-native-2.0-device-checklist.md](ios-native-2.0-device-checklist.md) | English | Device checklist of 2.0.0 (collected by S9): every package's shadow / primary / offline checks on the owner's internal build, and the server-side checks once primary (jobs stop, fallbacks, kill switch) |

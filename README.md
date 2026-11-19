@@ -14,7 +14,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0"></a>
   <a href="../../releases"><img src="https://img.shields.io/badge/release-alpha-orange" alt="Releases"></a>
   <a href="#ai-and-mcp"><img src="https://img.shields.io/badge/MCP-remote%20%2B%20stdio-6e56cf" alt="MCP server"></a>
-  <a href="apps/watch2whoop/README.md"><img src="https://img.shields.io/badge/Apple%20Watch-iOS%20app-111111" alt="Apple Watch + iOS app"></a>
+  <a href="apps/ios/README.md"><img src="https://img.shields.io/badge/Apple%20Watch-iOS%20app-111111" alt="Apple Watch + iOS app"></a>
 </p>
 
 <p align="center">
@@ -23,12 +23,12 @@
   <a href="docs/tester-handbook.en.md">User handbook</a> ·
   <a href="#roadmap">Roadmap</a> ·
   <a href="../../releases">Releases</a> ·
-  <a href="apps/watch2whoop/CHANGELOG.md">Changelog</a> ·
+  <a href="apps/ios/CHANGELOG.md">Changelog</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
   <a href="README.zh-CN.md">简体中文</a>
 </p>
 
-<p align="center"><img src="docs/images/readme/hero.png" alt="Today, trends, sleep and profile screens with synthetic demo data" width="100%"></p>
+<p align="center"><img src="docs/images/readme/hero.png" alt="The web Today page (frozen): today, trends, sleep and profile screens with synthetic demo data" width="100%"></p>
 
 > [!IMPORTANT]
 > Not affiliated with WHOOP, Inc. or Apple Inc.; their names are trademarks, used only to say what this works with or resembles.
@@ -52,11 +52,11 @@ and `python3` ≥ 3.9.
 ```bash
 git clone https://github.com/SongyuQi-Francisco/Watch2Whoop.git
 cd Watch2Whoop
-./quickstart.sh                                         # prints a login link for the Today page
+./quickstart.sh                                         # prints a login link for the (frozen) web Today page
 ```
 
-It starts Body Engine and Open Wearables on `127.0.0.1` (SparkyFitness only with `--sparkyfitness`), imports the synthetic data through the real Apple
-Health importer and computes every score. Ports, options and `status / logs / down / reset`: [quickstart/README.md](quickstart/README.md).
+It starts Body Engine and Open Wearables (legacy) on `127.0.0.1` (SparkyFitness only with `--sparkyfitness`), imports the synthetic data through the real Apple
+Health importer and computes every score. To see it in the native iOS app, run the app in the simulator against this server ([apps/ios/README.md](apps/ios/README.md)). Ports, options and `status / logs / down / reset`: [quickstart/README.md](quickstart/README.md).
 There is no hosted demo.
 
 ## Features
@@ -78,7 +78,7 @@ The UI is in Chinese and English. Newer features ship behind feature flags that 
 (`body-engine flags list`, see [docs/rollout.md](docs/rollout.md)).
 
 <p align="center">
-  <img src="docs/images/readme/tour.gif" alt="Tour of the Today, trends, sleep and profile pages" width="260">
+  <img src="docs/images/readme/tour.gif" alt="Tour of the web Today page (frozen): today, trends, sleep and profile" width="260">
   &nbsp;
   <img src="docs/images/muscle-load/full-male-dark.png" alt="Muscle-load map for the week" width="260">
 </p>
@@ -100,68 +100,72 @@ Watch2Whoop is a **data layer for your AI**, not another chatbot. The AI is swap
 ## Getting your data in
 | Source | How |
 |---|---|
-| **iOS app** | Background HealthKit sync from iPhone + Apple Watch, with the Today page inside the app ([apps/watch2whoop](apps/watch2whoop/README.md), Flutter). Build it yourself; a TestFlight beta runs for invited testers |
-| **Apple Health export** | Upload `export.zip` from the Health app in the app (chunked, resumable) to import years of history; admins can also run `body-engine import-apple-zip` |
-| **Hevy** | Upload Hevy's workout CSV export; exercise names are matched to the exercise library and muscle load is recomputed |
-| **iOS Shortcut** | No app needed: a Shortcut uploads Health samples on a schedule ([shortcuts/](shortcuts/README.md), format spec [docs/shortcut-sync-spec.md](docs/shortcut-sync-spec.md)) |
+| **iOS app** | Background HealthKit sync from iPhone + Apple Watch with the app's own sync engine, straight to the server (`/v1/ingest/healthkit`; [apps/ios](apps/ios/README.md), SwiftUI). Recent history first, then a backfill; the sync center can re-sync a range or all history. Build it yourself; a TestFlight beta runs for invited testers |
+| **Apple Health export** | An admin imports `export.zip` from the Health app with `body-engine import-apple-zip --user-id N --file export.zip` (streams it, nothing is unpacked to disk). The server still has an upload endpoint for it (`POST /v1/users/{user}/history-import`), but no client offers it any more |
+| **Hevy** | Upload Hevy's workout CSV export in the iOS app (Me → import, feature flag `hevy_import`); exercise names are matched to the exercise library and muscle load is recomputed |
+| **iOS Shortcut** | Being retired, no longer maintained: a Shortcut uploaded Health samples on a schedule ([shortcuts/](shortcuts/README.md), format spec [docs/shortcut-sync-spec.md](docs/shortcut-sync-spec.md)). New setups should use the app |
+| **Open Wearables** | Legacy: older app versions (the Flutter app) synced through it, and the server still imports from it for existing accounts. Being retired ([#219](../../issues/219)) |
 | **Your AI** | Everything you tell it: meals, workouts, weight, labs, supplements, symptoms, journal |
 
 ## How it works
 ```mermaid
 flowchart LR
-  W["Apple Watch + iPhone<br/>(iOS app or Shortcut)"] --> OW["Open Wearables<br/>raw wearable data"]
-  W --> BE
-  OW --> BE["Body Engine<br/>FastAPI + PostgreSQL<br/>scores · food / strength / weight logs · rules"]
-  BE --> T["Today page<br/>(inside the iOS app)"]
+  W["Apple Watch + iPhone<br/>(iOS app: own HealthKit sync engine)"] --> BE["Body Engine<br/>FastAPI + PostgreSQL<br/>scores · food / strength / weight logs · rules"]
+  OW["Open Wearables<br/>legacy, being retired"] -.-> BE
+  BE <--> APP["iOS app<br/>(native; also runs the scoring<br/>algorithms on the phone)"]
   BE <-->|"MCP · API key"| AI["Your AI<br/>Claude · ChatGPT · Gemini · DeepSeek …"]
 ```
-Built on open source: [Open Wearables](https://github.com/the-momentum/open-wearables) for wearable sync,
-PostgreSQL, FastAPI, Flutter, and optionally [Grafana](https://github.com/grafana/grafana). Food, strength and weight
+Built on open source: PostgreSQL, FastAPI, SwiftUI and [GRDB](https://github.com/groue/GRDB.swift) (the iOS app), and optionally
+[Grafana](https://github.com/grafana/grafana). [Open Wearables](https://github.com/the-momentum/open-wearables), which synced older app versions, still
+runs for existing accounts and is being retired. Food, strength and weight
 logs live in Body Engine's own tables; [SparkyFitness](https://github.com/CodeWithCJ/SparkyFitness), which held them
-before, is optional and no longer needed (only to migrate an older deployment: [docs/own-food-weight-storage.md](docs/own-food-weight-storage.md)).
+before, is optional, no longer needed and being retired (only to migrate an older deployment: [docs/own-food-weight-storage.md](docs/own-food-weight-storage.md)).
 Services bind to `127.0.0.1` and are reached through Tailscale by default.
 
 **Self-hosting** on a Mac mini or a Linux VPS: [docs/README.md#self-hosting](docs/README.md#self-hosting) · Admin guide (Chinese): [docs/admin-guide.md](docs/admin-guide.md)
 
 ## Roadmap
-Planned work and discussions live in [issues](../../issues); app builds and notes in [releases](../../releases) and the [app changelog](apps/watch2whoop/CHANGELOG.md).
+Planned work and discussions live in [issues](../../issues); app builds and notes in [releases](../../releases) and the [app changelog](apps/ios/CHANGELOG.md).
 
 - [x] Apple Watch: recovery, strain, sleep, body age, stress, coaches, reports
 - [x] One-command local Quick Start with synthetic data
 - [x] Remote MCP + API-key chat for any AI, per-user AI isolation
 - [x] Training module v2: exercise library, splits, weekly plans, recovery-based adjustments ([design](docs/training-v2-plan.md))
-- [x] Hevy CSV import, Apple Health history import
+- [x] Hevy CSV import; Apple Health export import (admin command)
 - [x] Self-service sign-up with invite codes ([design](docs/self-signup-plan.md))
 - [x] Chinese and English UI (remaining gaps: [#64](../../issues/64))
 - [ ] *In progress*: friends page and circles ([design](docs/friends-social-plan.md))
-- [ ] *In progress*: own Apple Health sync engine to replace Open Wearables on iOS ([#219](../../issues/219))
+- [x] Native SwiftUI iOS app (2.0.0) with its own Apple Health sync engine ([#340](../../issues/340), [#219](../../issues/219))
+- [ ] *In progress*: iOS 2.1.0, a redesigned phone UI and the Apple Watch app
+- [ ] *In progress*: retiring Open Wearables, SparkyFitness and the Shortcut upload ([#219](../../issues/219))
 - [ ] RMSSD-based recovery ([#117](../../issues/117))
 - [ ] Coles / Woolworths prices and weekly specials: the sites block scraping and we do not work around that; prices come from the user's own receipts / shelf labels / AI, the opt-in `grocery-sync` component stays off, compliant sources are being surveyed ([#292](../../issues/292), [plan and terms analysis](docs/grocery-store-data-plan.md))
 - [ ] Publish the scoring library `openbodyscore`
 - [ ] One-command Linux VPS installer
-- [ ] **Other watches**: Garmin, Oura, Polar, Android Health Connect … (help wanted)
+- [ ] **Other watches**: Garmin, Oura, Polar … (help wanted; no new client apps for other platforms, see [CONTRIBUTING.md](CONTRIBUTING.md))
 
 ## Contributing
-Contributions are welcome. Every change is a pull request from your own branch or fork; CI must pass and a maintainer
-reviews. Read [CONTRIBUTING.md](CONTRIBUTING.md) first (new UI text is always bilingual, Chinese + English).
+Contributions are welcome. Every change is a pull request from your own branch or fork; the required CI checks must pass on an up-to-date branch,
+and the maintainer's review comment records what was verified. Read [CONTRIBUTING.md](CONTRIBUTING.md) first (new UI text is always bilingual, Chinese + English).
 
 Good places to start:
-- **Bring your watch** — Garmin, Oura, Polar or Health Connect data into the same scores ([roadmap](#roadmap)).
+- **Bring your watch** — Garmin, Oura or Polar data into the same scores ([roadmap](#roadmap)).
 - **Scoring** — review the [methodology](packages/openbodyscore/METHODOLOGY.md) and the [validation plan](docs/scoring-validation.md).
 - **Docs** — most design documents in [`docs/`](docs/README.md) are Chinese; English versions help a lot.
 - Issues labelled [`good first issue`](../../issues?q=is%3Aopen+label%3A%22good+first+issue%22) and [`help wanted`](../../issues?q=is%3Aopen+label%3A%22help+wanted%22).
 
-Try changes locally with `./quickstart.sh`; tests: `cd body_engine && uv run pytest`, `cd apps/watch2whoop && flutter test`.
+Try changes locally with `./quickstart.sh`; tests: `cd body_engine && uv run pytest`; the iOS app: [apps/ios/README.md](apps/ios/README.md).
 
 ## Repository
 | Path | What |
 |---|---|
-| [`body_engine/`](body_engine/README.md) | Server: scores, records, rules, AI tools, MCP, Today page |
-| [`apps/watch2whoop/`](apps/watch2whoop/README.md) | iOS app (Flutter) |
+| [`body_engine/`](body_engine/README.md) | Server: scores, records, rules, AI tools, MCP; also the frozen web Today page |
+| [`apps/ios/`](apps/ios/README.md) | The iOS app (SwiftUI; the Apple Watch app is embedded, 2.1.0 in progress): the only client in development |
+| [`apps/watch2whoop/`](apps/watch2whoop/README.md) | Historical Flutter version of the iOS app (up to 1.0.8), unmaintained |
 | [`packages/openbodyscore/`](packages/openbodyscore/README.md) | Standalone scoring library |
 | [`packages/openbodyscore-js/`](packages/openbodyscore-js/README.md) | The same algorithms as one JS file the iOS app runs locally (JavaScriptCore) |
 | [`examples/reading-notes/`](examples/reading-notes/README.md) | The server's MCP framework ([`datalayer`](body_engine/src/body_engine/datalayer/README.md)) on non-health data: reading notes on SQLite |
-| [`shortcuts/`](shortcuts/README.md) | iOS Shortcut sync (no app needed) |
+| [`shortcuts/`](shortcuts/README.md) | iOS Shortcut sync (being retired, not maintained) |
 | [`quickstart/`](quickstart/README.md) | One-command local demo |
 | `deploy/`, `assistant/` | Deployment, ops, AI coach workspace |
 | [`docs/`](docs/README.md) | Design documents (mostly Chinese) |
@@ -170,7 +174,7 @@ Try changes locally with `./quickstart.sh`; tests: `cd body_engine && uv run pyt
 | Part | Licence |
 |---|---|
 | Server and everything else | [AGPL-3.0](LICENSE) |
-| iOS app `apps/watch2whoop/` | [MIT](apps/watch2whoop/LICENSE) |
+| iOS app `apps/ios/` and the historical Flutter app `apps/watch2whoop/` | [MIT](apps/ios/LICENSE), [MIT](apps/watch2whoop/LICENSE) |
 | iOS Shortcut `shortcuts/` | [MIT](shortcuts/LICENSE) |
 | Scoring library `packages/openbodyscore/` | [Apache-2.0](packages/openbodyscore/LICENSE) |
 

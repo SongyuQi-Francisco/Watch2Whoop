@@ -4,6 +4,22 @@
 > 相关：#340（总纲）、#337（本地优先的决定）、#219（自建同步引擎，`apple-sync-engine.md`、`apple-sync-engine-app-contract.md`）、`ios-native-plan.md`（测量和分期）、`apps.md`（版本号和发版）。
 > 文中的数字都是示例，不是任何真人的数据。
 
+## 名字对照（代码和文档里的代号）
+
+Code names found in code comments and documents, in plain words. (A name that is not here and not defined in `main` is listed as such.)
+
+| Name | What it is |
+|---|---|
+| **2.0.0** | The first native SwiftUI release (TestFlight, build 11). It replaced the Flutter app (up to 1.0.8). |
+| **2.1.0** | The release in progress: the phone UI redesign plus the Apple Watch app. `Config/Watch2Whoop.xcconfig` still says 2.0.0 while it is in development; its notes are the `## 2.1.0` section of `apps/ios/CHANGELOG.md`. |
+| **2.0.1**, `docs/design/2.0.1/…`, "2.0.1 座舱" | The working number of the 2.1.0 redesign before it was renamed. The design folder `docs/design/2.0.1` (HTML mockups) is the design of release **2.1.0**; "座舱" is the Jarvis cockpit (the Jarvis key and the screens behind it). The folder is not in `main`. |
+| **N0–N9** | Work packages of the native migration (#340), the pages and layers of 2.0.0: N0 architecture and project skeleton, N1 algorithm bundle (JavaScriptCore), N2 sync layer and server endpoints (N2b: scoring on the phone), N3 Today, N4 Trends and reports, N5 Record / Food / health records, N6 Jarvis, N7 Circles, N8 Me / onboarding / sync center, N9 release regression and rollout. Section 9 lists N3–N8. |
+| **M1, M1c, M2–M6**, R1, R2, S9 | The 2.0.0 on-phone compute packages ([`ios-native-2.0.md`](ios-native-2.0.md) §4): M1 daily values and sleep, M1c workouts / TRIMP / zones / heart-rate recovery, M2 stress / resilience / body battery, M3 Trends series, M4 coaches / body age / health-monitor ranges / Today composition, M5 reports and journal analysis, M6 rules / nutrition targets / explain texts; R1 Open Wearables and Shortcut retirement, R2 forced upgrade, S9 the server stops computing for app-mode users. |
+| **M1–M5, T1–T10, J1–J4, S1–S7, D1–D2** in the watch app | A different "M": screen codes of the Apple Watch mockups (T training, M meal / voice and quick log, J a question to Jarvis, S sync states, D the home dial), see [`apps/ios/Watch2WhoopWatch/README.md`](../apps/ios/Watch2WhoopWatch/README.md). The mockups (`docs/design/watch/`) and the plan the README calls "plan 2.x" (`docs/watch-app-plan.md`) are not in `main`. No "M7" or "M8" is defined anywhere in `main`. |
+| **Watch phase 1 / 2a / 2b / 3** | The watch app's phases: 1 logging sets, 2a today at a glance and quick log (both in 2.1.0), 2b hold-to-talk voice and Jarvis questions (not built on the watch; the server side, a watch device token and short answers, is in since #458), 3 watch-face widgets and Smart Stack. |
+| **1.0.9** | Two different things. (a) The native app's first planned version (build 10), **never released**: its content shipped as 2.0.0. The tag `app-ios-v1.0.9` and the `## 1.0.9` changelog section are development records, and the documents named `ios-native-1.0.9-*` belong to it. `ios-native-1.0.9-handover-template.md` is still the current TestFlight handover template despite its name. (b) The Flutter app's voided 1.0.9 (build 9), marked "作废" in `apps/watch2whoop/CHANGELOG.md`. |
+| **1.0.8** | The last Flutter release (TestFlight, Open Wearables SDK). |
+
 ## 0. 一句话
 
 `apps/ios/` 是纯 SwiftUI 的新 app，替换 Flutter 版（`apps/watch2whoop/` 停在 1.0.8，之后只修 bug）。Bundle ID 和 Team 不变，TestFlight 上覆盖安装就能升级，第一次启动把 Flutter 版的 token 和服务器地址迁过来。
@@ -825,7 +841,7 @@ N4 的趋势页、一年范围的读数、状态卡和弹层、报告、最近 1
 - Xcode → Archive → 上传到 App Store Connect 的**同一条 app 记录**。
 - 先给 TestFlight 内部组用一周，再给外部测试用户。
 - 发布当天在 `origin/main` 的提交上打 `app-ios-v2.0.0`（步骤见第 12.1 节；旧的 `app-ios-v1.0.9` 不用删）。`tools/app_release.sh ios` 从 N9 起认原生工程：版本号读 `Config/Watch2Whoop.xcconfig`，更新记录读 `apps/ios/CHANGELOG.md`，源码 zip 带上 `project.yml` 从外面打进 app 的文件。
-- 交接单模板：`ios-native-1.0.9-handover-template.md`；只能真机验证的清单：`ios-native-1.0.9-device-checklist.md`。
+- 交接单模板：`ios-native-1.0.9-handover-template.md`；1.0.9 的真机清单已归档为 `archive/ios-native-1.0.9-device-checklist.md`（2.x 的是 `ios-native-2.0-device-checklist.md`）。
 
 **回退**：TestFlight 装回 1.0.8。Flutter 项还在，不用重新登录。
 

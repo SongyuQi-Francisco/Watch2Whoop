@@ -12,7 +12,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="许可证：AGPL-3.0"></a>
   <a href="../../releases"><img src="https://img.shields.io/badge/release-alpha-orange" alt="发布"></a>
   <a href="#ai-和-mcp"><img src="https://img.shields.io/badge/MCP-remote%20%2B%20stdio-6e56cf" alt="MCP server"></a>
-  <a href="apps/watch2whoop/README.md"><img src="https://img.shields.io/badge/Apple%20Watch-iOS%20app-111111" alt="Apple Watch + iOS app"></a>
+  <a href="apps/ios/README.md"><img src="https://img.shields.io/badge/Apple%20Watch-iOS%20app-111111" alt="Apple Watch + iOS app"></a>
 </p>
 
 <p align="center">
@@ -21,12 +21,12 @@
   <a href="docs/tester-handbook.md">使用手册</a> ·
   <a href="#路线图">路线图</a> ·
   <a href="../../releases">发布</a> ·
-  <a href="apps/watch2whoop/CHANGELOG.md">更新日志</a> ·
+  <a href="apps/ios/CHANGELOG.md">更新日志</a> ·
   <a href="CONTRIBUTING.md">参与贡献</a> ·
   <a href="README.md">English</a>
 </p>
 
-<p align="center"><img src="docs/images/readme/hero.png" alt="今天、趋势、睡眠和「我」页面（合成演示数据）" width="100%"></p>
+<p align="center"><img src="docs/images/readme/hero.png" alt="网页版今天页（已冻结）：今天、趋势、睡眠和「我」页面（合成演示数据）" width="100%"></p>
 
 > [!IMPORTANT]
 > 与 WHOOP、Apple 无关（名称是它们的商标，只用来说明配合什么使用、像什么）。不是医疗器械，不构成医疗建议。
@@ -49,11 +49,11 @@ app 里。Watch2Whoop 补上这一块，而且归你自己：
 ```bash
 git clone https://github.com/SongyuQi-Francisco/Watch2Whoop.git
 cd Watch2Whoop
-./quickstart.sh                                         # 最后打印今天页的登录链接
+./quickstart.sh                                         # 最后打印网页版今天页（已冻结）的登录链接
 ```
 
-它会在 `127.0.0.1` 上启动 Body Engine、Open Wearables 和 SparkyFitness，用真实的 Apple 健康导入器导入合成数据，并算出全部评分。
-端口、参数和 `status / logs / down / reset`：[quickstart/README.md](quickstart/README.md)。目前没有在线演示。
+它会在 `127.0.0.1` 上启动 Body Engine 和 Open Wearables（旧链路；SparkyFitness 只有加 `--sparkyfitness` 才启动），用真实的 Apple 健康导入器导入合成数据，并算出全部评分。
+想在原生 iOS app 里看，用模拟器连这个服务器（[apps/ios/README.md](apps/ios/README.md)）。端口、参数和 `status / logs / down / reset`：[quickstart/README.md](quickstart/README.md)。目前没有在线演示。
 
 ## 功能
 | | |
@@ -73,7 +73,7 @@ cd Watch2Whoop
 新装的服务器上是关着的（`body-engine flags list`，见 [docs/rollout.md](docs/rollout.md)）。
 
 <p align="center">
-  <img src="docs/images/readme/tour.gif" alt="今天、趋势、睡眠和「我」页面的动图" width="260">
+  <img src="docs/images/readme/tour.gif" alt="网页版今天页（已冻结）：今天、趋势、睡眠和「我」页面的动图" width="260">
   &nbsp;
   <img src="docs/images/muscle-load/full-male-dark.png" alt="本周肌肉负荷图" width="260">
 </p>
@@ -95,65 +95,68 @@ Watch2Whoop 是**给你的 AI 用的数据层**，不是又一个聊天机器人
 ## 数据怎么进来
 | 来源 | 方式 |
 |---|---|
-| **iOS app** | 后台同步 iPhone + Apple Watch 的 HealthKit 数据，今天页就在 app 里（[apps/watch2whoop](apps/watch2whoop/README.md)，Flutter）。需要自己编译；受邀测试用户可以用 TestFlight 内测版 |
-| **Apple 健康导出** | 在 app 里上传「健康」导出的 `export.zip`（分片、可续传），导入多年历史；管理员也可以用 `body-engine import-apple-zip` |
-| **Hevy** | 上传 Hevy 导出的训练 CSV，动作名对到动作库，并重算肌肉负荷 |
-| **iOS 快捷指令** | 不装 app：快捷指令定时上传健康样本（[shortcuts/](shortcuts/README.md)，格式规范 [docs/shortcut-sync-spec.md](docs/shortcut-sync-spec.md)） |
+| **iOS app** | 用 app 自带的同步引擎，后台把 iPhone + Apple Watch 的 HealthKit 数据直接传到服务器（`/v1/ingest/healthkit`；[apps/ios](apps/ios/README.md)，SwiftUI）。先传最近的历史，再后台补全；同步中心可以重新同步一段日期或全部历史。需要自己编译；受邀测试用户可以用 TestFlight 内测版 |
+| **Apple 健康导出** | 管理员用 `body-engine import-apple-zip --user-id N --file export.zip` 导入「健康」导出的 `export.zip`（流式解析，不解压到磁盘）。服务器还留着上传接口（`POST /v1/users/{user}/history-import`），但现在没有任何客户端提供入口 |
+| **Hevy** | 在 iOS app 里上传 Hevy 导出的训练 CSV（「我」→ 导入，功能开关 `hevy_import`），动作名对到动作库，并重算肌肉负荷 |
+| **iOS 快捷指令** | 正在下线、不再维护：快捷指令曾定时上传健康样本（[shortcuts/](shortcuts/README.md)，格式规范 [docs/shortcut-sync-spec.md](docs/shortcut-sync-spec.md)）。新装请用 app |
+| **Open Wearables** | 旧链路：老版本 app（Flutter 版）通过它同步，服务器还在为已有账号从它导入。正在下线（[#219](../../issues/219)） |
 | **你的 AI** | 你告诉它的一切：饮食、训练、体重、化验、补剂、症状、日记 |
 
 ## 怎么运作
 ```mermaid
 flowchart LR
-  W["Apple Watch + iPhone<br/>（iOS app 或快捷指令）"] --> OW["Open Wearables<br/>可穿戴原始数据"]
-  W --> BE
-  OW --> BE["Body Engine<br/>FastAPI + PostgreSQL<br/>评分 · 记录 · 规则"]
-  SF["SparkyFitness<br/>饮食 · 力量记录"] <--> BE
-  BE --> T["今天页<br/>（在 iOS app 里）"]
+  W["Apple Watch + iPhone<br/>（iOS app：自建 HealthKit 同步引擎）"] --> BE["Body Engine<br/>FastAPI + PostgreSQL<br/>评分 · 饮食 / 力量 / 体重记录 · 规则"]
+  OW["Open Wearables<br/>旧链路，正在下线"] -.-> BE
+  BE <--> APP["iOS app<br/>（原生；评分算法也在手机上跑）"]
   BE <-->|"MCP · API key"| AI["你的 AI<br/>Claude · ChatGPT · Gemini · DeepSeek …"]
 ```
-基于开源项目：[Open Wearables](https://github.com/the-momentum/open-wearables) 负责可穿戴同步，
-[SparkyFitness](https://github.com/CodeWithCJ/SparkyFitness)（不改代码，作为独立服务运行）负责饮食和力量记录，
-加上 PostgreSQL、FastAPI、Flutter，可选 [Grafana](https://github.com/grafana/grafana)。服务默认只绑 `127.0.0.1`，通过 Tailscale 访问。
+基于开源项目：PostgreSQL、FastAPI，iOS app 用 SwiftUI 和 [GRDB](https://github.com/groue/GRDB.swift)，可选 [Grafana](https://github.com/grafana/grafana)。
+[Open Wearables](https://github.com/the-momentum/open-wearables) 曾负责老版本 app 的同步，现在还为已有账号运行，正在下线。饮食、力量和体重记录存在
+Body Engine 自己的表里；原来存这些的 [SparkyFitness](https://github.com/CodeWithCJ/SparkyFitness)（不改代码，作为独立服务运行）已经不是必需，正在下线
+（只有迁移旧部署才要：[docs/own-food-weight-storage.md](docs/own-food-weight-storage.md)）。服务默认只绑 `127.0.0.1`，通过 Tailscale 访问。
 
 **自托管**（Mac mini 或 Linux 云服务器）：[docs/README.md#self-hosting](docs/README.md#self-hosting) · 管理员手册：[docs/admin-guide.md](docs/admin-guide.md)
 
 ## 路线图
-计划和讨论在 [issues](../../issues)；app 版本和说明在 [发布页](../../releases) 和 [app 更新日志](apps/watch2whoop/CHANGELOG.md)。
+计划和讨论在 [issues](../../issues)；app 版本和说明在 [发布页](../../releases) 和 [app 更新日志](apps/ios/CHANGELOG.md)。
 
 - [x] Apple Watch：恢复、负荷、睡眠、身体年龄、压力、教练、报告
 - [x] 一条命令的本地快速开始（合成数据）
 - [x] 远程 MCP + API key 对话，任何 AI 都能接，每人的 AI 互相隔离
 - [x] 训练模块 v2：动作库、分化、每周计划、按恢复调整（[方案](docs/training-v2-plan.md)）
-- [x] Hevy CSV 导入、Apple 健康历史导入
+- [x] Hevy CSV 导入；Apple 健康导出导入（管理员命令）
 - [x] 凭激活码自助注册（[设计](docs/self-signup-plan.md)）
 - [x] 中英文界面（剩下的缺口：[#64](../../issues/64)）
 - [ ] *开发中*：朋友页和圈子（[方案](docs/friends-social-plan.md)）
-- [ ] *开发中*：自建 Apple 健康同步引擎，在 iOS 上替换 Open Wearables（[#219](../../issues/219)）
+- [x] 原生 SwiftUI iOS app（2.0.0），自带 Apple 健康同步引擎（[#340](../../issues/340)、[#219](../../issues/219)）
+- [ ] *开发中*：iOS 2.1.0，重新设计的手机界面和 Apple Watch app
+- [ ] *开发中*：下线 Open Wearables、SparkyFitness 和快捷指令上传（[#219](../../issues/219)）
 - [ ] 基于 RMSSD 的恢复分（[#117](../../issues/117)）
 - [ ] 发布评分库 `openbodyscore`
 - [ ] Linux 云服务器一键安装
-- [ ] **其他手表**：Garmin、Oura、Polar、安卓 Health Connect……（欢迎贡献）
+- [ ] **其他手表**：Garmin、Oura、Polar……（欢迎贡献；不接受其他平台的新客户端 app，见 [CONTRIBUTING.md](CONTRIBUTING.md)）
 
 ## 参与贡献
-欢迎贡献。所有改动都从你自己的分支或 fork 提 Pull Request，CI 通过、维护者审核后合并。先看 [CONTRIBUTING.md](CONTRIBUTING.md)
+欢迎贡献。所有改动都从你自己的分支或 fork 提 Pull Request，必需的 CI 检查要在最新的分支上通过，维护者的审核评论记录验证了什么。先看 [CONTRIBUTING.md](CONTRIBUTING.md)
 （新的界面文字一律中英双语）。
 
 适合入手的方向：
-- **接入你的手表**：把 Garmin、Oura、Polar 或 Health Connect 的数据接进同一套评分（见[路线图](#路线图)）。
+- **接入你的手表**：把 Garmin、Oura 或 Polar 的数据接进同一套评分（见[路线图](#路线图)）。
 - **评分**：审一审[方法论](docs/scoring-methodology.md)和[验证方案](docs/scoring-validation.md)。
 - **文档**：[`docs/`](docs/README.md) 里大部分设计文档是中文，英文版很有帮助。
 - 带 [`good first issue`](../../issues?q=is%3Aopen+label%3A%22good+first+issue%22) 和 [`help wanted`](../../issues?q=is%3Aopen+label%3A%22help+wanted%22) 标签的 issue。
 
-本机用 `./quickstart.sh` 试改动；测试：`cd body_engine && uv run pytest`、`cd apps/watch2whoop && flutter test`。
+本机用 `./quickstart.sh` 试改动；测试：`cd body_engine && uv run pytest`；iOS app 见 [apps/ios/README.md](apps/ios/README.md)。
 
 ## 目录
 | 路径 | 内容 |
 |---|---|
-| [`body_engine/`](body_engine/README.md) | 服务器：评分、记录、规则、AI 工具、MCP、今天页 |
-| [`apps/watch2whoop/`](apps/watch2whoop/README.md) | iOS app（Flutter） |
+| [`body_engine/`](body_engine/README.md) | 服务器：评分、记录、规则、AI 工具、MCP；也有已冻结的网页版今天页 |
+| [`apps/ios/`](apps/ios/README.md) | iOS app（SwiftUI；Apple Watch app 内嵌，2.1.0 开发中）：目前唯一在开发的客户端 |
+| [`apps/watch2whoop/`](apps/watch2whoop/README.md) | iOS app 的 Flutter 旧版（到 1.0.8），已不再维护 |
 | [`packages/openbodyscore/`](packages/openbodyscore/README.md) | 独立的评分库 |
 | [`packages/openbodyscore-js/`](packages/openbodyscore-js/README.md) | 同一套算法的 JS 单文件，iOS app 在本地用 JavaScriptCore 运行 |
-| [`shortcuts/`](shortcuts/README.md) | iOS 快捷指令同步（不用装 app） |
+| [`shortcuts/`](shortcuts/README.md) | iOS 快捷指令同步（正在下线，不再维护） |
 | [`quickstart/`](quickstart/README.md) | 一条命令的本地演示 |
 | `deploy/`、`assistant/` | 部署、运维、AI 管家工作目录 |
 | [`docs/`](docs/README.md) | 设计文档（大部分是中文） |
@@ -162,7 +165,7 @@ flowchart LR
 | 部分 | 许可证 |
 |---|---|
 | 服务器和其余全部 | [AGPL-3.0](LICENSE) |
-| iOS app `apps/watch2whoop/` | [MIT](apps/watch2whoop/LICENSE) |
+| iOS app `apps/ios/` 和 Flutter 旧版 `apps/watch2whoop/` | [MIT](apps/ios/LICENSE)、[MIT](apps/watch2whoop/LICENSE) |
 | 快捷指令 `shortcuts/` | [MIT](shortcuts/LICENSE) |
 | 评分库 `packages/openbodyscore/` | [Apache-2.0](packages/openbodyscore/LICENSE) |
 
