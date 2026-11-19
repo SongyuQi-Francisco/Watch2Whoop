@@ -94,6 +94,10 @@ window.BodySyncStatus && window.BodySyncStatus.onApp({phase: "uploading", percen
 | `last_attempt_at` / `last_upload_at` | 上一次后台 / 前台同步尝试、上一次成功上传 | ISO 8601 |
 | `last_error` | 上一次失败的类别 | `auth`（401、凭证失效）/ `network` / `locked` / `health_denied` / `server`（5xx）/ `other`；成功后清空 |
 | `unasked_types` | `getRequestStatusForAuthorization`（同步页「数据状态」已有 `healthAskStatus`） | iOS 还没问过用户的类型，最多 60 个 |
+| `last_background_at` | 2.1.0 起：iOS 最近一次真的在后台叫醒 app 的时间（`BackgroundWakes`） | ISO 8601；没有记录就不发 |
+| `background_kind` | 同上，那次唤醒的种类 | `refresh` / `processing`（BGTask）/ `observer`（HealthKit）/ `push`（静默推送）/ `transfer`（后台传输）；未知代码服务器存 null |
+| `background_wakes_7d` | 同上，近 7 天唤醒次数 | 整数 ≥ 0 |
+| `background_state` | 2.1.0 起：app 自己的判断（`BackgroundCheck`，先看实际运行再看开关值，见 `docs/ios-native-app.md` 5.7） | `running` / `waiting` / `off` / `low_power` / `restricted` / `not_running`；有它时服务器不再只凭 `background_refresh` 判断 |
 
 - 每行替换上一次（一人一行，表 `sync_device_state`，迁移 830），超过 24 小时的报告服务器不再使用。多出来的字段会被忽略。
 - **什么时候发**：app 进前台、每次同步结束（成功或失败）、`backgroundRefreshStatus` / 低电量模式变化时（`NSProcessInfoPowerStateDidChange`）。

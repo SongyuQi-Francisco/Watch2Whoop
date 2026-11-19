@@ -97,7 +97,7 @@ enum SyncGlanceRules {
   }
 
   /// The first issue the primary button does not already cover (one with its own self-help action), else the first hint
-  /// with an action (Background App Refresh off). Nil = nothing for the user to do.
+  /// with an action (the background sync's verdict). Nil = nothing for the user to do.
   static func helpStep(issues: [SyncDiagnosis.Issue], hints: [SyncDiagnosis.Issue]) -> SyncDiagnosis.Issue? {
     let own: (SyncDiagnosis.Issue) -> Bool = { i in
       guard let a = i.action else { return false }
@@ -110,7 +110,8 @@ enum SyncGlanceRules {
   /// A short label (≤ 6 characters, direction.md 6) for the issues that have one; the action's own title otherwise.
   static func shortLabel(_ i: SyncDiagnosis.Issue) -> String {
     switch i.id {
-    case "background": return tr("后台刷新已关", "Background off")
+    case "background", "background_lowpower", "background_restricted", "background_idle":
+      return BackgroundCheck.short(id: i.id) ?? tr("去处理", "Fix")
     case "consent": return tr("确认同意书", "Accept consent")
     case "signin": return tr("重新登录", "Sign in again")
     case "lowpower": return tr("低电量模式", "Low Power Mode")

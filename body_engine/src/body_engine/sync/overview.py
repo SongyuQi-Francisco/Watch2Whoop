@@ -10,8 +10,10 @@ It combines what the server already knows, read only:
 - `coverage`: how much watch history there is and the top-up card's reminder state (backfill.py); it keeps its own reminder
   state in table history_backfill, the rest here is read only;
 - what the app last reported about the phone (table sync_device_state, app 1.0.8+, put_device()): Background App Refresh,
-  Low Power Mode, Health locked, the last error, Health types iOS never asked about. Older apps send nothing; then the
-  phone-side causes collapse into one "the background sync is behind" with the same buttons.
+  Low Power Mode, Health locked, the last error, Health types iOS never asked about; from app 2.1.0 also when iOS last woke
+  the app in the background and the app's verdict on it (`background_state`, data_status.background()): what ran beats
+  what iOS's flag says. Older apps send nothing; then the phone-side causes collapse into one "the background sync is
+  behind" with the same buttons.
 
 `issue` is the first match of (codes in ISSUES; `actions` are the buttons, the page has a branch for each one, ACTIONS):
   consent         the consent form is not confirmed: nothing is processed
@@ -22,7 +24,10 @@ It combines what the server already knows, read only:
   server          the server has not reached OW lately, or refused the app's uploads with a server error since the last
                   good one (our side)
   app_closed      data stopped and the app was not opened for a while (only outside the app: inside it the app is open)
-  background_off  the app reported Background App Refresh off for it (shown even while the data is fresh: it will stop)
+  background_off  the app reported Background App Refresh off or restricted and nothing ran in the background lately
+                  (shown even while the data is fresh: it will stop); an app before 2.1.0: the flag alone
+  background_idle the app reported Background App Refresh on, yet nothing ran in the background for its threshold while
+                  new data existed (force-quit, iOS holding the app back); shown even while the data is fresh
   low_power       behind and the app reported Low Power Mode
   locked          behind and the app reported Health unreadable (the phone locked when iOS woke the app)
   lagging         behind (SYNC_LAG_AFTER) without a phone report
@@ -47,15 +52,20 @@ import psycopg
 from ..i18n import L, is_en
 from . import backfill, broken, data_status, history, params as P, refresh
 
-ISSUES = ("consent", "not_connected", "credentials", "server", "app_closed", "background_off", "low_power", "locked",
-          "lagging", "type_missing")
+ISSUES = ("consent", "not_connected", "credentials", "server", "app_closed", "background_off", "background_idle",
+          "low_power", "locked", "lagging", "type_missing")
 # connect = the one-tap setup; reconnect = the sync-repair sheet; retry = the server pulls again and rescores (refresh.py);
 # sync_now = the app uploads now; open_app = open the app (outside it); authorize = the type's Health switch;
 # open_settings = the app's iOS settings; sleep_help = sleep tracking on the watch; consent = the consent form
 ACTIONS = ("connect", "reconnect", "retry", "sync_now", "open_app", "authorize", "open_settings", "sleep_help", "consent")
 DEVICE_ERRORS = ("auth", "network", "locked", "health_denied", "server", "other")
+# The app's background evidence (app 2.1.0+, migration 1210): the kind of the last background wake and its verdict
+# (docs/ios-native-app.md "Background sync: evidence, not the flag"). An unknown code is stored as null (sync/api.py).
+BACKGROUND_KINDS = ("refresh", "processing", "observer", "push", "transfer")
+BACKGROUND_STATES = ("running", "waiting", "off", "low_power", "restricted", "not_running")
+BACKGROUND_WAKES_MAX = 100_000
 TONE = {"consent": "mid", "not_connected": "plain", "credentials": "bad", "server": "mid", "app_closed": "bad",
-        "background_off": "mid", "low_power": "mid", "locked": "mid", "lagging": "mid", "type_missing": "mid"}
+        "background_off": "mid", "background_idle": "mid", "low_power": "mid", "locked": "mid", "lagging": "mid", "type_missing": "mid"}
 
 
 def _label(code: str, types: list[dict] | None = None) -> str:
@@ -69,6 +79,7 @@ def _label(code: str, types: list[dict] | None = None) -> str:
         "server": L("服务器同步延迟", "Server sync delayed"),
         "app_closed": L("太久没打开 app", "App not opened for a while"),
         "background_off": L("后台刷新被关", "Background refresh is off"),
+        "background_idle": L("后台同步没在运行", "Background sync isn't running"),
         "low_power": L("低电量模式暂停了同步", "Low Power Mode paused sync"),
         "locked": L("手机锁着，读不到健康数据", "Phone locked, Health unreadable"),
         "lagging": L("后台同步慢了", "Background sync is behind"),
@@ -113,7 +124,7 @@ def device(conn: psycopg.Connection, user_id: int, now: datetime | None = None) 
 def put_device(conn: psycopg.Connection, user_id: int, rep: dict) -> dict:
     """Store the app's phone report (replaces the previous one). Commits."""
     cols = ("app_version", "background_refresh", "low_power", "health_readable", "last_attempt_at", "last_upload_at",
-            "last_error", "unasked_types")
+            "last_error", "unasked_types", "last_background_at", "background_kind", "background_wakes_7d", "background_state")
     vals = {c: rep.get(c) for c in cols}
     vals["unasked_types"] = list(vals["unasked_types"] or [])
     conn.execute(f"""INSERT INTO sync_device_state (user_id, reported_at, {", ".join(cols)})
@@ -194,6 +205,7 @@ def collect(conn: psycopg.Connection, user_id: int, now: datetime | None = None,
     ow_last = link["last_data_at"] if ow_path else None
     last = max((t for t in (ow_last, ch["app"], ch["shortcut"]) if t is not None), default=None)
     dev = device(conn, user_id, now)
+    bg = data_status.background(dev)
     ref = refresh.status(conn, user_id)
     hist = history.status(conn, user_id)
     types = _types(conn, user_id, tz_name, today)
@@ -216,9 +228,11 @@ def collect(conn: psycopg.Connection, user_id: int, now: datetime | None = None,
         issue = _issue("server", ["retry"])
     elif behind and link["reason"] == "not_seen" and not in_app:
         issue = _issue("app_closed", ["open_app"])
-    elif dev and dev.get("background_refresh") in ("denied", "restricted"):
+    elif bg == "off":
         issue = _issue("background_off", ["open_settings", "sync_now"])
-    elif behind and dev and dev.get("low_power"):
+    elif bg == "not_running":
+        issue = _issue("background_idle", ["open_settings", "sync_now"])
+    elif behind and dev and (dev.get("low_power") or bg == "low_power"):
         issue = _issue("low_power", ["sync_now"])
     elif behind and dev and (dev.get("health_readable") is False or dev.get("last_error") == "locked"):
         issue = _issue("locked", ["sync_now"])

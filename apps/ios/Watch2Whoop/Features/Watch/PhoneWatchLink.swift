@@ -286,8 +286,9 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
     guard linked, let account, let store else { return }
     let now = Date()
     let userToday = today?.userToday ?? account.db.userToday()
-    let capsule = SyncCapsuleState.of(overall: HealthSyncService.shared.diagnosis.overall, page: account.sync.status,
-                                      card: today?.model.sync)
+    let d = HealthSyncService.shared.diagnosis
+    let capsule = SyncCapsuleState.of(overall: d.overall, page: account.sync.status, card: today?.model.sync,
+                                      background: d.background)
     let t = today.flatMap { WatchTodayBuilder.today($0.model, day: $0.userToday, capsule: capsule, offline: account.sync.status == .offline, now: now) }
     let q = food.map { f in
       WatchQuickBuilder.quick(templates: f.templates, nutrition: f.nutrition, day: userToday, water: account.flags.contains("water"),

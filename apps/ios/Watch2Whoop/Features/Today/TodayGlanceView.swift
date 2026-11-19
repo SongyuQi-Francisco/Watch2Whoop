@@ -382,7 +382,8 @@ struct TodaySyncCapsule: View {
   @ObservedObject private var sync = HealthSyncService.shared
 
   var body: some View {
-    let state = SyncCapsuleState.of(overall: sync.diagnosis.overall, page: page.status, card: card)
+    let d = sync.diagnosis
+    let state = SyncCapsuleState.of(overall: d.overall, page: page.status, card: card, background: d.background)
     SyncCapsule(state: state)
       .onTapGesture { state.opensCenter ? center() : tap() }
       .onLongPressGesture(perform: center)

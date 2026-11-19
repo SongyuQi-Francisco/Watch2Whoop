@@ -99,6 +99,7 @@ struct SyncCenterHome: View {
   @State private var message: String?
   @State private var tools = false
   @State private var resyncDay: String?
+  @State private var backgroundHelp = false
 
   var body: some View {
     let d = sync.diagnosis
@@ -152,6 +153,9 @@ struct SyncCenterHome: View {
     .navigationTitle(tr("同步中心", "Sync center"))
     .navigationBarTitleDisplayMode(.inline)
     .navigationDestination(isPresented: $tools) { SyncCenterView() }
+    .w2wSheet(isPresented: $backgroundHelp, title: tr("后台同步", "Background sync")) {
+      BackgroundHelpView(verdict: sync.background, lastWake: sync.wakes.last)
+    }
     .refreshable { await primary(.syncNow) }
     .task {
       await sync.refreshPermission()
@@ -230,6 +234,7 @@ struct SyncCenterHome: View {
   private func help(_ step: SyncDiagnosis.Issue) async {
     switch step.action {
     case .openSettings?: if let u = URL(string: UIApplication.openSettingsURLString) { await UIApplication.shared.open(u) }
+    case .backgroundHelp?: backgroundHelp = true
     case .openHealthApp?: if let u = URL(string: "x-apple-health://") { await UIApplication.shared.open(u) }
     case .allowCellular?: await sync.setCellularHistory(true); await primary(.syncNow)
     case .retryHistory?:

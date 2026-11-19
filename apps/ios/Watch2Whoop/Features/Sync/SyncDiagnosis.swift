@@ -1,7 +1,8 @@
 import Foundation
 
 /// "Where is it stuck, and what can I do?" in plain words, from everything the sync center knows. Pure (unit-tested):
-/// the view shows the headline, then each issue with its one self-help button, then the hints (not a failure).
+/// the view shows the headline, then each issue with its one self-help button, then the hints (not a failure; the
+/// background sync's verdict, BackgroundCheck, is one).
 /// One conclusion (FB-23: 「已同步」 on the phone next to 「同步连接失败」 and days of empty scores): the phone's round, the
 /// server's refusals and its pipeline together; uploaded but not scored yet is 「已上传，分数计算中」, never 「已同步」.
 struct SyncDiagnosis: Equatable {
@@ -12,7 +13,8 @@ struct SyncDiagnosis: Equatable {
   enum Action: Equatable {
     case requestPermission    // the one Health sheet
     case openHealthApp        // Health → profile → Apps → Watch2Whoop
-    case openSettings         // this app's page in iOS Settings (Background App Refresh)
+    case openSettings         // this app's page in iOS Settings
+    case backgroundHelp       // the background sync's help sheet: which switch, its path in Settings (BackgroundHelpView)
     case syncNow
     case retry                // ask the server again
     case signIn
@@ -42,6 +44,7 @@ struct SyncDiagnosis: Equatable {
       case .resync: return tr("重新同步", "Re-sync")
       case .fillHistory: return tr("补全历史", "Fill in history")
       case .sleepFocusHelp: return tr("怎么开", "How to turn on")
+      case .backgroundHelp: return tr("怎么办", "What to do")
       case nil: return nil
       }
     }
@@ -64,7 +67,8 @@ struct SyncDiagnosis: Equatable {
     var lastSkipped: Set<String> = []
     var rawStop: String?
     var rawReadProblem: String?
-    var backgroundRefresh = true
+    /// Is the background sync running (BackgroundCheck: what ran first, then iOS's flag).
+    var background: BackgroundCheck.Verdict = .waiting
     var lowPower = false
     var consentRequired = false
     var running = false
@@ -78,15 +82,18 @@ struct SyncDiagnosis: Equatable {
   let overall: Overall
   let headline: String
   let issues: [Issue]
-  /// The phone side that is not a failure now but will slow the background sync (Background App Refresh off): its own
-  /// row, never the headline.
+  /// The phone side that is not a failure now but stops the background sync (BackgroundCheck's verdict: switched off,
+  /// Low Power Mode, restricted, not running): its own row, never the headline. The capsule on the first screens and the
+  /// Today banner use the same verdict (`background`).
   let hints: [Issue]
+  let background: BackgroundCheck.Verdict
 
-  init(overall: Overall, headline: String, issues: [Issue], hints: [Issue] = []) {
+  init(overall: Overall, headline: String, issues: [Issue], hints: [Issue] = [], background: BackgroundCheck.Verdict = .waiting) {
     self.overall = overall
     self.headline = headline
     self.issues = issues
     self.hints = hints
+    self.background = background
   }
 
   static func of(_ i: Input, now: Date = Date()) -> SyncDiagnosis {
@@ -128,7 +135,7 @@ struct SyncDiagnosis: Equatable {
     if i.lastSkipped.contains("wifi_only"), i.engine?.cellularHistory == false {
       add("wifi", tr("首次同步和补历史只用 Wi-Fi：连上 Wi-Fi，或允许用蜂窝数据", "The first sync and history use Wi-Fi only: join Wi-Fi or allow cellular"), .allowCellular)
     }
-    if i.lowPower {
+    if i.lowPower, i.background != .off(.lowPower) {   // the background hint says it then, with the steps
       add("lowpower", tr("低电量模式下只传重要数据，历史等充电后再补", "Low Power Mode: only the most important data goes; history waits"), nil)
     }
     if let f = i.server?.openFailure {
@@ -137,8 +144,7 @@ struct SyncDiagnosis: Equatable {
     if let b = i.backfill, b.active, let e = b.error, !e.isEmpty {
       add("history", tr("补历史暂停了，会自动继续", "History upload paused; it continues by itself"), .retryHistory)
     }
-    let hints = i.backgroundRefresh ? []
-      : [Issue(id: "background", text: tr("后台 App 刷新已关", "Background App Refresh is off"), action: .openSettings)]
+    let hints = BackgroundCheck.hint(i.background, now: now).map { [Issue(id: $0.id, text: $0.line, action: .backgroundHelp)] } ?? []
 
     let blocking: Set<String> = ["signin", "offline", "consent", "permission", "engine_off", "nothing", "refused", "failed"]
     let overall: Overall
@@ -165,7 +171,7 @@ struct SyncDiagnosis: Equatable {
       overall = .ok
       headline = tr("同步已开启", "Sync is on")
     }
-    return SyncDiagnosis(overall: overall, headline: headline, issues: out, hints: hints)
+    return SyncDiagnosis(overall: overall, headline: headline, issues: out, hints: hints, background: i.background)
   }
 
   /// "刚刚" / "5 分钟前" / "3 小时前" / "2 天前".

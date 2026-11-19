@@ -148,7 +148,9 @@ final class NotifyAndLinksTests: XCTestCase {
     let notSynced = SyncDiagnosis(overall: .attention, headline: "2 not synced", issues: [])
     XCTAssertEqual(SyncStuck.of(notSynced, card: nil), SyncStuck(text: "2 not synced", retry: false))
     XCTAssertEqual(SyncStuck.of(plain, card: issueCard("lagging")), SyncStuck(text: "label lagging", retry: true))
-    XCTAssertEqual(SyncStuck.of(plain, card: issueCard("background_off")), SyncStuck(text: "label background_off", retry: false))
+    // the server's phone-side codes (from the phone's last report) give way to the phone's own background verdict
+    XCTAssertNil(SyncStuck.of(plain, card: issueCard("background_off")))
+    XCTAssertNil(SyncStuck.of(plain, card: issueCard("background_idle")))
     XCTAssertNil(SyncStuck.of(plain, card: issueCard("type_missing")), "not a stuck sync (sync-status.js BANNER_CODES)")
     XCTAssertNil(SyncStuck.of(plain, card: TodayModel.SyncCard(state: "ok", label: "x", tone: .good, ago: nil)))
   }

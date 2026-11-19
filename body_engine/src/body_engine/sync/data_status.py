@@ -23,7 +23,8 @@ Why a type is not ok (`reason`, `action`, `alarm`; explain(), thresholds in para
 recorded" is told apart from "old because the phone did not deliver" (the owner's report 2026-10-31: the sync said it was
 up to date while weight / wrist temperature / water showed as stale):
 - reason not_delivered: nothing came through the phone's sync for DELIVERY_FRESH; action from the phone's last report:
-  enable_background_refresh / unlock_phone / sign_in / check_network / open_app;
+  enable_background_refresh / unlock_phone / sign_in / check_network / open_app (background(): an app 2.1.0+ reports what
+  ran in the background, which beats iOS's Background App Refresh flag);
 - reason not_recorded: the sync delivered, the phone had nothing newer; action what makes it appear: wear_watch,
   wear_watch_sleep, sleep_focus (sleeping wrist temperature: the watch must be worn in bed with a sleep schedule / Sleep Focus
   and sleep tracking on, FB-18), use_scale, outdoor_workout, log_in_health, log_workout, wear_headphones;
@@ -31,7 +32,8 @@ up to date while weight / wrist temperature / water showed as stale):
 - reason on_demand (ECG: action record_ecg), logged_elsewhere (water logged in the app, not in Health), unsupported
   (the sync cannot read it), flag_off;
 - alarm: the reason is a sync problem (params.ALARM_REASONS); `alarm_count` counts them. `delivery`: the phone's channel
-  as one state (ok / behind / never), its last delivery and the action for it (background refresh off shows even while ok).
+  as one state (ok / behind / never), its last delivery and the action for it (background refresh off shows even while ok),
+  and `background`: the phone's last background wake and the app's verdict on it (codes and a time only).
 All new fields; older apps ignore them.
 `channel` follows the sync mode (rawdata/engine.mode, #219 S5b): in the mode app the types the OW SDK used to deliver
 come through the app's own sync engine, so they say `app` (and wrist temperature loses `sdk_unsupported`); `mode` is in
@@ -131,12 +133,27 @@ def classify(last: date | None, today: date, stale_after: int | None) -> str:
     return "ok"
 
 
+def background(dev: dict | None) -> str | None:
+    """The phone's background sync from the app's last report: "off" (iOS says Background App Refresh is off for the app
+    or the phone, or restricted, and nothing ran in the background lately), "low_power" (the same while Low Power Mode is
+    on), "not_running" (iOS says it is on, yet nothing ran for the app's threshold while new data existed: force-quit, iOS
+    holding the app back), None (it runs, it is too early to tell, or there is no report). The rule lives in the app
+    (BackgroundCheck in BackgroundSync.swift) and comes as `background_state`, so both sides say the same; an app before
+    2.1.0 sends no verdict and its Background App Refresh flag alone decides, as before."""
+    if not dev:
+        return None
+    state = dev.get("background_state")
+    if state is None:
+        return "off" if dev.get("background_refresh") in ("denied", "restricted") else None
+    return {"off": "off", "restricted": "off", "low_power": "low_power", "not_running": "not_running"}.get(state)
+
+
 def device_action(dev: dict | None) -> str:
     """The phone-side fix for a sync that stopped delivering, from the app's last report (sync_device_state)."""
     dev = dev or {}
     if dev.get("last_error") == "auth":
         return "sign_in"
-    if dev.get("background_refresh") in ("denied", "restricted"):
+    if background(dev) == "off":
         return "enable_background_refresh"
     if dev.get("health_readable") is False or dev.get("last_error") in ("locked", "health_denied"):
         return "unlock_phone"
@@ -181,9 +198,13 @@ def _delivery(conn: psycopg.Connection, user_id: int, mode: str, tz: ZoneInfo, n
     last = max((t for t in (None if mode == "app" else r["ow"], r["app"], r["shortcut"]) if t is not None), default=None)
     dev = overview.device(conn, user_id, now)
     state = "never" if last is None else ("ok" if now - last <= params.DELIVERY_FRESH else "behind")
-    bg_off = bool(dev and dev.get("background_refresh") in ("denied", "restricted"))
+    bg_off = background(dev) == "off"
     action = device_action(dev) if state != "ok" else ("enable_background_refresh" if bg_off else None)
-    return {"state": state, "last_at": _iso(last, tz), "action": action}, dev
+    out = {"state": state, "last_at": _iso(last, tz), "action": action}
+    if dev and (dev.get("background_state") or dev.get("last_background_at")):
+        out["background"] = {"state": dev.get("background_state"), "last_at": _iso(dev.get("last_background_at"), tz),
+                             "wakes_7d": dev.get("background_wakes_7d")}
+    return out, dev
 
 
 def _water_elsewhere(conn: psycopg.Connection, user_id: int, since: date) -> bool:

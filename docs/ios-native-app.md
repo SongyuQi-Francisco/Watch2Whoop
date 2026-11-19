@@ -257,6 +257,53 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 - 「没有新数据」那行提示去掉了（上传了才显示「已上传 N 条」），同步中心的「后台刷新」「锁屏」「N 类没同步」横幅也合进了同步结果。
 - 服务器的 `data-status` 每类多 `reason` / `action` / `alarm`、回答多 `delivery`（`sync/data_status.py`，阈值和出处在 `sync/params.py`），1.0.8 不读这些新字段；体重算上本人记的（`body_measurements`），这一点 1.0.8 的「数据状态」现在就能看到（不再显示体重很久没收到）。
 
+### 5.7 后台同步：看实际运行，不只看开关（2026-11-19）
+
+起因：一台手机从 11-12 起只在打开 app 时同步（服务器看到的每次上传都在 app 打开时），每次都报 `background_refresh = denied`、`low_power = false`（2.0.0 build 11）；用户说设置里开着，app 却一直显示「后台 App 刷新已关」。同一版本 11 人里 9 人报 `available`，所以不是这一版普遍坏了。原来的代码只看 iOS 的这个值：不是 `.available` 就同一句话 + 打开 app 自己的设置页；没监听状态变化；也从不检查后台到底有没有跑。
+
+**调研（2026-11-19 查的苹果当前文档；「待真机」= 文档没写，模拟器验证不了）**
+
+| 情况 | `backgroundRefreshStatus` | 出处 |
+|---|---|---|
+| 这台手机的总开关关（设置 → 通用 → 后台 App 刷新 → 关闭） | `.denied` | 苹果定义 `.denied`：「The user explicitly disabled background behavior for this app or for the whole system」——同一个值，**不说是哪个开关**（[UIBackgroundRefreshStatus](https://developer.apple.com/documentation/uikit/uibackgroundrefreshstatus)） |
+| 这个 app 的开关关（设置 → App → Watch2Whoop → 后台 App 刷新） | `.denied` | 同上 |
+| 总开关选「仅无线局域网」、手机在用蜂窝网络 | **待真机**：文档没说返回什么 | [Apple 支持 118408](https://support.apple.com/zh-cn/118408)只说可以选「无线局域网」或「无线局域网与蜂窝数据」 |
+| 低电量模式 | 后台 App 刷新被自动关掉；**具体返回哪个值待真机**（大概率 `.denied`） | 属性文档：「Background App Refresh is disabled automatically when a device is operating in low-power mode」（[backgroundRefreshStatus](https://developer.apple.com/documentation/uikit/uiapplication/backgroundrefreshstatus)）；[Apple 支持 101604](https://support.apple.com/zh-cn/101604)：低电量模式「关闭后台 App 刷新」；开着「自适应电量」时电量低于 20% 自动开低电量模式 |
+| 屏幕使用时间限制、设备管理（MDM） | `.restricted`（苹果只举了「家长控制」的例子）；屏幕使用时间里具体是哪一项只有第三方说法（「内容和隐私访问限制 → 后台 App 活动」），**待真机** | 同一属性文档：「Don't warn the user if the value of this property is set to restricted」 |
+| iOS 26 / 27 新设置 | 没找到改变这个值的新设置；开关仍在「设置 → 通用 → 后台 App 刷新」；[iOS 27 发布说明](https://developer.apple.com/documentation/ios-ipados-release-notes/ios-ipados-27-release-notes)里没有后台刷新 / BGTaskScheduler 的条目（只有后台用神经引擎要新 entitlement）。iOS 26 的「自适应电量」只是自动开低电量模式 | 见左 |
+
+状态变化：[backgroundRefreshStatusDidChangeNotification](https://developer.apple.com/documentation/uikit/uiapplication/backgroundrefreshstatusdidchangenotification)「The system sends this notification when the backgroundRefreshStatus property of the app object changes」；低电量模式切换时会不会也发这个通知，文档没写（所以另外监听 `NSProcessInfoPowerStateDidChange`）。
+
+哪些情况停掉哪种后台唤醒：
+
+| | HealthKit 后台推送（`enableBackgroundDelivery` + `HKObserverQuery`） | `BGAppRefreshTask` | `BGProcessingTask` | 静默推送（`content-available`） |
+|---|---|---|---|---|
+| app 或总开关关 | **待真机**（苹果文档没提；只有第三方说会停） | 停（DTS 工程师：「prevents your app from receiving background app refresh」，[论坛 741268](https://developer.apple.com/forums/thread/741268)） | 待真机 | 待真机 |
+| 低电量模式 | 待真机；另外 DTS 说**电量低时即使没开低电量模式也可能不推送**（[论坛 812200](https://developer.apple.com/forums/thread/812200)，iOS 26） | 停 / 减少（属性文档） | 待真机 | 待真机 |
+| 在多任务界面把 app 划掉 | 待真机（苹果说哪些后台模式会例外「没有文档、会变」，[论坛 685525](https://developer.apple.com/forums/thread/685525)） | 停，直到用户自己再打开（[论坛 666149](https://developer.apple.com/forums/thread/666149)） | 待真机 | 停，直到用户再打开（同上）；[Apple 支持 118408](https://support.apple.com/zh-cn/118408)：「如果你从 App 切换器退出某个 App，那么这个 App 可能无法运行或检查有没有新内容，除非你将它重新打开」 |
+
+打开设置：`UIApplication.openSettingsURLString` 只能打开 app 自己的设置页（里面有这个 app 的「后台 App 刷新」开关，[文档](https://developer.apple.com/documentation/uikit/uiapplication/opensettingsurlstring)）；「通用 → 后台 App 刷新」、电池、屏幕使用时间都没有公开的链接（[论坛 21886](https://developer.apple.com/forums/thread/21886)：「there is not a documented URL scheme」），只能把路径写出来。
+
+**为什么手机会报 denied、用户却看到开关开着**：`.denied` 同时代表「这个 app 的开关关」和「这台手机的总开关关」，iOS 不告诉 app 是哪一个；用户看的往往是其中一个（多半是总开关那页），另一个是关的就会这样。低电量模式也会让后台刷新被自动关掉，但那台手机同一时刻报的 `low_power = false`，排除了。「仅无线局域网 + 用蜂窝网络」会不会也报 `.denied`、iOS 升级后开关显示和实际不一致（第三方有「关掉再打开就好了」的个例），都得在真机上确认。所以 app 不再猜，两个开关的路径都写出来，并且以「后台到底跑没跑」为准。
+
+**现在怎么做（`Features/Sync/BackgroundSync.swift`、`BackgroundSyncParams.swift`，测试 `BackgroundSyncTests`）**
+
+- 记录证据 `BackgroundWakes`（UserDefaults，只有时间和种类，按设备不按账号）：引擎的 BGTask 启动（`refresh` / `processing`，`SyncEngine.onWake`，在原件 `apps/watch2whoop/ios/Runner/SyncEngine.swift` 里加的钩子）、app 在后台时 HealthKit 叫醒观察者（`observer`）、后台收到静默推送（`push`，AppDelegate 新加 `didReceiveRemoteNotification`，现在只记录、回 `.noData`）、后台传输完成重启 app（`transfer`）、本地历史的 BGProcessing（`processing`）。都在唤醒的一刻记，不等这一轮跑完。
+- 规则 `BackgroundCheck.of`（纯函数，表驱动测试）：
+  1. 最近 `idleHours`（12 小时，出处见 params 文件：服务器手机同步检查的实测和告警线）内有后台唤醒 → **在运行**，不管 iOS 的开关值说什么；
+  2. iOS 说不可用 → **关着**，分原因：受限（屏幕使用时间 / 设备管理；苹果说不要催用户，只在同步中心显示）、低电量模式、关了（这个 app 或这台手机，iOS 不说是哪个）；
+  3. iOS 说可用，但从计时起点（上次唤醒、开始记录的那次启动、上次看到「不可用」三者最晚的）起超过 12 小时没在后台跑过、手机上又有比起点新的数据 → **没在运行**（多半是在多任务界面把 app 划掉了，或电量太低 iOS 暂停了）；
+  4. 其他 → **等着看**（刚打开、刚开始记录、手机上没有新数据）。
+- 文字（中英，路径都写全）：关了 → 两个开关都列出来（这台手机：设置 → 通用 → 后台 App 刷新 → 选「无线局域网与蜂窝数据」；这个 app：设置 → App → Watch2Whoop → 后台 App 刷新；都开着还这样就关掉再打开）+「打开设置」（app 自己的设置页）；低电量模式 → 设置 → 电池 → 低电量模式（iPhone 15 及以后在「电量模式」里）、自适应电量，没有按钮；受限 → 屏幕使用时间 / 问管理员，没有按钮；没在运行 → 别划掉 app、电量很低时会暂停、关掉再打开 app 的后台刷新 +「打开设置」。
+- 同一个判断用在：同步中心的提示行和「怎么办」弹层（`BackgroundHelpView`，跟着实时判断变）、同步中心标题下的「上次后台同步」（现在是真实的后台唤醒时间，不再是「后台式的一轮」）、首屏的同步胶囊（`SyncCapsuleState.of(…, background:)`，警告时显示短标签）、今天页横幅（`SyncStuck`）；服务器概览里来自手机上报的 `background_off` / `background_idle` / `low_power` 在 app 里让位给手机自己的实时判断。
+- 改好设置不用重启：监听 `backgroundRefreshStatusDidChangeNotification`、`NSProcessInfoPowerStateDidChange`、回到前台（`willEnterForeground` / `didBecomeActive`）就重新读开关和唤醒记录；看到「不可用」会把计时起点挪到那一刻，刚打开开关不会被说成「没在运行」。
+- 上报（`PUT /v1/ingest/sync-device`，新字段都是可选的）：`last_background_at`、`background_kind`、`background_wakes_7d`、`background_state`（running / waiting / off / low_power / restricted / not_running）。所有有这个接口的服务器从一开始（#303）就是 `extra="ignore"`，旧服务器直接丢掉新字段；新服务器把未知代码存成 null，不会 422。
+- 服务器（迁移 `1210_sync_device_background.sql`）：`sync_device_state` 加这四列；`data_status.background()` 用手机的判断（2.1.0 以前的 app 没有判断，还按开关值）；概览新问题代码 `background_idle`「后台同步没在运行」，`background_off` 只在手机说关着且最近没跑时出；数据状态的 `delivery` 多 `background{state,last_at,wakes_7d}`。只有时间、次数和代码。
+
+截图（iPhone SE 第 3 代模拟器，Debug 的 `W2W_DEV_SYNC=bg-off|bg-lowpower|bg-restricted|bg-idle|bg-running|bg-flagoff-running`，合成数据）：`docs/sync-background-truth/`。
+
+**模拟器验证不了、要真机确认的**：上面表格里所有「待真机」；模拟器从不跑 BGTask，HealthKit 观察者只在 app 打开时触发，所以「在运行」这条只能在真机上看到；负责人那台手机上 iOS 27 里两个开关和低电量 / 自适应电量的实际状态；静默推送在后台是否真的叫醒 app。
+
 ## 6. 算法包（JavaScriptCore）
 
 ### 6.1 调用约定（N2b 定下：用包自带的入口）
@@ -1028,6 +1075,18 @@ tools/app_release.sh ios --push                      # 打 app-ios-v2.0.0 并推
 
 
 <!-- 2.0.0 additions (2026-11-04) -->
+**Background sync: evidence, not the flag (2026-11-19, section 5.7).** `UIApplication.backgroundRefreshStatus == .denied`
+means "disabled for this app or for the whole system" (Apple does not say which), Low Power Mode turns Background App
+Refresh off on its own, and `.restricted` should not be pushed on the user. The app now records when iOS really woke it in
+the background (BGTask launches through `SyncEngine.onWake`, HealthKit observer calls while in the background, silent pushes,
+background transfers; `BackgroundWakes`) and judges with a pure rule (`BackgroundCheck`): a wake within 12 h = running
+whatever the flag says; flag not available = off with its cause (switched off: both switches with their Settings paths;
+Low Power Mode; restricted); flag available but no wake for 12 h while newer data exists = not running (force-quit, low
+battery). The sync center, the Today capsule and banner share that verdict, it is re-evaluated on the status-change and
+power-state notifications and on every return to the foreground, and it goes to the server with the device report
+(`last_background_at`, `background_kind`, `background_wakes_7d`, `background_state`; migration 1210, new overview code
+`background_idle`). What could not be confirmed without a device is listed in section 5.7.
+
 ### 2.0.0 补充（2026-11-04）
 
 - 外观：`DesignSystem/Theme.swift`、`Palette.accent` / `onAccent` 按主题取色；语录 `GET /v1/users/me/appearance/quotes`（`Features/Today/DailyQuote.swift`，开关 `slim_mode`）。

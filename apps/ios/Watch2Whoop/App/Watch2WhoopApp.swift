@@ -41,6 +41,10 @@ struct Watch2WhoopApp: App {
 final class AppDelegate: NSObject, UIApplicationDelegate {
   func application(_ application: UIApplication,
                    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+    // Evidence that background work really runs (BackgroundWakes, docs/ios-native-app.md "Background sync: evidence, not
+    // the flag"): the engine reports its BGTask launches and HealthKit observer wakes, before it registers.
+    BackgroundWakes.start()
+    SyncEngine.onWake = { BackgroundWakes.wake($0) }
     // History backfill (Backfill.swift): its BGProcessingTask, and its background URLSession re-attached so iOS can
     // deliver uploads that finished while the app was not running.
     Backfill.register()
@@ -61,6 +65,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
   func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
                    completionHandler: @escaping () -> Void) {
+    BackgroundWakes.wake(BackgroundWakes.Kind.transfer.rawValue)   // iOS relaunched the app for a finished transfer
     if identifier == Backfill.sessionId {
       Backfill.shared.sessionCompletion = completionHandler
       Backfill.shared.attach()
@@ -75,6 +80,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
   func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
     Task { @MainActor in PushRegistration.shared.failed() }
+  }
+
+  /// A background push (the server's `data_changed`, notify/silent.py) or any other remote notification: in the
+  /// background it is evidence that iOS wakes the app (BackgroundWakes). Nothing is fetched here yet, so the answer is
+  /// `.noData`, which is what happened.
+  func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                   fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+    BackgroundWakes.wake(BackgroundWakes.Kind.push.rawValue)
+    completionHandler(.noData)
   }
 }
 
