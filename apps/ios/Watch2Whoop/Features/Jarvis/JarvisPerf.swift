@@ -109,6 +109,7 @@ final class JarvisPerf: NSObject {
 /// - the cockpit's flows (2.0.1): `cockpit-meal` / `cockpit-train` (second rings), `cockpit-back` (second ring, then back),
 ///   `cockpit-interrupt` (tap the core again while the panels fan out), `cockpit-qa` / `cockpit-mealvoice`
 ///   (talk through 说话 / 记一餐 → 说 with scripted words, then the reply card),
+///   `cockpit-perf` (open, 记一餐 ring, back, 记训练 ring, close, five times, then the frame summary),
 ///   `cockpit-template` (a quick meal logged at once), `cockpit-undo` (the same, then 撤销); the screens behind the keys:
 ///   `cockpit-photo`, `cockpit-ask`, `cockpit-plan`, `cockpit-backfill`, `cockpit-templates`;
 /// - `posture`: the chat with the posture sheet open; `posture-filled`: with three made-up photos in it;
@@ -193,6 +194,20 @@ enum JarvisDemo {
           await sec(1.1)
           cockpit.activate(k)
         }
+      case "cockpit-perf":   // frame timing of the satellites: open, both second rings and back, close (five rounds)
+        for _ in 0..<5 {
+          cockpit.tapCore()
+          await sec(1.0)
+          cockpit.activate(.meal)
+          await sec(1.4)
+          cockpit.back()
+          await sec(1.2)
+          cockpit.activate(.train)
+          await sec(1.4)
+          cockpit.tapCore()
+          await sec(1.0)
+        }
+        summary(["cockpit-open", "cockpit-ring2", "cockpit-close"])
       case "chat":
         router.present(.chat)
         await sec(1)
@@ -235,16 +250,21 @@ enum JarvisDemo {
           cockpit.tapCore()
           await sec(0.9)
         }
-        let all = JarvisPerf.shared.samples
-        for name in ["cockpit-open", "cockpit-listen"] {
-          let s = all.filter { $0.name == name }
-          guard !s.isEmpty else { continue }
-          let fps = s.map(\.fps).reduce(0, +) / Double(s.count)
-          let worst = s.map(\.worstMs).max() ?? 0
-          let dropped = s.map(\.dropped).reduce(0, +)
-          print(String(format: "W2W_PERF summary %@ n=%d avg_fps=%.1f/%d worst=%.1fms dropped=%d", name, s.count, fps, s[0].maxFps, worst, dropped))
-        }
+        summary(["cockpit-open", "cockpit-listen"])
       }
+    }
+  }
+
+  @MainActor
+  private static func summary(_ names: [String]) {
+    let all = JarvisPerf.shared.samples
+    for name in names {
+      let s = all.filter { $0.name == name && $0.frames > 0 }   // a window cut by the next one at once has no frames
+      guard !s.isEmpty else { continue }
+      let fps = s.map(\.fps).reduce(0, +) / Double(s.count)
+      let worst = s.map(\.worstMs).max() ?? 0
+      let dropped = s.map(\.dropped).reduce(0, +)
+      print(String(format: "W2W_PERF summary %@ n=%d avg_fps=%.1f/%d worst=%.1fms dropped=%d", name, s.count, fps, s[0].maxFps, worst, dropped))
     }
   }
 }

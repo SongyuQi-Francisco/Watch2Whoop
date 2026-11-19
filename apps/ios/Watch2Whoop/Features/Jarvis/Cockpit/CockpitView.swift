@@ -159,11 +159,11 @@ struct CockpitView: View {
       }
       if controller.mode == .menu {
         ForEach(Array(m.items.enumerated()), id: \.offset) { _, it in
-          element(at: g.point(g.panelMid, it.angle, around: center), size: 56,
+          element(at: g.point(g.panelMid, it.angle, around: center), size: 2 * g.keyRadius + 8,
                   label: [it.title, it.sub].compactMap { $0 }.joined(separator: " "), hint: nil) { controller.activate(it.key) }
         }
         if controller.level == 2 {
-          element(at: CGPoint(x: center.x, y: center.y - g.crumbDistance), size: 34, label: tr("返回", "Back"), hint: nil) {
+          element(at: CGPoint(x: center.x, y: center.y - g.crumbDistance), size: 2 * g.crumbHit, label: tr("返回", "Back"), hint: nil) {
             controller.back()
           }
         }
@@ -260,27 +260,19 @@ struct CockpitCanvas: View {
   private func ease(_ x: Double) -> Double { 1 - pow(1 - cl(x), 3) }
   private func P(_ r: CGFloat, _ d: Double) -> CGPoint { G.point(r, d, around: center) }
 
-  /// An arc around the core, `a0` to `a1` clockwise (sampled: no doubt about the direction of y).
-  private func arc(_ r: CGFloat, _ a0: Double, _ a1: Double, into p: inout Path, move: Bool = true) {
+  /// An arc around the core (or `o`), `a0` to `a1` clockwise (sampled: no doubt about the direction of y).
+  private func arc(_ r: CGFloat, _ a0: Double, _ a1: Double, into p: inout Path, move: Bool = true, around o: CGPoint? = nil) {
     let n = max(2, Int(abs(a1 - a0) / 3) + 1)
     for i in 0...n {
-      let q = P(r, a0 + (a1 - a0) * Double(i) / Double(n))
+      let d = a0 + (a1 - a0) * Double(i) / Double(n)
+      let q = o.map { G.point(r, d, around: $0) } ?? P(r, d)
       if i == 0 && move { p.move(to: q) } else { p.addLine(to: q) }
     }
   }
 
-  private func arcPath(_ r: CGFloat, _ a0: Double, _ a1: Double) -> Path {
+  private func arcPath(_ r: CGFloat, _ a0: Double, _ a1: Double, around o: CGPoint? = nil) -> Path {
     var p = Path()
-    arc(r, a0, a1, into: &p)
-    return p
-  }
-
-  private func sector(_ ri: CGFloat, _ ro: CGFloat, _ a0: Double, _ a1: Double) -> Path {
-    var p = Path()
-    arc(ri, a0, a0, into: &p)
-    arc(ro, a0, a1, into: &p, move: false)
-    arc(ri, a1, a0, into: &p, move: false)
-    p.closeSubpath()
+    arc(r, a0, a1, into: &p, around: o)
     return p
   }
 
@@ -331,9 +323,9 @@ struct CockpitCanvas: View {
     }
     var labels: [Mark] = []
     ctx.drawLayer { g in
-      g.addFilter(.shadow(color: A.opacity(0.4), radius: 6))
+      g.addFilter(.shadow(color: A.opacity(G.glowOpacity), radius: 6))
       let F = m.fan
-      // the tick ring outside the panels; it turns one notch per level
+      // the tick ring outside the keys; it turns one notch per level
       if F > 0.02 {
         let span = G.tickSpan * (reduce ? 1 : ease(F)), rot = m.rot.x + (reduce ? 0 : T * 0.004)
         for i in 0..<90 {
@@ -342,14 +334,20 @@ struct CockpitCanvas: View {
           let ab = abs(an)
           guard ab <= span else { continue }
           let major = i % 9 == 0
-          stroke(&g, line(G.tickInner, major ? G.tickMajor : G.tickMinor, an), A, 1, (major ? 0.85 : 0.34) * F * cl((span - ab) / 14))
+          stroke(&g, line(G.tickInner, major ? G.tickMajor : G.tickMinor, an), A, 1,
+                 (major ? 0.85 : 0.34) * G.tickOpacity * F * cl((span - ab) / 14))
         }
         if let s = m.selected, s < m.items.count {
           let sa = m.items[s].angle
           stroke(&g, arcPath(G.selectArc, sa - 9, sa + 9), A, 2, m.sel.unit * F)
         }
+        // the orbit: one hairline through the key centres (the keys cover it, so it shows only between them)
+        let ext = (m.items.map { abs($0.angle) }.max() ?? 0) + 2
+        let orbitSpan = min(G.tickSpan, ext + G.orbitOverrun) * (reduce ? 1 : ease(F))
+        let rr = reduce ? G.orbitRadius : G.panelStart + (G.orbitRadius - G.panelStart) * CGFloat(cl(F))
+        stroke(&g, arcPath(rr, -orbitSpan, orbitSpan), A, 1, G.orbitOpacity * (reduce ? F : cl(F)))
       }
-      // the panels: sectors of one ring, fanning out of the core
+      // the keys: satellites on the orbit, travelling out of the core while they grow
       for (k, it) in m.items.enumerated() where k < m.panels.count {
         let v = m.panels[k].x
         guard v >= 0.02 else { continue }
@@ -357,30 +355,33 @@ struct CockpitCanvas: View {
         let hot = m.selected == k, sv = hot ? m.sel.x : 0
         let od = (hot || m.selected == nil) ? 1 : 1 - 0.65 * m.sel.unit
         let ang = it.angle * geo
-        let ri = G.panelStart + (G.panelInner - G.panelStart) * CGFloat(geo) + G.selectPush * CGFloat(sv)
-        let ro = ri + (G.panelOuter - G.panelInner) * CGFloat(cl(geo * 1.15))
-        let hw = G.panelHalfAngle * (0.25 + 0.75 * vc)
+        let r = G.panelStart + (G.orbitRadius - G.panelStart) * CGFloat(geo) + G.selectPush * CGFloat(sv)
+        let kr = G.keyRadius * CGFloat(G.keyStartScale + (1 - G.keyStartScale) * vc)
         let o = (reduce ? cl(v) : cl(v * 3)) * od
-        let d = sector(ri, ro, ang - hw, ang + hw)
-        g.fill(d, with: .color(CockpitPalette.panel.opacity(0.94 * o)))
-        g.stroke(d, with: .color(A.opacity(0.5 * o)), style: StrokeStyle(lineWidth: 1, lineJoin: .round))
-        if hot { g.fill(d, with: .color(A.opacity(cl(sv) * o))) }
-        stroke(&g, arcPath(ro, ang - hw + 3.5, ang + hw - 3.5), A, 2, 0.95 * o)
+        let c = P(r, ang)
+        let disc = Path(ellipseIn: CGRect(x: c.x - kr, y: c.y - kr, width: 2 * kr, height: 2 * kr))
+        g.fill(disc, with: .color(CockpitPalette.panel.opacity(o)))
+        g.stroke(disc, with: .color(A.opacity(G.keyStrokeOpacity * o)), lineWidth: G.keyStroke)
+        if hot { g.fill(disc, with: .color(A.opacity(cl(sv) * o))) }
+        // the lit rim: the core's segment, repeated on the key's own ring, on the side away from the core
+        stroke(&g, arcPath(kr, ang - G.rimHalfAngle, ang + G.rimHalfAngle, around: c), A, G.rimWidth, 0.95 * o)
         let co = (reduce ? cl(v) : cl((v - 0.55) / 0.35)) * od
-        let c = P((ri + ro) / 2, ang)
         let lit = hot && sv > 0.5
+        let ink = lit ? CockpitPalette.onAccent : CockpitPalette.ink
         if let icon = it.icon {
-          labels.append(Mark(symbol: icon.rawValue + (lit ? "-on" : ""), at: CGPoint(x: c.x, y: c.y - 7), opacity: co))
-          labels.append(Mark(text: Text(it.title).font(.system(size: 10.5, weight: .medium)).kerning(0.3)
-                              .foregroundColor(lit ? CockpitPalette.onAccent : CockpitPalette.ink), at: CGPoint(x: c.x, y: c.y + 15), opacity: 0.9 * co))
+          labels.append(Mark(symbol: icon.rawValue + (lit ? "-on" : ""), at: c, opacity: co))
+        } else if let n = it.number {
+          labels.append(Mark(text: Text(n).font(.system(size: G.kcalSize, weight: .semibold).monospacedDigit()).foregroundColor(ink),
+                             at: CGPoint(x: c.x, y: c.y - 2.2), opacity: co))
+          labels.append(Mark(text: Text("kcal").font(.system(size: G.kcalUnitSize)).foregroundColor(lit ? CockpitPalette.onAccent : CockpitPalette.dim),
+                             at: CGPoint(x: c.x, y: c.y + 10.9), opacity: co))
         } else {
-          labels.append(Mark(text: Text(it.title).font(.system(size: 12.5, weight: .semibold))
-                              .foregroundColor(lit ? CockpitPalette.onAccent : CockpitPalette.ink), at: CGPoint(x: c.x, y: c.y - 3), opacity: co))
-          if let s = it.sub {
-            labels.append(Mark(text: Text(s).font(.system(size: 9.5)).foregroundColor(lit ? CockpitPalette.onAccent : CockpitPalette.dim),
-                                at: CGPoint(x: c.x, y: c.y + 13), opacity: co))
-          }
+          labels.append(Mark(symbol: Icon.Name.soup.rawValue + (lit ? "-on" : ""), at: c, opacity: co))
         }
+        // the label, outside: under the key
+        labels.append(Mark(text: Text(it.label).font(.system(size: G.labelSize, weight: .medium)).kerning(0.3)
+                            .foregroundColor(CockpitPalette.ink),
+                           at: CGPoint(x: c.x, y: c.y + kr + G.labelBelow), opacity: G.labelOpacity * co))
       }
       // level 2: the chosen key docks above the core (tap it to go back)
       let cv = m.crumb.x
