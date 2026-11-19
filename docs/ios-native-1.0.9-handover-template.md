@@ -1,5 +1,7 @@
 # iOS 1.0.9 交接单（模板）
 
+> **文件名里的 1.0.9 是历史**：1.0.9 从未发布，这份模板从 2.0.0 起一直是现行的 TestFlight 交接单模板（换成当次的版本号和构建号填写），所以没有归档。名字对照见 [`ios-native-app.md`](ios-native-app.md) 开头的表。
+
 > 模板（#340 N9）。发布当天由中控复制一份到私有的 `dist/交接单-iOS-1.0.9.md`，把尖括号里的值填上再发。这份公开文件里不写任何人的名字、Apple ID、Team ID、Bundle ID、域名。
 > 和以前的交接单最大的不同：**1.0.9 是全新的原生工程**（`apps/ios/`，SwiftUI），不再用 Flutter、CocoaPods，也不用 `config/defaults.json`。
 
@@ -82,6 +84,6 @@ Demo account: <演示账号的设置链接 / 激活码，由中控填>
 - [ ] 推送：服务器 `body-engine notify status` 正常（静默推送要 APNs 配好）。
 
 **朋友上传之后**
-- [ ] 负责人自己先按 `docs/ios-native-1.0.9-device-checklist.md` 的 A 节（从 1.0.8 覆盖升级）验一遍，再开其他节给内测组。
+- [ ] 负责人自己先按 `docs/archive/ios-native-1.0.9-device-checklist.md`（1.0.9 的清单，已归档；2.x 的清单是 `docs/ios-native-2.0-device-checklist.md`） 的 A 节（从 1.0.8 覆盖升级）验一遍，再开其他节给内测组。
 - [ ] 按 `docs/ios-native-app.md` 第 12 节的顺序开开关、切 app 模式。
 - [ ] 一天后：`sync_runs` 里有后台轮次；`app-scores status` 有用户变成 app 算分；doctor 正常。

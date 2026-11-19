@@ -1,5 +1,14 @@
 # Watch2Whoop app (iOS, and an Android APK for Huawei phones)
 
+> **Historical, unmaintained.** This is the Flutter version of the iOS app (up to 1.0.8): it synced through Open Wearables
+> and showed the web Today page in a WebView. Since 2.0.0 the iOS app is the native SwiftUI app in [`apps/ios/`](../ios/README.md);
+> development is iOS native only and Android is not planned. This directory is kept for reference: no fixes and no new
+> work are accepted ([CONTRIBUTING.md](../../CONTRIBUTING.md)), and the instructions below are no longer kept up to date.
+> One exception: `ios/Runner/{SyncEngine,RawSync,Backfill}.swift` and `assets/healthkit_types.json` are still the originals of files that `apps/ios/scripts/sync_flutter_sources.sh` copies byte for byte into `apps/ios` (the native app's sync engine; `apps/ios/scripts/sync_flutter_sources.sh --check` compares them). Until those originals move into `apps/ios/`, change them here and copy.
+>
+> **历史版本，不再维护。** 这是 iOS app 的 Flutter 旧版（到 1.0.8）。2.0.0 起 iOS app 是 [`apps/ios/`](../ios/README.md) 里的原生 SwiftUI 版；
+> 现在只开发 iOS 原生，Android 没有计划。这个目录只留作参考，不再修 bug、不接受新工作，下面的步骤也不再更新。唯一的例外：原生 app 拷贝使用的同步文件原件（见上面的 One exception）还在这里，改动先改这里再拷贝。
+
 [English](#english) · [中文步骤](#中文步骤)
 
 ---

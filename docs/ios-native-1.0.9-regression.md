@@ -3,7 +3,7 @@
 > 2026-10-29，iPhone 17 模拟器（iOS 26.2），Debug 构建，签名 `FAKETEAMID`（Keychain 和 Flutter 版的模拟器构建一致）。
 > 服务器：本地 Body Engine（当前分支）+ 一次性 Postgres 17 容器（库 `body_test_n9`），用完删掉；没有碰任何真实的库。
 > 数据：全部是合成的。手机上的「健康」数据由 Debug 版的 `DebugHealthSeeder` 写入（21 天，`W2WTestData=1`），朋友的数据由 `quickstart/demo_data.py` 生成（40 天）。用户都是虚构的（`tester-*@example.com`）。
-> 只能在真机上验证的项目单独列在 [`ios-native-1.0.9-device-checklist.md`](ios-native-1.0.9-device-checklist.md)。
+> 只能在真机上验证的项目单独列在 [`archive/ios-native-1.0.9-device-checklist.md`](archive/ios-native-1.0.9-device-checklist.md)。
 
 ## 1. 结果
 

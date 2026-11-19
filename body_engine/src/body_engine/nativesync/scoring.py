@@ -32,7 +32,10 @@ def _user(conn: psycopg.Connection, uid: int) -> dict:
 
 
 def hr_histograms(conn: psycopg.Connection, uid: int, tz: ZoneInfo, start: date, end: date, hrv_kind: str) -> dict:
-    """local date -> {bpm: count}: the rounded raw heart rate of each day, as scores/engine.score_days counts it."""
+    """local date -> {bpm: count}: the rounded raw heart rate of each day, as scores/engine.score_days counts it.
+    Loaded P.HIST_CHUNK_DAYS at a time: a year of raw samples at once was ~180 MB of Python objects in the API process
+    (docs/api-memory.md). The loader keeps one sample per (type, time stamp) and every copy of a sample lies on the same
+    local day, so the counts of a day do not depend on the window it was loaded with."""
     from ..importers import shortcut
     from ..ow_client import OWClient, OWError
     from ..scores import inputs as SI
@@ -40,13 +43,20 @@ def hr_histograms(conn: psycopg.Connection, uid: int, tz: ZoneInfo, start: date,
         client = OWClient()
     except OWError:
         client = None
-    inp = SI.load(conn, client, uid, start, end, shortcut.user_archive_dir(uid), hrv_kind=hrv_kind, ow_cache="use")
-    days: dict[date, Counter] = defaultdict(Counter)
-    for t, v in inp.hr:
-        d = t.astimezone(tz).date()
-        if start <= d <= end:
-            days[d][round(v)] += 1
-    return {d.isoformat(): {str(b): n for b, n in sorted(c.items())} for d, c in sorted(days.items())}
+    out: dict[str, dict] = {}
+    lo = start
+    while lo <= end:
+        hi = min(lo + timedelta(days=P.HIST_CHUNK_DAYS - 1), end)
+        inp = SI.load(conn, client, uid, lo, hi, shortcut.user_archive_dir(uid), hrv_kind=hrv_kind, ow_cache="use")
+        days: dict[date, Counter] = defaultdict(Counter)
+        for t, v in inp.hr:
+            d = t.astimezone(tz).date()
+            if lo <= d <= hi:
+                days[d][round(v)] += 1
+        del inp
+        out.update((d.isoformat(), {str(b): n for b, n in sorted(c.items())}) for d, c in sorted(days.items()))
+        lo = hi + timedelta(days=1)
+    return out
 
 
 def muscle(conn: psycopg.Connection, uid: int, start: date, end: date) -> dict:

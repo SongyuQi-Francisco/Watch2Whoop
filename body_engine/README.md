@@ -2,6 +2,21 @@
 
 The in-house part of the body management system: daily metrics, sleep, scores, journal, supplements, lab results, events, rule reminders, AI assistant. Multi-user (every table has a `user_id`, each person has their own tokens, and viewing someone else's data needs a `shares` grant). For the design see sections 6, 7, 12 and 13 of `../docs/system-design.md`.
 
+## Where each kind of data comes from today
+
+| Source (`daily_metric_sources.source`) | How it arrives | Code | Status and rank |
+|---|---|---|---|
+| **Phone sync engine** (`app`) | The iOS app's own HealthKit engine uploads to `POST /v1/ingest/healthkit`. Two kinds of values: the *phase-1 types* it sends as `quantities[]`, and the values the server derives from the raw samples it sends (every other type of `ENGINE_TYPES`, sleep, workouts) | `rawdata/api.py`, `rawdata/quantities.py` + `rawdata/hk_types.py` (`HK_TYPES`), `rawdata/engine.py` + `rawdata/derive.py` (flag `apple_sync_engine`) | **The live source.** Highest rank (4). Phase-1 values always take part; derived values take part only in sync mode `app` (`rawdata/engine.py` `mode()`: `ow` / `shadow` / `app`), otherwise they are stored for comparison only. Beat-to-beat HRV, ECG and water readings also arrive this way (their own raw tables, no daily-value choice) |
+| **iOS Shortcut** (`shortcut`) | `POST /upload` to the receiver, then `body-engine import-shortcut` | `health_sync/health_server.py`, `importers/shortcut.py`, [`docs/shortcut-sync-spec.md`](../docs/shortcut-sync-spec.md) | Being retired. Lowest rank (1). With `BODY_LEGACY_SOURCES_CUTOFF` set the receiver answers 410 (`rawdata/retire.py`) |
+| **Apple Health export** (`apple_export`) | An admin runs `body-engine import-apple-zip` (or `import-apple-export`); the upload endpoints in `history/` still exist but no client uses them | `importers/apple_zip.py`, `importers/apple_export.py`, `history/` | Rank 2. History only: a one-time import |
+| **Open Wearables** (`ow`) | `body-engine import-ow`, run by the hourly batch and on demand | `importers/ow.py`, `sync/refresh.py` | Legacy, being retired. Rank 3. Skipped after `BODY_LEGACY_SOURCES_CUTOFF` (`rawdata/retire.py`) |
+| **Manual / AI logging** | Your AI through the tools (MCP or in-app chat), the app's write calls, the Hevy CSV import | `ownstore/` (food, weight, strength logs), `records/` (labs, supplements, journal, events), `training/hevy_import.py` | Not part of the daily-value choice below: these go to their own tables |
+
+How a day's value is chosen from the candidates (`importers/common.py`: `resolve_daily`, `choose`; the phone repeats it in `packages/openbodyscore-js/src/30_derive.js`, the Python is the reference):
+- **Non-cumulative metrics** (heart rate, HRV, resting heart rate, weight …) and **sleep**: the highest-ranked source wins (`SOURCE_PRIORITY`: shortcut 1 < apple_export 2 < ow 3 < app 4). A lower source never overwrites a higher one.
+- **Cumulative metrics** (`agg = sum`: steps, energy, distance …): among the *clean* candidates the **largest** value wins (a tie goes to the higher rank). A candidate flagged `hourly_sum` (the Shortcut's per-hour groups, which add iPhone and Watch) or `incomplete` is used only when no clean one exists, again the largest.
+- **`incomplete`** marks an energy value that was only partly synced, and only for days before today: basal energy below `INCOMPLETE_BASAL_SHARE` (0.5) of the median of the previous `BASAL_REF_DAYS` (60) days (needs `BASAL_REF_MIN_DAYS` = 7 of them), or active energy more than `WORKOUT_KCAL_SLACK` (20 kcal) below that day's workouts. The numbers are at the top of `importers/common.py`.
+
 ## Running
 ```bash
 # From the repository root: start the database and the API (http://127.0.0.1:8100, docs at /docs)
@@ -46,7 +61,7 @@ uv run body-engine briefing-stats [--days 7] [--json]   # get_briefing calls, ca
 uv run body-engine refresh-status --user-id 1           # recompute the automatically computed items of the status card (the hourly job runs it; the Today page also refreshes it on read when older than 30 minutes)
 uv run pytest                                           # each database test uses its own body_test_* database (rebuilt every time); skipped if it cannot connect
 ```
-All imports are idempotent and can be re-run. Source priority is `ow` > `apple_export` > `shortcut`.
+All imports are idempotent and can be re-run. Which source wins for a day: see the table at the top (`app` > `ow` > `apple_export` > `shortcut`; cumulative metrics take the largest clean candidate).
 For OW's deployment and API key see `../deploy/open-wearables/README.md` (the key is read from `../secrets/open_wearables_api_key`, the address is `BODY_OW_URL`, default http://127.0.0.1:8200).
 The OW importer's rules (cumulative metrics de-duplicated by time window + source priority, the export day itself not written, the XML unit problem) are written at the top of `src/body_engine/importers/ow.py` and in section 10 of the system design.
 SparkyFitness (workouts, meals, weight) is not imported; it is read live through its API when needed (`src/body_engine/sparky_client.py`, one read-only key per person; only the body butler's write tools use the read-write key; address `BODY_SPARKY_URL`, default http://127.0.0.1:8300; key directory `BODY_SECRETS_DIR`, default `../secrets`). Why a read-only database role is not used is explained at the top of that file. For deployment see `../deploy/sparkyfitness/README.md`.
@@ -236,7 +251,7 @@ uv run body-engine history-import-run                      # process the queued 
 uv run body-engine import-apple-zip --user-id 2 --file export.zip   # admin imports a file directly (zip or xml)
 ```
 - Streaming: the XML inside the zip is iterparsed while being decompressed and each top-level element is cleared once processed; the owner's own 700MB XML takes 15 seconds with a 95MB peak. Nothing is extracted to disk, and the original file is deleted after the import.
-- Same rules as `parse_export.py` + `import-apple-export` (cumulative metrics take the most complete single source, the export day is dropped); source = apple_export, with lower priority than OW / iOS Shortcut and never overriding them. Scoring treats `export_samples` as an XML source (it yields to samples synced live for the same moment; sleep stages only fill nights that other sources lack); workouts without OW heart rate use it to compute TRIMP.
+- Same rules as `parse_export.py` + `import-apple-export` (cumulative metrics take the most complete single source, the export day is dropped); source = apple_export, ranked below `ow` and `app` and above `shortcut` (see the table at the top). Scoring treats `export_samples` as an XML source (it yields to samples synced live for the same moment; sleep stages only fill nights that other sources lack); workouts without OW heart rate use it to compute TRIMP.
 - File names from Chinese-language systems (导出.zip / 导出.xml) are recognised too; anything that is not an Apple Health export, a corrupt zip or an incomplete XML gets a Chinese explanation.
 - Limits: `BODY_IMPORT_MAX_MB` (default 1024), `BODY_IMPORT_MIN_FREE_MB` (default 2048), `BODY_IMPORT_DIR` (default `health_data/imports`).
 

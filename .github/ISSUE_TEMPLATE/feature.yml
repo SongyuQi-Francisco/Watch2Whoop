@@ -15,11 +15,9 @@ body:
       multiple: true
       options:
         - iOS app
-        - Android app
-        - HarmonyOS app
-        - Today page (web / PWA)
+        - Today page (web, frozen)
         - Server (Body Engine, AI / MCP, deployment)
-        - iOS Shortcut
+        - iOS Shortcut (being retired)
         - Docs
         - Not sure
     validations:
@@ -34,7 +32,12 @@ body:
     id: idea
     attributes:
       label: Your idea
-      description: How it could work. For a new watch / platform, see docs/apps.md for what a client has to implement.
+      description: How it could work. Development is iOS native only (apps/ios); Android, HarmonyOS and the Flutter app are not planned, and the web Today page is frozen.
+  - type: input
+    id: third_party
+    attributes:
+      label: Third-party terms
+      description: Terms of service, deprecation notices or trademarks this depends on (an API, a store policy, a name or logo), with links. Write "none" if there are none.
   - type: checkboxes
     id: help
     attributes:

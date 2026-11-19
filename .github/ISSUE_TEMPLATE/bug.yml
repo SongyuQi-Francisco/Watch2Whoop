@@ -20,11 +20,9 @@ body:
       multiple: true
       options:
         - iOS app
-        - Android app
-        - HarmonyOS app
-        - Today page (web / PWA)
+        - Today page (web, frozen)
         - Server (Body Engine, AI / MCP, deployment)
-        - iOS Shortcut
+        - iOS Shortcut (being retired)
         - Docs
         - Not sure
     validations:
