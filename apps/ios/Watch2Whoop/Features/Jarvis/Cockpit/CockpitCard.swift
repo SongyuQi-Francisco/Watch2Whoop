@@ -17,15 +17,18 @@ struct CockpitCardFrame: View {
   /// The unfolded height now.
   private var h: CGFloat { reduceMotion ? H : max(0, H * CGFloat(heightShare)) }
   private var w: CGFloat { reduceMotion ? W : W * CGFloat(widthShare) }
+  private var corner: CGFloat { min(CockpitGeometry.cardCorner, h / 2, w / 2) }
 
   var body: some View {
     let contentOpacity = reduceMotion ? widthShare : min(1, max(0, widthShare * 3 - 2))
     ZStack(alignment: .bottom) {
-      CockpitCardShape(chamfer: min(18, h / 2))
+      // round corners, no cut corner (option B, docs/design/2.0.1/jarvis-soften/README.md §7 question 1)
+      RoundedRectangle(cornerRadius: corner, style: .continuous)
         .fill(CockpitPalette.panel.opacity(0.97))
-        .overlay(CockpitCardShape(chamfer: min(18, h / 2)).stroke(CockpitPalette.accent.opacity(0.5), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: corner, style: .continuous).stroke(CockpitPalette.accent.opacity(0.3), lineWidth: 1))
         .overlay(alignment: .topLeading) {
-          Capsule().fill(CockpitPalette.accent).frame(width: 44 * CGFloat(min(1, widthShare)), height: 2).offset(x: 12, y: -1)
+          Capsule().fill(CockpitPalette.accent).frame(width: 44 * CGFloat(min(1, widthShare)), height: 1.5)
+            .offset(x: corner + 2, y: -0.75)
         }
         .frame(width: w, height: h)
       content
@@ -210,26 +213,6 @@ struct CockpitCardFrame: View {
            ?? tr("今天 \(CockpitText.kcal(m.dayAfter)) kcal", "Today \(CockpitText.kcal(m.dayAfter)) kcal"))
         .font(.system(size: 11 * k, weight: .medium)).foregroundColor(CockpitPalette.dim)
     }
-  }
-}
-
-/// The card's outline: rounded corners, the top right cut at 45° (the prototype's chamfer).
-struct CockpitCardShape: Shape {
-  var chamfer: CGFloat
-
-  func path(in r: CGRect) -> Path {
-    var p = Path()
-    let rr: CGFloat = 6
-    p.move(to: CGPoint(x: r.minX, y: r.minY + rr))
-    p.addQuadCurve(to: CGPoint(x: r.minX + rr, y: r.minY), control: CGPoint(x: r.minX, y: r.minY))
-    p.addLine(to: CGPoint(x: r.maxX - chamfer, y: r.minY))
-    p.addLine(to: CGPoint(x: r.maxX, y: r.minY + chamfer))
-    p.addLine(to: CGPoint(x: r.maxX, y: r.maxY - rr))
-    p.addQuadCurve(to: CGPoint(x: r.maxX - rr, y: r.maxY), control: CGPoint(x: r.maxX, y: r.maxY))
-    p.addLine(to: CGPoint(x: r.minX + rr, y: r.maxY))
-    p.addQuadCurve(to: CGPoint(x: r.minX, y: r.maxY - rr), control: CGPoint(x: r.minX, y: r.maxY))
-    p.closeSubpath()
-    return p
   }
 }
 

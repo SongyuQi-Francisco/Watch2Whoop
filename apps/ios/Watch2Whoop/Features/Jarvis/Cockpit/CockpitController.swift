@@ -131,7 +131,11 @@ final class CockpitController: ObservableObject {
       if m == .confirm && !machine.autoSend { prepareTake() }
       if (was == .listen || was == .confirm) && m != .think { waiting = nil }
     }
-    if machine.level != level { level = machine.level }
+    if machine.level != level {
+      // the second ring: the first folds, the second fans out (and the way back); closing has its own window
+      if machine.mode == .menu { JarvisPerf.shared.measure("cockpit-ring2", seconds: 0.8) }
+      level = machine.level
+    }
     if machine.isActive != active { active = machine.isActive || mode != .idle }
   }
 
@@ -157,7 +161,7 @@ final class CockpitController: ObservableObject {
         JarvisPerf.shared.measure("cockpit-open", seconds: 0.6)
         prepare()
       case .closed:
-        break
+        JarvisPerf.shared.measure("cockpit-close", seconds: 0.6)
       case .listen(let flow):
         JarvisHaptics.light.impactOccurred()
         startVoice(flow)

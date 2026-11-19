@@ -12,35 +12,63 @@ enum CockpitGeometry {
   /// The core: its disc and the touch area around it.
   static let coreRadius: CGFloat = 29
   static let coreHit: CGFloat = 34
-  /// The panels: one ring sector each (RI, RO, HW, RM).
-  static let panelInner: CGFloat = 80
-  static let panelOuter: CGFloat = 136
-  static let panelHalfAngle: Double = 16
-  static let panelMid: CGFloat = 108
-  static let panelHit: CGFloat = 31
-  /// The panels grow from this radius (a little outside the core).
+  /// The keys (option B 「卫星」, docs/design/2.0.1/jarvis-soften/README.md §2 B): round keys on one hairline orbit, no
+  /// walls. The positions come from `CockpitOrbit` (radius, key size, gap, count); these are its inputs.
+  static let orbitRadius: CGFloat = 116
+  static let keyRadius: CGFloat = 24
+  /// 23.7 pt between two keys, 49 % of the key (the built sectors had 7.5 pt, 12 %).
+  static let keyGap: CGFloat = 23.7
+  /// Where a key's centre sits: on the orbit (VoiceOver and the tests use this).
+  static let panelMid: CGFloat = orbitRadius
+  /// The key's own ring (1 pt at 42 %) and its lit rim: 84° of that ring on the side away from the core, 1.8 pt.
+  static let keyStroke: CGFloat = 1
+  static let keyStrokeOpacity = 0.42
+  static let rimHalfAngle: Double = 42
+  static let rimWidth: CGFloat = 1.8
+  /// The orbit hairline (1 pt at 26 %); it runs this far past the outermost keys and shows only between keys.
+  static let orbitOpacity = 0.26
+  static let orbitOverrun: Double = 24
+  /// The label sits outside, under the key: its centre this far below the key's edge (the prototype's baseline at 15 pt
+  /// for a 10.5 pt font), 10.5 pt at 72 %; at least `labelAir` between two labels.
+  static let labelBelow: CGFloat = 11.3
+  static let labelSize: CGFloat = 10.5
+  static let labelOpacity = 0.72
+  static let labelAir: CGFloat = 6
+  /// A quick meal shows its kcal in the key (15 pt) with "kcal" (7.5 pt) under it, and its name as the label.
+  static let kcalSize: CGFloat = 15
+  static let kcalUnitSize: CGFloat = 7.5
+  /// Touch area of a key: its whole wedge (half a step either side) between these radii, at least 44 pt wide.
+  static let wedgeInner: CGFloat = 72
+  static let wedgeOuter: CGFloat = 164
+  /// The keys grow from this radius (a little outside the core) and from this share of their size.
   static let panelStart: CGFloat = 34
-  /// The selected panel moves out by this much.
+  static let keyStartScale = 0.35
+  /// The selected key moves out by this much.
   static let selectPush: CGFloat = 7
-  /// The tick ring outside the panels: 90 ticks (every 4°), a major one every 9.
-  static let tickInner: CGFloat = 143
-  static let tickMajor: CGFloat = 150
-  static let tickMinor: CGFloat = 146.5
+  /// The tick ring outside the keys (14 pt clear of them): 90 ticks (every 4°), a major one every 9, at 80 %.
+  static let tickInner: CGFloat = 148
+  static let tickMinor: CGFloat = 151
+  static let tickMajor: CGFloat = 154
   static let tickSpan: Double = 100
-  static let selectArc: CGFloat = 153
-  /// The second ring's way back: the chosen key, docked above the core.
+  static let tickOpacity = 0.8
+  static let selectArc: CGFloat = 158
+  /// The glow under the keys and lines (was 40 %).
+  static let glowOpacity = 0.3
+  /// The second ring's way back: the chosen key, docked above the core; touch area 44 pt.
   static let crumbDistance: CGFloat = 54
   static let crumbRadius: CGFloat = 13
-  static let crumbHit: CGFloat = 18
+  static let crumbHit: CGFloat = 22
   /// Listening: the × left of the core.
   static let cancelOffset: CGFloat = -80
   static let cancelRadius: CGFloat = 17
   static let cancelHit: CGFloat = 24
   /// Listening: the language chip right of the core (中文 / English), when the phone recognises both.
   static let langOffset: CGFloat = 80
-  /// The reply card: its bottom edge is this far above the core, its width at most `cardWidth`.
+  /// The reply card: its bottom edge is this far above the core, its width at most `cardWidth`, round corners of
+  /// `cardCorner` (no cut corner: README §7 question 1).
   static let cardGap: CGFloat = 99
   static let cardWidth: CGFloat = 354
+  static let cardCorner: CGFloat = 22
   /// The transcript block (words, hint, 发送) ends this far above the core.
   static let transcriptBottom: CGFloat = 104
 
@@ -97,40 +125,57 @@ enum CockpitKey: Hashable {
   case trainStart, trainBackfill, trainPlan
 }
 
-/// One panel: where it sits and what it shows (an icon and a label, or a quick meal's name and kcal).
+/// One key: where it sits and what it shows (an icon and a label, or a quick meal's kcal in the key and its name under it).
 struct CockpitItem: Equatable {
   var key: CockpitKey
   var angle: Double
   var icon: Icon.Name?
   var title: String
   var sub: String?
+  /// A quick meal's kcal, drawn inside the key.
+  var number: String?
+  /// The label under the key: the title, cut with "…" to the room between two keys (computed once).
+  var label: String
+
+  init(key: CockpitKey, angle: Double, icon: Icon.Name?, title: String, sub: String? = nil, number: String? = nil) {
+    self.key = key
+    self.angle = angle
+    self.icon = icon
+    self.title = title
+    self.sub = sub
+    self.number = number
+    label = CockpitLabel.fit(title)
+  }
+
+  /// Slot `i` of `n` on the orbit.
+  private static func at(_ i: Int, _ n: Int) -> Double { CockpitOrbit.phone.angle(slot: i, of: n) }
 
   static func firstRing() -> [CockpitItem] {
-    [CockpitItem(key: .meal, angle: -72, icon: .soup, title: tr("记一餐", "Meal")),
-     CockpitItem(key: .train, angle: -36, icon: .dumbbell, title: tr("记训练", "Workout")),
-     CockpitItem(key: .talk, angle: 0, icon: .mic, title: tr("说话", "Talk")),
-     CockpitItem(key: .photo, angle: 36, icon: .camera, title: tr("拍照", "Photo")),
-     CockpitItem(key: .ask, angle: 72, icon: .messageCircle, title: tr("提问", "Ask"))]
+    [CockpitItem(key: .meal, angle: at(0, 5), icon: .soup, title: tr("记一餐", "Meal")),
+     CockpitItem(key: .train, angle: at(1, 5), icon: .dumbbell, title: tr("记训练", "Workout")),
+     CockpitItem(key: .talk, angle: at(2, 5), icon: .mic, title: tr("说话", "Talk")),
+     CockpitItem(key: .photo, angle: at(3, 5), icon: .camera, title: tr("拍照", "Photo")),
+     CockpitItem(key: .ask, angle: at(4, 5), icon: .messageCircle, title: tr("提问", "Ask"))]
   }
 
   /// `meals`: the two most used quick meals (template id, name, kcal); a missing one leaves its place empty.
   static func mealRing(_ meals: [CockpitMeal]) -> [CockpitItem] {
-    var out = [CockpitItem(key: .mealPhoto, angle: -72, icon: .camera, title: tr("拍照", "Photo")),
-               CockpitItem(key: .mealTalk, angle: -36, icon: .mic, title: tr("说", "Say"))]
+    var out = [CockpitItem(key: .mealPhoto, angle: at(0, 5), icon: .camera, title: tr("拍照", "Photo")),
+               CockpitItem(key: .mealTalk, angle: at(1, 5), icon: .mic, title: tr("说", "Say"))]
     for (i, m) in meals.prefix(2).enumerated() {
-      out.append(CockpitItem(key: .template(m.id), angle: i == 0 ? 0 : 36, icon: nil, title: m.name,
-                             sub: m.kcal.map { "\(Int($0.rounded())) kcal" }))
+      out.append(CockpitItem(key: .template(m.id), angle: at(2 + i, 5), icon: nil, title: m.name,
+                             sub: m.kcal.map { "\(Int($0.rounded())) kcal" }, number: m.kcal.map { "\(Int($0.rounded()))" }))
     }
-    out.append(CockpitItem(key: .mealMore, angle: 72, icon: .ellipsis, title: tr("更多", "More")))
+    out.append(CockpitItem(key: .mealMore, angle: at(4, 5), icon: .ellipsis, title: tr("更多", "More")))
     return out
   }
 
   /// 记训练. The prototype's 说一组 is left out: no tool of the in-app AI writes one set into today's session (log_workout
   /// logs a whole workout and skips the same exercise twice a day), and a key must not offer what the back end cannot do.
   static func trainRing() -> [CockpitItem] {
-    [CockpitItem(key: .trainStart, angle: -36, icon: .zap, title: tr("开始", "Start")),
-     CockpitItem(key: .trainBackfill, angle: 0, icon: .clock, title: tr("补记", "Backfill")),
-     CockpitItem(key: .trainPlan, angle: 36, icon: .calendarDays, title: tr("计划", "Plan"))]
+    [CockpitItem(key: .trainStart, angle: at(0, 3), icon: .zap, title: tr("开始", "Start")),
+     CockpitItem(key: .trainBackfill, angle: at(1, 3), icon: .clock, title: tr("补记", "Backfill")),
+     CockpitItem(key: .trainPlan, angle: at(2, 3), icon: .calendarDays, title: tr("计划", "Plan"))]
   }
 }
 
@@ -266,12 +311,9 @@ struct CockpitMachine {
         goBack()
         return []
       }
-      for (i, it) in items.enumerated() {
-        let q = g.point(g.panelMid, it.angle, around: c)
-        if hypot(p.x - q.x, p.y - q.y) < g.panelHit {
-          select(i)
-          return []
-        }
+      if let i = CockpitOrbit.phone.hit(p, center: c, angles: items.map(\.angle)) {
+        select(i)
+        return []
       }
       return close()
     }
