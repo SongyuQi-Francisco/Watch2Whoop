@@ -10,6 +10,8 @@ final class WatchLinkClient: NSObject {
   var onFailed: ((String) -> Void)?
   var onReachable: ((Bool) -> Void)?
   var onActivated: (() -> Void)?
+  /// A one-time code for the watch's own token (never in the application context).
+  var onPairCode: ((WatchPairCode) -> Void)?
 
   private var wc: WCSession? { WCSession.isSupported() ? WCSession.default : nil }
 
@@ -37,6 +39,23 @@ final class WatchLinkClient: NSObject {
     guard let wc, wc.activationState == .activated, wc.isReachable else { return }
     wc.sendMessage([WatchCodec.requestKey: true], replyHandler: nil, errorHandler: nil)
   }
+
+  /// 「A code, please」: at once when the phone is reachable, else queued (the phone answers when it gets it).
+  func requestPairCode() {
+    guard let wc, wc.activationState == .activated else { return }
+    let msg: [String: Any] = [WatchCodec.pairRequestKey: true]
+    if wc.isReachable {
+      wc.sendMessage(msg, replyHandler: nil) { _ in wc.transferUserInfo(msg) }
+    } else {
+      wc.transferUserInfo(msg)
+    }
+  }
+
+  /// J4 「在手机上继续」: the conversation id, queued (delivered when the phone app runs).
+  func sendContinue(_ conversation: Int) {
+    guard let wc, wc.activationState == .activated else { return }
+    wc.transferUserInfo(WatchCodec.continueMessage(conversation: conversation))
+  }
 }
 
 extension WatchLinkClient: WCSessionDelegate {
@@ -53,6 +72,16 @@ extension WatchLinkClient: WCSessionDelegate {
   func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
     guard let ctx = WatchCodec.context(applicationContext) else { return }
     DispatchQueue.main.async { self.onContext?(ctx) }
+  }
+
+  func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+    guard let c = WatchCodec.pairCode(message) else { return }
+    DispatchQueue.main.async { self.onPairCode?(c) }
+  }
+
+  func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+    guard let c = WatchCodec.pairCode(userInfo) else { return }
+    DispatchQueue.main.async { self.onPairCode?(c) }
   }
 
   func session(_ session: WCSession, didFinish userInfoTransfer: WCSessionUserInfoTransfer, error: Error?) {

@@ -66,9 +66,11 @@ struct WatchContext: Codable, Equatable {
   var today: WatchToday?
   /// The quick-log tiles and the day's intake (mockup M5, M3).
   var quick: WatchQuick?
+  /// Voice on the watch for this account (phase 2b). nil = the phone has not said (an older phone): no voice key.
+  var voice: WatchVoiceOffer?
 
   init(signedIn: Bool, plan: WatchPlan?, lang: String, sentAt: Date, planFor: String? = nil, today: WatchToday? = nil,
-       quick: WatchQuick? = nil) {
+       quick: WatchQuick? = nil, voice: WatchVoiceOffer? = nil) {
     self.signedIn = signedIn
     self.plan = plan
     self.lang = lang
@@ -76,6 +78,7 @@ struct WatchContext: Codable, Equatable {
     self.planFor = planFor ?? plan?.day
     self.today = today
     self.quick = quick
+    self.voice = voice
   }
 
   /// The four phase-1 fields are required; every later block is optional and lenient (one unreadable block = nil).
@@ -88,6 +91,7 @@ struct WatchContext: Codable, Equatable {
     planFor = (try? c.decodeIfPresent(String.self, forKey: .planFor)) ?? nil
     today = (try? c.decodeIfPresent(WatchToday.self, forKey: .today)) ?? nil
     quick = (try? c.decodeIfPresent(WatchQuick.self, forKey: .quick)) ?? nil
+    voice = (try? c.decodeIfPresent(WatchVoiceOffer.self, forKey: .voice)) ?? nil
   }
 }
 
@@ -177,6 +181,8 @@ struct WatchSetEvent: Codable, Equatable, Identifiable {
     case water
     /// The quick log `target` was taken back on the watch (after the confirm screen).
     case undo
+    /// A meal Jarvis logged from the watch's voice (`target` = its receipt) is taken back: the phone deletes `writes`.
+    case voiceUndo
   }
 
   var id: String
@@ -202,6 +208,8 @@ struct WatchSetEvent: Codable, Equatable, Identifiable {
   var ml: Int? = nil
   /// `undo`: the id of the quick log it takes back.
   var target: String? = nil
+  /// `voiceUndo`: what the server wrote (log id or entry ids, the date).
+  var writes: [WatchVoiceWrite]? = nil
 
   var isTraining: Bool { kind == .set || kind == .end }
 
@@ -220,6 +228,22 @@ enum WatchCodec {
   /// `sendMessage` from the watch: 「send me the plan and today's numbers again」 (the 「计划没同步」 key and the sync mark
   /// retry with it).
   static let requestKey = "w2w.watch.request.v1"
+  /// Watch → phone: 「I have no token of my own: a code, please」 (sendMessage, or a queued transfer when away).
+  static let pairRequestKey = "w2w.watch.pairrequest.v1"
+  /// Phone → watch: a `WatchPairCode` (sendMessage or transferUserInfo, never the application context: a code is a key).
+  static let pairKey = "w2w.watch.pair.v1"
+  /// Watch → phone: J4 「在手机上继续」, the conversation id (queued transfer).
+  static let continueKey = "w2w.watch.continue.v1"
+
+  static func message(_ code: WatchPairCode) -> [String: Any] {
+    guard let d = encode(code) else { return [:] }
+    return [pairKey: d]
+  }
+
+  static func pairCode(_ dict: [String: Any]) -> WatchPairCode? { decode(WatchPairCode.self, dict[pairKey] as? Data) }
+
+  static func continueMessage(conversation: Int) -> [String: Any] { [continueKey: conversation] }
+  static func continued(_ dict: [String: Any]) -> Int? { (dict[continueKey] as? NSNumber)?.intValue ?? dict[continueKey] as? Int }
 
   private static let encoder: JSONEncoder = {
     let e = JSONEncoder()

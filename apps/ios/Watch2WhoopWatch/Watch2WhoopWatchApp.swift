@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The Apple Watch app (docs/watch-app-plan.md): logging sets, today at a glance, quick log. The watch-face complications
-/// are the Watch2WhoopWatchWidgets extension; they read what this app stores (`WatchStore`).
+/// The Apple Watch app (docs/watch-app-plan.md): logging sets, today at a glance, quick log, hold to talk. The watch-face
+/// complications are the Watch2WhoopWatchWidgets extension; they read what this app stores (`WatchStore`).
 @main
 struct Watch2WhoopWatchApp: App {
   /// One model for the app's whole life: a plain property, not a `@StateObject`, because the background task below runs
@@ -25,6 +25,7 @@ struct Watch2WhoopWatchApp: App {
     WindowGroup {
       root
         .environmentObject(model)
+        .environmentObject(model.voice)
         .onAppear { model.start() }
         // a watch-face complication was tapped (Watch2WhoopWatchWidgets): its screen (WatchDeepLink)
         .onOpenURL { model.open($0) }

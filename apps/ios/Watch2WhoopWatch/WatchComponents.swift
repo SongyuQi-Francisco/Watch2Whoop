@@ -160,10 +160,15 @@ extension View {
 
 /// The Jarvis core (mockups `core()`, the phone's approved geometry): a dark disc, 24 ticks, three segments, an outlined
 /// inverted triangle with a lit inner one. Drawn in a 58 × 58 box scaled to `size`. `dim`: voice is not available
-/// (mockup S7: the inner triangle at 35 %, no glow; `WatchVoice`).
+/// (mockup S7: the inner triangle at 35 %, no glow; `WatchVoice`). `live`: the cockpit version while Jarvis listens or
+/// works (mockups M1 / M2 / J2: ice ticks and segments, a soft glow), the ticks turned by `ra` degrees and the
+/// segments by `rb`.
 struct JarvisCoreMark: View {
   var size: CGFloat
   var dim = false
+  var live = false
+  var ra: Double = 0
+  var rb: Double = 0
 
   var body: some View {
     Canvas { ctx, s in
@@ -181,25 +186,26 @@ struct JarvisCoreMark: View {
       }
       let disc = Path(ellipseIn: CGRect(x: 0.5, y: 0.5, width: 57, height: 57))
       ctx.fill(disc, with: .color(WJarvis.core))
-      ctx.stroke(disc, with: .color(Color.white.opacity(0.22)), lineWidth: 1 / k)
+      ctx.stroke(disc, with: .color(live ? WJarvis.ice.opacity(0.9) : Color.white.opacity(0.22)), lineWidth: 1 / k)
       for i in 0..<24 {
         var t = Path()
-        t.move(to: p(22, Double(i) * 15))
-        t.addLine(to: p(i % 6 == 0 ? 26.5 : 25, Double(i) * 15))
-        ctx.stroke(t, with: .color(W.text2.opacity(i % 6 == 0 ? 0.9 : 0.55)), lineWidth: 1 / k)
+        t.move(to: p(22, ra + Double(i) * 15))
+        t.addLine(to: p(i % 6 == 0 ? 26.5 : 25, ra + Double(i) * 15))
+        let o = live ? (i % 6 == 0 ? 0.95 : 0.5) : (i % 6 == 0 ? 0.9 : 0.55)
+        ctx.stroke(t, with: .color((live ? WJarvis.ice : W.text2).opacity(o)), lineWidth: 1 / k)
       }
       for i in 0..<3 {
         var a = Path()
-        let a0 = Double(i) * 120 + 12
+        let a0 = rb + Double(i) * 120 + 12
         for j in 0...24 {
           let q = p(17.5, a0 + 84 * Double(j) / 24)
           if j == 0 { a.move(to: q) } else { a.addLine(to: q) }
         }
-        ctx.stroke(a, with: .color(W.text.opacity(0.9)), style: StrokeStyle(lineWidth: 1.5 * max(0.8, k) / k, lineCap: .round))
+        ctx.stroke(a, with: .color((live ? WJarvis.ice : W.text).opacity(0.9)), style: StrokeStyle(lineWidth: 1.5 * max(0.8, k) / k, lineCap: .round))
       }
       ctx.stroke(tri(11.5), with: .color(W.text), style: StrokeStyle(lineWidth: 1.6 * max(0.8, k) / k, lineJoin: .round))
       var lit = ctx
-      if !dim { lit.addFilter(.shadow(color: WJarvis.ice.opacity(0.6), radius: 2.5 / k)) }
+      if !dim { lit.addFilter(.shadow(color: WJarvis.ice.opacity(0.6), radius: (live ? 5 : 2.5) / k)) }
       lit.opacity = dim ? 0.35 : 1
       lit.fill(tri(4.6), with: .color(WJarvis.ice))
       lit.stroke(tri(4.6), with: .color(WJarvis.ice), style: StrokeStyle(lineWidth: 1 / k, lineJoin: .round))
