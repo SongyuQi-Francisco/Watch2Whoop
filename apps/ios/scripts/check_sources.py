@@ -21,8 +21,9 @@ import sys
 HERE = pathlib.Path(__file__).resolve().parent.parent
 REPO = HERE.parent.parent
 APP = HERE / "Watch2Whoop"
-# Swift sources whose UI strings must be bilingual: the iPhone app, the Apple Watch app and the code they share
-SWIFT_DIRS = [APP, HERE / "Watch2WhoopWatch", HERE / "WatchShared"]
+# Swift sources whose UI strings must be bilingual: the iPhone app, the Apple Watch app, its complications and the code
+# they share
+SWIFT_DIRS = [APP, HERE / "Watch2WhoopWatch", HERE / "Watch2WhoopWatchWidgets", HERE / "WatchShared"]
 CSS = REPO / "body_engine" / "src" / "body_engine" / "web" / "static" / "app.css"
 SLIM_JS = CSS.with_name("slim.js")
 HAN = re.compile(r"[一-鿿]")

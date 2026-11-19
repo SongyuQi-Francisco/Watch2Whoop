@@ -154,6 +154,8 @@ targets:
       - path: WatchShared
       # tr("中文", "English") and the language choice, the same file as the iPhone app's
       - path: Watch2Whoop/Localization/I18n.swift
+      # the complications' views, drawn by the Debug gallery too (FaceGallery.swift)
+      - path: Watch2WhoopWatchWidgets/FaceViews.swift
     info:
       path: Watch2WhoopWatch/Info.plist
       properties:
@@ -164,6 +166,8 @@ targets:
         CFBundleAllowMixedLocalizations: true
         CFBundleLocalizations: [zh-Hans, en]
         WKApplication: true
+        # The App Group the app shares with its watch-face complications (WatchShared/WatchStore.swift `shared`)
+        W2WAppGroup: $(W2W_APP_GROUP)
         WKCompanionAppBundleIdentifier: $(W2W_BUNDLE_ID)
         # A companion app: it needs the iPhone app (plan, hand-over of the sets), so it is not offered on its own.
         WKRunsIndependentlyOfCompanionApp: false
@@ -174,6 +178,8 @@ targets:
     entitlements:
       path: Watch2WhoopWatch/Watch2WhoopWatch.entitlements
       properties:
+        # shared with the complications (Watch2WhoopWatchWidgets): the store they read
+        com.apple.security.application-groups: [$(W2W_APP_GROUP)]
         com.apple.developer.healthkit: true
         com.apple.developer.healthkit.access: []
     settings:
@@ -192,6 +198,57 @@ targets:
         SKIP_INSTALL: YES
     dependencies:
       - sdk: HealthKit.framework
+      # The watch-face complications, embedded in the watch app (PlugIns/)
+      - target: Watch2WhoopWatchWidgets
+
+  # Watch-face complications of 2.1.0 (docs/watch-app-plan.md 2.5): a WidgetKit extension inside the watch app. It reads
+  # the App Group store the watch app writes and draws it with the shared rules (WatchShared/WatchFace.swift). Bundle ID
+  # = the watch app's + ".widgets"; version and build number from the same xcconfig. Release steps:
+  # apps/ios/Watch2WhoopWatch/README.md 「Complications」.
+  Watch2WhoopWatchWidgets:
+    type: app-extension
+    platform: watchOS
+    deploymentTarget: "11.0"
+    sources:
+      - path: Watch2WhoopWatchWidgets
+        excludes:
+          - "**/*.md"
+      - path: WatchShared
+      - path: Watch2Whoop/Localization/I18n.swift
+      # the watch's colours and its dial number, so the face draws exactly like the app
+      - path: Watch2WhoopWatch/WatchTokens.swift
+      - path: Watch2WhoopWatch/WatchDialText.swift
+    info:
+      path: Watch2WhoopWatchWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: $(W2W_DISPLAY_NAME)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: zh-Hans
+        CFBundleAllowMixedLocalizations: true
+        CFBundleLocalizations: [zh-Hans, en]
+        W2WAppGroup: $(W2W_APP_GROUP)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Watch2WhoopWatchWidgets/Watch2WhoopWatchWidgets.entitlements
+      properties:
+        com.apple.security.application-groups: [$(W2W_APP_GROUP)]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(W2W_BUNDLE_ID).watchkitapp.widgets
+        PRODUCT_NAME: Watch2WhoopWatchWidgets
+        DEVELOPMENT_TEAM: $(W2W_TEAM_ID)
+        CODE_SIGN_STYLE: Automatic
+        MARKETING_VERSION: $(W2W_MARKETING_VERSION)
+        CURRENT_PROJECT_VERSION: $(W2W_BUILD_NUMBER)
+        TARGETED_DEVICE_FAMILY: "4"
+        WATCHOS_DEPLOYMENT_TARGET: "11.0"
+        ENABLE_PREVIEWS: YES
+        SKIP_INSTALL: YES
+    dependencies:
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
 
 schemes:
   Watch2Whoop:
