@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Jarvis cockpit, softer and roomier · boards</title>
+<style>
+/* Still boards: ?b=a | b | c (one option next to the built panel) or ?b=compare (all four side by side).
+   Every tile is the moving prototype frozen at one frame of its film (soften.js, demo=1&still=1&t=...). */
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#000;color:#F4F4F6;font-family:system-ui;-webkit-font-smoothing:antialiased;padding:28px 28px 20px;width:max-content}
+h1{font-size:22px;font-weight:600;letter-spacing:.2px}
+p.rule{font-size:13px;color:#8D8D94;margin:6px 0 18px;max-width:1300px;line-height:1.5}
+p.rule b{color:#8FDCFF;font-weight:500}
+.row{display:flex;gap:20px;margin-bottom:20px;align-items:flex-end}
+.rowname{width:92px;font-size:15px;font-weight:600;align-self:center}
+.rowname small{display:block;font-size:11px;color:#8D8D94;font-weight:400;margin-top:4px;line-height:1.35}
+.tile .fcap{font-size:12px;color:#8D8D94;margin-bottom:8px;letter-spacing:.3px}
+.tile .fcap b{color:#F4F4F6;font-weight:500}
+.frame{border-radius:22px;overflow:hidden;border:1px solid rgba(255,255,255,.12);position:relative;background:#000}
+.frame iframe{border:0;transform-origin:0 0;position:absolute;left:0;top:0}
+</style>
+</head>
+<body>
+<script>
+var q=new URLSearchParams(location.search),B=q.get('b')||'a',K=.8;
+var NAME={before:['Before','what is built'],a:['A','soft keycaps'],b:['B','satellites'],c:['C','ribbon']};
+var RULE={
+ a:'<b>A · soft keycaps.</b> The same five panels of one ring, each cut loose: span 26° (was 32°), gap 10° = <b>18.8 pt at mid radius, 38 % of the key</b> (was 7.5 pt, 12 %); four corners of radius 13 (was 0); outline 1 pt at 30 % (was 50 %), lit edge 1.5 pt (was 2 pt); tick ring 12 pt outside (was 7 pt). Touch area: the whole 36° wedge, at least 44 pt wide.',
+ b:'<b>B · satellites.</b> Round keys of 48 pt on one hairline orbit (radius 116), no walls: gap <b>23.7 pt, 49 % of the key</b>; a lit rim of 84° on the outer side of each key (the core’s segment, repeated); the label sits outside, under the key. Touch area: the whole 36° wedge, at least 44 pt wide.',
+ c:'<b>C · ribbon.</b> One band with round ends (56 pt wide, end radius 28) instead of five boxes: <b>0 walls</b>; icons 65.5 pt apart with 43 pt of empty band between them; the tick scale moves onto the band’s outer edge and a long tick stands over every key; the pressed key is a lit node of 46 pt. Touch area: the whole 36° wedge, at least 44 pt wide.',
+ compare:'<b>Before, A, B, C</b> at the same frames of the same film. Same core, same springs, same flows, same colours; only the geometry of the panel and its keys differs.'};
+var T={open:1500,pressed:10830,meal:12200,train:19000,listen:2700,card:14900};
+var CROP=400; // the bottom of the screen, where the panel is; full=1 shows the whole screen
+function tile(opt,cap,t,extra,full){var se=/size=se/.test(extra||''),w=se?375:402,h=se?667:874,k=full?CROP*K/h:K,vh=full?h:CROP;
+  return '<div class="tile"><div class="fcap">'+cap+'</div><div class="frame" style="width:'+(w*k)+'px;height:'+(vh*k)+'px"><iframe style="width:'+w+'px;height:'+h+'px;top:'+(-(h-vh)*k)+'px;transform:scale('+k+')" src="'+(opt==='before'?'before':'option-'+opt)+'.html?demo=1&still=1&t='+t+(extra||'')+'"></iframe></div></div>'}
+var s='<h1>Jarvis cockpit, softer and roomier'+(B==='compare'?' · comparison':' · option '+NAME[B][0]+' ('+NAME[B][1]+')')+'</h1><p class="rule">'+RULE[B]+'</p>';
+if(B==='compare'){['before','a','b','c'].forEach(function(o){
+  s+='<div class="row"><div class="rowname">'+NAME[o][0]+'<small>'+NAME[o][1]+'</small></div>'+tile(o,'open',T.open)+tile(o,'key pressed',T.pressed)+tile(o,'second ring · 记一餐',T.meal)+tile(o,'second ring · 记训练',T.train)+tile(o,'smallest phone · 375 × 667',T.open,'&size=se')+tile(o,'English · second ring',T.meal,'&lang=en')+'</div>'})}
+else{var o=B;
+  s+='<div class="row">'+tile('before','<b>before</b> · open',T.open)+tile(o,'<b>'+NAME[o][0]+'</b> · open',T.open)+tile(o,'key pressed',T.pressed)+tile(o,'second ring · 记一餐',T.meal)+tile(o,'second ring · 记训练',T.train)+tile(o,'listening (unchanged)',T.listen)+'</div>';
+  s+='<div class="row">'+tile('before','<b>before</b> · second ring',T.meal)+tile(o,'flow · reply card (unchanged content, softer frame)',T.card)+tile(o,'smallest phone · 375 × 667',T.open,'&size=se')+tile(o,'light theme',T.open,'&theme=light')+tile(o,'English',T.open,'&lang=en')+tile(o,'English · second ring',T.meal,'&lang=en')+tile(o,'whole screen',T.open,'',1)+'</div>'}
+document.body.insertAdjacentHTML('beforeend',s);
+</script>
+</body>
+</html>
