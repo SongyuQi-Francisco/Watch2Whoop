@@ -200,6 +200,54 @@ def test_background_off_shows_while_fresh_and_old_reports_are_ignored(conn):
     assert o["state"] == "ok" and o["device"] is None
 
 
+# ---------------------------------------------------------------- background evidence (app 2.1.0+, migration 1000)
+@pytest.mark.parametrize("rep,expected", [
+    # what ran beats the flag: recent background wakes, no warning whatever iOS's flag says
+    ({"background_refresh": "denied", "background_state": "running", "last_background_at": NOW - H}, None),
+    # iOS says off (for the app or the whole phone) and nothing ran: off, with the switch to turn on
+    ({"background_refresh": "denied", "background_state": "off"}, "background_off"),
+    ({"background_refresh": "restricted", "background_state": "restricted"}, "background_off"),
+    # iOS says on, yet nothing ran for the app's threshold while new data existed
+    ({"background_refresh": "available", "background_state": "not_running",
+      "last_background_at": NOW - 3 * D}, "background_idle"),
+    # just switched on / too early to tell
+    ({"background_refresh": "available", "background_state": "waiting"}, None),
+    # Low Power Mode is not "switched off": only once behind (below)
+    ({"background_refresh": "denied", "background_state": "low_power", "low_power": True}, None),
+])
+def test_background_evidence_while_fresh(conn, rep, expected):
+    uid = user(conn, last=10 * timedelta(minutes=1))
+    data(conn, uid)
+    report(conn, uid, **rep)
+    o = ov(conn, uid, in_app=True)
+    assert code(o) == expected
+    if expected:
+        assert o["issue"]["actions"] == ["open_settings", "sync_now"] and o["state"] == "issue"
+
+
+def test_background_low_power_once_behind_and_old_apps_keep_the_flag(conn):
+    uid = user(conn, last=8 * H)
+    data(conn, uid)
+    report(conn, uid, background_refresh="denied", background_state="low_power", low_power=True)
+    assert code(ov(conn, uid, in_app=True)) == "low_power"
+    # an app before 2.1.0 sends no verdict: the flag alone, as before
+    uid2 = user(conn, last=10 * timedelta(minutes=1))
+    data(conn, uid2)
+    report(conn, uid2, background_refresh="denied")
+    assert code(ov(conn, uid2, in_app=True)) == "background_off"
+
+
+def test_background_fields_in_the_device_answer(conn):
+    uid = user(conn, last=10 * timedelta(minutes=1))
+    data(conn, uid)
+    report(conn, uid, background_refresh="available", background_state="running", background_kind="observer",
+           background_wakes_7d=41, last_background_at=NOW - 2 * H)
+    dev = ov(conn, uid, in_app=True)["device"]
+    assert dev["background_state"] == "running" and dev["background_kind"] == "observer"
+    assert dev["background_wakes_7d"] == 41
+    assert dev["last_background_at"] == (NOW - 2 * H).astimezone(TZ).isoformat(timespec="seconds")
+
+
 def test_refused_app_uploads(conn):
     """The own sync engine's refused uploads (#304, rawdata/sync_status.py): auth once behind, server at once, until an
     upload goes through again."""
@@ -289,6 +337,18 @@ def test_endpoints(conn, client):
     assert r.status_code == 200 and r.json()["low_power"] is True
     assert client.put("/v1/ingest/sync-device", json={}).status_code == 401
     assert client.get("/v1/users/me/sync/overview", headers=h).json()["device"]["low_power"] is True
+    # app 2.1.0+: the background evidence; an unknown code (a newer app) is stored as null, never a 422
+    r = client.put("/v1/ingest/sync-device", headers=h, json={
+        "background_refresh": "denied", "last_background_at": "2026-10-25T07:00:00+00:00", "background_kind": "observer",
+        "background_wakes_7d": 12, "background_state": "running"})
+    assert r.status_code == 200
+    assert (r.json()["background_state"], r.json()["background_kind"], r.json()["background_wakes_7d"]) == ("running", "observer", 12)
+    r = client.put("/v1/ingest/sync-device", headers=h, json={
+        "background_kind": "carrier_pigeon", "background_state": "dreaming", "background_wakes_7d": 10 ** 9})
+    assert r.status_code == 200
+    assert r.json()["background_kind"] is None and r.json()["background_state"] is None
+    assert r.json()["background_wakes_7d"] == overview.BACKGROUND_WAKES_MAX
+    assert client.put("/v1/ingest/sync-device", headers=h, json={"background_wakes_7d": -1}).status_code == 422
 
 
 # ---------------------------------------------------------------- page script (sync-status.js, run in node)

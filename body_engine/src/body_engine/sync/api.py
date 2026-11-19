@@ -9,7 +9,9 @@
 - GET  /v1/users/{user}/sync/overview?in_app=1 -> the 「同步状态」 panel and the 「开启数据同步」 card (overview.py): state, the
   issue with its buttons, the newest data per main type, today's scores, refresh / history progress. Own data only.
 - PUT  /v1/users/{user}/sync/device and PUT /v1/ingest/sync-device -> the app's report on the phone side of its sync
-  (Background App Refresh, Low Power Mode, Health readable, last error; app 1.0.8+, overview.put_device). Own only, write.
+  (Background App Refresh, Low Power Mode, Health readable, last error; app 1.0.8+; from 2.1.0 also when iOS last woke the
+  app in the background and the app's verdict on it, overview.put_device). Own only, write. Unknown fields are ignored and
+  an unknown background code is stored as null, so an app newer than the server never loses its report.
 - PUT  /v1/users/{user}/health-history {scope: days90 | all, upload_percent?, sent?, upload_done?} -> the app's read range
   and progress (sent by the Today page in the app's WebView); GET -> {scope, status, active, percent, …} for
   「历史数据导入中 x%」 (history.py). Own data only; PUT needs write.
@@ -44,7 +46,7 @@ from datetime import date, datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ..i18n import L
 from ..records.api import current_user, get_conn
@@ -102,6 +104,26 @@ class SyncDeviceIn(BaseModel):
     last_upload_at: datetime | None = None
     last_error: Literal["auth", "network", "locked", "health_denied", "server", "other"] | None = None
     unasked_types: list[str] = Field(default_factory=list, max_length=60)
+    # app 2.1.0+: what actually ran in the background (docs/ios-native-app.md "Background sync: evidence, not the flag")
+    last_background_at: datetime | None = None
+    background_kind: str | None = Field(None, max_length=20)
+    background_wakes_7d: int | None = Field(None, ge=0)
+    background_state: str | None = Field(None, max_length=20)
+
+    @field_validator("background_kind")
+    @classmethod
+    def _kind(cls, v: str | None) -> str | None:
+        return v if v in overview.BACKGROUND_KINDS else None
+
+    @field_validator("background_state")
+    @classmethod
+    def _state(cls, v: str | None) -> str | None:
+        return v if v in overview.BACKGROUND_STATES else None
+
+    @field_validator("background_wakes_7d")
+    @classmethod
+    def _wakes(cls, v: int | None) -> int | None:
+        return None if v is None else min(v, overview.BACKGROUND_WAKES_MAX)
 
 
 def _device_put(conn, uid: int, body: SyncDeviceIn) -> dict:

@@ -278,6 +278,27 @@ def test_explain_tells_not_recorded_from_not_delivered():
                 assert r["reason"] in data_status.REASONS and (r["action"] is None or r["action"] in data_status.ACTIONS), (k, st, d)
 
 
+@pytest.mark.parametrize("dev,bg,action", [
+    (None, None, "open_app"),
+    # apps before 2.1.0: the flag alone
+    ({"background_refresh": "denied"}, "off", "enable_background_refresh"),
+    ({"background_refresh": "restricted"}, "off", "enable_background_refresh"),
+    ({"background_refresh": "available"}, None, "open_app"),
+    # 2.1.0+: what ran in the background beats the flag
+    ({"background_refresh": "denied", "background_state": "running"}, None, "open_app"),
+    ({"background_refresh": "denied", "background_state": "waiting"}, None, "open_app"),
+    ({"background_refresh": "denied", "background_state": "off"}, "off", "enable_background_refresh"),
+    ({"background_refresh": "restricted", "background_state": "restricted"}, "off", "enable_background_refresh"),
+    ({"background_refresh": "denied", "background_state": "low_power"}, "low_power", "open_app"),
+    ({"background_refresh": "available", "background_state": "not_running"}, "not_running", "open_app"),
+    # a sign-in problem comes first, whatever the background says
+    ({"background_state": "off", "last_error": "auth"}, "off", "sign_in"),
+])
+def test_background_from_the_phone_report(dev, bg, action):
+    assert data_status.background(dev) == bg
+    assert data_status.device_action(dev) == action
+
+
 def test_wrist_temperature_action_is_sleep_focus():
     """FB-18: sleeping wrist temperature is written by the Apple Watch only on nights it is worn in bed with a sleep schedule /
     Sleep Focus and sleep tracking on (about 5 nights before values appear), so "wear the watch to bed" is not the whole
@@ -325,6 +346,16 @@ def test_reasons_in_the_answer(dsn, users):
         assert t["sleep"]["reason"] == "not_recorded" and t["sleep"]["action"] == "wear_watch_sleep"
         assert t["hrv"]["reason"] == "no_permission"
         assert res["summary"] == {"ok": 5, "stale": 2, "never": 8}   # the old fields are unchanged
+        assert "background" not in res["delivery"]   # an app before 2.1.0: no background evidence
+        # app 2.1.0+: background wakes are recent, so the flag no longer asks to turn it on
+        conn.execute("""UPDATE sync_device_state SET background_state = 'running', background_kind = 'refresh',
+                        background_wakes_7d = 30, last_background_at = now() - interval '1 hour' WHERE user_id = %s""",
+                     (ids["a"],))
+        res = data_status.collect(conn, ids["a"], today)
+        assert res["delivery"]["action"] is None
+        assert res["delivery"]["background"]["state"] == "running" and res["delivery"]["background"]["wakes_7d"] == 30
+        conn.execute("UPDATE sync_device_state SET background_state = 'off' WHERE user_id = %s", (ids["a"],))
+        assert data_status.collect(conn, ids["a"], today)["delivery"]["action"] == "enable_background_refresh"
         # a weigh-in logged on the Today page / by the AI: weight is on the server
         conn.execute("INSERT INTO body_measurements (user_id, date, weight_kg) VALUES (%s, %s, 80)",
                      (ids["a"], today - timedelta(days=1)))
