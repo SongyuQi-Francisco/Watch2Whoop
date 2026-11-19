@@ -5,6 +5,10 @@
 W2W_BUNDLE_ID = org.watch2whoop.app
 W2W_TEAM_ID =
 W2W_DISPLAY_NAME = Watch2Whoop
+// App Group the Apple Watch app shares with its watch-face complications (WatchShared/WatchStore.swift). Derived from the
+// bundle ID, so a local xcconfig that sets W2W_BUNDLE_ID gets its own; register it in the developer account on the watch
+// app and the complications' App IDs (Watch2WhoopWatch/README.md 「Complications」).
+W2W_APP_GROUP = group.$(W2W_BUNDLE_ID).watch
 // Host of the default server on the sign-in screen, e.g. body.example.com (no scheme: two slashes start a comment here).
 W2W_DEFAULT_HOST =
 // Host of the public privacy policy / terms pages, e.g. body.example.com (empty = the signed-in server's /legal/ pages).

@@ -1,5 +1,6 @@
 import Foundation
 import HealthKit
+import WatchKit
 
 /// The HealthKit workout behind a session (plan 4.2): `HKWorkoutSession` + `HKLiveWorkoutBuilder`, traditional strength
 /// training, indoors. It keeps the app running with the wrist down, gives live heart rate and, when it ends, saves one
@@ -18,10 +19,17 @@ final class WorkoutController: NSObject {
 
   private static let heartRate = HKQuantityType(.heartRate)
 
-  /// The permission sheet (read heart rate, write the workout). Only the person can answer it.
+  /// The permission sheet (read heart rate, write the workout). Only the person can answer it, so it waits until the app
+  /// is on screen: a launch in the background (a phone push for the complications) must not use up the one ask.
   func requestAuthorization() async {
     guard HKHealthStore.isHealthDataAvailable() else { return }
+    await Self.untilActive()
     try? await store.requestAuthorization(toShare: [HKObjectType.workoutType()], read: [Self.heartRate])
+  }
+
+  @MainActor private static func untilActive() async {
+    guard WKApplication.shared().applicationState != .active else { return }
+    for await _ in NotificationCenter.default.notifications(named: WKApplication.didBecomeActiveNotification) { return }
   }
 
   func start() {

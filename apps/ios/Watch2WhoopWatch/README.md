@@ -1,4 +1,4 @@
-# Watch2Whoop for Apple Watch (phase 1: logging sets; phase 2a: today at a glance and quick log)
+# Watch2Whoop for Apple Watch (phase 1: logging sets; phase 2a: today at a glance and quick log; complications)
 
 The watch app of [`docs/watch-app-plan.md`](../../../docs/watch-app-plan.md), drawn after the approved mockups in
 `docs/design/watch/` (both on the `claude/watch-app-plan-296f6e` branch until that PR merges).
@@ -16,8 +16,10 @@ The watch app of [`docs/watch-app-plan.md`](../../../docs/watch-app-plan.md), dr
 - **Quick log** (plan 2.2, mockups M3–M5): up to three quick meals (the phone's most used, made and ordered on the phone)
   and water. A tap logs at once (no AI, offline OK) and shows the receipt: the meal, kcal, protein, and the day's bar
   when the phone's intake is known; 「撤销」 → the confirm screen (撤销 / 保留). Back from the receipt = home.
+- **Complications** (plan 2.5, mockups C1 / C4; section 「Complications」 below): circular Recovery, rectangular Today
+  (recovery, sleep, strain; the rest countdown and the next set while a session runs) and the circular Start key.
 - **Not yet** (phase 2b and later): hold to talk / voice (the core is drawn dimmed, mockup S7's "voice unavailable"; a
-  hold only gives a failure tap), Jarvis questions, complications, Smart Stack, Siri.
+  hold only gives a failure tap), Jarvis questions, Smart Stack relevance, corner / inline complications, controls, Siri.
 
 ## Layout
 
@@ -27,6 +29,7 @@ The watch app of [`docs/watch-app-plan.md`](../../../docs/watch-app-plan.md), dr
 | `apps/ios/Watch2WhoopWatch/` | The watch app (SwiftUI, watchOS 11+): home, T1–T10, M3–M5 and the sync states of `docs/design/watch/` (`WatchScreens.swift`, `WatchComponents.swift`: dial, readings, Jarvis core, tiles), HealthKit workout (`WorkoutController.swift`), WatchConnectivity (`WatchLinkClient.swift`), the glue (`WatchModel.swift`), Debug-only synthetic data (`WatchDemoData.swift`). Colours are the iPhone's dark tokens (`WatchTokens.swift`, checked by `scripts/check_sources.py`; the Jarvis ice is `WJarvis`, the phone's `CockpitPalette`). Icons are SF Symbols, as in phase 1. |
 | `apps/ios/WatchShared/WatchVoice.swift` | Hold to talk, pure and unit-tested (`Watch2WhoopTests/WatchVoiceTests.swift`): the phone's voice offer, the watch's pairing state, the WAV check and the recording limits, the 1.5 s send timer, the SSE parser and one turn's accumulation (text, meal receipt, confirm, error, resume point), the short answer's headline / body / 「在手机上继续」, the error codes → screens, and the flow's state machine (`WatchVoiceFlow`: inputs in, effects out). |
 | `Watch2WhoopWatch/WatchVoice*.swift`, `WatchRecorder.swift`, `WatchKeychain.swift` | The watch side of voice: the controller that carries out the flow's effects, the HTTPS client (`WatchVoiceAPI`: login-code, transcribe, chat, confirm, events; header `X-App-Client: watchos`), the recorder (AVAudioRecorder, 16 kHz mono 16-bit WAV in the temporary folder, deleted as soon as it is read), the token in the Keychain (this device only), the screens. |
+| `apps/ios/Watch2WhoopWatchWidgets/` | The complications: a WidgetKit extension embedded in the watch app (`FaceWidgets.swift`: the bundle and the timeline provider; `FaceViews.swift`: the three views, also drawn by the Debug gallery; `FaceSamples.swift`: the widget gallery's synthetic sample). Their rules are `WatchShared/WatchFace.swift` (`FaceTimeline`, `WatchDeepLink`), tested in `Watch2WhoopTests/WatchFaceTests.swift`. |
 | `apps/ios/Watch2Whoop/Features/Watch/PhoneWatchLink.swift` | The iPhone side: pushes today's plan, today's numbers (its own `TodayStore`: recovery, sleep, strain, its sync capsule) and the quick-log tiles (`FoodStore`'s quick meals, water when on) to the watch; merges the watch's set events into the day's draft (an `end` event submits the day); logs the watch's quick meals and drinks with `FoodStore.log` / `addWater` (the watch's event id is the write's `client_id`) and undoes them with `FoodStore.undoWrite`; voice: the voice offer in the context, the watch's codes (`POST /v1/account/watch-code`), the undo of a voice meal (`voiceUndo`) and 「在手机上继续」 (Jarvis opens the conversation). |
 
 ## Data path
@@ -78,19 +81,72 @@ the watch's own network is not the phone's (`WatchSyncState.offline` is the phon
 backend changes (login-code purpose, revoking the watch's token on sign-out, short answers for `page: "watch"`) come
 first.
 
-**Watch-face widgets and Smart Stack (plan 2.5, phase 3)**
+**Watch-face widgets**: done, see 「Complications」 below. Smart Stack relevance (morning, training time), corner /
+inline families and controls would build on the same `FaceTimeline` entries.
 
-| Where | What changes |
+## Complications (plan 2.5)
+
+Three, as approved (mockups C1 `compCircle('rec')`, `compCircle('dumbbell')`, C1 / C4 `compRect('today' | 'live')`):
+
+| Kind | Family | Shows | Tap |
+|---|---|---|---|
+| `w2w.face.recovery` | circular | recovery number on the axis, its arc in the zone colour (from 12 o'clock); grey number and arc when the phone's numbers are old (S3); 「—」 over the empty track when there is no recovery today (none sent, yesterday's, signed out, no phone yet) | home |
+| `w2w.face.today` | rectangular | idle: recovery ring + sleep and strain with their bars (category colours, grey when old, 「—」 when missing). During a session: the rest countdown ring and clock (both run on the face by themselves, `ProgressView` / `Text(timerInterval:)`), the exercise with 「2/4」 and its set pills, 「下一组 60 kg × 8」; during a set the dumbbell instead of the countdown and 「这一组」 | home; during a session the session |
+| `w2w.face.start` | circular | the dumbbell (train colour) on a training day; a bowl (`fork.knife`) on a day without training; the dumbbell dimmed when today's plan has not reached the watch or nobody is signed in | the training start (T1); quick log (M5) on a day without training; home when there is no plan (its capsule says 「计划没同步」); the session while one runs |
+
+**One set of rules.** The extension reads `context()`, `queue()` and `session()` from `WatchStore` and builds its
+entries with `FaceTimeline` (`WatchShared/WatchFace.swift`): the numbers through `WatchHome.derive`, 「旧了」 through
+`WatchSyncState.derive`, the session through `SetSession.tick` (the receipt becomes the rest, the rest the set). The
+complications therefore show exactly what home would show at that moment and compute nothing. The labels follow the
+phone's language (`context.lang`), like the app.
+
+**Timeline.** One entry now, then one at each moment the drawing changes by itself: the numbers turn grey
+(`dataAt + WatchParams.staleAfterMin`), the phone's 「同步中」 stops being fresh, the receipt ends, the rest ends, a
+forgotten session passes `resumeWithinHours`, and local midnight (yesterday's numbers and plan are not today's). Equal
+consecutive entries are merged. Policy: a new timeline just after midnight (`FaceTimeline.horizon`), so a phone that stays
+silent for days still costs one request a day. The countdown is not an entry per second: the face runs it.
+
+**Reloads.** `WatchStore.save` (context, queue, session) reloads the three kinds only when the entries it would build
+change (`FaceTimeline.needsReload`): a push with the same numbers, or the app's own tick from receipt to rest, spends
+nothing. What triggers one:
+
+| Event | Path |
 |---|---|
-| `project.yml` | A WidgetKit extension target embedded in the watch app, compiling `WatchShared/`; the App Group capability on the watch app and the extension (and the App ID in the developer account). |
-| `WatchShared/WatchStore.swift` | `defaults` becomes the App Group suite (the only change there); the widget reads `context()` and `session()`. |
-| `Watch2WhoopWatch/WatchModel.swift` | After a new context or a session step: `WidgetCenter.shared.reloadTimelines(ofKind:)`. A widget tap opens a URL → a `WatchRoute` (`.start` for 「开始训练」). |
+| The phone pushes a context (new scores in the morning, strain during the day, a new plan, sign-out) | `updateApplicationContext` → watchOS launches the watch app in the background (`.backgroundTask(.watchConnectivity)`, `WatchModel.receiveInBackground`, at most `WatchParams.backgroundLinkSec`) → `WatchModel.received` → `WatchStore.save` → reload if the face changes. Before this PR the context waited until someone opened the app. |
+| A session step (start, set logged, rest adjusted or skipped, end) | `WatchModel.sessionChanged` → `WatchStore.save(session)` → reload (the app is in the foreground: not budgeted) |
+| The queue changes in a way that changes grey (S3 is not shown while events wait) | `WatchStore.save(queue)` → reload when the entries differ |
 
-Watch out for: the extension cannot use WatchConnectivity or the app's standard defaults (hence `WatchStore`); reloads
-are budgeted (V6), so a timeline should carry its own future entry at `dataAt + WatchParams.staleAfterMin` to turn
-grey without a push; numbers come only from `WatchToday` and the rules in `WatchHome` / `WatchSyncState`, so a
-complication can never show what the home screen would not; moving the store to the App Group needs a one-time copy of
-the old keys (the queue holds undelivered events).
+**Budget (not measured yet).** Apple documents a daily reload budget for widgets (WidgetKit, "Keeping a widget up to
+date": a frequently viewed widget typically gets 40–70 reloads a day; reloads while the containing app is in the
+foreground are not counted) but publishes no number for watch-face complications. We expect about 3–10 budgeted reloads a
+day (morning scores, a few strain changes, a plan change); the entries above need none. What needs a real watch (plan
+4.10), not guessed here:
+
+| # | What | How |
+|---|---|---|
+| V6 | How many reloads a day a complication on the active face actually gets; how long after the phone's push the face changes (morning scores within 15 minutes is the phase-3 acceptance); whether the background launch for a context arrives while the watch is on the charger / in Low Power Mode | one day on the owner's watch: log `received` and the timeline requests, compare with the phone's push times |
+| V6b | Whether `ProgressView(timerInterval:)` animates the ring on the face in Always On, and how the three draw in the tinted (accented) rendering of the multicolour-off faces | look at the face with the wrist down, try two tinted faces |
+| V6c | The exact slot sizes on 42 / 46 mm (the gallery uses Apple's published accessory sizes) | screenshots from the face |
+| V7 | Controls (Control Center / Action button) | not in this PR (plan: phase 3, after V7) |
+
+If V6 shows the budget is too small, the phone can use `transferCurrentComplicationUserInfo` (a separate daily allowance
+for an app with a complication on the active face) for the morning scores: a change in `PhoneWatchLink` and
+`WatchLinkClient`, not made here.
+
+**App Group.** `WatchStore.shared(migrate:)` uses the suite named by the Info.plist key `W2WAppGroup` =
+`$(W2W_APP_GROUP)` (`Config/Watch2Whoop.xcconfig`: `group.$(W2W_BUNDLE_ID).watch`, a placeholder like the bundle ID).
+On the first launch of this build the app moves its four keys (context, queue, quick logs, session) from the standard
+defaults into the suite, once (`moveKeys`; a value already in the suite wins; the queue's undelivered events are kept).
+The extension never migrates; until the app has run once after the update, the complications show 「—」. A build whose
+Info.plist has no group falls back to the standard defaults (the app works, the complications stay empty). The Debug
+seed keeps its own suite and never touches the shared one.
+
+**Seeing every state in the simulator (Debug).** `SIMCTL_CHILD_W2W_WATCH_FACES=1` opens a gallery that draws every
+state with the extension's own views, from entries built by `FaceTimeline` on the synthetic data (小林): `circle`
+(recovery: good / mid / bad, old, missing, yesterday's, signed out, no phone), `key` (training day, rest day, no plan,
+session), `rect` (idle, old), `rect2` (missing, signed out) and `live` (rest countdown, in a set). Add
+`-AppleLanguages "(en)" -w2w.native.lang.v1 en` for English. The real face: long-press the face in the simulator →
+Edit → Complications, pick Watch2Whoop (the store must have a context, so the real app path needs a phone).
 
 ## Building
 
@@ -162,10 +218,17 @@ For the person who archives and uploads (the full checklist is `docs/ios-native-
    **HealthKit**. With automatic signing Xcode registers it (select the `Watch2WhoopWatch` target → Signing &
    Capabilities, same team, "Automatically manage signing"); if the account does not allow that, add it under
    Identifiers by hand and press "Try Again" in Xcode.
-2. Install the watchOS platform in Xcode before archiving.
-3. Archive the `Watch2Whoop` scheme as usual; in the Organizer the archive contains `Watch/Watch2WhoopWatch.app`.
-   Both provisioning profiles (iPhone and watch) must be valid for the upload.
-4. Do not change the version or build number of either target; they come from one place.
+2. **Complications (from 2.1.0)**: two more things in the developer account. (a) An App ID for the extension:
+   `<iPhone bundle ID>.watchkitapp.widgets` (no capability other than App Groups). (b) An App Group
+   `group.<iPhone bundle ID>.watch` (or the `W2W_APP_GROUP` set in your local xcconfig), enabled on **both** the watch
+   app's App ID and the extension's App ID. With automatic signing Xcode does both when you select each target
+   (`Watch2WhoopWatch`, `Watch2WhoopWatchWidgets`) → Signing & Capabilities and the App Groups box shows the group
+   ticked; if it shows red, add the group under Identifiers → App Groups, tick it on both App IDs, and "Try Again".
+3. Install the watchOS platform in Xcode before archiving.
+4. Archive the `Watch2Whoop` scheme as usual; in the Organizer the archive contains `Watch/Watch2WhoopWatch.app` with
+   `PlugIns/Watch2WhoopWatchWidgets.appex` inside it. All three provisioning profiles (iPhone, watch, complications) must
+   be valid for the upload.
+5. Do not change the version or build number of either target; they come from one place.
 
 ## Running on your own watch (development)
 
@@ -180,7 +243,8 @@ For the person who archives and uploads (the full checklist is `docs/ios-native-
 
 ## 中文（给发版的人）
 
-- 2.1.0 的手表端 = 第 1 期（训练记组）+ 第 2a 期（首屏「今天一眼」、快记、导航、中途退出后接着练）。语音（按住说话）、表盘小组件还没有。
+- 2.1.0 的手表端 = 第 1 期（训练记组）+ 第 2a 期（首屏「今天一眼」、快记、导航、中途退出后接着练）+ 表盘小组件三个（圆形恢复、矩形今天 / 训练中休息倒计时、圆形开始训练）。语音（按住说话）另一个 PR。
+- **表盘小组件要在开发者账号里多注册两样**：(1) 小组件扩展的 App ID **`<iPhone 的 Bundle ID>.watchkitapp.widgets`**；(2) App Group **`group.<iPhone 的 Bundle ID>.watch`**（本地 xcconfig 里改过 `W2W_APP_GROUP` 就用那个），在**手表 app 的 App ID 和小组件的 App ID 上都勾上**。自动签名时分别选 `Watch2WhoopWatch`、`Watch2WhoopWatchWidgets` 两个 target → Signing & Capabilities，App Groups 一栏里这个组打了勾就行；标红时到 developer.apple.com → Identifiers → App Groups 新建，再到两个 App ID 里勾上，回 Xcode 点 Try Again。归档里手表 app 下面应该有 `PlugIns/Watch2WhoopWatchWidgets.appex`，上传时三个描述文件（iPhone、手表、小组件）都要有效。
 
 - 从 2.1.0 起手表 app **嵌在 iPhone app 里**，打 `Watch2Whoop` scheme 的包时自动带上，一次上传两个都有。Xcode 要先装 watchOS 平台（Settings → Components → watchOS），没装 iPhone app 也编不过。
 - 开发者账号里要有手表 app 自己的 App ID：**`<iPhone 的 Bundle ID>.watchkitapp`**，勾 **HealthKit**。自动签名时 Xcode 会自己注册（选 `Watch2WhoopWatch` target → Signing & Capabilities，同一个 Team，勾 Automatically manage signing）；账号不允许时到 developer.apple.com → Identifiers 手动加，再回 Xcode 点 Try Again。

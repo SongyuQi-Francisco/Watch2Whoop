@@ -92,4 +92,9 @@ enum WatchParams {
   /// The server's 「详细的在手机上看」 / "More on your phone" (ai/watch.py PROMPT), lower-cased: such an answer offers
   /// 「在手机上继续」.
   static let phoneHints = ["\u{8BE6}\u{7EC6}\u{7684}\u{5728}\u{624B}\u{673A}\u{4E0A}\u{770B}", "more on your phone"]
+
+  /// Longest the app stays up when the phone wakes it in the background to deliver a context (it ends as soon as nothing
+  /// is pending). watchOS gives a background task a few seconds and suspends the app when it runs over; Apple's
+  /// WKWatchConnectivityRefreshBackgroundTask guidance: complete the task once `hasContentPending` is false.
+  static let backgroundLinkSec: TimeInterval = 8
 }
