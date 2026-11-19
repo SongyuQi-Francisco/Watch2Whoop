@@ -6,6 +6,9 @@
 W2W_BUNDLE_ID = com.yourname.watch2whoop
 // Apple Developer Team ID (developer.apple.com → Membership details, 10 alphanumeric characters).
 W2W_TEAM_ID = ABCDE12345
+// App Group of the watch app and its complications: group.<bundle ID>.watch by default (Watch2Whoop.xcconfig). Set it
+// only if your account already has another one registered.
+// W2W_APP_GROUP = group.com.yourname.watch2whoop.watch
 // Name shown on the home screen.
 W2W_DISPLAY_NAME = Watch2Whoop
 // Version and build number come from Watch2Whoop.xcconfig in the repository (docs/apps.md section 4): do not set

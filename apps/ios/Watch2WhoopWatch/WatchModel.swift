@@ -25,8 +25,8 @@ final class WatchModel: ObservableObject {
   private let link = WatchLinkClient()
   private let workout = WorkoutController()
   private var ticker: AnyCancellable?
-  /// All the watch keeps (one place, so the widgets' step can move it to an App Group: `WatchStore`).
-  private var store = WatchStore()
+  /// All the watch keeps, in the App Group the complications read (`WatchStore`; saving reloads their timelines).
+  private var store = WatchStore.shared(migrate: true)
   /// Debug builds: the interactive seed (`W2W_WATCH_SEED`) plays the phone; frozen demos (`W2W_WATCH_DEMO`) stop the clock.
   private var seed: String?
   private var frozen = false
@@ -95,13 +95,7 @@ final class WatchModel: ObservableObject {
   /// Today in the watch's time zone (the phone sends the user's local date with its numbers and the plan).
   var today: String { Self.day(now) }
 
-  nonisolated static func day(_ d: Date) -> String {
-    let f = DateFormatter()
-    f.calendar = Calendar(identifier: .gregorian)
-    f.locale = Locale(identifier: "en_US_POSIX")
-    f.dateFormat = "yyyy-MM-dd"
-    return f.string(from: d)
-  }
+  nonisolated static func day(_ d: Date) -> String { WatchDay.string(d) }
 
   var running: Bool {
     guard let p = session?.phase else { return false }

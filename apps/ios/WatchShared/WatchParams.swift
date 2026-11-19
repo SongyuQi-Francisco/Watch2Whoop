@@ -48,4 +48,8 @@ enum WatchParams {
   /// A saved session older than this is not resumed on launch but ended (its sets were already handed to the phone):
   /// a strength session longer than this is a session someone forgot to end.
   static let resumeWithinHours: TimeInterval = 6
+  /// Longest the app stays up when the phone wakes it in the background to deliver a context (it ends as soon as nothing
+  /// is pending). watchOS gives a background task a few seconds and suspends the app when it runs over; Apple's
+  /// WKWatchConnectivityRefreshBackgroundTask guidance: complete the task once `hasContentPending` is false.
+  static let backgroundLinkSec: TimeInterval = 8
 }
