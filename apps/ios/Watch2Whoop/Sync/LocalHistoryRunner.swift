@@ -66,6 +66,7 @@ enum HistoryBackground {
   /// Before launch finishes (AppDelegate).
   static func register() {
     BGTaskScheduler.shared.register(forTaskWithIdentifier: LocalHistoryParams.backgroundTask, using: nil) { task in
+      BackgroundWakes.wake(BackgroundWakes.Kind.processing.rawValue)   // evidence that iOS runs the app in the background
       guard let task = task as? BGProcessingTask else { task.setTaskCompleted(success: false); return }
       handle(task)
     }

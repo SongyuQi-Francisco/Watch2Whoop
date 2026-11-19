@@ -125,7 +125,7 @@ final class SyncCenterTests: XCTestCase {
     i.info = activeInfo()
     i.engine = EngineSnapshot(["mode": "app", "active": true, "lastStop": "locked", "cellularHistory": false])
     i.lastSkipped = ["wifi_only"]
-    i.backgroundRefresh = false
+    i.background = .off(.switchedOff)
     let ids = SyncDiagnosis.of(i).issues.map(\.id)
     XCTAssertEqual(ids, ["wifi"])   // a locked phone is in the sync result, background refresh off is a hint
     XCTAssertEqual(SyncDiagnosis.of(i).hints.map(\.id), ["background"])
@@ -200,14 +200,14 @@ final class SyncCenterTests: XCTestCase {
   func testBackgroundRefreshOffIsAHintNotAFailure() {
     let now = Date(timeIntervalSince1970: 1_794_200_000)
     var i = uploaded(server: ["mode": "app", "pipeline": ["up_to_date": true]], now: now)
-    i.backgroundRefresh = false
+    i.background = .off(.switchedOff)
     var d = SyncDiagnosis.of(i, now: now)
     XCTAssertEqual(d.overall, .ok)
     XCTAssertEqual(d.headline, tr("已同步 · 1 分钟前", "Synced · 1 min ago"))
     XCTAssertTrue(d.issues.isEmpty)
     XCTAssertEqual(d.hints.map(\.id), ["background"])
-    XCTAssertEqual(d.hints.first?.action, .openSettings)
-    XCTAssertEqual(d.hints.first?.actionTitle, tr("打开设置", "Open Settings"))
+    XCTAssertEqual(d.hints.first?.action, .backgroundHelp)   // the sheet: which switch, its path, then Open Settings
+    XCTAssertEqual(d.hints.first?.actionTitle, tr("怎么办", "What to do"))
     XCTAssertTrue(SyncResult.of(SyncResult.Input()).warnings.isEmpty)   // and not in the sync result
     i.server = ServerSyncStatus(["mode": "shadow", "pipeline": ["computing": true, "switching": true]])
     d = SyncDiagnosis.of(i, now: now)

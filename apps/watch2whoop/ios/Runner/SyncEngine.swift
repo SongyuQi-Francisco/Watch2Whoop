@@ -59,6 +59,12 @@ final class SyncEngine: NSObject {
   /// then calls [rearm] (OW's stop disables background delivery of its types and cancels every BGTask request).
   var onModeApp: (() -> Void)?
 
+  /// The host's record of background work that really ran (the SwiftUI app: BackgroundWakes, the "is the background sync
+  /// running?" check, docs/ios-native-app.md): `refresh` / `processing` when a BGTask launches, `observer` when HealthKit
+  /// calls an observer (also while the app is open: the host keeps only the ones in the background). Called first, before
+  /// any work, on the BGTask's or HealthKit's queue. Set before [register]; nil in the Flutter app.
+  static var onWake: ((String) -> Void)?
+
   // MARK: - launch (AppDelegate.didFinishLaunching, before it returns)
 
   /// BGTask handlers must be registered before launch finishes; observers are set up again on every launch, including the
@@ -216,6 +222,7 @@ final class SyncEngine: NSObject {
       observed.insert(t.hk)
       let hk = t.hk
       let q = HKObserverQuery(sampleType: type, predicate: nil) { [weak self] _, completion, error in
+        SyncEngine.onWake?("observer")
         guard let self, error == nil else { completion(); return }
         self.woke(hk, completion)
       }
@@ -307,6 +314,7 @@ final class SyncEngine: NSObject {
   }
 
   private func runTask(_ task: BGTask, trigger: String) {
+    Self.onWake?(trigger)
     task.expirationHandler = { [weak self] in self?.currentTask?.cancel() }
     queue.async {
       let c = EngineState.config()

@@ -85,8 +85,11 @@ struct SyncStuck: Equatable {
   /// The button retries right here; else it opens the sync center, where the self-help buttons are.
   let retry: Bool
 
-  private static let serverCodes: Set<String> = ["server", "background_off", "low_power", "locked", "lagging"]
+  private static let serverCodes: Set<String> = ["server", "locked", "lagging"]
   private static let serverRetry: Set<String> = ["server", "locked", "lagging"]
+  /// The overview's codes that come from the phone's last report about its background sync: the phone judges those itself
+  /// (BackgroundCheck, the diagnosis's `background`), with what it sees now.
+  static let phoneCodes: Set<String> = ["background_off", "background_idle", "low_power"]
 
   static func of(_ d: SyncDiagnosis, card: TodayModel.SyncCard?) -> SyncStuck? {
     switch d.overall {
@@ -98,8 +101,12 @@ struct SyncStuck: Equatable {
       }
       return SyncStuck(text: d.headline, retry: false)
     case .ok:
-      guard let c = card, c.state == "issue", let code = c.issueCode, serverCodes.contains(code), let label = c.issueLabel else { return nil }
-      return SyncStuck(text: label, retry: serverRetry.contains(code))
+      if let c = card, c.state == "issue", let code = c.issueCode, serverCodes.contains(code), let label = c.issueLabel {
+        return SyncStuck(text: label, retry: serverRetry.contains(code))
+      }
+      // the background sync is not running: the same verdict as the capsule and the sync center; tap = the sync center
+      guard d.background.warns, let h = BackgroundCheck.hint(d.background) else { return nil }
+      return SyncStuck(text: h.line, retry: false)
     }
   }
 }

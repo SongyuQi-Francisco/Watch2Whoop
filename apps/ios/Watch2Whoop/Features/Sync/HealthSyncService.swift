@@ -36,6 +36,12 @@ final class HealthSyncService: ObservableObject {
   @Published private(set) var job: ResyncJob?
   @Published private(set) var jobPercent = 0
   @Published var consentRequired = false
+  /// The background sync's inputs (BackgroundCheck): iOS's flag, Low Power Mode and the wakes iOS really gave the app.
+  /// Read again when iOS says the flag or the power state changed and on every return to the foreground, so a warning
+  /// goes away as soon as the person fixed the setting, without a restart.
+  @Published private(set) var backgroundStatus: BackgroundCheck.Status = .available
+  @Published private(set) var lowPower = false
+  @Published private(set) var wakes = BackgroundWakes.Snapshot()
 
   /// After each round: the account's data layer pulls (session.sync.refresh) and, with N2's sync, the phone scores the
   /// changed days and uploads them now that the round's samples are on the server (#340 N2b: also after a round without
@@ -52,12 +58,45 @@ final class HealthSyncService: ObservableObject {
   private var lastOpenRound: Date?
   private var stepping = false
   private let raw = NativeRawSource()
+  private var watchers: [NSObjectProtocol] = []
 
   init(registry: [HealthType] = HealthRegistry.bundled, settings: SyncSettings = SyncSettings()) {
     self.registry = registry
     self.settings = settings
     self.lastOk = settings.lastOk
     self.job = settings.resync
+    BackgroundWakes.start()
+    refreshBackground()
+    let names = [UIApplication.backgroundRefreshStatusDidChangeNotification, Notification.Name.NSProcessInfoPowerStateDidChange,
+                 UIApplication.willEnterForegroundNotification, UIApplication.didBecomeActiveNotification]
+    watchers = names.map { name in
+      NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+        Task { @MainActor in self?.refreshBackground() }
+      }
+    }
+  }
+
+  /// iOS's Background App Refresh flag, Low Power Mode and the recorded wakes, read again. Seeing background not available
+  /// restarts the idle clock (BackgroundWakes.noteUnavailable), so a switch just turned on is not "not running".
+  func refreshBackground(now: Date = Date()) {
+    let status = BackgroundCheck.status(UIApplication.shared.backgroundRefreshStatus)
+    let low = ProcessInfo.processInfo.isLowPowerModeEnabled
+    if status != .available || low { BackgroundWakes.noteUnavailable(at: now) }
+    if status != backgroundStatus { backgroundStatus = status }
+    if low != lowPower { lowPower = low }
+    let w = BackgroundWakes.snapshot(now: now)
+    if w != wakes { wakes = w }
+  }
+
+  /// Is the background sync running: what ran first, then iOS's flag (BackgroundCheck). The sync center, the capsule on
+  /// the first screens, the Today banner and the device report all use this one verdict.
+  var background: BackgroundCheck.Verdict {
+    var i = BackgroundCheck.Input()
+    i.status = backgroundStatus
+    i.lowPower = lowPower
+    i.wakes = wakes
+    i.newestData = phoneLatest.values.max()
+    return BackgroundCheck.of(i)
   }
 
   static var appVersion: String {
@@ -97,8 +136,8 @@ final class HealthSyncService: ObservableObject {
     i.lastSkipped = lastSkipped
     i.rawStop = rawStop
     i.rawReadProblem = rawReadProblem
-    i.backgroundRefresh = UIApplication.shared.backgroundRefreshStatus == .available
-    i.lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+    i.background = background
+    i.lowPower = lowPower
     i.consentRequired = consentRequired
     i.running = running || engine.running
     i.lastOk = lastOk
@@ -475,6 +514,7 @@ final class HealthSyncService: ObservableObject {
 
   /// The engine's and the backfill's state; with [server] also the server's view and the newest sample per type on the phone.
   func reloadDetails(server withServer: Bool = true) async {
+    refreshBackground()
     engine = EngineSnapshot(await HealthSyncBridge.Engine.status())
     backfill = BackfillState(await HealthSyncBridge.History.status())
     guard withServer, let api else { return }
@@ -487,19 +527,22 @@ final class HealthSyncService: ObservableObject {
   }
 
   /// PUT /v1/ingest/sync-device: what the phone knows about its side (the admin's sync health view). Best effort.
+  /// From 2.1.0 also the background evidence (`last_background_at`, `background_kind`, `background_wakes_7d`) and the
+  /// verdict (`background_state`, BackgroundCheck): every server with this endpoint ignores fields it does not know
+  /// (SyncDeviceIn `extra="ignore"` since the endpoint came in, #303), so an older server just drops them.
   private func reportDevice() async {
     guard let api else { return }
-    let bg: String
-    switch UIApplication.shared.backgroundRefreshStatus {
-    case .available: bg = "available"
-    case .denied: bg = "denied"
-    default: bg = "restricted"
-    }
-    var body: [String: Any] = ["app_version": Self.appVersion, "background_refresh": bg,
-                               "low_power": ProcessInfo.processInfo.isLowPowerModeEnabled,
+    refreshBackground()
+    let iso = ISO8601DateFormatter()
+    var body: [String: Any] = ["app_version": Self.appVersion, "background_refresh": backgroundStatus.rawValue,
+                               "low_power": lowPower,
                                "health_readable": permission == .asked,
-                               "last_attempt_at": ISO8601DateFormatter().string(from: Date())]
-    if let lastOk { body["last_upload_at"] = ISO8601DateFormatter().string(from: lastOk) }
+                               "last_attempt_at": iso.string(from: Date())]
+    if let lastOk { body["last_upload_at"] = iso.string(from: lastOk) }
+    body["background_state"] = background.code
+    body["background_wakes_7d"] = wakes.count7d
+    if let w = wakes.last { body["last_background_at"] = iso.string(from: w) }
+    if let k = wakes.lastKind { body["background_kind"] = k.rawValue }
     switch engine.lastStop {
     case "unauthorized", "backoff": body["last_error"] = "auth"
     case "offline": body["last_error"] = "network"

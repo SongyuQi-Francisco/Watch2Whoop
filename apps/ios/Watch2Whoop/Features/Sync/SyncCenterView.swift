@@ -2,8 +2,8 @@ import SwiftUI
 import UIKit
 
 /// The sync center (sync is P0): one button to turn sync on / sync now, the overall state in a word (one conclusion, FB-23),
-/// where it is stuck in plain words with one self-help button each, the hints that are not a failure (Background App
-/// Refresh off: opens this app's Settings), the days of the last 30 with data missing (FB-24, MissingDaysView), the first
+/// where it is stuck in plain words with one self-help button each, the hints that are not a failure (the background
+/// sync's verdict: which switch, its path in Settings, BackgroundHelpView), the days of the last 30 with data missing (FB-24, MissingDaysView), the first
 /// sync's progress, the history backfill (90 days / all, continues in the background), 「立即重新同步」, and per type
 /// "not recorded / not synced". Times, counts and codes only.
 struct SyncCenterView: View {
@@ -19,6 +19,7 @@ struct SyncCenterView: View {
   @State private var showLog = false
   @State private var showResultInfo = false
   @State private var showSleepFocusSteps = false
+  @State private var showBackgroundHelp = false
   @State private var confirmResync: Int?? = nil
   @State private var coverage: BackfillCoverage?
   @State private var missing: MissingDays?
@@ -81,6 +82,9 @@ struct SyncCenterView: View {
       }
     }
     .w2wSheet(isPresented: $showResultInfo, title: tr("同步结果说明", "About the sync result")) { resultInfo(sync.result) }
+    .w2wSheet(isPresented: $showBackgroundHelp, title: tr("后台同步", "Background sync")) {
+      BackgroundHelpView(verdict: sync.background, lastWake: sync.wakes.last)
+    }
     .sheet(isPresented: $showConsent) {
       ConsentView(reconfirm: false) { showConsent = false; sync.consentRequired = false }
         .environmentObject(session).environmentObject(app)
@@ -105,7 +109,7 @@ struct SyncCenterView: View {
   private func statusCard(_ d: SyncDiagnosis) -> some View {
     Card {
       VStack(alignment: .leading, spacing: 14) {
-        SyncStatusHeader(diagnosis: d, lastBackground: sync.engine.lastBackgroundAt)
+        SyncStatusHeader(diagnosis: d, lastBackground: sync.wakes.last)
         PrimaryButton(title: sync.permission == .notAsked ? tr("开启同步", "Turn on sync") : tr("立即同步", "Sync now"),
                       busy: busy || sync.running) { Task { await syncNow() } }
       }
@@ -450,6 +454,7 @@ struct SyncCenterView: View {
       message = await sync.startHistory(days: sync.result.historyDays) ?? tr("已开始补全历史，会在后台接着传", "History started; it carries on in the background")
       busy = false
     case .sleepFocusHelp: showSleepFocusSteps.toggle()
+    case .backgroundHelp: showBackgroundHelp = true
     }
   }
 
@@ -497,8 +502,8 @@ struct SyncStatusHeader: View {
   }
 }
 
-/// A hint that is not a sync failure (Background App Refresh off): its words, then its one button (this app's page in
-/// Settings, where the person turns it on; the app never changes settings).
+/// A hint that is not a sync failure (the background sync's verdict): its words, then its one button (the help sheet with
+/// the switch's path in Settings and a button to this app's page there; the app never changes settings).
 struct SyncHintRow: View {
   let hint: SyncDiagnosis.Issue
   let action: () -> Void

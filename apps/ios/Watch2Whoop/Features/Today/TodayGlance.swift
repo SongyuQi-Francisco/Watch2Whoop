@@ -244,9 +244,18 @@ enum SyncCapsuleState: Equatable {
   }
 
   /// From the phone's sync (`HealthSyncService.diagnosis.overall`), the page's own refresh (`SyncCoordinator.status`) and
-  /// the server's overview card (`minutes_ago`, issue).
+  /// the server's overview card (`minutes_ago`, issue). `background`: the phone's own background verdict
+  /// (BackgroundCheck, the sync center's rule); when given, the server's phone-side codes (`SyncStuck.phoneCodes`, built
+  /// from the phone's last report) give way to it, so a fixed setting clears the capsule at once.
   static func of(overall: SyncDiagnosis.Overall, page: SyncCoordinator.Status, card: TodayModel.SyncCard?,
+                 background: BackgroundCheck.Verdict? = nil,
                  staleAfter: Int = TodayParams.syncStaleMinutes) -> SyncCapsuleState {
+    var card = card
+    if background != nil, let c = card, c.state == "issue", let code = c.issueCode, SyncStuck.phoneCodes.contains(code) {
+      card?.state = "ok"
+      card?.issueCode = nil
+      card?.issueLabel = nil
+    }
     if overall == .syncing || overall == .processing || page == .syncing { return .busy }
     // sync off wins over offline: the page being offline changes nothing until sync is turned on (sync center)
     if overall == .off { return .off }
@@ -255,6 +264,7 @@ enum SyncCapsuleState: Equatable {
     // offline first: the phone's own check also flags attention then, and 「离线」 says what is going on
     if page == .offline { return .stale(tr("离线", "Offline")) }
     if overall == .attention || card?.state == "issue" { return .behind(card?.ago ?? tr("需处理", "Check")) }
+    if let b = background, b.warns, let h = BackgroundCheck.hint(b) { return .behind(h.short) }
     if let age = TodayGlanceRules.staleAge(page: page, card: card, staleAfter: staleAfter) { return .stale(age) }
     if let n = card?.missingDays, n > 0 { return .behind(tr("缺\(n)天", "\(n) d missing")) }
     return .ok(ago: card?.ago)
