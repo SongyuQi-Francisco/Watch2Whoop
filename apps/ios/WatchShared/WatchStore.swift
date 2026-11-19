@@ -14,6 +14,8 @@ struct WatchStore {
     case queue = "w2w.watch.queue.v1"
     case quickLogs = "w2w.watch.quicklogs.v1"
     case session = "w2w.watch.session.v1"
+    /// What the watch knows about its own token (server, account, paired?); the token itself is in the Keychain.
+    case pairing = "w2w.watch.pairing.v1"
   }
 
   let defaults: UserDefaults
@@ -26,10 +28,12 @@ struct WatchStore {
   func queue() -> WatchEventQueue { WatchEventQueue.load(defaults.data(forKey: Key.queue.rawValue)) }
   func quickLogs() -> WatchQuickLogs { WatchQuickLogs.load(defaults.data(forKey: Key.quickLogs.rawValue)) }
   func session() -> SavedSession? { WatchCodec.decode(SavedSession.self, defaults.data(forKey: Key.session.rawValue)) }
+  func pairing() -> WatchPairing { WatchCodec.decode(WatchPairing.self, defaults.data(forKey: Key.pairing.rawValue)) ?? WatchPairing() }
 
   func save(_ c: WatchContext) { defaults.set(WatchCodec.encode(c), forKey: Key.context.rawValue) }
   func save(_ q: WatchEventQueue) { defaults.set(q.data(), forKey: Key.queue.rawValue) }
   func save(_ l: WatchQuickLogs) { defaults.set(l.data(), forKey: Key.quickLogs.rawValue) }
+  func save(_ p: WatchPairing) { defaults.set(WatchCodec.encode(p), forKey: Key.pairing.rawValue) }
   func save(_ s: SavedSession?) {
     if let s { defaults.set(WatchCodec.encode(s), forKey: Key.session.rawValue) } else { defaults.removeObject(forKey: Key.session.rawValue) }
   }

@@ -16,8 +16,10 @@ final class WatchModel: ObservableObject {
   @Published var path: [WatchRoute] = []
   /// 「计划没同步」 was tapped: the key shows that it asked, for a moment.
   @Published private(set) var askedPlanAt: Date?
-  /// The core was held: voice is not on the watch yet (mockup S7's dimmed core), shown for a moment.
+  /// The core was held while voice is unavailable (mockup S7's dimmed core): the reason's mark, for a moment.
   @Published private(set) var voiceRefusedAt: Date?
+  /// Hold to talk (M1–M4, J1–J4): the microphone, the watch's own token, the requests.
+  let voice: WatchVoiceController
   /// Screenshots only: the set screen shows which number the crown changes (T3) / the summary opens on its facts (T10).
   @Published private(set) var demoShowFocus = false
   @Published private(set) var demoFacts = false
@@ -41,10 +43,26 @@ final class WatchModel: ObservableObject {
       if s == "reset" { store.clear() }
     }
     #endif
+    #if DEBUG
+    if seed != nil || !(ProcessInfo.processInfo.environment["W2W_WATCH_DEMO"] ?? "").isEmpty {
+      // the seed's synthetic server and microphone; its token lives in memory only
+      let box = SeedToken()
+      if seed != "pairing" { box.token = "seed-token" }
+      let script = ProcessInfo.processInfo.environment["W2W_WATCH_VOICE"]
+      voice = WatchVoiceController(store: store, backend: WatchSeedVoice(script: script, day: { WatchModel.day(Date()) }),
+                                   recorder: WatchSeedRecorder(), hasToken: { box.token != nil },
+                                   saveToken: { box.token = $0 }, deleteToken: { box.token = nil })
+    } else {
+      voice = WatchVoiceController(store: store)
+    }
+    #else
+    voice = WatchVoiceController(store: store)
+    #endif
     queue = store.queue()
     quickLogs = store.quickLogs()
     context = store.context()
     if let lang = context?.lang { Lang.override = lang }
+    voice.context(context)
   }
 
   private var started = false
@@ -63,15 +81,20 @@ final class WatchModel: ObservableObject {
     quickLogs.prune(now: Date())
     restoreSession()
     ticker = Timer.publish(every: 0.25, on: .main, in: .common).autoconnect().sink { [weak self] d in self?.tick(d) }
+    voice.onMeal = { [weak self] m in self?.recordVoiceMeal(m) }
     #if DEBUG
     if let seed {
       startSeed(seed)
       return
     }
     #endif
+    voice.askPhoneForCode = { [weak self] in self?.link.requestPairCode() }
+    voice.onContinue = { [weak self] c in self?.link.sendContinue(c) }
+    link.onPairCode = { [weak self] c in self?.voice.received(c) }
     link.onContext = { [weak self] c in self?.received(c) }
     link.onReachable = { [weak self] r in
       self?.reachable = r
+      self?.voice.reachable(r)
       if r { self?.flush() }
     }
     link.onDelivered = { [weak self] id in self?.delivered(id) }
@@ -112,7 +135,7 @@ final class WatchModel: ObservableObject {
     WatchSyncState.derive(context: context, queue: queue, reachable: reachable, now: now)
   }
 
-  var home: WatchHome { WatchHome.derive(context: context, today: today, sync: syncState) }
+  var home: WatchHome { WatchHome.derive(context: context, today: today, sync: syncState, credential: voice.credential) }
 
   /// No heart rate this session (another workout is running, or no permission): plan 4.2's light mode.
   var lightMode: Bool { workout.light }
@@ -148,18 +171,31 @@ final class WatchModel: ObservableObject {
   /// The Jarvis core: tap = the quick-log tiles (plan 2.2; the owner's choice: tap = quick log, hold = talk).
   func coreTap() { path = [.quick] }
 
-  /// Hold on the core = talk (the owner's choice: tap = quick log, hold = talk). THE entry point of voice: phase 2b
-  /// starts listening (mockup M1 / J1) in the `.available` case; `WatchVoice.derive` decides. Until then the core is
-  /// dimmed and a hold only says so (mockup S7: a mark on the core and the failure haptic).
+  /// Hold on the core = talk (the owner's choice: tap = quick log, hold = talk). `WatchVoice.derive` decides: available
+  /// = listen (M1, drawn over home while the finger stays down); without a token = ask the phone for a code; otherwise
+  /// the core stays dark and the hold only says why (mockup S7: a mark on the core and the failure haptic).
   func coreHold() {
     switch home.voice {
     case .available:
-      break   // phase 2b: start the voice flow here (record → the watch's own token → /v1/assistant/transcribe)
-    case .unavailable:
+      voice.hold()
+    case .unavailable(let why):
+      if why == .pairing { voice.askPhoneNow() }
       voiceRefusedAt = Date()
       now = Date()
       Haptics.failed()
     }
+  }
+
+  /// The finger left the core after a hold (`cancelled` = slid up).
+  func coreRelease(cancelled: Bool) {
+    voice.release(cancelled: cancelled)
+    if !voice.flow.isIdle && !voice.flow.isListening { path = [.voice] }
+  }
+
+  /// Why the core is dark (the mark on it while a refused hold is shown).
+  var voiceReason: WatchVoice.Reason? {
+    if case .unavailable(let r) = home.voice { return r }
+    return nil
   }
 
   /// 「计划没同步」 / the sync mark: ask the phone for today's plan and numbers again (S9's retry; S1 「立即同步」).
@@ -237,18 +273,31 @@ final class WatchModel: ObservableObject {
     record(WatchQuickLog.water(ml, id: Self.newId(), day: today, at: Date()))
   }
 
-  /// M4 「撤销」: an event the phone has not got is simply taken back; otherwise the phone gets an `undo` for it.
+  /// M4 「撤销」: an event the phone has not got is simply taken back; otherwise the phone gets an `undo` for it. A meal
+  /// Jarvis logged by voice goes to the phone as a `voiceUndo` (the phone deletes it; queued while the phone is away).
   func undo(_ id: String) {
     guard let l = quickLogs.log(id), !l.undone else { path = []; return }
     quickLogs.markUndone(id)
     saveLogs()
-    if !queue.cancel(id) {
+    if let e = l.voiceUndo(id: Self.newId(), at: Date()) {
+      queue.enqueue(e)
+    } else if !queue.cancel(id) {
       queue.enqueue(.quick(.undo, id: Self.newId(), day: l.day, at: Date(), target: id))
     }
     saveQueue()
     flush()
     Haptics.undone()
     path = []
+  }
+
+  /// Jarvis logged a meal said by voice: its receipt (M3), from the server's card; nothing goes to the phone (the server
+  /// already has it; the phone's next sync shows it).
+  private func recordVoiceMeal(_ m: WatchVoiceMeal) {
+    let l = WatchQuickLog.voiceMeal(m, id: Self.newId(), at: Date())
+    quickLogs.add(l)
+    saveLogs()
+    voice.close()
+    path = [.receipt(l.id)]
   }
 
   private func record(_ l: WatchQuickLog) {
@@ -301,6 +350,7 @@ final class WatchModel: ObservableObject {
 
   private func received(_ c: WatchContext) {
     context = c
+    voice.context(c)
     Lang.override = c.lang
     queue.heard(at: Date())
     now = Date()
@@ -371,6 +421,18 @@ final class WatchModel: ObservableObject {
     reachable = true   // the synthetic phone is always near
     queue.heard(at: Date().addingTimeInterval(-120))
     seedContext(kind)
+    if kind != "pairing" { voice.seedPaired(WatchDemoData.account) }
+    // the synthetic phone answers a request for a code after a moment
+    voice.askPhoneForCode = { [weak self] in
+      Task { @MainActor in
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        self?.voice.received(WatchPairCode(server: "https://seed.invalid", code: "SEEDCODE0000", account: WatchDemoData.account,
+                                           at: Date(), expiresIn: 600))
+      }
+    }
+    voice.onContinue = { _ in }
+    voice.context(context)
+    voice.reachable(true)
     flush()
   }
 
@@ -379,6 +441,7 @@ final class WatchModel: ObservableObject {
     let day = Self.day(t)
     var c = WatchDemoData.context(day: day, sentAt: t, rest: kind == "rest", planMissing: kind == "noplan",
                                   stale: kind == "stale", lang: Lang.code)
+    c.voice = WatchDemoData.voiceOffer(on: kind != "noai")
     if kind == "signedout" { c = WatchContext(signedIn: false, plan: nil, lang: Lang.code, sentAt: t) }
     // keep what the "phone" already counted
     if let old = context?.quick, var q = c.quick, old.day == q.day {
@@ -387,6 +450,7 @@ final class WatchModel: ObservableObject {
       c.quick = q
     }
     context = c
+    voice.context(c)
     now = t
   }
 
@@ -422,7 +486,7 @@ final class WatchModel: ObservableObject {
         q.kcal = (q.kcal ?? 0) - kcal(t)
         q.results[t] = false
       }
-    case .set, .end:
+    case .set, .end, .voiceUndo:
       return
     }
     c.quick = q
@@ -525,6 +589,7 @@ final class WatchModel: ObservableObject {
     case "s7":
       keepSession = false
       ctx?.today?.phone = WatchPhoneSync(.offline, tr("离线", "Offline"))
+      voice.demoOffline(at: t)
     case "s8":
       keepSession = false
       ctx = nil
@@ -538,9 +603,50 @@ final class WatchModel: ObservableObject {
       quickLogs = WatchQuickLogs()
       quickLogs.add(l)
       route = id == "m4" ? [.receipt(l.id), .undo(l.id)] : [.receipt(l.id)]
+    case "m1", "j1":
+      keepSession = false
+      voice.demo(.listening(since: t), level: id == "m1" ? 0.7 : 0.45, seconds: id == "m1" ? 2 : 1, at: t)
+    case "m2":
+      keepSession = false
+      voice.demo(.confirming(text: WatchDemoData.mealWords, timer: WatchSendTimer(start: t.addingTimeInterval(-0.68))), at: t)
+      route = [.voice]
+    case "j2":
+      keepSession = false
+      voice.demo(.thinking(question: WatchDemoData.questions[0]), at: t)
+      route = [.voice]
+    case "j3", "j4":
+      keepSession = false
+      let q = WatchDemoData.questions[id == "j3" ? 0 : 1]
+      voice.demo(.answer(question: q, answer: WatchAnswer.of(id == "j3" ? WatchDemoData.answer : WatchDemoData.longAnswer),
+                         conversation: 101), at: t)
+      route = [.voice]
+    case "m3v":
+      keepSession = false
+      let l = WatchQuickLog.voiceMeal(WatchDemoData.voiceMeal(day: day), id: "demo-voice", at: t)
+      quickLogs = WatchQuickLogs()
+      quickLogs.add(l)
+      route = [.receipt(l.id)]
+    case "m4v":
+      keepSession = false
+      voice.demo(.confirmCall(question: WatchDemoData.questions[2],
+                              call: WatchConfirmCall(callId: "c", tool: "delete_food_entries", summary: WatchDemoData.undoSummary)), at: t)
+      route = [.voice]
+    case "s7n":
+      keepSession = false
+      ctx?.voice = WatchDemoData.voiceOffer(on: false)
+    case _ where id.hasPrefix("v-"):
+      keepSession = false
+      let f: WatchVoiceFailure = ["v-limit": .dailyLimit, "v-noai": .noAI, "v-quota": .allowance, "v-consent": .consent,
+                                  "v-offline": .offline, "v-server": .server, "v-cutoff": .interrupted, "v-unheard": .unheard,
+                                  "v-signedout": .signedOut, "v-readonly": .readOnly, "v-mic": .microphone][id] ?? .server
+      voice.demo(.failed(f), at: t)
+      route = [.voice]
     default:   // d1, d2, s1, s3, s9
       keepSession = false
     }
+    if id != "s7n", ctx != nil, ctx?.voice == nil { ctx?.voice = WatchDemoData.voiceOffer() }
+    voice.seedPaired(WatchDemoData.account)
+    voice.context(ctx)
     context = ctx
     queue = q
     session = keepSession ? s : nil

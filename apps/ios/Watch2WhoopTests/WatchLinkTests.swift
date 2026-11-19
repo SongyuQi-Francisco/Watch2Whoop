@@ -478,9 +478,10 @@ final class WatchHomeTests: XCTestCase {
     XCTAssertEqual(WatchCodec.event(WatchCodec.message(u))?.target, "m")
   }
 
-  /// Phase 2a has no voice: the core is dimmed and a hold is refused; 2b changes only `WatchVoice.derive`.
-  func testVoiceIsUnavailableUntilItShips() {
-    XCTAssertEqual(WatchVoice.derive(context: ctx(), sync: .linked(minutesAgo: 1)), .unavailable(.notYet))
+  /// A phone that says nothing about voice (2a, or an older phone app): the core is dimmed and a hold is refused; the
+  /// full rule is tested in WatchVoiceTests.
+  func testVoiceIsUnavailableWithoutThePhonesOffer() {
+    XCTAssertEqual(WatchVoice.derive(context: ctx(), sync: .linked(minutesAgo: 1)), .unavailable(.noAI))
     XCTAssertEqual(WatchVoice.derive(context: nil, sync: .signedOut), .unavailable(.signedOut))
     XCTAssertFalse(WatchHome.derive(context: ctx(), today: day, sync: .linked(minutesAgo: 1)).voice.isAvailable)
     XCTAssertTrue(WatchVoice.available.isAvailable)

@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The Apple Watch app, phase 1 of docs/watch-app-plan.md: logging sets during a strength session. Everything else
-/// (voice, meals, today at a glance, complications) comes in later phases.
+/// The Apple Watch app of docs/watch-app-plan.md: logging sets (phase 1), today at a glance and quick log (2a), hold to
+/// talk (2b). The watch-face widgets come later (phase 3).
 @main
 struct Watch2WhoopWatchApp: App {
   @StateObject private var model = WatchModel()
@@ -10,6 +10,7 @@ struct Watch2WhoopWatchApp: App {
     WindowGroup {
       RootView()
         .environmentObject(model)
+        .environmentObject(model.voice)
         .onAppear { model.start() }
     }
   }
