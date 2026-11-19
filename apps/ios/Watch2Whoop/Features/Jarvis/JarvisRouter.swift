@@ -20,6 +20,37 @@ final class JarvisRouter: ObservableObject {
     current?.ask(prompt: prompt)
   }
 
+  /// The Apple Watch's 「在手机上继续」 (watch-app-plan 2.3, mockup J4): that conversation opens in the chat, now when the
+  /// tabs exist, else at the next start (kept for `continueKeepSec`; an old one is not opened by surprise).
+  static func continueFromWatch(_ conversation: Int, now: Date = Date()) {
+    if let r = current, r.ai.inApp {
+      r.openWatchConversation(conversation)
+    } else {
+      UserDefaults.standard.set(["id": conversation, "at": now.timeIntervalSince1970], forKey: watchContinueKey)
+    }
+  }
+
+  static let watchContinueKey = "w2w.jarvis.watchContinue.v1"
+  static let continueKeepSec: TimeInterval = 600
+
+  private func openWatchConversation(_ id: Int) {
+    guard let chat else { return }
+    Task {
+      await chat.open(id)
+      presentOverOthers(.chat)
+    }
+  }
+
+  /// A conversation handed over by the watch while the tabs were not there.
+  private func takeWatchConversation() {
+    let d = UserDefaults.standard
+    guard let v = d.dictionary(forKey: Self.watchContinueKey) else { return }
+    d.removeObject(forKey: Self.watchContinueKey)
+    guard let id = (v["id"] as? NSNumber)?.intValue, let at = (v["at"] as? NSNumber)?.doubleValue,
+          Date().timeIntervalSince1970 - at < Self.continueKeepSec else { return }
+    openWatchConversation(id)
+  }
+
   /// Posted after Jarvis changed the user's records: pages showing server views refresh.
   static let wroteNotification = Notification.Name("w2w.jarvis.wrote")
 
@@ -63,7 +94,10 @@ final class JarvisRouter: ObservableObject {
     }
     c.onAIChange = { [weak self] _ in self?.objectWillChange.send() }
     chat = c
-    Task { await c.loadChoices() }
+    Task {
+      await c.loadChoices()
+      if c.ai.inApp { takeWatchConversation() }
+    }
   }
 
   /// Flag `jarvis_voice_direct`: a recognised voice message goes out at once; otherwise it is put in the box first.

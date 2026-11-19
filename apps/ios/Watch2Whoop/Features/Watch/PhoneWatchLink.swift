@@ -119,7 +119,7 @@ enum WatchEventMerge {
         while list.count <= i { list.append(SetRow(reps: ex.target.reps, weightKg: ex.target.weightKg, durationS: ex.target.durationS, done: false)) }
         list[i] = SetRow(reps: e.reps, weightKg: e.weightKg, durationS: e.durationS, done: true)
         out[slug] = list
-      case .meal, .water, .undo:
+      case .meal, .water, .undo, .voiceUndo:
         continue   // quick logs are not training: the bridge's quick-log path handles them
       }
       applied.append(e.id)
@@ -208,6 +208,11 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
   private var quickWorking = false
   private var lastPushed: WatchContext?
   private var lastTodayRefresh: Date?
+  /// The account's AI as `/v1/users/me/ai-choice` → `ai` says (mode, fallback consent): decides the watch's voice key.
+  private var aiMode: String?
+  private var aiConsent = false
+  /// The last watch code asked for (the watch asks at most once a minute; the phone too).
+  private var lastCodeAt: Date?
 
   private var wc: WCSession? { WCSession.isSupported() ? WCSession.default : nil }
 
@@ -236,6 +241,8 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
     account = nil
     stopStores()
     lastPushed = nil
+    aiMode = nil
+    lastCodeAt = nil
     if wasLinked { send(WatchContext(signedIn: false, plan: nil, lang: Lang.code, sentAt: Date())) }
   }
 
@@ -260,6 +267,7 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
       cancellable = Publishers.MergeMany(changes).debounce(for: .milliseconds(600), scheduler: RunLoop.main)
         .sink { [weak self] in self?.push() }
       Task {
+        await refreshAI()
         await s.refresh()
         await f.refresh()
         await drain()
@@ -295,10 +303,54 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
                               results: inbox.results)
     }
     let c = WatchContext(signedIn: true, plan: WatchPlanBuilder.plan(from: store.session), lang: Lang.code, sentAt: now,
-                         planFor: store.session?.day, today: t, quick: q)
+                         planFor: store.session?.day, today: t, quick: q, voice: voiceOffer(account))
     guard force || !Self.sameExceptTimes(c, lastPushed) else { return }
     lastPushed = c
     send(c)
+  }
+
+  /// Voice on the watch (plan 2.3, Q6): an in-app AI and the direct-voice flag; nil until the AI is known.
+  private func voiceOffer(_ a: AccountSession) -> WatchVoiceOffer? {
+    guard aiMode != nil else { return nil }
+    return WatchVoiceOffer.of(mode: aiMode, consent: aiConsent, direct: a.flags.contains("jarvis_voice_direct"),
+                              account: Self.accountKey(a))
+  }
+
+  /// Who is signed in, for the watch to tell a token of another account (opaque to the watch).
+  static func accountKey(_ a: AccountSession) -> String { "\(a.config.userId ?? 0)@\(a.config.server)" }
+
+  /// `GET /v1/users/me/ai-choice` → `ai.mode` / `ai.consent` (an unanswered request keeps what was known).
+  private func refreshAI() async {
+    guard let account, let j = try? await account.api.json(.get(Endpoint.aiChoice)), let ai = j["ai"] as? [String: Any] else { return }
+    aiMode = ai["mode"] as? String ?? "none"
+    aiConsent = ai["consent"] as? Bool ?? false
+  }
+
+  /// The watch has no token of its own (first time, or a 401): ask the server for a one-time watch code with this
+  /// phone's token (`POST /v1/account/watch-code`, #458 A) and hand it over outside the application context: at once
+  /// when the watch is reachable, else queued (the watch drops a code that expired on the way and asks again).
+  fileprivate func pairWatch() async {
+    guard linked, let account, let wc, voiceOffer(account)?.on == true else { return }
+    if let t = lastCodeAt, Date().timeIntervalSince(t) < WatchParams.pairAskEverySec / 2 { return }
+    lastCodeAt = Date()
+    guard let j = try? await account.api.json(try .json(.post, Endpoint.watchCode, ["device": "Apple Watch"], idempotent: false)),
+          let code = j["code"] as? String else {
+      lastCodeAt = nil
+      return
+    }
+    let c = WatchPairCode(server: account.config.server, code: code, account: Self.accountKey(account), at: Date(),
+                          expiresIn: (j["expires_in"] as? NSNumber)?.intValue ?? 600)
+    let msg = WatchCodec.message(c)
+    if wc.isReachable {
+      wc.sendMessage(msg, replyHandler: nil) { _ in wc.transferUserInfo(msg) }
+    } else {
+      wc.transferUserInfo(msg)
+    }
+  }
+
+  /// J4 「在手机上继续」: the watch's conversation opens in Jarvis (now if the app is open, else at the next start).
+  fileprivate func continueOnPhone(_ conversation: Int) {
+    JarvisRouter.continueFromWatch(conversation)
   }
 
   /// Two contexts that differ only in when they were made (a push of the same numbers would only wake the watch).
@@ -321,6 +373,12 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
   }
 
   fileprivate func received(_ e: WatchSetEvent) {
+    if e.kind == .voiceUndo {
+      quickQueued.append(e)
+      if food == nil { update() }
+      Task { await drainQuick() }
+      return
+    }
     if e.isTraining {
       queued.append(e)
       if store == nil { update() }
@@ -339,6 +397,7 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
       return
     }
     update()
+    await refreshAI()
     await store?.refresh()
     // the Today numbers come from the server's documents and the phone's own scoring: at most once a minute from here
     if let t = today, Date().timeIntervalSince(lastTodayRefresh ?? .distantPast) > 60 {
@@ -385,6 +444,8 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
       switch e.kind {
       case .meal, .water:
         inbox.logged(e, counted: await logQuick(e, food: food))
+      case .voiceUndo:
+        if !(await undoVoice(e, food: food)) { inbox.undoLater.append(e) }   // no connection: again later
       case .undo:
         guard let target = e.target, let orig = inbox.original(target), orig.counted else { break }
         if await undoQuick(orig.event, food: food) {
@@ -417,6 +478,29 @@ final class PhoneWatchBridge: NSObject, ObservableObject {
     }
     if !out.saved { return LocalRecords.outboxState(food.db, clientId: e.id) != nil }   // stored before a relaunch
     return out.sent || out.queued
+  }
+
+  /// A meal Jarvis logged from the watch's voice (#458 D): the whole logging by its id, else each entry it wrote. One
+  /// already gone (404) counts as undone. false = no connection (tried again later).
+  private func undoVoice(_ e: WatchSetEvent, food: FoodStore) async -> Bool {
+    for w in e.writes ?? [] {
+      if let id = w.logId {
+        guard await food.undoMealLog(id: id, clientId: nil) else { return false }
+        continue
+      }
+      for id in w.entryIds {
+        do {
+          guard let api = account?.api else { return false }
+          _ = try await api.data(APIRequest(method: .delete, path: FoodAPI.foodEntry(id),
+                                            query: [URLQueryItem(name: "date", value: w.date)]))
+        } catch APIError.notFound {
+        } catch {
+          return false
+        }
+      }
+    }
+    await food.refresh()
+    return true
   }
 
   private func undoQuick(_ e: WatchSetEvent, food: FoodStore) async -> Bool {
@@ -454,11 +538,23 @@ extension PhoneWatchBridge: WCSessionDelegate {
   }
 
   nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+    if userInfo[WatchCodec.pairRequestKey] != nil {
+      Task { @MainActor in await self.pairWatch() }
+      return
+    }
+    if let c = WatchCodec.continued(userInfo) {
+      Task { @MainActor in self.continueOnPhone(c) }
+      return
+    }
     guard let e = WatchCodec.event(userInfo) else { return }
     Task { @MainActor in self.received(e) }
   }
 
   nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+    if message[WatchCodec.pairRequestKey] != nil {
+      Task { @MainActor in await self.pairWatch() }
+      return
+    }
     guard message[WatchCodec.requestKey] != nil else { return }
     Task { @MainActor in await self.requested() }
   }

@@ -63,6 +63,7 @@ enum Endpoint {
 
   // N8: Me / settings
   static let aiChoice = "/v1/users/me/ai-choice"
+  static let watchCode = "/v1/account/watch-code"         // a one-time code for the Apple Watch's own token (#458)
   static let aiProviders = "/v1/users/me/ai-providers"
   static func aiProvider(_ id: Int) -> String { "/v1/users/me/ai-providers/\(id)" }
   static func aiConnection(_ id: Int) -> String { "/v1/users/me/ai-connections/\(id)" }

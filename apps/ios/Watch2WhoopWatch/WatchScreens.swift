@@ -45,6 +45,7 @@ struct RootView: View {
       if let l = m.quickLogs.log(id) { ReceiptScreen(log: l) } else { GoneScreen() }
     case .undo(let id):
       if let l = m.quickLogs.log(id) { UndoScreen(log: l) } else { GoneScreen() }
+    case .voice: VoiceScreen()
     }
   }
 }
@@ -53,11 +54,23 @@ struct RootView: View {
 
 struct HomeScreen: View {
   @EnvironmentObject var m: WatchModel
+  @EnvironmentObject var voice: WatchVoiceController
+  /// The finger on the core: when it came down, whether it became a hold, how far it slid.
+  @State private var downAt: Date?
+  @State private var holding = false
+  @State private var slide: CGFloat = 0
+  @State private var press: Task<Void, Never>?
 
   var body: some View {
     // one drawing in the mockup's coordinates (D1 / D2), hung from the system clock's row (`HomeLayout`, `ClockRow`)
-    DesignCanvas { c in canvas(c, m.home) }
-      .toolbar(.hidden, for: .navigationBar)
+    DesignCanvas { c in
+      canvas(c, m.home)
+      if voice.flow.isListening {
+        // M1 / J1 over home while the finger stays on the core (the gesture lives on the core below)
+        ListeningView(c: c, cancelling: slide < -WatchParams.voiceCancelSlidePt).allowsHitTesting(false)
+      }
+    }
+    .toolbar(.hidden, for: .navigationBar)
   }
 
   @ViewBuilder private func canvas(_ c: CanvasMetrics, _ h: WatchHome) -> some View {
@@ -130,19 +143,40 @@ struct HomeScreen: View {
     .handGestureShortcut(.primaryAction, isEnabled: m.path.isEmpty)
   }
 
-  /// The Jarvis core: tap = quick log; hold = talk (`WatchModel.coreHold`), dimmed while voice is unavailable (mockup S7).
+  /// The Jarvis core: tap = quick log; hold = talk (`WatchModel.coreHold`: release sends, slide up cancels), dimmed while
+  /// voice is unavailable (mockup S7), with the reason's mark after a refused hold.
   private func core(s: CGFloat) -> some View {
     let refused = m.shows(m.voiceRefusedAt, for: 2)
     return ZStack(alignment: .topTrailing) {
       JarvisCoreMark(size: 40 * s, dim: !m.home.voice.isAvailable)
-      if refused {
-        Image(systemName: "mic.slash").font(.system(size: 9 * s, weight: .bold)).foregroundStyle(W.mid)
+      if refused, let why = m.voiceReason {
+        Image(systemName: Self.mark(why)).font(.system(size: 9 * s, weight: .bold)).foregroundStyle(W.mid)
           .padding(3 * s).background(Circle().fill(Color.black)).offset(x: 4 * s, y: -4 * s)
       }
     }
     .contentShape(Circle())
-    .onTapGesture { m.coreTap() }
-    .onLongPressGesture(minimumDuration: 0.5) { m.coreHold() }
+    // one gesture for tap, hold, release and slide (a long-press gesture has no 「ended」 for the release)
+    .gesture(DragGesture(minimumDistance: 0).onChanged { v in
+      slide = v.translation.height
+      guard downAt == nil else { return }
+      downAt = Date()
+      press = Task { @MainActor in
+        try? await Task.sleep(nanoseconds: UInt64(WatchParams.voiceHoldSec * 1_000_000_000))
+        guard !Task.isCancelled, downAt != nil, abs(slide) < 12 else { return }
+        holding = true
+        m.coreHold()
+      }
+    }.onEnded { v in
+      press?.cancel()
+      if holding {
+        m.coreRelease(cancelled: v.translation.height < -WatchParams.voiceCancelSlidePt)
+      } else if abs(v.translation.width) < 12 && abs(v.translation.height) < 12 {
+        m.coreTap()
+      }
+      downAt = nil
+      holding = false
+      slide = 0
+    })
     .accessibilityElement()
     .accessibilityLabel(tr("快记", "Quick log"))
     .accessibilityAddTraits(.isButton)
@@ -151,6 +185,15 @@ struct HomeScreen: View {
 
   private func mark() {
     if case .failed = m.syncState { m.retry() } else { m.askPhone() }
+  }
+
+  /// The mark on a dark core after a hold: why voice is not there.
+  static func mark(_ r: WatchVoice.Reason) -> String {
+    switch r {
+    case .offline: return "wifi.slash"
+    case .pairing, .signedOut, .consent: return "iphone"
+    case .noAI: return "mic.slash"
+    }
   }
 }
 
@@ -292,7 +335,7 @@ struct ReceiptScreen: View {
   private var header: String {
     if log.undone { return tr("已撤销", "Undone") }
     if log.kind == .water { return tr("已记喝水", "Water logged") }
-    let slot = log.slot ?? ""
+    guard let slot = log.slot, !slot.isEmpty else { return tr("已记录", "Logged") }
     return tr("已记到\(slot)", "Logged · \(slot)")
   }
 
