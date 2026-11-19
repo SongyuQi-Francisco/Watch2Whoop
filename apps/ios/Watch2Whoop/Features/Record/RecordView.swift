@@ -66,11 +66,14 @@ struct RecordTab: View {
         .padding(.horizontal, Metrics.gutter)
         .frame(maxWidth: Metrics.maxContentWidth)
         .frame(maxWidth: .infinity)
+        .coordinateSpace(name: FoldFit.space)
         .task { await devShot(proxy) }
       }
       .background(Palette.bg.ignoresSafeArea())
       .statusBarCover()
       .clearOfJarvisKey()
+      // both glances (训练, 饮食) have the same gaps: the next block peeks above the key (drilldown option A)
+      .foldFit(gaps: TrainingRoot.gaps)
       .refreshable {
         switch shown {
         case .training: await training.refresh()

@@ -8,23 +8,29 @@ enum RecordRoute: Hashable {
 
 /// 记录 → 训练, the tab root (docs/design/2.0.1 `12-record`): the set ring with today's muscles inside (tap = today's
 /// session), two readings (the day's sets, the week's training days), three faces (肌肉 → weekly map, 历史 → month + cards,
-/// 动作库 → library). Below the fold the rest of training stays one tap away: the week's plan (split, suggestions,
-/// restrictions), training settings and the training log link.
+/// 动作库 → library). Below the joint (2.1.0, drilldown option A: one down chevron, the next block cut by the fold) the
+/// rest of training stays one tap away: the week's plan (split, suggestions, restrictions), training settings and the log.
+/// The glance gives up just enough height (`FoldFit`: gaps, then the ring) so that block peeks above the key on every phone.
 struct TrainingRoot: View {
   @ObservedObject var store: TrainingStore
   @Binding var toast: Toast?
   let push: (RecordRoute) -> Void
   @State private var sheet: TrainingSheet?
   @Environment(\.askAI) private var askAI
+  @Environment(\.foldFit) private var fold
+
+  /// The glance's gaps at factor 1 (the page's `foldFit`).
+  static var gaps: CGFloat { Rhythm.gap(24) + Rhythm.gap(36) + Rhythm.gap(40) }
 
   static var ringSide: CGFloat { min(300, max(200, UIScreen.main.bounds.height * (Rhythm.isShort ? 0.32 : 0.34))) }
 
   var body: some View {
     VStack(spacing: 0) {
-      hero.padding(.top, Rhythm.gap(24))
-      readings.padding(.top, Rhythm.gap(36))
-      faces.padding(.top, Rhythm.gap(40))
-      below.padding(.top, 200)
+      hero.padding(.top, Rhythm.gap(24, fold: fold))
+      readings.padding(.top, Rhythm.gap(36, fold: fold))
+      faces.foldGlanceEnd().padding(.top, Rhythm.gap(40, fold: fold))
+      FoldJoint()
+      below
     }
     .task {
       await store.refresh()
@@ -39,7 +45,7 @@ struct TrainingRoot: View {
     let s = store.session
     let arcs = s.map { RecordGlance.arcs(RecordGlance.sets($0, rows: store.rows)) } ?? []
     let shares = s.map { RecordGlance.regionShares($0.exercises, rows: store.rows) } ?? [:]
-    let side = Self.ringSide
+    let side = Self.ringSide - fold.shrink
     return Button { push(.session) } label: {
       SetRing(arcs: arcs, side: side) {
         VStack(spacing: 10) {

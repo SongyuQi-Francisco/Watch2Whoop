@@ -61,7 +61,7 @@ struct InboxView: View {
     .overlay(alignment: .top) { ToastOverlay(store: circles) }
     .task { await store.refresh(force: true) }
     .rulesGate(circles, host: gateId)
-    .sheet(item: $detail) { InboxDetail(item: $0, open: open) }
+    .sheet(item: $detail) { d in InboxDetail(item: d, open: open, hide: { withAnimation { store.hide(d) } }) }
     .fullScreenCover(item: $consentFor) { item in
       ConsentView(reconfirm: true) {
         consentFor = nil
@@ -307,10 +307,12 @@ private struct ShareChips: View {
   }
 }
 
-/// One message in full: a notice with its button, a week of what's new, a system message.
+/// One message in full: a notice with its button, a week of what's new, a system message. 「隐藏」 is the visible door of
+/// the list's swipe (2.1.0, drilldown README section 8: a gesture may repeat a door, never be the only one).
 private struct InboxDetail: View {
   let item: InboxItem
   let open: (String) -> Void
+  let hide: () -> Void
   @Environment(\.dismiss) private var dismiss
 
   var body: some View {
@@ -338,6 +340,15 @@ private struct InboxDetail: View {
             open(u)
           }
         }
+        Button {
+          dismiss()
+          hide()
+        } label: {
+          Text(tr("隐藏这条", "Hide this message")).font(Typo.bodyStrong).foregroundColor(Palette.bad)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressScale())
       }
     }
     .presentationDetents([.medium, .large])

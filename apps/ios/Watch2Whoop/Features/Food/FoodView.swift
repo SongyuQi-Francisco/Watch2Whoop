@@ -144,10 +144,12 @@ struct FoodContent: View {
     if glance { glanceContent } else { classicContent }
   }
 
-  /// 2.0.1: the first glance, then (below the fold) the day's meals, the meal plan, 采购, 饮食档案 and 日记.
+  /// 2.0.1: the first glance, then (below the joint, its first block cut by the fold: drilldown option A) the day's
+  /// meals with the day stepper, the meal plan, 采购, 食谱 and 饮食档案.
   private var glanceContent: some View {
     VStack(alignment: .leading, spacing: 0) {
       FoodGlanceTop(store: store, meals: { l1 = .meals }, quick: { l1 = .quick }, water: { l1 = .water }, recipes: { allRecipes = true })
+      FoldJoint()
       VStack(alignment: .leading, spacing: 22) {
         RecordStatusLine(offline: store.offline, refreshing: store.refreshing && store.nutrition == nil)
         HStack {
@@ -170,7 +172,6 @@ struct FoodContent: View {
           ListRow(icon: .fileText, title: tr("我的饮食档案", "My diet profile"), value: store.dietBrief?.meta) { other = .diet }
         }
       }
-      .padding(.top, 200)
       .id("n5.meals")
     }
   }

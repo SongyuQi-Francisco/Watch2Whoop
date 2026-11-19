@@ -207,10 +207,14 @@ final class ReachabilityTests: XCTestCase {
 
   // MARK: - check 2: the fold
 
-  /// The files that draw a tab root's scroll content (PR 2 of the drilldown adds 记录 and 圈子).
+  /// The files that draw a tab root's scroll content: 今天 and 身体 (levels, nothing below the glance), 记录 and 圈子 (the
+  /// joint and the next block cut by the fold, `FoldFit`).
   static let tabRoots = [
     "Features/Today/TodayView.swift", "Features/Today/TodayGlanceView.swift",
     "Features/Trends/TrendsView.swift", "Features/Body/BodyGlanceView.swift",
+    "Features/Record/RecordView.swift", "Features/Record/TrainingRoot.swift",
+    "Features/Food/FoodView.swift", "Features/Food/FoodGlance.swift",
+    "Features/Circles/CirclesTab.swift",
   ]
 
   func testNoTabRootHasABlankSpacerTallerThanTheRule() throws {
@@ -255,6 +259,33 @@ final class ReachabilityTests: XCTestCase {
     XCTAssertEqual(FoldRule.verdict(blocks: [0...500, 510...530, 540...640], visible: visible), .cutByFold)
     XCTAssertEqual(FoldRule.verdict(blocks: [0...500, 520...560, 570...640], visible: visible), .falseFloor)   // 30 pt
     XCTAssertEqual(FoldRule.verdict(blocks: [0...640], visible: visible), .cutByFold)   // the glance itself is cut
+  }
+
+  /// 记录 and 圈子 (form 2): the first glance gives up just enough height for the next block to peek above the key: its gaps
+  /// first, its dial / ring only when the gaps are at their floor.
+  func testFoldFitGivesUpJustEnough() {
+    typealias Fit = FoldFit.Fit
+    let none = Fit()
+    // not measured yet: keep what is applied
+    XCTAssertEqual(FoldFit.fit(bottom: 0, gaps: 100, applied: none, visible: 760), none)
+    XCTAssertEqual(FoldFit.fit(bottom: 700, gaps: 100, applied: none, visible: 0), none)
+    // a glance ending at 700 of 760 (fixed part 600): gaps × 0.8 leave the joint and 56 pt of the next block
+    let f = FoldFit.fit(bottom: 700, gaps: 100, applied: none, visible: 760)
+    XCTAssertEqual(f.scale, 0.8, accuracy: 1e-9)
+    XCTAssertEqual(f.shrink, 0)
+    // measured again with that fit applied, it stays (the fixed part does not depend on it)
+    XCTAssertEqual(FoldFit.fit(bottom: 680, gaps: 100, applied: f, visible: 760), f)
+    let next = 600 + 100 * f.scale + LevelParams.joint
+    XCTAssertEqual(FoldRule.verdict(blocks: [0...(600 + 100 * f.scale), next...(next + 200)], visible: 760), .cutByFold)
+    // room to spare: never above the approved rhythm
+    XCTAssertEqual(FoldFit.fit(bottom: 500, gaps: 100, applied: none, visible: 760), none)
+    // a short phone (gaps 35 pt in all): the gaps go to their floor, the hero gives up the rest
+    let short = FoldFit.fit(bottom: 397, gaps: 35, applied: none, visible: 427)
+    XCTAssertEqual(short.scale, LevelParams.minGapScale)
+    XCTAssertEqual(short.shrink, (362 + 35 * LevelParams.minGapScale + 80 - 427).rounded(.up))
+    XCTAssertEqual(FoldFit.fit(bottom: 397 - 35 * 0.7 - short.shrink, gaps: 35, applied: short, visible: 427), short)
+    // and never more than its cap
+    XCTAssertEqual(FoldFit.fit(bottom: 600, gaps: 35, applied: none, visible: 427).shrink, LevelParams.maxHeroShrink)
   }
 
   /// 今天 and 身体 have nothing below their first glance (form 1), and the glance fits above the key on this phone.

@@ -1,6 +1,6 @@
 {
   "_doc": "Entry inventory of the iPhone app (project rule 'every view has a visible door', docs/design/2.0.1/drilldown/README.md section 9). One entry per case of the destination enums below: where it is opened from (root = the first screen of a tab, or 'member' = the read-only page of someone else), how many taps from there, and the kind of door (tap = a visible control, gesture = a long press, swipe or drag that may only repeat a visible door). Watch2WhoopTests/ReachabilityTests.swift fails when a case has no entry, no tap door within 2 taps, or an entry names a case that no longer exists. A pull request that adds, moves or removes a screen updates this file in the same change.",
-  "enums": ["LevelRoute", "TodaySheet", "TodayDetail", "TrendsSheet"],
+  "enums": ["LevelRoute", "TodaySheet", "TodayDetail", "TrendsSheet", "RecordRoute"],
   "destinations": {
     "LevelRoute.day": [
       {"root": "today", "taps": 1, "kind": "tap", "door": "the dial (恢复 ›), the depth ladder, the 关注 / 体征 face (at 需要注意 / 体征)"},
@@ -40,6 +40,12 @@
     "TrendsSheet.explain": [{"root": "body", "taps": 2, "kind": "tap", "door": "周报 face → a row of the report"}],
     "TrendsSheet.recovery": [{"root": "member", "taps": 1, "kind": "tap", "door": "the recovery card's title in someone else's 身体"}],
     "TrendsSheet.regularity": [{"root": "member", "taps": 1, "kind": "tap", "door": "the sleep regularity card's title in someone else's 身体"}],
-    "TrendsSheet.bodyAge": [{"root": "member", "taps": 1, "kind": "tap", "door": "the body age card's title in someone else's 身体 (as its explanation)"}]
+    "TrendsSheet.bodyAge": [{"root": "member", "taps": 1, "kind": "tap", "door": "the body age card's title in someone else's 身体 (as its explanation)"}],
+    "RecordRoute.session": [{"root": "record", "taps": 1, "kind": "tap", "door": "the set ring, the 组 reading (记录 → 训练)"}],
+    "RecordRoute.muscles": [{"root": "record", "taps": 1, "kind": "tap", "door": "the 肌肉 face"}],
+    "RecordRoute.allMuscles": [{"root": "record", "taps": 2, "kind": "tap", "door": "肌肉 face → 全部肌群"}],
+    "RecordRoute.history": [{"root": "record", "taps": 1, "kind": "tap", "door": "the 历史 face"}],
+    "RecordRoute.library": [{"root": "record", "taps": 1, "kind": "tap", "door": "the 动作库 face"}],
+    "RecordRoute.week": [{"root": "record", "taps": 1, "kind": "tap", "door": "the 本周 reading; 本周计划 row under the joint"}]
   }
 }
