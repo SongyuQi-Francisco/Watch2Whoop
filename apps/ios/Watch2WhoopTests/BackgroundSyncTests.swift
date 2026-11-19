@@ -86,7 +86,7 @@ final class BackgroundSyncTests: XCTestCase {
     XCTAssertEqual(BackgroundCheck.hint(.notRunning(last: nil))?.opensSettings, true)
     XCTAssertEqual(BackgroundCheck.hint(.off(.lowPower))?.opensSettings, false)
     XCTAssertEqual(BackgroundCheck.hint(.off(.restricted))?.opensSettings, false)
-    // the reported codes are the server's (migration 1000, overview.BACKGROUND_STATES)
+    // the reported codes are the server's (migration 1210, overview.BACKGROUND_STATES)
     XCTAssertEqual(Set(cases.map(\.0.code)), ["running", "waiting", "off", "low_power", "restricted", "not_running"])
   }
 

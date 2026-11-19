@@ -298,7 +298,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 - 同一个判断用在：同步中心的提示行和「怎么办」弹层（`BackgroundHelpView`，跟着实时判断变）、同步中心标题下的「上次后台同步」（现在是真实的后台唤醒时间，不再是「后台式的一轮」）、首屏的同步胶囊（`SyncCapsuleState.of(…, background:)`，警告时显示短标签）、今天页横幅（`SyncStuck`）；服务器概览里来自手机上报的 `background_off` / `background_idle` / `low_power` 在 app 里让位给手机自己的实时判断。
 - 改好设置不用重启：监听 `backgroundRefreshStatusDidChangeNotification`、`NSProcessInfoPowerStateDidChange`、回到前台（`willEnterForeground` / `didBecomeActive`）就重新读开关和唤醒记录；看到「不可用」会把计时起点挪到那一刻，刚打开开关不会被说成「没在运行」。
 - 上报（`PUT /v1/ingest/sync-device`，新字段都是可选的）：`last_background_at`、`background_kind`、`background_wakes_7d`、`background_state`（running / waiting / off / low_power / restricted / not_running）。所有有这个接口的服务器从一开始（#303）就是 `extra="ignore"`，旧服务器直接丢掉新字段；新服务器把未知代码存成 null，不会 422。
-- 服务器（迁移 `1000_sync_device_background.sql`）：`sync_device_state` 加这四列；`data_status.background()` 用手机的判断（2.1.0 以前的 app 没有判断，还按开关值）；概览新问题代码 `background_idle`「后台同步没在运行」，`background_off` 只在手机说关着且最近没跑时出；数据状态的 `delivery` 多 `background{state,last_at,wakes_7d}`。只有时间、次数和代码。
+- 服务器（迁移 `1210_sync_device_background.sql`）：`sync_device_state` 加这四列；`data_status.background()` 用手机的判断（2.1.0 以前的 app 没有判断，还按开关值）；概览新问题代码 `background_idle`「后台同步没在运行」，`background_off` 只在手机说关着且最近没跑时出；数据状态的 `delivery` 多 `background{state,last_at,wakes_7d}`。只有时间、次数和代码。
 
 截图（iPhone SE 第 3 代模拟器，Debug 的 `W2W_DEV_SYNC=bg-off|bg-lowpower|bg-restricted|bg-idle|bg-running|bg-flagoff-running`，合成数据）：`docs/sync-background-truth/`。
 
@@ -1084,7 +1084,7 @@ whatever the flag says; flag not available = off with its cause (switched off: b
 Low Power Mode; restricted); flag available but no wake for 12 h while newer data exists = not running (force-quit, low
 battery). The sync center, the Today capsule and banner share that verdict, it is re-evaluated on the status-change and
 power-state notifications and on every return to the foreground, and it goes to the server with the device report
-(`last_background_at`, `background_kind`, `background_wakes_7d`, `background_state`; migration 1000, new overview code
+(`last_background_at`, `background_kind`, `background_wakes_7d`, `background_state`; migration 1210, new overview code
 `background_idle`). What could not be confirmed without a device is listed in section 5.7.
 
 ### 2.0.0 补充（2026-11-04）

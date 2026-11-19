@@ -108,7 +108,7 @@ enum BackgroundCheck {
     /// `last`: the last background wake, nil = none recorded on this phone.
     case notRunning(last: Date?)
 
-    /// For the device report (`background_state`, migration 1000).
+    /// For the device report (`background_state`, migration 1210).
     var code: String {
       switch self {
       case .running: return "running"

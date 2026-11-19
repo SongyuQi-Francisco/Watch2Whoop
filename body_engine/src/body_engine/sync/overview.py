@@ -59,7 +59,7 @@ ISSUES = ("consent", "not_connected", "credentials", "server", "app_closed", "ba
 # open_settings = the app's iOS settings; sleep_help = sleep tracking on the watch; consent = the consent form
 ACTIONS = ("connect", "reconnect", "retry", "sync_now", "open_app", "authorize", "open_settings", "sleep_help", "consent")
 DEVICE_ERRORS = ("auth", "network", "locked", "health_denied", "server", "other")
-# The app's background evidence (app 2.1.0+, migration 1000): the kind of the last background wake and its verdict
+# The app's background evidence (app 2.1.0+, migration 1210): the kind of the last background wake and its verdict
 # (docs/ios-native-app.md "Background sync: evidence, not the flag"). An unknown code is stored as null (sync/api.py).
 BACKGROUND_KINDS = ("refresh", "processing", "observer", "push", "transfer")
 BACKGROUND_STATES = ("running", "waiting", "off", "low_power", "restricted", "not_running")

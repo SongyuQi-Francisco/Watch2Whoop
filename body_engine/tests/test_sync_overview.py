@@ -200,7 +200,7 @@ def test_background_off_shows_while_fresh_and_old_reports_are_ignored(conn):
     assert o["state"] == "ok" and o["device"] is None
 
 
-# ---------------------------------------------------------------- background evidence (app 2.1.0+, migration 1000)
+# ---------------------------------------------------------------- background evidence (app 2.1.0+, migration 1210)
 @pytest.mark.parametrize("rep,expected", [
     # what ran beats the flag: recent background wakes, no warning whatever iOS's flag says
     ({"background_refresh": "denied", "background_state": "running", "last_background_at": NOW - H}, None),
