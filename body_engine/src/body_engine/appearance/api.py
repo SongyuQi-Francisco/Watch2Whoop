@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict
 from ..i18n import L
 from ..records.api import _self, current_user, get_conn
 from ..rollout import flags
+from .. import deps
 from . import quotes, store
 
 router = APIRouter(prefix="/v1/users/{user}", tags=["appearance"], dependencies=[Depends(flags.require(store.FEATURE))])
@@ -20,15 +21,13 @@ class AppearanceIn(BaseModel):
 
 @router.get("/appearance")
 def get_appearance(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, L("只能看自己的", "Only your own"))
+    deps.require_self(viewer, user, L("只能看自己的", "Only your own"))
     return store.get(conn, viewer["id"])
 
 
 @router.get("/appearance/quotes")
 def get_quotes(user: str, viewer=Depends(current_user)):
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, L("只能看自己的", "Only your own"))
+    deps.require_self(viewer, user, L("只能看自己的", "Only your own"))
     return quotes.load()
 
 

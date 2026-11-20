@@ -22,6 +22,7 @@ from ..avatars.api import _image_response
 from ..i18n import L
 from ..records.api import _self, current_user, get_conn
 from ..rollout import flags
+from .. import deps
 from . import params as P, store
 
 router = APIRouter(prefix="/v1/users/{user}/inbox", tags=["inbox"], dependencies=[Depends(flags.require(P.FLAG))])
@@ -29,9 +30,7 @@ InviteId = Annotated[int, Path(ge=1, le=2**31 - 1)]
 
 
 def _own(viewer: dict, user: str) -> int:
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, L("只能看自己的消息", "You can only see your own messages"))
-    return viewer["id"]
+    return deps.require_self(viewer, user, L("只能看自己的消息", "You can only see your own messages"))
 
 
 def _run(fn, *args, **kw):

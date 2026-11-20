@@ -5,8 +5,11 @@ POST /upload?name=health   body = text assembled by the Shortcut; header Authori
   - Saved to health_data/<name>_latest.txt and health_data/archive/<name>_timestamp.txt (user 1);
     other users go under archive/u<user_id>/. Replies 200 once saved, then runs `body-engine import-shortcut`, `compute-scores` for the last
     4 days and `evaluate-rules` in the background (idempotent; uploads arriving during an import are merged into one re-run).
-  - The token identifies the user via secrets/health_upload_tokens.json (only sha256 is stored); old Shortcuts without a token are still accepted during the transition (counted as user 1),
-    with one line in server.log; a wrong token gets 401. With HEALTH_SYNC_REQUIRE_TOKEN=1, requests without a token are rejected too.
+  - The token identifies the user via secrets/health_upload_tokens.json (only sha256 is stored). A request without a token,
+    or with a wrong or revoked one, gets 401 and stores nothing.
+    HEALTH_SYNC_ALLOW_NO_TOKEN=1 is the explicit, off-by-default transition switch for very old Shortcuts that send no
+    token: such uploads are then filed as user 1 (the deployer), with one line in server.log each. Never turn it on for a
+    server other people upload to. HEALTH_SYNC_REQUIRE_TOKEN=1 (the older switch) still forces tokens, even with it on.
 GET /ping                   health-sync ok
 GET /legacy-status          {"cutoff": ..., "active": ...}: the retirement switch below, for the doctor
 
@@ -33,10 +36,13 @@ SECRETS = os.environ.get("HEALTH_SYNC_SECRETS") or os.path.join(os.path.dirname(
 TOKENS = os.path.join(SECRETS, "health_upload_tokens.json")
 PORT = int(os.environ.get("HEALTH_SYNC_PORT", "8765"))              # 0.0.0.0, LAN
 LOCAL_PORT = int(os.environ.get("HEALTH_SYNC_LOCAL_PORT", "8767"))  # 127.0.0.1, tailscale serve; 0 = off
-REQUIRE_TOKEN = os.environ.get("HEALTH_SYNC_REQUIRE_TOKEN") == "1"
+# Tokens are required by default. The transition switch must be named explicitly; the old HEALTH_SYNC_REQUIRE_TOKEN=1
+# (set by existing deployments) wins over it, so an old environment never loosens.
+ALLOW_NO_TOKEN = (os.environ.get("HEALTH_SYNC_ALLOW_NO_TOKEN") == "1"
+                  and os.environ.get("HEALTH_SYNC_REQUIRE_TOKEN") != "1")
 RUN_IMPORT = os.environ.get("HEALTH_SYNC_IMPORT", "1") == "1"
 MAX_BYTES = 50 * 1024 * 1024
-OWNER_USER_ID = 1             # old Shortcuts without a token count as the owner
+OWNER_USER_ID = 1             # with ALLOW_NO_TOKEN, old Shortcuts without a token count as the owner
 UV = os.path.expanduser("~/.local/bin/uv")
 ENGINE_DIR = os.environ.get("BODY_ENGINE_DIR") or os.path.join(os.path.dirname(BASE), "body_engine")
 IMPORT_LOG = os.path.join(BASE, "import.log")
@@ -109,7 +115,9 @@ def check_token(headers) -> tuple[int | None, str]:
     auth = headers.get("Authorization", "")
     token = auth[7:].strip() if auth.lower().startswith("bearer ") else headers.get("X-Upload-Token", "").strip()
     if not token:
-        return (None, "没带 token（已要求必须带）") if REQUIRE_TOKEN else (OWNER_USER_ID, "没带 token（旧快捷指令，过渡期按 user 1 收）")
+        if ALLOW_NO_TOKEN:
+            return OWNER_USER_ID, "没带 token（HEALTH_SYNC_ALLOW_NO_TOKEN=1，过渡期按 user 1 收）"
+        return None, "没带 token（默认必须带）"
     digest = hashlib.sha256(token.encode()).hexdigest()
     for h, info in load_tokens().items():
         if hmac.compare_digest(h, digest) and not info.get("revoked_at"):

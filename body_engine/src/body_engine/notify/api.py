@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..i18n import L, is_en
 from ..records.api import _self, current_user, get_conn
 from ..rollout import flags
+from .. import deps
 from . import core, params as P, store
 
 router = APIRouter(prefix="/v1/users/{user}", tags=["notify"])
@@ -25,9 +26,7 @@ gated = [Depends(flags.require(P.FEATURE))]
 
 
 def _own(viewer: dict, user: str) -> int:
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, L("只能看自己的通知", "You can only see your own notifications"))
-    return viewer["id"]
+    return deps.require_self(viewer, user, L("只能看自己的通知", "You can only see your own notifications"))
 
 
 class DeviceIn(BaseModel):

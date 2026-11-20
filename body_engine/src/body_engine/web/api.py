@@ -30,7 +30,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
-from .. import auth
+from .. import auth, deps
 from ..avatars import urls as avatar_urls
 from ..training import catalog as tr_catalog
 from . import activation, boot, login_codes, login_limit, me_links, session, views
@@ -65,10 +65,8 @@ def current_user(request: Request, conn=Depends(get_conn)) -> dict:
 
 
 def owner(conn, viewer: dict, user: str) -> int:
-    try:
-        owner_id = viewer["id"] if user == "me" else int(user)
-    except ValueError:
-        raise HTTPException(404, "用户写 me 或数字 ID")
+    """Aggregates that check each block by its own scope (views.section): any share at all opens the request."""
+    owner_id = deps.parse_user(viewer, user)
     if not views.has_any_share(conn, viewer["id"], owner_id):
         raise HTTPException(403, f"没有查看用户 {owner_id} 的授权")
     return owner_id
@@ -298,8 +296,7 @@ def web_me(request: Request, response: Response, conn=Depends(get_conn), viewer=
 @router.get("/v1/users/{user}/audience")
 def my_audience(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
     """Everyone who can see my data right now and what (the full list behind /v1/web/me `audience`). Own only."""
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, L("只能看自己的", "Your own only"))
+    deps.require_self(viewer, user, L("只能看自己的", "Your own only"))
     return views.audience(conn, viewer, limit=None)
 
 

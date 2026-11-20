@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..i18n import L
 from ..records.api import _self, current_user, get_conn
+from .. import deps
 from . import store
 
 router = APIRouter(tags=["notices"])
@@ -21,8 +22,7 @@ router = APIRouter(tags=["notices"])
 
 @router.get("/v1/users/{user}/notices")
 def my_notices(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, L("只能看自己的消息", "You can only see your own messages"))
+    deps.require_self(viewer, user, L("只能看自己的消息", "You can only see your own messages"))
     return {"items": store.pending(conn, viewer["id"])}
 
 

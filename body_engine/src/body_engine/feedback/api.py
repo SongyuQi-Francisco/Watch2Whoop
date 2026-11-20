@@ -6,15 +6,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..i18n import L
 from ..records.api import _self, current_user, get_conn
+from .. import deps
 from . import params as P, store
 
 router = APIRouter(prefix="/v1/users/{user}", tags=["feedback"])
 
 
 def _own(viewer: dict, user: str) -> int:
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, "反馈记录只能看自己的")
-    return viewer["id"]
+    return deps.require_self(viewer, user, "反馈记录只能看自己的")
 
 
 class ModeIn(BaseModel):

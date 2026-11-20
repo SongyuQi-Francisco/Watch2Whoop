@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from .. import auth, queries
+from .. import deps, queries
 from . import analysis, defaults, lab_history, store
 
 router = APIRouter(prefix="/v1/users/{user}", tags=["records"])
@@ -26,23 +26,12 @@ def current_user(request: Request, conn=Depends(get_conn), authorization: Annota
     return api.current_user(request, conn, authorization)
 
 
-def _owner(conn, viewer: dict, user: str, scope: str) -> int:
-    try:
-        owner_id = viewer["id"] if user == "me" else int(user)
-    except ValueError:
-        raise HTTPException(404, "用户写 me 或数字 ID")
-    if not auth.can_view(conn, viewer["id"], owner_id, scope):
-        raise HTTPException(403, f"没有查看用户 {owner_id} 的 {scope} 的授权")
-    return owner_id
+_owner = deps.resolve_owner   # reads: own, or shared with the scope (deps.py)
 
 
 def _self(viewer: dict, user: str) -> int:
     """Write operations: only for oneself, and the token needs write permission."""
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, "写操作只能写给自己")
-    if "write" not in (viewer.get("token_scopes") or []):
-        raise HTTPException(403, "这个 token 没有 write 权限")
-    return viewer["id"]
+    return deps.require_self(viewer, user, "写操作只能写给自己", write=True)
 
 
 def _found(row, what: str):

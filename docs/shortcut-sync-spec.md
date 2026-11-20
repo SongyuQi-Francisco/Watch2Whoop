@@ -15,7 +15,7 @@
 | 地址（兼容） | `POST http://your-mac.local:8765/upload?name=health`（局域网，旧快捷指令用） |
 | 请求头 | `X-Upload-Token: <token>`（或 `Authorization: Bearer <token>`）。token 按人发：`python3 health_sync/health_server.py token-create --user-id N --name iphone-xxx`，明文在 `secrets/health_upload_token_<name>`，库里只存 sha256（`secrets/health_upload_tokens.json`） |
 | 请求体 | 「获取 URL 内容」→ 方法 POST、请求体「文件」= 合并后的文本 |
-| 没带 token | 过渡期仍收（算 user 1），`health_data/server.log` 记「没带 token」；`HEALTH_SYNC_REQUIRE_TOKEN=1` 以后拒收（401） |
+| 没带 token | 默认拒收（401，不存）。过渡期开关 `HEALTH_SYNC_ALLOW_NO_TOKEN=1`（默认关）打开后才按 user 1 收，`health_data/server.log` 记「没带 token」；旧开关 `HEALTH_SYNC_REQUIRE_TOKEN=1` 仍然有效，且优先于过渡期开关 |
 | token 不对 | 401，不存 |
 | 存档 | user 1：`health_data/archive/health_YYYY-MM-DD_HHMMSS.txt`（和 `health_latest.txt`）；其他用户：`archive/u<id>/`。存完回 `saved health N bytes`，后台跑 `body-engine import-shortcut` |
 
