@@ -1,10 +1,15 @@
 # CI for pull requests and main. Job names are the required status checks of the `main` branch protection
 # (tools/public/RELEASE.md, section 2). No secrets are needed: the database is a throwaway service container.
 #
-# Path filters (docs/apps.md, section 5): on pull requests the `changes` job decides which jobs are needed. Jobs are
-# skipped with a job-level `if`, and a skipped job reports success, so the required checks still pass. Do not move the
-# filter to `on: pull_request: paths:` — a workflow that does not start leaves required checks pending forever.
-# Pushes to main, changes to this workflow and any failure of `changes` run everything.
+# Path filters (docs/apps.md, section 5): on pull requests the `changes` job decides which jobs are needed. Every job is
+# always present in the run and is skipped with a job-level `if`; a skipped job reports success, so a required check
+# never waits forever. Do not move the filter to `on: pull_request: paths:` — a workflow that does not start leaves
+# required checks pending. Pushes to main, changes to this workflow and any failure of `changes` run everything.
+#
+# Required checks of `main` (set by the maintainer in the branch protection, exact job names):
+#   Body Engine tests, Syntax checks, Algorithm JS bundle, iOS native
+# The Flutter app is historical (no job, no Dependabot); its Android / Flutter-iOS tag builds live in android-apk.yml and
+# app-release.yml. A macOS job that never got a runner is re-run by ci-rerun.yml (at most 2 times).
 name: CI
 
 on:
@@ -15,13 +20,13 @@ on:
 permissions:
   contents: read
 
+# A newer push cancels the older run of the same pull request only. A run on main is never cancelled: every commit
+# that gets deployed has a complete verdict of its own.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  # The Flutter app (its job keeps the required check name "Flutter tests").
-  FLUTTER_APP: apps/watch2whoop
   # Further client apps, tested by the "Other apps" job. enabled: false = placeholder (the directory does not exist yet).
   # To add one: create the directory, set enabled: true and add a step for its `kind` in the `other-apps` job.
   OTHER_APPS: >-
@@ -37,7 +42,6 @@ jobs:
       pull-requests: read
     outputs:
       server: ${{ steps.filter.outputs.server }}
-      flutter: ${{ steps.filter.outputs.flutter }}
       ios_native: ${{ steps.filter.outputs.ios_native }}
       other_apps: ${{ steps.filter.outputs.other_apps }}
       algo_js: ${{ steps.filter.outputs.algo_js }}
@@ -53,7 +57,6 @@ jobs:
           all() {  # run everything
             echo "$1 → running all jobs"
             echo "server=true" >> "$GITHUB_OUTPUT"
-            echo "flutter=true" >> "$GITHUB_OUTPUT"
             echo "ios_native=true" >> "$GITHUB_OUTPUT"
             echo "algo_js=true" >> "$GITHUB_OUTPUT"
             echo "other_apps=$(jq -c '[.[] | select(.enabled)]' <<< "$OTHER_APPS")" >> "$GITHUB_OUTPUT"
@@ -71,9 +74,9 @@ jobs:
           if grep -qv '^apps/' <<< "$files" \
              || grep -qxE 'apps/watch2whoop/(lib/src/hk_types\.dart|assets/healthkit_types\.json)' <<< "$files"; then
             server=true; else server=false; fi
-          if grep -q "^$FLUTTER_APP/" <<< "$files"; then flutter=true; else flutter=false; fi
-          # The native SwiftUI app (#340): only its own directory
-          if grep -q "^apps/ios/" <<< "$files"; then ios_native=true; else ios_native=false; fi
+          # The native SwiftUI app (#340): its own directory, plus the originals of the files it copies byte for byte from
+          # the (historical) Flutter app, whose copy check runs in this job
+          if grep -qE '^apps/ios/|^apps/watch2whoop/(ios/Runner/(SyncEngine|RawSync|Backfill)\.swift|assets/healthkit_types\.json)$' <<< "$files"; then ios_native=true; else ios_native=false; fi
           # The JS port of the algorithms (#340): its own files, the Python it ports (2.0.0 packages included,
           # docs/ios-native-2.0.md section 2.2) and the cross-language goldens of every package
           if grep -qE '^(packages/openbodyscore(-js)?/|body_engine/src/body_engine/((scores|trends|insights|algo|rawdata|importers|training|cardio|rules|explain|goals|sleep_night|records|static_bundle)/|web/views\.py)|body_engine/tests/test_js_golden[^/]*\.py)' <<< "$files"; then
@@ -81,8 +84,8 @@ jobs:
           other="$(jq -c --arg files "$files" \
             '[.[] | select(.enabled) | . as $a | select($files | split("\n") | any(startswith($a.path + "/")))]' \
             <<< "$OTHER_APPS")"
-          echo "server=$server flutter=$flutter ios_native=$ios_native algo_js=$algo_js other_apps=$other"
-          { echo "server=$server"; echo "flutter=$flutter"; echo "ios_native=$ios_native"; echo "algo_js=$algo_js"; echo "other_apps=$other"; } >> "$GITHUB_OUTPUT"
+          echo "server=$server ios_native=$ios_native algo_js=$algo_js other_apps=$other"
+          { echo "server=$server"; echo "ios_native=$ios_native"; echo "algo_js=$algo_js"; echo "other_apps=$other"; } >> "$GITHUB_OUTPUT"
 
   body-engine:
     name: Body Engine tests
@@ -139,8 +142,7 @@ jobs:
 
   # The scoring algorithms as one JS file for the iOS app (packages/openbodyscore-js, issue #340): dist/ must be what src/
   # builds, and the bundle must give Python's numbers on the shared golden cases (the Python side of those goldens runs in
-  # "Body Engine tests": tests/test_js_golden*.py). Every test/*.test.js runs (one per 2.0.0 package). Not a required check
-  # of main.
+  # "Body Engine tests": tests/test_js_golden*.py). Every test/*.test.js runs (one per 2.0.0 package).
   algo-js:
     name: Algorithm JS bundle
     needs: changes
@@ -191,55 +193,8 @@ jobs:
           git archive HEAD | tar -x -C "$tree"
           python tools/export_public.py --scan "$tree"
 
-  flutter:
-    name: Flutter tests
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.flutter == 'true') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: ${{ env.FLUTTER_APP }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: subosito/flutter-action@v2.23.0
-        with:
-          channel: stable
-          flutter-version: 3.47.7
-          cache: true
-      # config/defaults.json (your own server address) is git-ignored and not needed: the defaults compile to empty values
-      - run: flutter pub get
-      - run: flutter test
-
-  # iOS native pods (#295 A4): `pod install` from pubspec.lock must give exactly the committed ios/Podfile.lock, so a
-  # tag builds the same pods every time (OpenWearablesHealthSDK ~> 0.15.0 cannot float). Not a required check of main.
-  # Note: plugin pods carry their podspec's version (e.g. open_wearables_health_sdk 0.0.25 says 0.0.24), not pub's.
-  ios-pods:
-    name: iOS Podfile.lock
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.flutter == 'true') }}
-    runs-on: macos-latest
-    timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: ${{ env.FLUTTER_APP }}
-    env:
-      LANG: en_US.UTF-8
-    steps:
-      - uses: actions/checkout@v7
-      - uses: subosito/flutter-action@v2.23.0
-        with:
-          channel: stable
-          flutter-version: 3.47.7
-          cache: true
-      - run: flutter precache --ios
-      - run: flutter pub get
-      - run: cd ios && pod install
-      - name: Podfile.lock unchanged (otherwise run `pod install` and commit ios/Podfile.lock)
-        run: git diff --exit-code ios/Podfile.lock
-
   # Native SwiftUI iOS app (#340, docs/ios-native-app.md section 10): generate the project with a pinned XcodeGen, build
-  # and run the unit tests on a simulator. Runs only when apps/ios/ changes. Not a required check of main yet.
+  # and run the unit tests on a simulator. Runs only when apps/ios/ (or the originals of its copied sync files) change; otherwise it is skipped, which counts as passed.
   ios-native:
     name: iOS native
     needs: changes
@@ -291,22 +246,20 @@ jobs:
           ')"
           test -n "$id"
           echo "SIM_ID=$id" >> "$GITHUB_ENV"
+      # Swift package checkouts (GRDB, pinned with exactVersion in project.yml): cached by what declares them.
+      - name: Swift packages cache
+        uses: actions/cache@v6.1.0
+        with:
+          path: ${{ runner.temp }}/spm
+          key: spm-${{ runner.os }}-${{ hashFiles('apps/ios/project.yml', 'apps/ios/Packages/**/Package.swift') }}
       - name: Build
         run: >-
           xcodebuild -project Watch2Whoop.xcodeproj -scheme Watch2Whoop -destination "platform=iOS Simulator,id=$SIM_ID"
-          -derivedDataPath "$RUNNER_TEMP/dd" CODE_SIGNING_ALLOWED=NO build
+          -derivedDataPath "$RUNNER_TEMP/dd" -clonedSourcePackagesDirPath "$RUNNER_TEMP/spm" CODE_SIGNING_ALLOWED=NO build
       - name: Unit tests
         run: >-
           xcodebuild -project Watch2Whoop.xcodeproj -scheme Watch2Whoop -destination "platform=iOS Simulator,id=$SIM_ID"
-          -derivedDataPath "$RUNNER_TEMP/dd" CODE_SIGNING_ALLOWED=NO test
-
-  # Android build check (#253): the release APK, signed with the runner's debug key (no secrets on pull requests), kept
-  # as an artifact of the run for a test phone. Not a required check of main yet.
-  android:
-    name: Android APK
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.flutter == 'true') }}
-    uses: ./.github/workflows/android-apk.yml
+          -derivedDataPath "$RUNNER_TEMP/dd" -clonedSourcePackagesDirPath "$RUNNER_TEMP/spm" CODE_SIGNING_ALLOWED=NO test
 
   other-apps:
     name: Other apps
