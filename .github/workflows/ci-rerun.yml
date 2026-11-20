@@ -1,0 +1,65 @@
+# Re-run CI jobs that never got a runner (retrospective 2026-11, action 1). The macOS runner pool is small; a queued
+# job that is never assigned ends as "cancelled" and used to be re-run by hand. This re-runs the failed / cancelled jobs
+# of a CI run — at most twice (run attempts 1 and 2; attempt 3 is left alone) — and ONLY when every job that did not
+# succeed never started on a runner (no runner assigned, no step ran). A job that ran and failed is a real result and is
+# never re-run here. A run that a newer push already replaced is left alone.
+#
+# How to tell "not assigned" from "tests failed": in the run's job list a job that never got a runner has no runner name
+# and no steps; a real failure has a runner and a red step. This workflow checks exactly that.
+name: CI re-run
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ci-rerun-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  rerun:
+    name: Re-run jobs without a runner
+    if: ${{ github.event.workflow_run.conclusion == 'cancelled' || github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Decide and re-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          PR: ${{ github.event.workflow_run.pull_requests[0].number }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          [ "$ATTEMPT" -lt 3 ] || { echo "attempt $ATTEMPT: already re-run twice, leaving it"; exit 0; }
+          # A newer push replaced this run: do not re-run an old commit.
+          if [ "$RUN_EVENT" = pull_request ]; then
+            [ -n "$PR" ] || { echo "no pull request listed (fork?), leaving it"; exit 0; }
+            head="$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)" || exit 0
+          else
+            head="$(gh api "repos/$REPO/commits/main" --jq .sha)" || exit 0
+          fi
+          [ "$head" = "$HEAD_SHA" ] || { echo "run is for $HEAD_SHA, current head is $head: superseded"; exit 0; }
+          jobs="$(gh api "repos/$REPO/actions/runs/$RUN_ID/attempts/$ATTEMPT/jobs" --paginate --jq '.jobs[]')" || exit 0
+          # jobs that ended without success (skipped ones are fine)
+          bad="$(jq -s '[.[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != null)]' <<< "$jobs")"
+          unassigned="$(jq '[.[] | select((.runner_id == null or .runner_id == 0) and ((.steps // []) | length) == 0)] | length' <<< "$bad")"
+          total="$(jq 'length' <<< "$bad")"
+          echo "not successful: $total, of which never got a runner: $unassigned"
+          jq -r '.[] | "  \(.name): \(.conclusion), runner=\(.runner_name // "none"), steps=\((.steps // []) | length)"' <<< "$bad"
+          if [ "$total" -gt 0 ] && [ "$total" -eq "$unassigned" ]; then
+            echo "re-running (attempt $ATTEMPT → $((ATTEMPT + 1)))"
+            gh api -X POST "repos/$REPO/actions/runs/$RUN_ID/rerun-failed-jobs"
+          else
+            echo "a job ran and failed (or nothing to re-run): not re-running"
+          fi
