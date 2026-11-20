@@ -1,0 +1,166 @@
+/* =====================================================================================================
+   Drill-down study (2.1.0): additions to ../kit.css for the three options A (peek), B (drawer), C (levels).
+   Only new layout pieces live here; tokens, type scale, faces, rows, sheets and the tab bar stay the kit's.
+   Load order in every page: ../kit.css, dd.css ... dd.js, ../kit.js, ../core.js.
+   ===================================================================================================== */
+
+/* The Jarvis key as approved on 2026-11-12 (core glyph, no glass disc), as in screens 16-20. */
+.jarvis{background:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
+
+/* ---------- 1. Smallest phone: 375 x 667 (iPhone SE 2 / 3). ?size=se ---------- */
+body{--fold:704px}                                   /* top of the key's band = where a scrolling page ends */
+html[data-size="se"] body{width:375px;height:667px;--fold:509px}
+html[data-size="se"] .sb{width:375px;height:20px}
+html[data-size="se"] .sb-island{display:none}
+html[data-size="se"] .sb-time{left:0;width:375px;top:2px;font-size:12px}
+html[data-size="se"] .sb-sys{right:8px;top:4px;gap:4px;transform:scale(0.82);transform-origin:right center}
+html[data-size="se"] .page{top:20px;width:375px}
+html[data-size="se"] .tabbar{left:16px;width:343px;top:597px}
+html[data-size="se"] .jarvis{left:158.5px;top:529px}
+html[data-size="se"] .home-ind{display:none}
+
+/* ---------- 2. First glance (L0) with a variable rhythm: each option sets its own gaps ---------- */
+.l0{--dial:280px;--k:1;--g1:32px;--g2:40px;--g3:44px;--bars:180px;--face:120px;--gd:24px}
+.l0 .hero{margin-top:var(--g1);height:var(--dial)}
+.l0 .hero .dial,.l0 .dial-core{width:var(--dial);height:var(--dial);margin-left:calc(var(--dial) / -2)}
+.l0 .t-hero{font-size:calc(100px * var(--k));letter-spacing:calc(-3px * var(--k))}
+.l0 .hero-num .pct{font-size:calc(20px * var(--k));top:calc(12px * var(--k))}
+.l0 .gauges{margin-top:var(--g2)}
+.l0 .faces{margin-top:var(--g3)}
+.l0 .face{height:var(--face)}
+.vitals rect{fill:var(--band)}
+.vitals circle{fill:var(--text)}
+/* 身体 first glance (05-body) */
+.p-hero{margin-top:var(--g1)}
+.p-hl{display:flex;align-items:center;gap:4px;font-size:13px;font-weight:500;color:var(--text2);letter-spacing:2px;height:16px;line-height:16px}
+.p-mean{display:flex;align-items:flex-start;margin-top:4px;height:calc(82px * var(--k))}
+.p-mean .hero-num{margin-top:0}
+.p-delta{align-self:flex-end;margin-left:30px;margin-bottom:-5px;display:flex;flex-direction:column;gap:3px}
+.p-delta .d{font-size:22px;font-weight:500;letter-spacing:-0.3px;line-height:1;color:var(--good)}
+.p-bars{height:var(--bars)}
+.p-dots{display:flex;justify-content:center;gap:8px;margin-top:var(--gd)}
+.p-dots b{width:6px;height:6px;border-radius:3px;background:var(--past)}
+.p-dots b.on{background:var(--text)}
+
+/* ---------- 3. Door marks: a disclosure chevron after the label of every number that opens something ----------
+   Off unless <html data-opt="... marks ..."> (option A always). "bare" marks only the elements without a card fill
+   (dial, readings, hero label): the variant C' = ?opt=ladder,bare (a face already has the shape of a button). */
+.mk{font-size:12px;color:var(--text2);opacity:0.85;letter-spacing:0}
+.hero-label .mk{margin-left:1px;vertical-align:-1px}
+.gauge-hd .mk,.face-hd .mk{margin-left:auto;flex:none}
+.face-hd{white-space:nowrap}
+.gauge-hd{align-items:center}
+.gauge-hd .t-gauge{align-self:baseline}
+html:not([data-opt~="marks"]):not([data-opt~="bare"]) .mk{display:none !important}   /* kit.js sets an inline display on icons */
+html[data-opt~="bare"] .face-hd .mk{display:none !important}   /* "bare": only what has no card fill (dial, readings, hero label) */
+
+/* ---------- 4. Option A: the fold. The key's band stays opaque; the page ends at its top edge (soft edge 10 pt). ---------- */
+.keyband{position:absolute;left:0;right:0;top:var(--fold);bottom:0;background:var(--bg);z-index:30}
+.keyband::before{content:"";position:absolute;left:0;right:0;top:-10px;height:10px;
+  background:linear-gradient(to bottom,rgba(0,0,0,0),var(--bg))}
+.joint{height:24px;display:flex;align-items:center;justify-content:center;color:var(--text2);font-size:15px}
+/* a 2.0.0 trend card (TrendCardView), as it peeks under the faces of 身体 */
+.tcard{background:var(--surface);border-radius:18px;padding:13px 14px 12px}
+.tcard-hd{display:flex;align-items:center;gap:6px;height:16px;font-size:12px;font-weight:500;color:var(--text2)}
+.tcard-hd .delta{margin-left:auto}
+.tcard-v{display:flex;align-items:baseline;margin-top:8px}
+.tcard-c{height:74px;margin-top:8px}
+
+/* ---------- 5. Option B: the drawer (custom, in the page, under the key and the tab bar) ---------- */
+.drawer{position:absolute;left:0;right:0;bottom:0;background:var(--sheet);border-radius:28px 28px 0 0;z-index:35;
+  padding:0 20px;box-shadow:var(--sheet-shadow)}
+.drawer .grabber{margin-top:7px}
+.strip{display:grid;grid-template-columns:repeat(5,1fr);column-gap:16px;margin-top:11px;height:26px}
+.strip > div{height:26px}
+
+/* ---------- 6. Option C: the depth ladder (which level of three), and the dial shrunk into a header ---------- */
+.ladder{display:inline-flex;align-items:center;gap:3px;height:32px}
+.ladder b{width:14px;height:3px;border-radius:1.5px;background:var(--track)}
+.ladder b.on{background:var(--text)}
+html:not([data-opt~="ladder"]) .ladder{display:none}
+.hdr .ladder.mid{position:absolute;left:50%;margin-left:-24px}
+.hdr{position:relative}
+.mini{position:relative;width:34px;height:34px;flex:none}
+.mini > div{width:34px;height:34px}
+.mini span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;letter-spacing:-0.3px}
+.hdr-back .mini{margin:0 4px 0 2px}
+.hdr-back .sep{font-size:14px;color:var(--text3);margin:0 -2px}
+
+/* ---------- 7. Second-level pages: 今日详情 (all of the day's metrics) and one metric ---------- */
+.hdr-r{display:flex;align-items:center;gap:8px}
+.datechip{height:32px;display:inline-flex;align-items:center;gap:4px;padding:0 11px;border-radius:16px;background:var(--surface);
+  font-size:13px;font-weight:500;color:var(--text2)}
+.datechip i{font-size:13px}
+.in-sheet .datechip{background:var(--in-sheet)}
+/* the three scores of the day, small (ring + number); each is a door to its own detail */
+.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.trio > div{display:flex;align-items:center;gap:9px;height:48px}
+.trio .rg{width:40px;height:40px;flex:none}
+.trio .tv{display:flex;flex-direction:column;gap:3px}
+/* what else the day holds (option C: 训练 · 今晚 · 提醒 move here) */
+.chips{display:flex;gap:8px;margin-top:10px}
+.chips .chip{flex:1;justify-content:center;height:40px;border-radius:20px;font-size:15px;font-weight:600;position:relative}
+.chips .chip i{font-size:16px;color:var(--text2)}
+.chips .chip .u{margin-left:0}
+.chips .chip.attn::after{content:"";position:absolute;right:12px;top:8px;width:6px;height:6px;border-radius:3px;background:var(--mid)}
+.in-sheet .chip{background:var(--in-sheet)}
+/* jump rail: one icon per category with its count; scrolls the list to that group */
+.jump{display:flex;height:34px;padding:3px;border-radius:17px;background:var(--surface);margin-top:14px}
+.jump span{flex:1;display:flex;align-items:center;justify-content:center;gap:4px;height:28px;border-radius:14px;
+  font-size:12px;font-weight:500;color:var(--text2)}
+.jump span i{font-size:15px}
+.jump span.on{background:var(--lozenge);color:var(--text)}
+.in-sheet .jump{background:var(--in-sheet)}
+.gh{display:flex;align-items:center;gap:6px;height:36px;margin-top:8px;font-size:13px;font-weight:600}
+.gh i{font-size:15px;color:var(--text2)}
+.gh .n{margin-left:auto;font-size:12px;font-weight:500;color:var(--text2)}
+.rows.wide .row{grid-template-columns:86px 1fr 80px 38px 12px}
+.rows.wide .row-l{overflow:hidden;text-overflow:ellipsis}
+/* one metric */
+.mv{display:flex;align-items:baseline;gap:8px;margin-top:12px;height:60px}
+.t-big{font-size:56px;font-weight:200;letter-spacing:-1.5px;line-height:1}
+.mv .u{font-size:15px;margin-left:-4px}
+.mv .delta{font-size:17px;margin-left:8px}
+.seg.full{display:flex;width:100%;margin-top:16px}
+.seg.full span{flex:1;justify-content:center;padding:0}
+.in-sheet .seg{background:var(--in-sheet)}
+.lg{display:flex;align-items:center;gap:14px;height:16px;margin-top:14px}
+.lg .ro{margin-left:auto;font-size:11px;font-weight:500;color:var(--text)}
+.legend b.ln{width:14px;height:2px;border-radius:1px;background:var(--text)}
+.line{height:150px;margin-top:6px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);margin-top:18px;height:46px}
+.stats > div{display:flex;flex-direction:column;gap:6px}
+.stats .t-row .u{margin-left:2px}
+
+/* ---------- 8. Boards (tap paths, comparison): pictures for the review, not app screens ---------- */
+body.board{width:auto;height:auto;overflow:visible;background:#060607;color:#F4F4F6;font-size:15px}
+.bd{position:relative}
+.bd h1{position:absolute;left:64px;top:44px;font-size:30px;font-weight:600;letter-spacing:-0.4px}
+.bd h1 span{color:#8D8D94;font-weight:400;margin-left:14px;font-size:20px}
+.bd .sub{position:absolute;left:64px;top:90px;font-size:16px;color:#8D8D94}
+.fr{position:absolute;border-radius:26px;overflow:hidden;background:#000;box-shadow:0 0 0 1px rgba(255,255,255,0.10)}
+.fr iframe{border:0;transform-origin:0 0;display:block}
+.fcap{position:absolute;font-size:15px;font-weight:600;color:#F4F4F6;text-align:center}
+.fcap small{display:block;font-size:13px;font-weight:400;color:#8D8D94;margin-top:3px}
+.tapm{font-style:normal;position:absolute;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:15px;border:1.5px solid #8FDCFF;
+  background:rgba(143,220,255,0.16);color:#8FDCFF;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;z-index:5}
+.bd svg.wires{position:absolute;left:0;top:0;z-index:4;pointer-events:none}
+.note{position:absolute;font-size:14px;line-height:1.45;color:#8D8D94}
+.note b{color:#F4F4F6;font-weight:600}
+.note .k{color:#8FDCFF;font-weight:600}
+.dimline{position:absolute;border-top:1px dashed rgba(143,220,255,0.7);z-index:5}
+.dimlab{position:absolute;font-size:12px;font-weight:600;color:#8FDCFF;z-index:5;white-space:nowrap}
+.score{display:grid;grid-template-columns:auto repeat(3,16px);column-gap:5px;row-gap:9px;align-items:center;font-size:14px;color:#8D8D94}
+.score i{width:12px;height:12px;border-radius:6px;border:1.5px solid rgba(255,255,255,0.22);display:block}
+.score i.f{background:#F4F4F6;border-color:#F4F4F6}
+.score span{padding-right:14px}
+.colh{position:absolute;font-size:15px;font-weight:600;color:#8D8D94;text-align:center}
+.optl{position:absolute;left:64px;width:170px}
+.optl .L{font-size:84px;font-weight:200;line-height:1;letter-spacing:-2px}
+.optl .N{font-size:22px;font-weight:600;margin-top:10px}
+.optl p{font-size:14px;line-height:1.5;color:#8D8D94;margin-top:10px}
+.verd{position:absolute;font-size:14px;line-height:1.5;color:#8D8D94}
+.verd b{display:block;color:#F4F4F6;font-weight:600;margin-bottom:4px}
+.rule{position:absolute;left:64px;right:64px;height:1px;background:rgba(255,255,255,0.08)}
+.reco{position:absolute;left:64px;right:64px;font-size:17px;line-height:1.5;color:#F4F4F6}
+.reco span{color:#8FDCFF;font-weight:600;margin-right:10px}

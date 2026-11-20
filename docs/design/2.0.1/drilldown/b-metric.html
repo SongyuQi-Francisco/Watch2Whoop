@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-Hans" data-opt="">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>B 抽屉 · one metric (HRV, drawer at half height)</title>
+<link rel="stylesheet" href="../kit.css">
+<link rel="stylesheet" href="dd.css">
+<style>
+/* A number tapped: the drawer rises to its half height (top 404, just under the dial) with that metric. Only 300 pt of it
+   are free above the key band, so the half height holds the value, the range switch and the chart; the figures and the
+   related metrics need the full height. */
+.l0{--g1:20px;--g2:24px;--g3:24px}
+.drawer.peek{top:calc(var(--fold) - 56px)}
+.keyband.sheet{background:var(--sheet);z-index:36}
+.keyband.sheet::before{background:linear-gradient(to bottom,rgba(22,22,24,0),var(--sheet))}
+html[data-theme="light"] .keyband.sheet::before{background:linear-gradient(to bottom,rgba(255,255,255,0),var(--sheet))}
+html[data-size="se"] .l0{--dial:188px;--k:0.67;--g1:4px;--g2:8px;--g3:8px;--face:112px}
+.drawer.half{top:404px}
+.drawer .sheet-hd{margin-top:9px}
+.drawer .mv{margin-top:0;height:44px}
+.drawer .t-big{font-size:40px}
+.drawer .seg.full{margin-top:10px}
+.drawer .lg{margin-top:10px}
+</style>
+</head>
+<body>
+<div data-part="sb"></div>
+<main class="page l0">
+  <div data-part="today-l0"></div>
+</main>
+<section class="drawer half in-sheet">
+  <div class="grabber"></div>
+  <div class="sheet-hd"><span class="t-title">HRV</span><span class="tag"><i data-i="info"></i>非诊断</span><span class="icon-btn"><i data-i="x"></i></span></div>
+  <div data-part="metric" data-bg="sheet" data-h="88"></div>
+</section>
+<div class="keyband sheet"></div>
+<div data-part="chrome" data-on="0"></div>
+<script src="dd.js"></script>
+<script src="../kit.js"></script>
+<script src="../core.js"></script>
+</body>
+</html>

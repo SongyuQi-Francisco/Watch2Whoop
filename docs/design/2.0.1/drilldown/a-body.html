@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-Hans" data-opt="marks">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>A 露边 · 身体 first screen</title>
+<link rel="stylesheet" href="../kit.css">
+<link rel="stylesheet" href="dd.css">
+<style>
+/* Option A. Rhythm (y): header 54-98 -> 23 -> label 121 -> mean 141-223 -> bars 223-403 -> dates -> dots 437-443 -> 22 ->
+   faces 465-585 -> joint 24 -> first trend card 609, cut by the fold at 704 through its chart. */
+.l0{--g1:23px;--g3:22px;--gd:16px}
+html[data-size="se"] .l0{--k:0.72;--g1:6px;--g3:10px;--gd:10px;--bars:110px;--face:112px}
+html[data-size="se"] .joint{height:16px}
+</style>
+</head>
+<body>
+<div data-part="sb"></div>
+<main class="page l0">
+  <div data-part="body-l0"></div>
+  <div class="joint"><i data-i="chevron-down"></i></div>
+  <!-- the first 2.0.0 trend card of the range (TrendCardView), unchanged; the 指标 | 睡眠 | 报告 switch no longer sits on top of it -->
+  <div class="tcard">
+    <div class="tcard-hd"><i data-i="heart-pulse"></i>HRV<span class="delta good">+3</span></div>
+    <div class="tcard-v"><span class="t-face">60</span><span class="u">ms</span></div>
+    <div class="tcard-c" data-spark="55 58 54 57 60 56 52 59 61 58 55 60 57 59 62 57 60 58 55 61 63 59 60 64 62 61 65 63 66 68" data-band="54 64" data-bg="surface"></div>
+  </div>
+</main>
+<div class="keyband"></div>
+<div data-part="chrome" data-on="1"></div>
+<script src="dd.js"></script>
+<script src="../kit.js"></script>
+<script src="../core.js"></script>
+</body>
+</html>

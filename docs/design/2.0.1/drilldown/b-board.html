@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<title>B 抽屉 · tap paths</title>
+<link rel="stylesheet" href="../kit.css">
+<link rel="stylesheet" href="dd.css">
+</head>
+<body class="board">
+<!-- A board for the review (not an app screen): scaled frames of the option's screens, tap markers, wires. Built by board.js. -->
+<div class="bd" style="width:1840px;height:1010px" data-wires='[["t",290,330,"d",-8,330],["t",201,660,"d",-8,600,"dash"],["d",376,342,"m",-8,342],["b",116,528,"m",410,528]]'>
+<h1>方案 B · 抽屉<span>首屏底部一个带抓手的抽屉，露出一排趋势线；明细都在抽屉里</span></h1>
+<div class="fr" id="t" data-src="b-today.html" data-x="64" data-y="150" data-cap="今天 · 首屏|抽屉收起：抓手 + 五条趋势线"></div>
+<div class="fr" id="d" data-src="b-day.html" data-x="418" data-y="150" data-cap="今日详情|点表盘或上拉：抽屉全开"></div>
+<div class="fr" id="m" data-src="b-metric.html" data-x="772" data-y="150" data-cap="HRV 详情|点数字：抽屉半开，表盘还在"></div>
+<div class="fr" id="b" data-src="b-body.html" data-x="1126" data-y="150" data-cap="身体 · 首屏|同一个抽屉，线是这段时间的趋势"></div>
+<i class="tapm" data-f="t" data-px="290" data-py="330">1</i>
+<i class="tapm" data-f="t" data-px="201" data-py="660">↑</i>
+<i class="tapm" data-f="d" data-px="376" data-py="342">2</i>
+<i class="tapm" data-f="b" data-px="116" data-py="528">1</i>
+<div class="fr" id="z" data-src="b-today.html" data-x="1470" data-y="150" data-s="0.78" data-cy="600" data-ch="274" data-r="14" data-cap="底部三层|抽屉在键和 tab 栏下面一直铺到底"></div>
+<div class="dimline" data-f="z" data-py="648" data-x0="0" data-x1="402"></div>
+<div class="dimlab" data-f="z" data-px="8" data-py="628">抽屉上沿 y 648</div>
+<div class="dimline" data-f="z" data-py="704" data-x0="0" data-x1="402"></div>
+<div class="dimlab" data-f="z" data-px="8" data-py="708">y 704 以下被键和 tab 栏盖住</div>
+<div class="fr" id="p1" data-src="b-today.html" data-x="1470" data-y="452" data-s="0.28" data-r="12" data-cap="收起"></div>
+<div class="fr" id="p2" data-src="b-metric.html" data-x="1593" data-y="452" data-s="0.28" data-r="12" data-cap="半开"></div>
+<div class="fr" id="p3" data-src="b-day.html" data-x="1716" data-y="452" data-s="0.28" data-r="12" data-cap="全开"></div>
+<div class="note" style="left:64px;top:792px;width:400px"><b>首屏</b><br>折线下面不再有内容；训练 · 今晚 · 提醒进抽屉。<br>首屏让出 56 pt 给抽屉上沿，间距收紧到 20 / 24 / 24。<br>提示 = 抓手 + 五条不带字的趋势线。</div>
+<div class="note" style="left:500px;top:792px;width:420px"><b>路径</b><br><span class="k">①</span> 点表盘 / <span class="k">↑</span> 上拉 → 抽屉全开 = 今日详情<br><span class="k">①</span> 点数字或某条线 → 抽屉半开，换成这个指标<br><span class="k">②</span> 抽屉里点任一行 → 抽屉内容换成该指标</div>
+<div class="note" style="left:960px;top:792px;width:440px"><b>现有代码</b><br>系统半屏会盖住 tab 栏和 Jarvis 键，所以抽屉要<b>自己写</b>（拖拽、三档高度、和列表滚动的交接）。<br>现在的三个半屏（恢复 / 睡眠 / 负荷）变成抽屉的半开内容。<br>半开时键以上只有 300 pt 可用。</div>
+<div class="note" style="left:1470px;top:792px;width:340px"><b>小屏</b><br>抽屉上沿要占 56 pt，表盘得缩到 188（低于现在的下限 200）。</div>
+</div>
+<script src="board.js"></script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-Hans" data-opt="">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>B 抽屉 · 今天 first screen</title>
+<link rel="stylesheet" href="../kit.css">
+<link rel="stylesheet" href="dd.css">
+<style>
+/* Option B. Rhythm (y): header 54-98 -> 20 -> dial 118-398 -> 24 -> readings 422-481 -> 24 -> faces 505-625 -> 23 -> drawer edge 648
+   (grabber, one row of bare trend lines) -> key band 704. The drawer is part of the page: it runs on under the key and
+   the tab bar, which stay where they are. Nothing scrolls below the fold any more. */
+.l0{--g1:20px;--g2:24px;--g3:24px}
+.drawer.peek{top:calc(var(--fold) - 56px)}
+.keyband.sheet{background:var(--sheet);z-index:36}
+.keyband.sheet::before{background:linear-gradient(to bottom,rgba(22,22,24,0),var(--sheet))}
+html[data-theme="light"] .keyband.sheet::before{background:linear-gradient(to bottom,rgba(255,255,255,0),var(--sheet))}
+html[data-size="se"] .l0{--dial:188px;--k:0.67;--g1:4px;--g2:8px;--g3:8px;--face:112px}
+</style>
+</head>
+<body>
+<div data-part="sb"></div>
+<main class="page l0">
+  <div data-part="today-l0"></div>
+</main>
+<!-- the drawer at rest: grabber + the trend lines of the five vitals (HRV, 静息心率, 呼吸, 血氧, 体温) -->
+<section class="drawer peek">
+  <div class="grabber"></div>
+  <div data-part="strip" data-keys="hrv rhr resp spo2 temp"></div>
+</section>
+<div data-part="chrome" data-on="0"></div>
+<script src="dd.js"></script>
+<script src="../kit.js"></script>
+<script src="../core.js"></script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-Hans" data-opt="">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>B 抽屉 · 今日详情 (drawer at full height)</title>
+<link rel="stylesheet" href="../kit.css">
+<link rel="stylesheet" href="dd.css">
+<style>
+/* The drawer dragged up (or the dial tapped): 今日详情 inside it, from y 58 down. Key and tab bar stay on top of it. */
+.l0{--g1:20px;--g2:24px;--g3:24px}
+.drawer.peek{top:calc(var(--fold) - 56px)}
+.keyband.sheet{background:var(--sheet);z-index:36}
+.keyband.sheet::before{background:linear-gradient(to bottom,rgba(22,22,24,0),var(--sheet))}
+html[data-theme="light"] .keyband.sheet::before{background:linear-gradient(to bottom,rgba(255,255,255,0),var(--sheet))}
+html[data-size="se"] .l0{--dial:188px;--k:0.67;--g1:4px;--g2:8px;--g3:8px;--face:112px}
+.drawer.full{top:58px}
+.page{visibility:hidden}   /* at full height the drawer covers the first glance (a custom drawer dims what is left) */
+.drawer .sheet-hd{margin-top:9px}
+</style>
+</head>
+<body>
+<div data-part="sb"></div>
+<main class="page l0">
+  <div data-part="today-l0"></div>
+</main>
+<section class="drawer full in-sheet">
+  <div class="grabber"></div>
+  <div class="sheet-hd"><span class="t-title">今日详情</span><span class="datechip">11月10日<i data-i="chevron-down"></i></span><span class="icon-btn"><i data-i="chevron-down"></i></span></div>
+  <div data-part="day" data-with="trio" data-bg="sheet"></div>
+</section>
+<div class="keyband sheet"></div>
+<div data-part="chrome" data-on="0"></div>
+<script src="dd.js"></script>
+<script src="../kit.js"></script>
+<script src="../core.js"></script>
+</body>
+</html>

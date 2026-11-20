@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<title>Drill-down options A / B / C · comparison</title>
+<link rel="stylesheet" href="../kit.css">
+<link rel="stylesheet" href="dd.css">
+</head>
+<body class="board">
+<!-- Comparison board for the review (not an app screen). Built by board.js from the screens of the three options. -->
+<div class="bd" style="width:1840px;height:1640px">
+<h1>三个方案对比<span>同一份合成数据（小林，11月10日）；图上的评估是我的判断，三格满分</span></h1>
+<div class="colh" style="left:240px;width:197px;top:128px">今天 · 首屏</div>
+<div class="colh" style="left:437px;width:197px;top:128px">身体 · 首屏</div>
+<div class="colh" style="left:634px;width:197px;top:128px">今日详情</div>
+<div class="colh" style="left:831px;width:197px;top:128px">指标详情</div>
+<div class="colh" style="left:1048px;width:197px;top:128px">小屏 375 × 667</div>
+<div class="colh" style="left:1233px;width:197px;top:128px">浅色</div>
+<div class="colh" style="left:1470px;width:300px;top:128px;text-align:left">评估</div>
+<div class="optl" style="top:180px"><div class="L">A</div><div class="N">露边</div><p>下一段露出一截，数字后面带「›」</p></div>
+<div class="fr" data-src="a-today.html" data-x="250" data-y="170" data-s="0.44" data-r="20"></div>
+<div class="fr" data-src="a-body.html" data-x="447" data-y="170" data-s="0.44" data-r="20"></div>
+<div class="fr" data-src="a-day.html" data-x="644" data-y="170" data-s="0.44" data-r="20"></div>
+<div class="fr" data-src="a-metric.html" data-x="841" data-y="170" data-s="0.44" data-r="20"></div>
+<div class="fr" data-src="a-today.html?size=se" data-w="375" data-h="667" data-x="1058" data-y="170" data-s="0.44" data-r="14"></div>
+<div class="fr" data-src="a-today.html?theme=light" data-x="1243" data-y="170" data-s="0.44" data-r="20"></div>
+<div class="score" style="position:absolute;left:1470px;top:178px"><span>首屏干净</span><i class="f"></i><i class="f"></i><i class=""></i><span>入口看得见</span><i class="f"></i><i class="f"></i><i class="f"></i><span>改动小、风险低</span><i class="f"></i><i class="f"></i><i class="f"></i><span>不会再出假地板</span><i class="f"></i><i class=""></i><i class=""></i><span>五个 tab 能通用</span><i class="f"></i><i class="f"></i><i class="f"></i><span>小屏放得下</span><i class="f"></i><i class="f"></i><i class=""></i></div>
+<div class="verd" style="left:1470px;top:370px;width:310px"><b>最强的反对意见</b>只是补丁：滚动和点击两套找法并存；露出多少要靠每台机器调，内容一改就可能变回假地板。</div>
+<div class="rule" style="top:598px"></div>
+<div class="optl" style="top:650px"><div class="L">B</div><div class="N">抽屉</div><p>底部抽屉露出一排趋势线，明细都在抽屉里</p></div>
+<div class="fr" data-src="b-today.html" data-x="250" data-y="640" data-s="0.44" data-r="20"></div>
+<div class="fr" data-src="b-body.html" data-x="447" data-y="640" data-s="0.44" data-r="20"></div>
+<div class="fr" data-src="b-day.html" data-x="644" data-y="640" data-s="0.44" data-r="20"></div>
+<div class="fr" data-src="b-metric.html" data-x="841" data-y="640" data-s="0.44" data-r="20"></div>
+<div class="fr" data-src="b-today.html?size=se" data-w="375" data-h="667" data-x="1058" data-y="640" data-s="0.44" data-r="14"></div>
+<div class="fr" data-src="b-today.html?theme=light" data-x="1243" data-y="640" data-s="0.44" data-r="20"></div>
+<div class="score" style="position:absolute;left:1470px;top:648px"><span>首屏干净</span><i class="f"></i><i class=""></i><i class=""></i><span>入口看得见</span><i class="f"></i><i class="f"></i><i class="f"></i><span>改动小、风险低</span><i class="f"></i><i class=""></i><i class=""></i><span>不会再出假地板</span><i class="f"></i><i class="f"></i><i class="f"></i><span>五个 tab 能通用</span><i class="f"></i><i class=""></i><i class=""></i><span>小屏放得下</span><i class="f"></i><i class=""></i><i class=""></i></div>
+<div class="verd" style="left:1470px;top:840px;width:310px"><b>最强的反对意见</b>抽屉只能自己写，是最容易出手势问题的一块；首屏每天多一排线，底部三层叠在一起。</div>
+<div class="rule" style="top:1068px"></div>
+<div class="optl" style="top:1120px"><div class="L">C</div><div class="N">层级缩放</div><p>一眼 → 今日详情 → 单个指标，首屏不再滚动</p></div>
+<div class="fr" data-src="c-today.html" data-x="250" data-y="1110" data-s="0.44" data-r="20"></div>
+<div class="fr" data-src="c-body.html" data-x="447" data-y="1110" data-s="0.44" data-r="20"></div>
+<div class="fr" data-src="c-day.html" data-x="644" data-y="1110" data-s="0.44" data-r="20"></div>
+<div class="fr" data-src="c-metric.html" data-x="841" data-y="1110" data-s="0.44" data-r="20"></div>
+<div class="fr" data-src="c-today.html?size=se" data-w="375" data-h="667" data-x="1058" data-y="1110" data-s="0.44" data-r="14"></div>
+<div class="fr" data-src="c-today.html?theme=light" data-x="1243" data-y="1110" data-s="0.44" data-r="20"></div>
+<div class="score" style="position:absolute;left:1470px;top:1118px"><span>首屏干净</span><i class="f"></i><i class="f"></i><i class="f"></i><span>入口看得见</span><i class="f"></i><i class=""></i><i class=""></i><span>改动小、风险低</span><i class="f"></i><i class="f"></i><i class=""></i><span>不会再出假地板</span><i class="f"></i><i class="f"></i><i class="f"></i><span>五个 tab 能通用</span><i class="f"></i><i class="f"></i><i class=""></i><span>小屏放得下</span><i class="f"></i><i class="f"></i><i class="f"></i></div>
+<div class="verd" style="left:1470px;top:1310px;width:310px"><b>最强的反对意见</b>没有文字也没有折线提示时，新用户看不出表盘能点（C′ 加「›」补上）；训练 · 今晚 · 提醒多点一步。</div>
+<div class="rule" style="top:1552px"></div>
+<div class="reco" style="top:1572px"><span>建议</span>C′：今天、身体用 C 的结构，表盘和两个读数加 A 的「›」；必须滚动的 tab（记录、圈子）用 A 的露边规则；合成一条项目规则 + 一条自动检查。B 不建议。</div>
+</div>
+<script src="board.js"></script>
+</body>
+</html>
