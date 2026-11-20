@@ -3080,6 +3080,9 @@ OBS.workouts = (function (U, S) {
     DURATION_THRESHOLDS: { sport: [[75, "hard"], [30, "moderate"]], cardio: [[60, "moderate"]],
       strength: [[75, "hard"], [40, "moderate"]], other: [[60, "moderate"]] },
     MIN_SESSION_MIN: 5,
+    // manual workouts (training/manual.py, #444): the level the user picked is the intensity, no heart rate to grade
+    MANUAL_SOURCE: "manual",
+    MANUAL_INTENSITY: { light: "light", moderate: "moderate", hard: "hard" },
     GENERIC_TYPES: ["generic", "other", "unknown"],
     STRENGTH_TYPES: ["strength_training", "fitness_equipment", "generic", "other"],
     CARDIO_TYPES: ["walking", "running", "treadmill", "stair_climbing", "cycling", "indoor_cycling", "elliptical",
@@ -3664,10 +3667,11 @@ OBS.workouts = (function (U, S) {
   // ------------------------------------------------------------------ training calendar / day (training/history.py)
   var STATUS_ZH = { banned: "禁用", caution: "注意", active: "正常" };
   var STATUS_EN = { banned: "Banned", caution: "Caution", active: "OK" };
-  var BASIS_ZH = { trimp: "按心率（TRIMP）", avg_hr: "按平均心率估", volume: "按力量训练量", duration: "按时长", none: "没有数据" };
-  var BASIS_EN = { trimp: "By heart rate (TRIMP)", avg_hr: "Estimated from average HR", volume: "By strength volume",
+  var BASIS_ZH = { manual: "按你选的强度", trimp: "按心率（TRIMP）", avg_hr: "按平均心率估", volume: "按力量训练量", duration: "按时长", none: "没有数据" };
+  var BASIS_EN = { manual: "By the level you picked", trimp: "By heart rate (TRIMP)", avg_hr: "Estimated from average HR", volume: "By strength volume",
     duration: "By duration", none: "No data" };
-  var SOURCE_EN = { "快捷指令": "Shortcut", "Apple 健康": "Apple Health" };
+  var SOURCE_EN = { "快捷指令": "Shortcut", "Apple 健康": "Apple Health", "手动记录": "Logged by hand" };
+  var HIDDEN_FLAGS = new Set(["computed", "basal_kcal", "note", "manual_intensity", "untimed", "manual_dup"]);
   var CALENDAR_DAY_KEYS = ["date", "weekday", "today", "future", "sessions_count", "duration_min", "active_kcal",
     "workout_kcal", "total_kcal", "exercise_min", "steps", "strain", "muscle_load", "recovery", "intensity",
     "intensity_label", "types", "labels", "flags"];
@@ -3722,6 +3726,7 @@ OBS.workouts = (function (U, S) {
   function source_label(w) {
     if (w.source === "shortcut") return "快捷指令";
     if (w.source === "hevy") return "Hevy";
+    if (w.source === PARAMS.MANUAL_SOURCE) return "手动记录";
     if (pyIn((w.device || "").toLowerCase(), "watch")) return "Apple Watch";
     if (w.origin && w.origin !== "apple_health_xml") return w.origin;
     return "Apple 健康";
@@ -3729,14 +3734,17 @@ OBS.workouts = (function (U, S) {
 
   function from_workout(w, tz) {
     var flags = {};
-    Object.keys(w.flags || {}).forEach(function (k) { if (k !== "computed" && k !== "basal_kcal" && k !== "note") flags[k] = w.flags[k]; });
+    Object.keys(w.flags || {}).forEach(function (k) { if (!HIDDEN_FLAGS.has(k)) flags[k] = w.flags[k]; });
+    var mi = (w.flags || {}).manual_intensity;
+    var manual_level = w.source === PARAMS.MANUAL_SOURCE && typeof mi === "string" && has(PARAMS.MANUAL_INTENSITY, mi)
+      ? PARAMS.MANUAL_INTENSITY[mi] : null;
     return { id: "w" + w.id, workout_id: w.id, source: w.source, source_label: source_label(w), type: w.type,
       type_name: type_name(w.type), name: w.name_zh, start: U.isoformat(w.start_at, tz, "minutes"),
       end: U.isoformat(w.end_at, tz, "minutes"), duration_min: U.round(w.duration_min), active_kcal: rN(w.active_kcal),
       total_kcal: rN(w.total_kcal), distance_km: nn(w.distance_km) === null ? null : U.round(w.distance_km, 2),
       avg_hr: rN(w.avg_hr), max_hr: rN(w.max_hr), hr_zone_min: nn(w.hr_zone_min), trimp: nn(w.trimp),
       hr_max: nn(w.hr_max_used), device: get(w, "device"), flags: flags, exercises: [], volume_kg: null,
-      working_sets: null, notes: null, sparky_id: null, _cat: category(w.type) };
+      working_sets: null, notes: null, sparky_id: null, _manual_level: manual_level, _cat: category(w.type) };
   }
 
   function from_sparky(s, exercises) {
@@ -3819,7 +3827,9 @@ OBS.workouts = (function (U, S) {
   function classify(sess, hr_max) {
     var basis = null, value = null, level = null;
     hr_max = sess.hr_max || hr_max;
-    if (nn(sess.trimp) !== null) {
+    if (sess._manual_level) {   // a manual workout: the level the user picked (no heart rate to grade)
+      level = sess._manual_level; basis = "manual"; value = null;
+    } else if (nn(sess.trimp) !== null) {
       level = level_of(sess.trimp, PARAMS.TRIMP_THRESHOLDS); basis = "trimp"; value = sess.trimp;
     } else if (sess.avg_hr && hr_max && sess.duration_min) {
       var est = avg_hr_trimp(sess.avg_hr, sess.duration_min, hr_max) * PARAMS.AVG_HR_TRIMP_FACTOR;
@@ -3900,6 +3910,7 @@ OBS.workouts = (function (U, S) {
           : s.exercises.map(function (e) { return { name: get(e, "name"), category: get(e, "category") }; });
         s.intensity_basis_label = nn((en() ? BASIS_EN : BASIS_ZH)[s.intensity_basis]);
         delete s._cat;
+        delete s._manual_level;
         localize(s);
       });
       var m = metrics[d] || {}, sc = scores[d] || {};
