@@ -1,0 +1,60 @@
+# Merge record (retrospective 2026-11, rule H): when a pull request is merged this workflow leaves one comment with the
+# merge commit, the CI verdict of the merged head and the migration numbers it adds. Nobody writes "merged" by hand.
+# A failure here never affects the merge (the merge already happened; the step ends green on error).
+# pull_request_target only to get a token that can comment; it checks out nothing and runs no code from the pull request.
+name: Merge record
+
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: read
+
+jobs:
+  record:
+    name: Merge record
+    if: ${{ github.event.pull_request.merged == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Comment
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          marker='<!-- merge-record -->'
+          if gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[].body' | grep -qF "$marker"; then
+            echo "already recorded"; exit 0
+          fi
+          # CI verdict of the merged head: the last check run of each name
+          checks="$(gh api "repos/$REPO/commits/$HEAD_SHA/check-runs" --paginate \
+            --jq '.check_runs[] | [.name, (.conclusion // .status)] | @tsv' 2>/dev/null \
+            | awk -F'\t' '{last[$1]=$2} END {for (n in last) print "- " n "：" last[n]}' | sort)"
+          [ -n "$checks" ] || checks="- （没有查到检查结果）"
+          migs="$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename' 2>/dev/null \
+            | sed -nE 's#^body_engine/src/body_engine/migrations/([0-9]+)_.*\.sql$#\1#p' | sort -u | paste -sd, - | sed 's/,/、/g')"
+          [ -n "$migs" ] || migs="无"
+          {
+            echo "$marker"
+            echo "**合并记录（自动生成）**"
+            echo
+            echo "- 合并提交：\`${MERGE_SHA}\`（进入 \`${BASE}\`）"
+            echo "- 合并的 PR 头：\`${HEAD_SHA}\`"
+            echo "- 迁移编号：${migs}"
+            echo "- 合并时该提交上的检查结果："
+            echo "$checks"
+            echo
+            echo "部署状态、验证结果不在这条记录里；需要的话由负责的会话另外写评论。"
+          } > "$RUNNER_TEMP/body.md"
+          gh api -X POST "repos/$REPO/issues/$PR/comments" -F body=@"$RUNNER_TEMP/body.md" >/dev/null
+          echo "recorded"

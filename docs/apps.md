@@ -157,9 +157,11 @@ working because the depth does not change.
 ### 5. CI
 
 `.github/workflows/ci.yml` decides per pull request which jobs are needed from the changed paths:
-server jobs ("Body Engine tests") run when anything outside `apps/` changes, "Flutter tests" when the Flutter app
-changes, "Syntax checks" always, and everything runs on pushes to `main` and when the workflow itself changes. Skipped
-jobs report success, so the required checks of the `main` branch protection still pass. Future apps are added to the
+server jobs ("Body Engine tests") run when anything outside `apps/` changes, "iOS native" when `apps/ios/` changes,
+"Algorithm JS bundle" when the algorithms change, "Syntax checks" always, and everything runs on pushes to `main` and when
+the workflow itself changes. The Flutter app has no CI job any more (historical, unmaintained). Every job is always
+present and skipped by a job-level `if`; skipped jobs report success, so the required checks of the `main` branch
+protection (Body Engine tests, Syntax checks, Algorithm JS bundle, iOS native) never wait forever. Future apps are added to the
 `OTHER_APPS` list at the top of the workflow (HarmonyOS is there as a disabled placeholder) and get a step for their
 toolchain in the "Other apps" job.
 
