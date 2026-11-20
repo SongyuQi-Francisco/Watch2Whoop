@@ -52,6 +52,7 @@ from ..i18n import L
 from ..records.api import current_user, get_conn
 from ..rawdata import engine as rx_engine, shadow as rx_shadow, side_by_side, sync_status as rx_status
 from ..rawdata.api import ingest_user
+from .. import deps
 from . import params as P
 from . import backfill, broken, data_status, history, missing_days, overview, refresh, resync
 
@@ -59,9 +60,7 @@ router = APIRouter(tags=["sync"])
 
 
 def _own(viewer: dict, user: str) -> int:
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, L("只能刷新自己的数据", "You can only refresh your own data"))
-    return viewer["id"]
+    return deps.require_self(viewer, user, L("只能刷新自己的数据", "You can only refresh your own data"))
 
 
 @router.post("/v1/users/{user}/sync/refresh", status_code=202)
@@ -79,8 +78,7 @@ def sync_status(user: str, conn=Depends(get_conn), viewer=Depends(current_user))
 
 @router.get("/v1/users/{user}/sync/connection")
 def sync_connection(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, L("只能看自己的同步状态", "You can only see your own sync status"))
+    deps.require_self(viewer, user, L("只能看自己的同步状态", "You can only see your own sync status"))
     res = broken.check(conn, viewer["id"])
     res.pop("user_id", None)
     return res
@@ -88,8 +86,7 @@ def sync_connection(user: str, conn=Depends(get_conn), viewer=Depends(current_us
 
 @router.get("/v1/users/{user}/sync/overview")
 def sync_overview(user: str, in_app: bool = False, conn=Depends(get_conn), viewer=Depends(current_user)):
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, L("只能看自己的同步状态", "You can only see your own sync status"))
+    deps.require_self(viewer, user, L("只能看自己的同步状态", "You can only see your own sync status"))
     return overview.collect(conn, viewer["id"], in_app=in_app)
 
 
@@ -214,23 +211,20 @@ def post_sync_backfill(user: str, body: BackfillIn, response: Response, conn=Dep
 
 @router.get("/v1/users/{user}/data-status")
 def get_data_status(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, L("只能看自己的数据状态", "You can only see your own data status"))
+    deps.require_self(viewer, user, L("只能看自己的数据状态", "You can only see your own data status"))
     return data_status.collect(conn, viewer["id"])
 
 
 @router.get("/v1/users/{user}/sync/missing-days")
 def get_missing_days(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, L("只能看自己的数据状态", "You can only see your own data status"))
+    deps.require_self(viewer, user, L("只能看自己的数据状态", "You can only see your own data status"))
     return missing_days.collect(conn, viewer["id"])
 
 
 @router.get("/v1/users/{user}/sync/engine/days")
 def get_engine_days(user: str, start: date = Query(alias="date"), end: date | None = None, conn=Depends(get_conn),
                     viewer=Depends(current_user)):
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, L("只能看自己的数据", "You can only see your own data"))
+    deps.require_self(viewer, user, L("只能看自己的数据", "You can only see your own data"))
     if not rx_engine.enabled(conn, viewer["id"]):
         raise HTTPException(404, L("没有开启", "Not enabled"))
     try:
@@ -242,8 +236,7 @@ def get_engine_days(user: str, start: date = Query(alias="date"), end: date | No
 
 @router.get("/v1/users/{user}/sync/engine/status")
 def get_engine_status(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, L("只能看自己的同步状态", "You can only see your own sync status"))
+    deps.require_self(viewer, user, L("只能看自己的同步状态", "You can only see your own sync status"))
     return rx_status.collect(conn, viewer["id"])
 
 
@@ -255,8 +248,7 @@ def get_ingest_sync_status(conn=Depends(get_conn), viewer=Depends(ingest_user)):
 @router.get("/v1/users/{user}/sync/engine/shadow")
 def get_engine_shadow(user: str, start: date | None = Query(None, alias="date"), end: date | None = None,
                       all: bool = False, conn=Depends(get_conn), viewer=Depends(current_user)):  # noqa: A002
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, L("只能看自己的数据", "You can only see your own data"))
+    deps.require_self(viewer, user, L("只能看自己的数据", "You can only see your own data"))
     uid = viewer["id"]
     if not rx_engine.enabled(conn, uid):
         raise HTTPException(404, L("没有开启", "Not enabled"))

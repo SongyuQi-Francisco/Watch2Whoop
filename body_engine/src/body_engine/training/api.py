@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field
 
-from .. import auth, sparky_client
+from .. import auth, deps, sparky_client
 from ..records.api import _owner, _self, current_user, get_conn
 from ..i18n import L
 from ..rollout import flags
@@ -149,8 +149,7 @@ def delete_manual_workout(user: str, workout_id: int, conn=Depends(get_conn), vi
 
 
 def _self_or_read(viewer: dict, user: str) -> None:
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, L("只能看自己的", "Your own only"))
+    deps.require_self(viewer, user, L("只能看自己的", "Your own only"))
 
 
 @router.get("/exercises")
@@ -519,9 +518,7 @@ class HevyMapIn(BaseModel):
 
 
 def _hevy_self(viewer: dict, user: str) -> int:
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, L("只能查看自己的导入", "You can only see your own imports"))
-    return viewer["id"]
+    return deps.require_self(viewer, user, L("只能查看自己的导入", "You can only see your own imports"))
 
 
 @router.get("/import/hevy", dependencies=HEVY)

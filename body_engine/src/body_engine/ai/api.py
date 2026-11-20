@@ -29,6 +29,7 @@ from starlette.concurrency import run_in_threadpool
 
 from ..i18n import L, lang
 from ..rollout import flags
+from .. import deps
 from . import asr, catalog, chat, choice, crypto, fallback, oauth, posture, providers, quota_cards, runs, tokens, voice_fix
 from . import watch
 from . import posture_params
@@ -68,11 +69,7 @@ def stream_voice_user(request: Request) -> dict:
 
 
 def _self_only(viewer: dict, user: str, write: bool = False) -> int:
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, "AI 设置只能管自己的（家人授权不包括 AI 配置）")
-    if write and "write" not in (viewer.get("token_scopes") or []):
-        raise HTTPException(403, "这个登录没有 write 权限")
-    return viewer["id"]
+    return deps.require_self(viewer, user, "AI 设置只能管自己的（家人授权不包括 AI 配置）", write=write, write_detail="这个登录没有 write 权限")
 
 
 def public_url(request: Request) -> str:

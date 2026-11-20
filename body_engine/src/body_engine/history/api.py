@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
+from .. import deps
 from . import store
 
 router = APIRouter(tags=["history"])
@@ -27,11 +28,7 @@ def current_user(request: Request, conn=Depends(get_conn)) -> dict:
 
 
 def _self(viewer: dict, user: str, write: bool = False) -> int:
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, "只能给自己导入")
-    if write and "write" not in (viewer.get("token_scopes") or []):
-        raise HTTPException(403, "这个登录没有 write 权限")
-    return viewer["id"]
+    return deps.require_self(viewer, user, "只能给自己导入", write=write, write_detail="这个登录没有 write 权限")
 
 
 def _call(fn, *args):

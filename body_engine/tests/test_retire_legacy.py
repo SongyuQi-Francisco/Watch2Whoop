@@ -76,6 +76,7 @@ def receiver(tmp_path, monkeypatch):
     monkeypatch.setenv("HEALTH_SYNC_SECRETS", str(tmp_path / "secrets"))
     monkeypatch.setenv("HEALTH_SYNC_IMPORT", "0")
     monkeypatch.delenv("HEALTH_SYNC_REQUIRE_TOKEN", raising=False)
+    monkeypatch.setenv("HEALTH_SYNC_ALLOW_NO_TOKEN", "1")   # these tests are about the cutoff; tokens: test_auth_boundary.py
     spec = importlib.util.spec_from_file_location("health_server_r1", REPO / "health_sync" / "health_server.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

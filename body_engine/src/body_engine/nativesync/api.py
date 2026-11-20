@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..i18n import L
 from ..records.api import _self, current_user, get_conn
 from ..rollout import flags
+from .. import deps
 from . import appscores, compute, derived, ext_records, params as P, pull as PL, push as PS, scoring, throttle
 
 router = APIRouter(tags=["native-sync"], dependencies=[Depends(flags.require(P.FLAG))])
@@ -120,9 +121,7 @@ def put_app_scores(user: str, body: AppScoresIn, conn=Depends(get_conn), viewer=
 # ---------------------------------------------------------------- 2.0.0: every own-data computation on the phone
 def _own(viewer: dict, user: str) -> int:
     """Reads of one's own sync data only (the phone's copy; shares never cover these)."""
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, L("只能读自己的同步数据", "Only your own sync data can be read"))
-    return viewer["id"]
+    return deps.require_self(viewer, user, L("只能读自己的同步数据", "Only your own sync data can be read"))
 
 
 @router.get("/v1/sync/compute")

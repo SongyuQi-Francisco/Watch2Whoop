@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..i18n import L
 from ..records.api import current_user, get_conn
+from .. import deps
 from . import oauth, oauth_http
 
 router = APIRouter(tags=["oauth"])
@@ -71,9 +72,7 @@ def decide(req: str, body: DecisionIn, conn=Depends(get_conn), viewer=Depends(cu
 
 
 def _own(viewer: dict, user: str) -> int:
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, L("AI 连接只能管自己的", "You can only manage your own AI connections"))
-    return viewer["id"]
+    return deps.require_self(viewer, user, L("AI 连接只能管自己的", "You can only manage your own AI connections"))
 
 
 @router.get("/v1/users/{user}/ai-connections")

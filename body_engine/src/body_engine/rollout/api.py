@@ -4,19 +4,18 @@
 - POST /v1/users/{user}/experiments/{key}/exposure: the page showed my variant -> one exposure counted for today
   (the server decides the variant; nothing from the client is stored). {"variant": … or null}.
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from ..i18n import L
 from ..records.api import current_user, get_conn
+from .. import deps
 from . import experiments, flags
 
 router = APIRouter(prefix="/v1/users/{user}", tags=["rollout"])
 
 
 def _own(viewer: dict, user: str) -> int:
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, L("只能看自己的", "Only your own"))
-    return viewer["id"]
+    return deps.require_self(viewer, user, L("只能看自己的", "Only your own"))
 
 
 def for_user(conn, user_id: int) -> dict:

@@ -42,7 +42,7 @@ import threading
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from .. import auth
+from .. import auth, deps
 from ..friends import codes as circle_codes, store as friends_store
 from ..web import activation, login_codes, login_limit, me_links, session
 from . import apple_tokens, delete as account_delete, identities, invites, mailer, open_signup, params, provision, signin
@@ -407,8 +407,7 @@ def my_invite_code(user: str, conn=Depends(get_conn), viewer=Depends(current_use
     """Referral groundwork: the user's own code for friends (redeeming it records the inviter and a pending reward)."""
     if not params.referrals_enabled():
         raise HTTPException(404, "referrals_disabled")
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, "own_code_only")   # language-neutral codes; the page shows its own text
+    deps.require_self(viewer, user, "own_code_only")   # language-neutral codes; the page shows its own text
     try:
         res = invites.referral_code(conn, viewer["id"])
     except ValueError as e:

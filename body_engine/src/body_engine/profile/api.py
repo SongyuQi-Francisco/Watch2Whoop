@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..i18n import L, lang
+from .. import deps
 from . import consent, store
 
 router = APIRouter(tags=["profile"])
@@ -36,11 +37,7 @@ def current_user(request: Request, conn=Depends(get_conn)) -> dict:
 
 
 def _self(viewer: dict, user: str, write: bool = False) -> int:
-    if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, "个人资料只能看 / 改自己的")
-    if write and "write" not in (viewer.get("token_scopes") or []):
-        raise HTTPException(403, "这个登录没有 write 权限")
-    return viewer["id"]
+    return deps.require_self(viewer, user, "个人资料只能看 / 改自己的", write=write, write_detail="这个登录没有 write 权限")
 
 
 def _out(conn, uid: int) -> dict:

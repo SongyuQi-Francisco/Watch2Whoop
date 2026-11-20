@@ -9,7 +9,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from starlette.routing import Route
 
-from . import auth, errors_en, memtrim, obs, plugins, queries
+from . import auth, deps, errors_en, memtrim, obs, plugins, queries
 from .i18n import LangMiddleware, is_en
 from .account import api as account_api
 from .client import policy as upgrade_policy
@@ -129,11 +129,7 @@ def resolve_user(request: Request, conn, authorization: str | None, watch_ok: bo
     return user
 
 
-def resolve_owner(conn, viewer: dict, user: str, scope: str) -> int:
-    owner_id = viewer["id"] if user == "me" else int(user)
-    if not auth.can_view(conn, viewer["id"], owner_id, scope):
-        raise HTTPException(403, f"没有查看用户 {owner_id} 的 {scope} 的授权")
-    return owner_id
+resolve_owner = deps.resolve_owner   # kept under this name: plugins and older modules import it from here
 
 
 def date_range(conn, owner_id: int, start: date | None, end: date | None, default_days: int = 30) -> tuple[date, date]:
