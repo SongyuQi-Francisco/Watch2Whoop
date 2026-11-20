@@ -23,6 +23,8 @@ RESTRICTED_SCOPES = [MCP_SCOPE, INGEST_SCOPE, WATCH_SCOPE]
 # Writing them on every request kept the row locked until that request's transaction ended, so all requests of one login
 # ran one after another: the Today page's ~20 parallel start-up reads queued behind the slowest (2026-10-26).
 TOUCH_EVERY = "5 minutes"
+# A token row is live until it is revoked or, when it has one, its expires_at passes (only OAuth access tokens carry one
+# today). Every lookup of api_tokens that grants access checks both.
 
 
 def touch(conn: psycopg.Connection, table: str, row_id: int, sets: str, params: tuple = ()) -> None:
@@ -80,7 +82,8 @@ def revoke_tokens(conn: psycopg.Connection, user_id: int, name: str | None = Non
 def user_for_token(conn: psycopg.Connection, token: str) -> dict | None:
     row = conn.execute(
         """SELECT id, user_id, scopes, (last_used_at IS NULL OR last_used_at < now() - %s::interval) AS stale FROM api_tokens
-           WHERE token_sha256 = %s AND revoked_at IS NULL AND NOT (scopes && %s::text[])""",
+           WHERE token_sha256 = %s AND revoked_at IS NULL AND NOT (scopes && %s::text[])
+             AND (expires_at IS NULL OR expires_at > now())""",
         (TOUCH_EVERY, hash_token(token), RESTRICTED_SCOPES)).fetchone()
     if row is None:
         return None
@@ -97,7 +100,7 @@ def user_for_ingest_token(conn: psycopg.Connection, token: str) -> dict | None:
     row = conn.execute(
         """SELECT id, user_id, scopes, (last_used_at IS NULL OR last_used_at < now() - %s::interval) AS stale FROM api_tokens
            WHERE token_sha256 = %s AND revoked_at IS NULL AND NOT (scopes && %s::text[])
-             AND ('write' = ANY(scopes) OR %s = ANY(scopes))""",
+             AND ('write' = ANY(scopes) OR %s = ANY(scopes)) AND (expires_at IS NULL OR expires_at > now())""",
         (TOUCH_EVERY, hash_token(token), [MCP_SCOPE, WATCH_SCOPE], INGEST_SCOPE)).fetchone()
     if row is None:
         return None
@@ -116,6 +119,7 @@ def user_for_watch_token(conn: psycopg.Connection, token: str) -> dict | None:
         """SELECT t.id, t.user_id, t.scopes, (t.last_used_at IS NULL OR t.last_used_at < now() - %s::interval) AS stale
            FROM api_tokens t JOIN api_tokens p ON p.id = t.parent_token_id AND p.user_id = t.user_id
            WHERE t.token_sha256 = %s AND t.revoked_at IS NULL AND %s = ANY(t.scopes)
+             AND (t.expires_at IS NULL OR t.expires_at > now())
              AND p.revoked_at IS NULL AND (p.expires_at IS NULL OR p.expires_at > now())
              AND NOT (p.scopes && %s::text[])""",
         (TOUCH_EVERY, hash_token(token), WATCH_SCOPE, RESTRICTED_SCOPES)).fetchone()

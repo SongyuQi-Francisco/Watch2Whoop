@@ -300,9 +300,17 @@ class BindAppleIn(BaseModel):
     authorization_code: str | None = Field(None, max_length=2000)
 
 
-def _bind(conn, viewer: dict, fn) -> dict:
+def _may_bind(viewer: dict) -> None:
+    """Binding a sign-in method gives whoever controls it a full (read + write) login to this account later, so only a
+    login that can already write may add one: never more than the caller has. Checked before any code is used up."""
     if viewer.get("status") != "active":
         raise HTTPException(403, "account_pending")
+    if "write" not in (viewer.get("token_scopes") or []):
+        raise HTTPException(403, "write_required")
+
+
+def _bind(conn, viewer: dict, fn) -> dict:
+    _may_bind(viewer)
     try:
         result = fn()
     except identities.IdentityConflict:
@@ -315,6 +323,7 @@ def _bind(conn, viewer: dict, fn) -> dict:
 @router.post("/v1/account/identities/email")
 def bind_email(body: BindEmailIn, request: Request, conn=Depends(get_conn), viewer=Depends(current_user)):
     """Bind another e-mail to the signed-in account; the code (sent by /v1/auth/email/start) proves the address."""
+    _may_bind(viewer)
     ip = _check_ip(request)
     email = signin.normalize_email(body.email)
     ok = email is not None and signin.check_email_code(conn, email, body.code)
@@ -331,6 +340,7 @@ def bind_apple(body: BindAppleIn, request: Request, conn=Depends(get_conn), view
     audiences = signin.apple_audiences()
     if not audiences:
         raise HTTPException(503, "apple_not_configured")
+    _may_bind(viewer)
     ip = _check_ip(request)
     try:
         claims = signin.verify_apple_token(body.identity_token, audiences, body.nonce)
@@ -346,7 +356,9 @@ def bind_apple(body: BindAppleIn, request: Request, conn=Depends(get_conn), view
 
 
 def _existing_account_for_code(conn, code: str) -> int | None:
-    """An existing account's activation code (16) or one-time login code (12) → its user id (counts a use / uses it up)."""
+    """An existing account's activation code (16) or one-time login code (12) → its user id (counts a use / uses it up).
+    The claim signs this person in there with read + write and moves their sign-in identity over, so a login code only
+    counts when it carries write itself (a read-only code, e.g. from a read-only login's web-login-code, never does)."""
     norm = login_codes.normalize(code)
     if len(norm) == activation.LENGTH:
         row = conn.execute("""UPDATE activation_codes SET uses = uses + 1, last_used_at = now()
@@ -355,6 +367,7 @@ def _existing_account_for_code(conn, code: str) -> int | None:
     elif len(norm) == login_codes.LENGTH:
         row = conn.execute("""UPDATE web_login_codes SET used_at = now()
                               WHERE code_sha256 = %s AND used_at IS NULL AND expires_at > now() AND purpose = %s
+                                AND 'write' = ANY(scopes)
                               RETURNING user_id""",   # a watch code never signs anyone in (account/watch.py)
                            (login_codes._sha(norm), login_codes.PURPOSE_LOGIN)).fetchone()
     else:
@@ -426,6 +439,8 @@ def ow_invitation(conn=Depends(get_conn), viewer=Depends(current_user)):
     from ..rawdata import engine as rx_engine
     if viewer.get("status") != "active":
         raise HTTPException(403, "account_pending")
+    if "write" not in (viewer.get("token_scopes") or []):   # the invitation lets the sync SDK upload: write, never more
+        raise HTTPException(403, "write_required")
     if rx_engine.mode(conn, viewer["id"]) == "app":
         raise HTTPException(409, "sync_engine")
     row = conn.execute("SELECT ow_user_id FROM users WHERE id = %s", (viewer["id"],)).fetchone()
