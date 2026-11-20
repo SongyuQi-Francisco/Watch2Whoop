@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>Jarvis · the answer</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+/* Jarvis = tap on the key from Today. Large sheet (top 62) over the dimmed Today; it covers the bar, so the key is hidden
+   (the composer's mic is the voice entry while the sheet is up; hold-to-talk returns with the key when the sheet closes).
+   Order inside: header (AI switcher | history, close) -> question -> ANSWER CARD (kit graphics) -> <= 30 characters of text ->
+   tags -> free space for the next turn -> 3 context chips from the screen the key was tapped on -> composer. */
+.p-sheet{position:absolute;left:0;right:0;top:62px;bottom:0;border-radius:38px 38px 0 0;background:var(--sheet);z-index:70;padding:0 20px}
+.p-hd{display:flex;align-items:center;height:44px;margin-top:9px}
+.p-ai{display:flex;align-items:center;gap:6px;font-size:17px;font-weight:600;letter-spacing:-0.2px}
+.p-ai i{font-size:18px}
+.p-ai i.chev{font-size:13px;color:var(--text2);margin-left:-1px}
+.p-hd .icon-btn + .icon-btn{margin-left:12px}
+.p-q{display:flex;justify-content:flex-end;margin-top:20px}
+.p-q span{max-width:260px;padding:10px 15px;border-radius:20px 20px 6px 20px;background:var(--in-sheet);font-size:16px;line-height:1.35}
+.p-card{margin-top:20px;border-radius:18px;background:var(--in-sheet);padding:18px 16px 18px 16px;display:grid;
+  grid-template-columns:108px 1fr;column-gap:20px;align-items:center}
+.p-mdial{position:relative;width:108px;height:108px}
+.p-mdial .core{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.p-mdial .l{font-size:11px;font-weight:500;color:var(--text2);letter-spacing:1.5px;margin-right:-1.5px}
+.p-mdial .n{position:relative;font-size:34px;font-weight:200;letter-spacing:-1px;line-height:1;margin-top:2px}
+.p-mdial .n small{position:absolute;left:100%;top:2px;margin-left:1px;font-size:13px;font-weight:300;color:var(--text2)}
+.p-tg .t-label{display:block;height:16px}
+.p-big{font-size:44px;font-weight:200;letter-spacing:-1.2px;line-height:1;margin-top:4px}
+.p-tg .gauge-bar{margin-top:12px}
+.p-plan{display:flex;align-items:center;gap:5px;margin-top:10px;font-size:12px;font-weight:500;color:var(--text2)}
+.p-plan i{font-size:13px;color:var(--train)}
+.p-a{margin-top:18px;font-size:17px;line-height:1.5;letter-spacing:0.1px}
+.p-tags{display:flex;gap:8px;margin-top:14px}
+.p-chips{position:absolute;left:20px;right:20px;bottom:98px;display:flex;gap:8px}
+.p-chip{display:inline-flex;align-items:center;gap:5px;height:32px;padding:0 12px 0 10px;border-radius:16px;background:var(--in-sheet);
+  font-size:13px;font-weight:500;color:var(--text)}
+.p-chip i{font-size:14px;color:var(--text2)}
+.p-comp{position:absolute;left:20px;right:20px;bottom:42px;display:flex;align-items:center;gap:8px}
+.p-rb{width:44px;height:44px;border-radius:22px;background:var(--in-sheet);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--text)}
+.p-field{flex:1;height:44px;border-radius:22px;background:var(--in-sheet);display:flex;align-items:center;padding:0 6px 0 16px;
+  font-size:16px;color:var(--text2)}
+.p-field i{margin-left:auto;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:19px;color:var(--text)}
+.vitals rect{fill:var(--band)}
+.vitals circle{fill:var(--text)}
+</style>
+</head>
+<body>
+
+<div class="sb" style="z-index:80"><!-- status bar stays above the dimming, as in iOS -->
+  <div class="sb-time">9:41</div><div class="sb-island"></div>
+  <div class="sb-sys">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M1.2 4.2a10.4 10.4 0 0 1 14.6 0"/><path d="M3.9 6.9a6.5 6.5 0 0 1 9.2 0"/><circle cx="8.5" cy="9.9" r="1.2" fill="currentColor" stroke="none"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x="0.5" y="0.5" width="23" height="12" rx="3.6" stroke="currentColor" stroke-opacity="0.4"/><rect x="2" y="2" width="20" height="9" rx="2.2" fill="currentColor"/><path d="M25 4.5v4c.9-.3 1.5-1.1 1.5-2s-.6-1.7-1.5-2z" fill="currentColor" fill-opacity="0.45"/></svg>
+  </div>
+</div>
+
+<!-- Today (01) is behind the large sheet, pushed back and dimmed; nothing of it is readable above the sheet edge -->
+<div class="scrim"></div>
+
+<section class="p-sheet">
+  <div class="grabber"></div>
+  <!-- header: which AI answers (tap = switcher; fallback shows its quota here) | history | close -->
+  <div class="p-hd">
+    <div class="p-ai"><i data-i="orbit"></i>管家<i class="chev" data-i="chevron-down"></i></div>
+    <span class="icon-btn"><i data-i="messages-square"></i></span>
+    <span class="icon-btn"><i data-i="x"></i></span>
+  </div>
+
+  <div class="p-q"><span>今天练多重？</span></div>
+
+  <!-- ANSWER CARD: built from kit parts. The answer is the target (12-16, the card's big light number) on the strain bullet
+       (tint = target, bar = now 2.8, dots = the planned 18:30 session); the small recovery dial is the reason.
+       Tap the card = the strain L1 on Today. -->
+  <div class="p-card">
+    <div class="p-mdial">
+      <div data-dial="82" data-band="58 74" data-zones="34 67" data-tone="good" data-ticks="50" style="width:108px;height:108px"></div>
+      <div class="core"><div class="l">恢复</div><div class="n">82<small>%</small></div></div>
+    </div>
+    <div class="p-tg">
+      <span class="t-label">负荷目标</span>
+      <div class="p-big">12–16</div>
+      <div class="gauge-bar" data-gauge="2.8" data-max="21" data-target="12 16" data-plan="13.4" data-tone="train" data-step="2" data-majors="10 14 18"></div>
+      <div class="p-plan"><i data-i="dumbbell"></i>18:30 力量训练</div>
+    </div>
+  </div>
+
+  <div class="p-a">恢复好，18:30 照计划练。<br>负荷到 14 左右就收。</div>
+  <div class="p-tags"><span class="tag"><i data-i="sparkles"></i>AI 生成</span><span class="tag"><i data-i="info"></i>非诊断</span></div>
+
+  <!-- context chips: what the key was tapped on (Today). Tap = attach that module to the next question. -->
+  <div class="p-chips">
+    <span class="p-chip"><i data-i="circle-gauge"></i>恢复 82%</span>
+    <span class="p-chip"><i data-i="moon"></i>睡眠</span>
+    <span class="p-chip"><i data-i="flame"></i>负荷</span>
+  </div>
+  <!-- composer: + = quick log (meals, water, training done, weight) · camera (photo / video / posture) · field · mic -->
+  <div class="p-comp">
+    <span class="p-rb"><i data-i="plus"></i></span>
+    <span class="p-rb"><i data-i="camera"></i></span>
+    <div class="p-field">问或记点什么<i data-i="mic"></i></div>
+  </div>
+</section>
+<div class="home-ind"></div>
+<script src="kit.js"></script>
+</body>
+</html>

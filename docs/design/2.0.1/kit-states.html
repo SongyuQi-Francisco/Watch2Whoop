@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>kit · states (reference sheet, not a screen)</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+/* Reference sheet for builders: the states 01-today does not show. Captions here are builder notes, not product text. */
+body{height:auto;min-height:874px}
+.sheetpage{padding:22px 20px}
+.cap-note{font-size:11px;font-weight:500;color:var(--text3);letter-spacing:0.3px;margin:22px 0 10px;text-transform:uppercase}
+.cap-note:first-child{margin-top:0}
+.syncs{display:flex;flex-wrap:wrap;gap:8px}
+.dials{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+.mdial{position:relative;width:116px;height:116px}
+.mdial .core{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.mdial .l{font-size:10px;font-weight:500;color:var(--text2);letter-spacing:1px}
+.mdial .n{font-size:36px;font-weight:200;letter-spacing:-1px;line-height:1;margin-top:1px}
+.mdial .n.none{color:var(--text3)}
+.mdial .w{font-size:10.5px;font-weight:500;margin-top:5px;white-space:nowrap}
+.mdial .w.reason{color:var(--text2)}
+.mdial .mb{display:flex;gap:3px;align-items:flex-end;height:9px;margin-top:4px}
+.mdial .mb b{width:2.5px;border-radius:1.5px;background:var(--past)}
+.mdial .mb b:last-child{background:var(--tone)}
+.age{margin-left:auto;font-size:11px;font-weight:500;color:var(--mid)}
+.lolli line{stroke:var(--past);stroke-width:1.5;stroke-linecap:round}
+.lolli circle{fill:var(--past)}
+.lolli .now line{stroke:var(--mid)}.lolli .now circle{fill:var(--mid)}
+.lolli .goal{stroke:var(--track);stroke-width:1}
+.invite{margin-top:auto;height:32px;border-radius:16px;background:var(--surface2);display:flex;align-items:center;justify-content:center;gap:5px;font-size:13px;font-weight:600}
+.invite i{font-size:15px}
+</style>
+</head>
+<body>
+<div class="sheetpage">
+  <div class="cap-note">sync capsule · ok / syncing / behind / failed</div>
+  <div class="syncs">
+    <div class="sync is-ok"><i data-i="circle-check"></i>2分前</div>
+    <div class="sync is-busy"><i data-i="refresh-cw"></i>同步中</div>
+    <div class="sync is-stale"><i data-i="circle-alert"></i>缺2天</div>
+    <div class="sync is-fail"><i data-i="circle-alert"></i>重试</div>
+  </div>
+
+  <div class="cap-note">faces · attention (slot 1) / stale / no circle yet</div>
+  <div class="faces">
+    <div class="face attn">
+      <div class="face-hd"><i data-i="moon"></i>入睡偏晚</div>
+      <div class="face-num"><span class="t-face">00:48</span></div>
+      <div class="face-gfx">
+        <svg class="lolli" width="91" height="26" viewBox="0 0 91 26">
+          <line class="goal" x1="0" x2="91" y1="23.5" y2="23.5"/>
+          <g><line x1="3" y1="23" x2="3" y2="18"/><circle cx="3" cy="18" r="2.4"/></g>
+          <g><line x1="17.3" y1="23" x2="17.3" y2="14"/><circle cx="17.3" cy="14" r="2.4"/></g>
+          <g><line x1="31.6" y1="23" x2="31.6" y2="19.5"/><circle cx="31.6" cy="19.5" r="2.4"/></g>
+          <g><line x1="45.9" y1="23" x2="45.9" y2="11"/><circle cx="45.9" cy="11" r="2.4"/></g>
+          <g><line x1="60.2" y1="23" x2="60.2" y2="16"/><circle cx="60.2" cy="16" r="2.4"/></g>
+          <g><line x1="74.5" y1="23" x2="74.5" y2="12.5"/><circle cx="74.5" cy="12.5" r="2.4"/></g>
+          <g class="now"><line x1="88.5" y1="23" x2="88.5" y2="4"/><circle cx="88.5" cy="4" r="2.6"/></g>
+        </svg>
+      </div>
+    </div>
+    <div class="face stale">
+      <div class="face-hd"><i data-i="refresh-cw"></i>饮食<span class="age">6时前</span></div>
+      <div class="face-num"><span class="t-face">420</span><span class="u">kcal</span></div>
+      <div class="face-gfx"><div data-gauge="420" data-max="2500" data-target="2100" data-tone="text2" data-step="500" style="width:100%;height:22px"></div></div>
+    </div>
+    <div class="face">
+      <div class="face-hd"><i data-i="users"></i>圈子</div>
+      <div class="invite"><i data-i="user-plus"></i>邀请</div>
+    </div>
+  </div>
+
+  <div class="cap-note">recovery · not worn / day 5 (no usual yet) / low</div>
+  <div class="dials">
+    <div class="mdial">
+      <div data-dial="" data-zones="34 67" style="width:116px;height:116px"></div>
+      <div class="core"><div class="l">恢复</div><div class="n none">—</div><div class="w reason">昨晚没戴表</div></div>
+    </div>
+    <div class="mdial">
+      <div data-dial="71" data-zones="34 67" data-tone="good" style="width:116px;height:116px"></div>
+      <div class="core"><div class="l">恢复</div><div class="n">71</div>
+        <div class="mb" style="--tone:var(--good)"><b style="height:6px"></b><b style="height:7.5px"></b><b style="height:8px"></b></div>
+        <div class="w">可上强度</div></div>
+    </div>
+    <div class="mdial">
+      <div data-dial="28" data-band="58 74" data-zones="34 67" data-tone="bad" style="width:116px;height:116px"></div>
+      <div class="core"><div class="l">恢复</div><div class="n">28</div>
+        <div class="mb" style="--tone:var(--bad)"><b style="height:7px"></b><b style="height:8px"></b><b style="height:6.5px"></b><b style="height:7.5px"></b><b style="height:5px"></b><b style="height:6px"></b><b style="height:3px"></b></div>
+        <div class="w">以恢复为主</div></div>
+    </div>
+  </div>
+
+  <div class="cap-note">readings · sleep, first 2 weeks (no usual line) / strain, rest day (no plan)</div>
+  <div class="gauges">
+    <div class="gauge">
+      <div class="gauge-hd"><span class="t-gauge">76</span><span class="t-label">睡眠</span></div>
+      <div class="gauge-bar" data-gauge="76" data-max="100" data-tone="sleep" data-step="10"></div>
+    </div>
+    <div class="gauge">
+      <div class="gauge-hd"><span class="t-gauge">4.1</span><span class="t-label">负荷</span></div>
+      <div class="gauge-bar" data-gauge="4.1" data-max="21" data-target="6 10" data-tone="train" data-step="2" data-majors="10 14 18"></div>
+    </div>
+  </div>
+
+  <div class="cap-note">faces · no data = not rendered · flag off = not rendered · max 3 on the first glance</div>
+</div>
+<script src="kit.js"></script>
+</body>
+</html>

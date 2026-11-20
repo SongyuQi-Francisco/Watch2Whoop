@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>今日训练 (in progress)</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+/* Today's session, pushed from the 记录 ring (12). The ring fills set by set; the bodies inside fill with it:
+   worked muscles = solid train, still to come = train at low opacity. Sets and time sit OUTSIDE the ring.
+   Rhythm (y): header 54-98 -> 14 -> ring 112-332 (220) -> 14 -> readings 346-374 -> 16 -> 5 exercise cards 390-620
+   -> 12 -> button 632-680 (pinned) -> 42 -> key 722. */
+.p-hero{position:relative;width:220px;height:220px;margin:14px auto 0}
+.p-ring{position:absolute;inset:0}
+.p-core{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.p-core .bodies > div{height:140px}
+.p-read{margin-top:14px;height:28px;display:flex;justify-content:center;align-items:baseline;gap:28px}
+.p-read .of{font-size:15px;font-weight:500;color:var(--text2);margin-left:3px}
+.p-read i{font-size:15px;color:var(--text2);margin-right:5px;align-self:center}
+.p-read > div{display:flex;align-items:baseline}
+.p-list{margin-top:16px;border-top:1px solid var(--hair)}
+.p-ex{display:grid;grid-template-columns:21px 1fr 46px 92px 12px;align-items:center;column-gap:11px;height:46px;border-bottom:1px solid var(--hair)}
+.p-th{height:42px;aspect-ratio:1/2}
+.p-nm{font-size:15px;font-weight:500;white-space:nowrap}
+.p-done .p-nm{color:var(--text2)}
+.p-sd{display:flex;gap:4px}
+.p-sd b{width:7px;height:7px;border-radius:4px;background:var(--track)}
+.p-sd b.d{background:var(--train)}
+.p-wt{text-align:right;white-space:nowrap}
+.p-x{font-size:13px;font-weight:500;color:var(--text2);margin-left:6px}
+.p-ex .chev{color:var(--text3);font-size:13px}
+.p-cta{position:absolute;left:20px;right:20px;top:578px;background:var(--surface);color:var(--text)}
+.p-cta i{font-size:17px;color:var(--text2)}
+</style>
+</head>
+<body>
+<div class="sb">
+  <div class="sb-time">18:52</div><div class="sb-island"></div>
+  <div class="sb-sys">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M1.2 4.2a10.4 10.4 0 0 1 14.6 0"/><path d="M3.9 6.9a6.5 6.5 0 0 1 9.2 0"/><circle cx="8.5" cy="9.9" r="1.2" fill="currentColor" stroke="none"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x="0.5" y="0.5" width="23" height="12" rx="3.6" stroke="currentColor" stroke-opacity="0.4"/><rect x="2" y="2" width="20" height="9" rx="2.2" fill="currentColor"/><path d="M25 4.5v4c.9-.3 1.5-1.1 1.5-2s-.6-1.7-1.5-2z" fill="currentColor" fill-opacity="0.45"/></svg>
+  </div>
+</div>
+
+<main class="page">
+  <header class="hdr">
+    <div class="hdr-back"><i data-i="chevron-left"></i>上肢 A</div>
+  </header>
+
+  <section class="p-hero">
+    <div class="p-ring" data-sets="4 4 4 3 3" data-done="5"></div>
+    <div class="p-core">
+      <div class="bodies"><div data-body="front" data-lit="chest:train deltoids:train triceps:train@.6 biceps:train@.28 forearm:train@.28"></div><div data-body="back" data-lit="upper-back:train@.6 deltoids:train triceps:train@.6 trapezius:train@.28 forearm:train@.28"></div></div>
+    </div>
+  </section>
+
+  <section class="p-read">
+    <div><span class="t-gauge">5</span><span class="of">/18 组</span></div>
+    <div><i data-i="timer"></i><span class="t-gauge">22:14</span></div>
+  </section>
+
+  <section class="p-list">
+    <div class="p-ex p-done"><div class="p-th" data-body="front" data-lit="chest:train deltoids:train@.5 triceps:train@.5"></div><div class="p-nm">卧推</div><div class="p-sd"><b class="d"></b><b class="d"></b><b class="d"></b><b class="d"></b></div><div class="p-wt"><span class="t-row">60</span><span class="u">kg</span><span class="p-x">× 8</span></div><i class="chev" data-i="chevron-right"></i></div>
+    <div class="p-ex"><div class="p-th" data-body="back" data-lit="upper-back:train deltoids:train@.5"></div><div class="p-nm">哑铃划船</div><div class="p-sd"><b class="d"></b><b class=""></b><b class=""></b><b class=""></b></div><div class="p-wt"><span class="t-row">26</span><span class="u">kg</span><span class="p-x">× 10</span></div><i class="chev" data-i="chevron-right"></i></div>
+    <div class="p-ex"><div class="p-th" data-body="back" data-lit="upper-back:train@.6"></div><div class="p-nm">高位下拉</div><div class="p-sd"><b class=""></b><b class=""></b><b class=""></b><b class=""></b></div><div class="p-wt"><span class="t-row">55</span><span class="u">kg</span><span class="p-x">× 10</span></div><i class="chev" data-i="chevron-right"></i></div>
+    <div class="p-ex"><div class="p-th" data-body="front" data-lit="deltoids:train"></div><div class="p-nm">侧平举</div><div class="p-sd"><b class=""></b><b class=""></b><b class=""></b></div><div class="p-wt"><span class="t-row">8</span><span class="u">kg</span><span class="p-x">× 15</span></div><i class="chev" data-i="chevron-right"></i></div>
+    <div class="p-ex"><div class="p-th" data-body="front" data-lit="biceps:train forearm:train@.5"></div><div class="p-nm">二头弯举</div><div class="p-sd"><b class=""></b><b class=""></b><b class=""></b></div><div class="p-wt"><span class="t-row">12</span><span class="u">kg</span><span class="p-x">× 12</span></div><i class="chev" data-i="chevron-right"></i></div>
+  </section>
+
+  <div class="btn-primary p-cta"><i data-i="check"></i>完成训练</div>
+</main>
+
+<div class="jarvis"><i data-i="orbit"></i></div>
+<nav class="tabbar">
+  <div class="tab"><i data-i="circle-gauge"></i>今天</div>
+  <div class="tab"><i data-i="activity"></i>身体</div>
+  <div class="tab on"><i data-i="square-plus"></i>记录</div>
+  <div class="tab"><i data-i="users"></i>圈子</div>
+  <div class="tab"><i data-i="user"></i>我</div>
+</nav>
+<div class="home-ind"></div>
+<script src="kit.js"></script>
+<script src="../../../body_engine/src/body_engine/web/static/muscle-body-data.js"></script>
+<script src="body.js"></script>
+</body>
+</html>

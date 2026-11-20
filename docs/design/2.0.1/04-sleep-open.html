@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>今天 · sleep L1</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+/* L0 = 01-today, unchanged and not dimmed. L1 sheet top at y 368 (11 pt under the verdict word; the dial stays readable). */
+.hero{margin-top:32px}
+.gauges{margin-top:40px}
+.sheet{top:368px}
+/* the big number of this sheet: duration (the score 88 stays on the reading) */
+.p-read{display:flex;align-items:baseline;height:28px}
+.p-read .un{font-size:13px;font-weight:500;color:var(--text2);margin:0 4px 0 2px}
+.p-hypw{position:relative;margin-top:12px}
+.p-hyp{display:block;overflow:visible}
+.p-ax{font-size:10px;font-weight:500;fill:var(--text2);font-family:system-ui}
+.p-tl{position:relative;height:13px;margin-top:3px;font-size:10px;font-weight:500;color:var(--text2)}
+.p-tl span{position:absolute;top:0}
+.rows{margin-top:12px}
+.p-g{padding-top:5px}
+.row .p-reg{height:30px}
+.exits{margin-top:14px}
+</style>
+</head>
+<body>
+
+<div class="sb">
+  <div class="sb-time">9:41</div><div class="sb-island"></div>
+  <div class="sb-sys">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M1.2 4.2a10.4 10.4 0 0 1 14.6 0"/><path d="M3.9 6.9a6.5 6.5 0 0 1 9.2 0"/><circle cx="8.5" cy="9.9" r="1.2" fill="currentColor" stroke="none"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x="0.5" y="0.5" width="23" height="12" rx="3.6" stroke="currentColor" stroke-opacity="0.4"/><rect x="2" y="2" width="20" height="9" rx="2.2" fill="currentColor"/><path d="M25 4.5v4c.9-.3 1.5-1.1 1.5-2s-.6-1.7-1.5-2z" fill="currentColor" fill-opacity="0.45"/></svg>
+  </div>
+</div>
+
+<!-- L0 behind the sheet (unchanged, not dimmed; a tap on it closes the sheet) -->
+<main class="page">
+  <header class="hdr">
+    <div class="hdr-date">11月10日<i data-i="chevron-down"></i></div>
+    <div class="sync is-ok"><i data-i="circle-check"></i>2分前</div>
+  </header>
+  <section class="hero">
+    <div class="dial" data-dial="82" data-band="58 74" data-zones="34 67" data-tone="good"></div>
+    <div class="dial-core">
+      <div class="hero-label">恢复</div>
+      <div class="hero-num"><span class="t-hero">82</span><span class="pct">%</span></div>
+      <div class="minibars" style="--tone:var(--good)">
+        <b style="height:9.5px"></b><b style="height:12px"></b><b style="height:6.5px"></b><b style="height:11px"></b>
+        <b style="height:13px"></b><b style="height:11.4px"></b><b style="height:16px"></b>
+      </div>
+      <div class="verdict t-verdict">可上强度</div>
+    </div>
+  </section>
+  <section class="gauges">
+    <div class="gauge">
+      <div class="gauge-hd"><span class="t-gauge">88</span><span class="t-label">睡眠</span></div>
+      <div class="gauge-bar" data-gauge="88" data-max="100" data-band="72 84" data-tone="sleep" data-step="10"></div>
+    </div>
+    <div class="gauge">
+      <div class="gauge-hd"><span class="t-gauge">2.8</span><span class="t-label">负荷</span></div>
+      <div class="gauge-bar" data-gauge="2.8" data-max="21" data-target="12 16" data-plan="13.4" data-tone="train" data-step="2" data-majors="10 14 18"></div>
+    </div>
+  </section>
+</main>
+<div class="jarvis"><i data-i="orbit"></i></div>
+<nav class="tabbar">
+  <div class="tab on"><i data-i="circle-gauge"></i>今天</div>
+  <div class="tab"><i data-i="activity"></i>身体</div>
+  <div class="tab"><i data-i="square-plus"></i>记录</div>
+  <div class="tab"><i data-i="users"></i>圈子</div>
+  <div class="tab"><i data-i="user"></i>我</div>
+</nav>
+
+<!-- L1: last night. Duration -> hypnogram on the clock axis -> 4 rows -> exits. Swipe = other night. -->
+<section class="sheet">
+  <div class="grabber"></div>
+  <div class="sheet-hd">
+    <span class="t-title">睡眠</span>
+    <span class="tag"><i data-i="info"></i>非诊断</span>
+    <span class="icon-btn"><i data-i="x"></i></span>
+  </div>
+
+  <div class="p-read">
+    <span class="t-gauge">7</span><span class="un">时</span><span class="t-gauge">24</span><span class="un">分</span>
+  </div>
+
+  <div class="p-hypw">
+    <svg class="p-hyp" width="350" height="81" viewBox="0 0 350 81" fill="none">
+    <text x="0" y="12.5" class="p-ax">清醒</text>
+    <text x="0" y="30.5" class="p-ax">REM</text>
+    <text x="0" y="48.5" class="p-ax">核心</text>
+    <text x="0" y="66.5" class="p-ax">深睡</text>
+    <rect x="43.46" y="45" width="1" height="18" fill="var(--tick)"/>
+    <rect x="69.09" y="45" width="1" height="18" fill="var(--tick)"/>
+    <rect x="84.03" y="27" width="1" height="18" fill="var(--tick)"/>
+    <rect x="93.28" y="9" width="1" height="18" fill="var(--tick)"/>
+    <rect x="94.71" y="9" width="1" height="36" fill="var(--tick)"/>
+    <rect x="117.48" y="45" width="1" height="18" fill="var(--tick)"/>
+    <rect x="134.56" y="45" width="1" height="18" fill="var(--tick)"/>
+    <rect x="154.49" y="27" width="1" height="18" fill="var(--tick)"/>
+    <rect x="170.86" y="27" width="1" height="18" fill="var(--tick)"/>
+    <rect x="197.91" y="45" width="1" height="18" fill="var(--tick)"/>
+    <rect x="206.45" y="45" width="1" height="18" fill="var(--tick)"/>
+    <rect x="219.97" y="27" width="1" height="18" fill="var(--tick)"/>
+    <rect x="240.61" y="9" width="1" height="18" fill="var(--tick)"/>
+    <rect x="242.74" y="9" width="1" height="36" fill="var(--tick)"/>
+    <rect x="270.5" y="27" width="1" height="18" fill="var(--tick)"/>
+    <rect x="291.14" y="27" width="1" height="18" fill="var(--tick)"/>
+    <rect x="316.76" y="27" width="1" height="18" fill="var(--tick)"/>
+    <rect x="335.98" y="9" width="1" height="18" fill="var(--tick)"/>
+    <rect x="338.11" y="9" width="1" height="36" fill="var(--tick)"/>
+    <rect x="345.23" y="9" width="1" height="36" fill="var(--tick)"/>
+    <rect x="34" y="40" width="9.96" height="10" rx="2" fill="var(--sleep)" fill-opacity="0.78"/>
+    <rect x="43.96" y="58" width="25.62" height="10" rx="2" fill="var(--sleep)" fill-opacity="1.0"/>
+    <rect x="69.59" y="40" width="14.95" height="10" rx="2" fill="var(--sleep)" fill-opacity="0.78"/>
+    <rect x="84.53" y="22" width="9.25" height="10" rx="2" fill="var(--sleep)" fill-opacity="0.55"/>
+    <rect x="93.78" y="4" width="3" height="10" rx="2" fill="var(--text2)" fill-opacity="0.9"/>
+    <rect x="95.21" y="40" width="22.77" height="10" rx="2" fill="var(--sleep)" fill-opacity="0.78"/>
+    <rect x="117.98" y="58" width="17.08" height="10" rx="2" fill="var(--sleep)" fill-opacity="1.0"/>
+    <rect x="135.06" y="40" width="19.93" height="10" rx="2" fill="var(--sleep)" fill-opacity="0.78"/>
+    <rect x="154.99" y="22" width="16.37" height="10" rx="2" fill="var(--sleep)" fill-opacity="0.55"/>
+    <rect x="171.36" y="40" width="27.05" height="10" rx="2" fill="var(--sleep)" fill-opacity="0.78"/>
+    <rect x="198.41" y="58" width="8.54" height="10" rx="2" fill="var(--sleep)" fill-opacity="1.0"/>
+    <rect x="206.95" y="40" width="13.52" height="10" rx="2" fill="var(--sleep)" fill-opacity="0.78"/>
+    <rect x="220.47" y="22" width="20.64" height="10" rx="2" fill="var(--sleep)" fill-opacity="0.55"/>
+    <rect x="241.11" y="4" width="3" height="10" rx="2" fill="var(--text2)" fill-opacity="0.9"/>
+    <rect x="243.24" y="40" width="27.76" height="10" rx="2" fill="var(--sleep)" fill-opacity="0.78"/>
+    <rect x="271" y="22" width="20.64" height="10" rx="2" fill="var(--sleep)" fill-opacity="0.55"/>
+    <rect x="291.64" y="40" width="25.62" height="10" rx="2" fill="var(--sleep)" fill-opacity="0.78"/>
+    <rect x="317.26" y="22" width="19.22" height="10" rx="2" fill="var(--sleep)" fill-opacity="0.55"/>
+    <rect x="336.48" y="4" width="3" height="10" rx="2" fill="var(--text2)" fill-opacity="0.9"/>
+    <rect x="338.61" y="40" width="7.12" height="10" rx="2" fill="var(--sleep)" fill-opacity="0.78"/>
+    <rect x="345.73" y="4" width="4.27" height="10" rx="2" fill="var(--text2)" fill-opacity="0.9"/>
+    <rect x="34" y="75" width="316" height="1" fill="var(--hair-strong)"/>
+    <rect x="34" y="77" width="1" height="4" fill="var(--tick-major)"/>
+    <rect x="42.54" y="77" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="85.24" y="77" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="127.95" y="77" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="170.65" y="77" width="1" height="4" fill="var(--tick-major)"/>
+    <rect x="213.35" y="77" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="256.05" y="77" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="298.76" y="77" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="341.46" y="77" width="1" height="2.5" fill="var(--tick)"/>
+    <rect x="349" y="77" width="1" height="4" fill="var(--tick-major)"/>
+    </svg>
+  </div>
+  <div class="p-tl">
+    <span style="left:34px">00:48</span>
+    <span style="left:170.65px;transform:translateX(-50%)">04:00</span>
+    <span style="right:0">08:12</span>
+  </div>
+
+  <div class="rows">
+    <div class="row">
+      <span class="row-l">需求</span>
+      <div class="spark p-g" data-gauge="7.4" data-max="10" data-target="8" data-band="6.8 7.7" data-tone="sleep"></div>
+      <span class="row-v"><span class="t-row">8</span><span class="u">时</span></span>
+      <span class="delta"></span><i class="chev" data-i="chevron-right"></i>
+    </div>
+    <div class="row">
+      <span class="row-l">深睡</span>
+      <div class="spark" data-spark="52 61 49 58 66 55 60 47 63 57 54 62 59 72" data-band="50 64" data-bg="sheet"></div>
+      <span class="row-v"><span class="t-row">1</span><span class="u">时</span><span class="t-row" style="margin-left:2px">12</span><span class="u">分</span></span>
+      <span class="delta good">+14</span><i class="chev" data-i="chevron-right"></i>
+    </div>
+    <div class="row">
+      <span class="row-l">规律性</span>
+      <div class="spark p-reg"><svg width="128" height="30" viewBox="0 0 128 30" fill="none" style="display:block"><line x1="13.13" x2="13.13" y1="0" y2="30" stroke="var(--band-line)" stroke-width="1" stroke-dasharray="2 2"/><line x1="113.78" x2="113.78" y1="0" y2="30" stroke="var(--band-line)" stroke-width="1" stroke-dasharray="2 2"/><rect x="12.47" y="0" width="101.96" height="3" rx="1.5" fill="var(--past)"/><rect x="6.78" y="4.5" width="103.71" height="3" rx="1.5" fill="var(--past)"/><rect x="16.63" y="9" width="99.34" height="3" rx="1.5" fill="var(--past)"/><rect x="27.79" y="13.5" width="95.84" height="3" rx="1.5" fill="var(--past)"/><rect x="10.94" y="18" width="102.18" height="3" rx="1.5" fill="var(--past)"/><rect x="9.41" y="22.5" width="99.99" height="3" rx="1.5" fill="var(--past)"/><rect x="20.35" y="27" width="97.15" height="3" rx="1.5" fill="var(--sleep)"/></svg></div>
+      <span class="row-v"><span class="t-row">74</span><span class="u">%</span></span>
+      <span class="delta mid">−5</span><i class="chev" data-i="chevron-right"></i>
+    </div>
+    <div class="row">
+      <span class="row-l">最低心率</span>
+      <div class="spark" data-spark="48 47 49 48 47 48 50 47 46 48 47 48 47 46" data-band="46 49" data-bg="sheet"></div>
+      <span class="row-v"><span class="t-row">46</span><span class="u">bpm</span></span>
+      <span class="delta good">−2</span><i class="chev" data-i="chevron-right"></i>
+    </div>
+  </div>
+
+  <div class="exits">
+    <div class="cap">全部指标<i class="chev" data-i="chevron-right"></i></div>
+    <div class="cap"><i data-i="orbit"></i>问 Jarvis</div>
+  </div>
+</section>
+<div class="home-ind"></div>
+<script src="kit.js"></script>
+</body>
+</html>

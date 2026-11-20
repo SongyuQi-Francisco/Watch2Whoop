@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>Jarvis · 拍照 (取景)</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+/* Jarvis -> 记一餐 -> 拍照. Full-screen cover, one subject: the meal in the frame. The Jarvis core is the shutter
+   (same place as the key, centre y 751), so the hand does not move. No mode switch, no text beyond one hint.
+   The preview is a plain ground here (mockups carry no photos). After the shot -> 16b. */
+body{background:#000}
+.p-top{position:absolute;left:20px;right:20px;top:60px;height:36px;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:600;z-index:60}
+.p-top .icon-btn{position:absolute;left:0;top:2px;margin:0;background:var(--surface2);color:var(--text)}
+.p-view{position:absolute;left:0;top:110px;width:402px;height:536px;background:var(--surface)}
+.p-hint{position:absolute;left:0;right:0;top:586px;display:flex;justify-content:center}
+.p-hint span{height:28px;padding:0 12px;border-radius:14px;background:var(--glass);display:flex;align-items:center;font-size:13px;font-weight:500;color:var(--text)}
+.p-side{position:absolute;top:729px;width:44px;height:44px;border-radius:22px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--text)}
+.p-shut{position:absolute;left:161px;top:711px;width:80px;height:80px;border-radius:40px;box-shadow:inset 0 0 0 3px var(--text);display:flex;align-items:center;justify-content:center}
+</style>
+</head>
+<body>
+<div class="sb">
+  <div class="sb-time">9:41</div><div class="sb-island"></div>
+  <div class="sb-sys">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M1.2 4.2a10.4 10.4 0 0 1 14.6 0"/><path d="M3.9 6.9a6.5 6.5 0 0 1 9.2 0"/><circle cx="8.5" cy="9.9" r="1.2" fill="currentColor" stroke="none"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x="0.5" y="0.5" width="23" height="12" rx="3.6" stroke="currentColor" stroke-opacity="0.4"/><rect x="2" y="2" width="20" height="9" rx="2.2" fill="currentColor"/><path d="M25 4.5v4c.9-.3 1.5-1.1 1.5-2s-.6-1.7-1.5-2z" fill="currentColor" fill-opacity="0.45"/></svg>
+  </div>
+</div>
+
+<div class="p-top"><span class="icon-btn"><i data-i="x"></i></span>拍一餐</div>
+<div class="p-view">
+  <!-- frame corners: the plate goes inside; plain strokes -->
+  <svg width="402" height="536" viewBox="0 0 402 536" fill="none" stroke="var(--text)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M51 144v-26h26"/><path d="M325 118h26v26"/><path d="M351 392v26h-26"/><path d="M77 418H51v-26"/>
+  </svg>
+</div>
+<div class="p-hint"><span>对准这一餐</span></div>
+<div class="p-side" style="left:56px"><i data-i="image"></i></div>
+<div class="p-shut"><div data-core="58"></div></div>
+<div class="p-side" style="left:302px"><i data-i="zap"></i></div>
+<div class="home-ind"></div>
+<script src="kit.js"></script>
+<script src="core.js"></script>
+</body>
+</html>

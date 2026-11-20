@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>训练历史</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+/* Training history, pushed from the 历史 face (12). One subject: the month. Dot = a training day, size + opacity = strain;
+   ring = today. Cards = the latest sessions (tap -> session detail: zone minutes, heart rate, muscles, next-day recovery).
+   Rhythm (y): header 54-98 -> 10 -> weekdays 108-124 -> grid 128-328 (5 x 40) -> 18 -> totals 346-374 -> 22 -> 3 cards 396-624. */
+.h-wk{margin-top:10px;height:16px;display:grid;grid-template-columns:repeat(7,53px);justify-content:center;text-align:center;font-size:11px;font-weight:500;color:var(--text3)}
+.h-grid{display:block;margin:4px auto 0}
+.h-tot{margin-top:18px;height:28px;display:flex;justify-content:center;gap:36px}
+.h-tot > div{display:flex;align-items:baseline;gap:5px}
+.h-cards{margin-top:22px;display:flex;flex-direction:column;gap:8px}
+.h-card{height:70px;border-radius:18px;background:var(--surface);display:grid;grid-template-columns:50px 1fr auto 12px;align-items:center;column-gap:12px;padding:0 12px 0 14px}
+.h-th{height:50px;display:flex;gap:2px;justify-content:center}
+.h-th > div{height:50px;aspect-ratio:1/2}
+.h-th.ic{align-items:center;font-size:24px;color:var(--train)}
+.h-nm{font-size:15px;font-weight:600}
+.h-nm span{margin-left:8px;font-size:12px;font-weight:500;color:var(--text2)}
+.h-z{margin-top:9px;height:5px;display:flex;gap:2px}
+.h-z b{height:5px;border-radius:2.5px;background:var(--train)}
+.h-r{text-align:right}
+.h-d{margin-top:5px;font-size:12px;font-weight:500;color:var(--text2)}
+.h-card .chev{color:var(--text3);font-size:13px}
+</style>
+</head>
+<body>
+<div class="sb">
+  <div class="sb-time">9:41</div><div class="sb-island"></div>
+  <div class="sb-sys">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M1.2 4.2a10.4 10.4 0 0 1 14.6 0"/><path d="M3.9 6.9a6.5 6.5 0 0 1 9.2 0"/><circle cx="8.5" cy="9.9" r="1.2" fill="currentColor" stroke="none"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x="0.5" y="0.5" width="23" height="12" rx="3.6" stroke="currentColor" stroke-opacity="0.4"/><rect x="2" y="2" width="20" height="9" rx="2.2" fill="currentColor"/><path d="M25 4.5v4c.9-.3 1.5-1.1 1.5-2s-.6-1.7-1.5-2z" fill="currentColor" fill-opacity="0.45"/></svg>
+  </div>
+</div>
+
+<main class="page">
+  <header class="hdr">
+    <div class="hdr-back"><i data-i="chevron-left"></i>训练历史</div>
+    <div class="hdr-date" style="font-size:15px">11月<i data-i="chevron-down"></i></div>
+  </header>
+
+  <div class="h-wk"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+  <svg class="h-grid" width="362" height="200" viewBox="0 0 362 200"><circle cx="340" cy="20" r="2" fill="var(--text3)"/><circle cx="22" cy="60" r="11.2" fill="var(--train)" fill-opacity="0.80"/><circle cx="75" cy="60" r="9.6" fill="var(--train)" fill-opacity="0.68"/><circle cx="128" cy="60" r="2" fill="var(--text3)"/><circle cx="181" cy="60" r="11.6" fill="var(--train)" fill-opacity="0.82"/><circle cx="234" cy="60" r="2" fill="var(--text3)"/><circle cx="287" cy="60" r="12.9" fill="var(--train)" fill-opacity="0.92"/><circle cx="340" cy="60" r="8.2" fill="var(--train)" fill-opacity="0.58"/><circle cx="22" cy="100" r="10.1" fill="var(--train)" fill-opacity="0.72"/><circle cx="75" cy="100" r="12.3" fill="var(--train)" fill-opacity="0.88"/><circle cx="128" cy="100" r="9" fill="none" stroke="var(--text)" stroke-width="1.5"/><circle cx="181" cy="100" r="1.5" fill="var(--text3)" fill-opacity=".5"/><circle cx="234" cy="100" r="1.5" fill="var(--text3)" fill-opacity=".5"/><circle cx="287" cy="100" r="1.5" fill="var(--text3)" fill-opacity=".5"/><circle cx="340" cy="100" r="1.5" fill="var(--text3)" fill-opacity=".5"/><circle cx="22" cy="140" r="1.5" fill="var(--text3)" fill-opacity=".5"/><circle cx="75" cy="140" r="1.5" fill="var(--text3)" fill-opacity=".5"/><circle cx="128" cy="140" r="1.5" fill="var(--text3)" fill-opacity=".5"/><circle cx="181" cy="140" r="1.5" fill="var(--text3)" fill-opacity=".5"/><circle cx="234" cy="140" r="1.5" fill="var(--text3)" fill-opacity=".5"/><circle cx="287" cy="140" r="1.5" fill="var(--text3)" fill-opacity=".5"/><circle cx="340" cy="140" r="1.5" fill="var(--text3)" fill-opacity=".5"/><circle cx="22" cy="180" r="1.5" fill="var(--text3)" fill-opacity=".5"/><circle cx="75" cy="180" r="1.5" fill="var(--text3)" fill-opacity=".5"/><circle cx="128" cy="180" r="1.5" fill="var(--text3)" fill-opacity=".5"/><circle cx="181" cy="180" r="1.5" fill="var(--text3)" fill-opacity=".5"/><circle cx="234" cy="180" r="1.5" fill="var(--text3)" fill-opacity=".5"/><circle cx="287" cy="180" r="1.5" fill="var(--text3)" fill-opacity=".5"/><circle cx="340" cy="180" r="1.5" fill="var(--text3)" fill-opacity=".5"/><circle cx="22" cy="220" r="1.5" fill="var(--text3)" fill-opacity=".5"/></svg>
+
+  <section class="h-tot">
+    <div><span class="t-gauge">7</span><span class="t-label">次</span></div>
+    <div><span class="t-gauge">6.4</span><span class="t-label">小时</span></div>
+    <div><span class="t-gauge">11.7</span><span class="t-label">均负荷</span></div>
+  </section>
+
+  <section class="h-cards">
+    <div class="h-card"><div class="h-th"><div data-body="front" data-lit="quadriceps:train adductors:train@.5 calves:train@.5 abs:train@.4"></div><div data-body="back" data-lit="gluteal:train hamstring:train lower-back:train@.5 calves:train@.5"></div></div><div class="h-mid"><div class="h-nm">腿 A<span>11/10</span></div><div class="h-z"><b style="flex:10;opacity:0.25"></b><b style="flex:22;opacity:0.4"></b><b style="flex:18;opacity:0.6"></b><b style="flex:6;opacity:0.8"></b><b style="flex:2;opacity:1"></b></div></div><div class="h-r"><div><span class="t-face">14.6</span></div><div class="h-d">58 分</div></div><i class="chev" data-i="chevron-right"></i></div>
+    <div class="h-card"><div class="h-th ic"><i data-i="flame"></i></div><div class="h-mid"><div class="h-nm">篮球<span>11/9</span></div><div class="h-z"><b style="flex:6;opacity:0.25"></b><b style="flex:12;opacity:0.4"></b><b style="flex:16;opacity:0.6"></b><b style="flex:9;opacity:0.8"></b><b style="flex:3;opacity:1"></b></div></div><div class="h-r"><div><span class="t-face">10.2</span></div><div class="h-d">46 分</div></div><i class="chev" data-i="chevron-right"></i></div>
+    <div class="h-card"><div class="h-th"><div data-body="front" data-lit="chest:train@.5 deltoids:train biceps:train"></div><div data-body="back" data-lit="upper-back:train trapezius:train@.6 deltoids:train"></div></div><div class="h-mid"><div class="h-nm">上肢 B<span>11/7</span></div><div class="h-z"><b style="flex:14;opacity:0.25"></b><b style="flex:26;opacity:0.4"></b><b style="flex:18;opacity:0.6"></b><b style="flex:5;opacity:0.8"></b><b style="flex:1;opacity:1"></b></div></div><div class="h-r"><div><span class="t-face">15.8</span></div><div class="h-d">64 分</div></div><i class="chev" data-i="chevron-right"></i></div>
+  </section>
+</main>
+
+<div class="jarvis"><i data-i="orbit"></i></div>
+<nav class="tabbar">
+  <div class="tab"><i data-i="circle-gauge"></i>今天</div>
+  <div class="tab"><i data-i="activity"></i>身体</div>
+  <div class="tab on"><i data-i="square-plus"></i>记录</div>
+  <div class="tab"><i data-i="users"></i>圈子</div>
+  <div class="tab"><i data-i="user"></i>我</div>
+</nav>
+<div class="home-ind"></div>
+<script src="kit.js"></script>
+<script src="../../../body_engine/src/body_engine/web/static/muscle-body-data.js"></script>
+<script src="body.js"></script>
+</body>
+</html>

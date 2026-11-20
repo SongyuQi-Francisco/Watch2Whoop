@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>Jarvis · 拍照 (已记)</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+.p-sheet{position:absolute;left:0;right:0;top:62px;bottom:0;border-radius:38px 38px 0 0;background:var(--sheet);z-index:70;padding:0 20px}
+.p-hd{display:flex;align-items:center;height:44px;margin-top:9px}
+.p-hd .t-title{display:flex;align-items:center;gap:6px}
+.p-hd .icon-btn + .icon-btn{margin-left:12px}
+/* After the shot. The meal is ALREADY logged (record writes execute directly); the sheet shows what was written and
+   offers 撤销. Subject = the meal's kcal. Tap a gram value to correct it (the kcal follow). Bottom: the day after this meal.
+   Rhythm (y): photo 0-300 -> sheet 262 -> head 277-321 -> kcal 333-397 -> macro bar + legend 413-447 -> items 463-639
+   -> day 659-713 -> exits 786-832. */
+body{background:#000}
+.p-shot{position:absolute;left:0;top:0;width:402px;height:300px;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:36px;color:var(--text3);padding-top:30px}
+.p-sheet{top:262px}
+.p-hd i{font-size:20px;color:var(--good)}
+.p-hd .tag{margin-left:auto}
+.p-kcal{margin-top:12px;display:flex;align-items:baseline;height:64px}
+.p-kcal b{font-size:64px;font-weight:200;letter-spacing:-2px;line-height:1}
+.p-kcal .u{font-size:15px;margin-left:6px}
+.p-mac{margin-top:16px}
+.p-leg{display:flex;gap:16px;margin-top:10px;font-size:12px;font-weight:500;color:var(--text2)}
+.p-leg span{display:flex;align-items:baseline;gap:4px}
+.p-leg s{width:8px;height:8px;border-radius:4px;background:var(--text);align-self:center}
+.p-leg b{font-weight:600;color:var(--text);font-size:13px}
+.p-items{margin-top:16px;border-top:1px solid var(--hair)}
+.p-it{display:grid;grid-template-columns:1fr 64px 76px;align-items:center;height:44px;border-bottom:1px solid var(--hair);font-size:15px;font-weight:500}
+.p-g{justify-self:end;height:28px;padding:0 10px;border-radius:14px;background:var(--in-sheet);display:flex;align-items:baseline;line-height:28px;font-size:14px;font-weight:500}
+.p-it .p-k{text-align:right}
+.p-day{margin-top:20px}
+.p-day .gauge-hd{height:20px}
+.p-day .t-row{margin-left:auto}
+.p-day .gauge-bar{margin-top:8px}
+.exits{position:absolute;left:20px;right:20px;bottom:42px}
+</style>
+</head>
+<body>
+<div class="sb" style="z-index:80">
+  <div class="sb-time">9:41</div><div class="sb-island"></div>
+  <div class="sb-sys">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M1.2 4.2a10.4 10.4 0 0 1 14.6 0"/><path d="M3.9 6.9a6.5 6.5 0 0 1 9.2 0"/><circle cx="8.5" cy="9.9" r="1.2" fill="currentColor" stroke="none"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x="0.5" y="0.5" width="23" height="12" rx="3.6" stroke="currentColor" stroke-opacity="0.4"/><rect x="2" y="2" width="20" height="9" rx="2.2" fill="currentColor"/><path d="M25 4.5v4c.9-.3 1.5-1.1 1.5-2s-.6-1.7-1.5-2z" fill="currentColor" fill-opacity="0.45"/></svg>
+  </div>
+</div>
+
+<!-- the photo just taken stays above the sheet (plain ground in the mockup) -->
+<div class="p-shot"><i data-i="image"></i></div>
+<section class="p-sheet">
+  <div class="grabber"></div>
+  <div class="p-hd"><div class="t-title"><i data-i="circle-check"></i>已记到午餐</div><span class="tag"><i data-i="sparkles"></i>AI 生成</span></div>
+  <div class="p-kcal"><b>570</b><span class="u">kcal</span></div>
+  <div class="p-mac"><svg width="362" height="8" viewBox="0 0 362 8" fill="none" style="display:block"><rect x="0.00" y="0" width="131.33" height="8" rx="4" fill="var(--text)" fill-opacity="1"/><rect x="133.33" y="0" width="141.43" height="8" rx="4" fill="var(--text)" fill-opacity="0.55"/><rect x="276.76" y="0" width="85.24" height="8" rx="4" fill="var(--text)" fill-opacity="0.28"/></svg></div>
+  <div class="p-leg"><span><s></s>蛋白<b>52</b>g</span><span><s style="opacity:.55"></s>碳水<b>56</b>g</span><span><s style="opacity:.28"></s>脂肪<b>15</b>g</span></div>
+  <!-- recognised items: name | grams (tap = edit) | kcal -->
+  <div class="p-items">
+    <div class="p-it"><span>鸡胸</span><span class="p-g">150<span class="u">g</span></span><span class="p-k"><span class="t-row">248</span><span class="u">kcal</span></span></div>
+    <div class="p-it"><span>米饭</span><span class="p-g">180<span class="u">g</span></span><span class="p-k"><span class="t-row">209</span><span class="u">kcal</span></span></div>
+    <div class="p-it"><span>西兰花</span><span class="p-g">100<span class="u">g</span></span><span class="p-k"><span class="t-row">34</span><span class="u">kcal</span></span></div>
+    <div class="p-it"><span>橄榄油</span><span class="p-g">9<span class="u">g</span></span><span class="p-k"><span class="t-row">79</span><span class="u">kcal</span></span></div>
+  </div>
+  <!-- the day after this meal: eaten vs goal (ink tick) -->
+  <div class="p-day">
+    <div class="gauge-hd"><span class="t-label">今天</span><span class="t-row">990</span><span class="u">/ 2,100 kcal</span></div>
+    <div class="gauge-bar" data-gauge="990" data-max="2500" data-target="2100" data-tone="text" data-step="250"></div>
+  </div>
+  <div class="exits">
+    <div class="cap"><i data-i="undo-2"></i>撤销</div>
+    <div class="cap"><i data-i="camera"></i>再拍一张</div>
+  </div>
+</section>
+<div class="home-ind"></div>
+<script src="kit.js"></script>
+<script src="core.js"></script>
+</body>
+</html>

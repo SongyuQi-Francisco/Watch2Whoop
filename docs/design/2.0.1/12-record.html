@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=402">
+<title>记录 · 训练 (tab root)</title>
+<link rel="stylesheet" href="kit.css">
+<style>
+/* 记录 tab root, 训练 view. One subject: today's session = which muscles (inside the ring) and how many sets (the ring itself).
+   Rhythm (y): header 54-98 -> 32 -> hero 130-410 -> 40 -> readings 450-509 -> 44 -> faces 553-673 -> 49 -> key 722.
+   Tap the ring -> today's session (11). Faces: 肌肉 -> 13, 历史 -> 14, 动作库 -> 15. */
+.hero{margin-top:32px;width:280px}
+.ring{position:absolute;inset:0}
+.core{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.core .bodies > div{height:172px}
+.core .hero-label{margin-top:6px}
+.gauges{margin-top:40px}
+.week{display:flex;justify-content:space-between;align-items:center;height:14px;margin-top:9px}
+.week b{width:10px;height:10px;border-radius:5px;background:var(--track)}
+.week b.d{background:var(--train)}
+.week b.t{background:none;box-shadow:inset 0 0 0 1.5px var(--text)}
+.week b.r{width:4px;height:4px;margin:0 3px;background:var(--text3)}
+.faces{margin-top:44px}
+.f-body{position:absolute;right:10px;top:16px;height:92px;display:flex;gap:2px}
+.f-body > div{height:92px;aspect-ratio:1/2}
+.f-search{width:100%;height:26px;border-radius:13px;background:var(--surface2);display:flex;align-items:center;padding:0 9px;color:var(--text2);font-size:13px}
+</style>
+</head>
+<body>
+<div class="sb">
+  <div class="sb-time">9:41</div><div class="sb-island"></div>
+  <div class="sb-sys">
+    <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+    <svg width="17" height="12" viewBox="0 0 17 12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M1.2 4.2a10.4 10.4 0 0 1 14.6 0"/><path d="M3.9 6.9a6.5 6.5 0 0 1 9.2 0"/><circle cx="8.5" cy="9.9" r="1.2" fill="currentColor" stroke="none"/></svg>
+    <svg width="27" height="13" viewBox="0 0 27 13" fill="none"><rect x="0.5" y="0.5" width="23" height="12" rx="3.6" stroke="currentColor" stroke-opacity="0.4"/><rect x="2" y="2" width="20" height="9" rx="2.2" fill="currentColor"/><path d="M25 4.5v4c.9-.3 1.5-1.1 1.5-2s-.6-1.7-1.5-2z" fill="currentColor" fill-opacity="0.45"/></svg>
+  </div>
+</div>
+
+<main class="page">
+  <header class="hdr">
+    <div class="seg"><span class="on"><i data-i="dumbbell"></i>训练</span><span><i data-i="soup"></i>饮食</span></div>
+    <div class="sync is-ok"><i data-i="circle-check"></i>2分前</div>
+  </header>
+
+  <!-- HERO: ring = today's planned sets (one arc per set, gaps = exercises); inside = today's muscles, front + back -->
+  <section class="hero">
+    <div class="ring" data-sets="4 4 4 3 3" data-done="0"></div>
+    <div class="core">
+      <div class="bodies"><div data-body="front" data-lit="chest:train deltoids:train biceps:train triceps:train@.45 forearm:train@.45"></div><div data-body="back" data-lit="upper-back:train deltoids:train trapezius:train@.45 triceps:train@.45 forearm:train@.45"></div></div>
+      <div class="hero-label">上肢 A</div>
+    </div>
+  </section>
+
+  <!-- readings: sets today (ticks = sets, long ticks = exercise edges) and this week's sessions (dot = day) -->
+  <section class="gauges">
+    <div class="gauge">
+      <div class="gauge-hd"><span class="t-gauge">18</span><span class="t-label">组</span></div>
+      <div class="gauge-bar" data-gauge="0" data-max="18" data-tone="train" data-step="1" data-majors="4 8 12 15"></div>
+    </div>
+    <div class="gauge">
+      <div class="gauge-hd"><span class="t-gauge">3</span><span class="u" style="font-size:15px">/5</span><span class="t-label">本周</span></div>
+      <div class="week"><b class="d"></b><b class="r"></b><b class="d"></b><b class="d"></b><b class="t"></b><b></b><b class="r"></b></div>
+    </div>
+  </section>
+
+  <section class="faces">
+    <div class="face">
+      <div class="face-hd"><i data-i="person-standing"></i>肌肉</div>
+      <div class="face-num"><span class="t-face">9</span><span class="u">/17</span></div>
+      <div class="f-body"><div data-body="front" data-lit="chest:train deltoids:train biceps:train@.7 triceps:train@.7 abs:train@.4 quadriceps:train@.4 forearm:train@.4"></div></div>
+    </div>
+    <div class="face">
+      <div class="face-hd"><i data-i="calendar-days"></i>历史</div>
+      <div class="face-num"><span class="t-face">8</span><span class="u">次</span></div>
+      <div class="face-gfx"><div data-bars="9.2 12.4 7.5 13.1 10.2 14.6 11.8" data-max="18" data-tone="train" style="width:100%;height:26px"></div></div>
+    </div>
+    <div class="face">
+      <div class="face-hd"><i data-i="book-open"></i>动作库</div>
+      <div class="face-num"><span class="t-face">126</span></div>
+      <div class="face-gfx"><div class="f-search"><i data-i="search"></i></div></div>
+    </div>
+  </section>
+</main>
+
+<div class="jarvis"><i data-i="orbit"></i></div>
+<nav class="tabbar">
+  <div class="tab"><i data-i="circle-gauge"></i>今天</div>
+  <div class="tab"><i data-i="activity"></i>身体</div>
+  <div class="tab on"><i data-i="square-plus"></i>记录</div>
+  <div class="tab"><i data-i="users"></i>圈子</div>
+  <div class="tab"><i data-i="user"></i>我</div>
+</nav>
+<div class="home-ind"></div>
+<script src="kit.js"></script>
+<script src="../../../body_engine/src/body_engine/web/static/muscle-body-data.js"></script>
+<script src="body.js"></script>
+</body>
+</html>
