@@ -29,7 +29,7 @@
 | 4 | 健康权限 | 通过 | 一个系统弹窗问全部类型 |
 | 5 | 首次同步 14 天 | 通过 | 引擎上传 10-15 → 10-29 共 2,778 条（心率 2,014 条，正好 14 天的量），服务器 `hk-derive-run` 派生出 15 天日汇总、28 段睡眠、7 次训练 |
 | 6 | 今天三环 | 通过 | 睡眠分 / 恢复（基线不够 14 晚，显示「还在建立你的基线」）/ 昨天负荷并排；核心指标、健康监测、负荷目标都有数 |
-| 7 | 本机算分并上传，服务器停算 | **修复后通过** | 修之前每个新用户的抽查都失败（B1、B3、B4）。修之后：手机从评分起点全量算 14 天，上传，抽查当天全部字段一致，`app-scores status` = `active`、`trusted`、计划 `{"mode": "app", "days": []}`，`sync-refresh-run` 不再给他算分；另外用服务器的 Python 逐天重算 13 天对比，全部一致 |
+| 7 | 本机算分并上传，服务器停算 | **修复后通过** | 修之前每个新用户的抽查都失败（B1、B3、B4）。修之后：手机从评分起点全量算 14 天，上传，抽查当天全部字段一致，`app-compute status --user-id N` = `active`、`trusted`、计划 `{"mode": "app", "days": []}`，`sync-refresh-run` 不再给他算分；另外用服务器的 Python 逐天重算 13 天对比，全部一致 |
 | 8 | 趋势 | 通过 | 1 月范围、HRV / 静息心率图、比上期 |
 | 9a | 记体重 | 通过 | 弹层记 72.5 kg（早上空腹），`POST /weight` 200，列表马上出现 |
 | 9b | 喝水 | 通过 | +250 ml，`POST /water` 200；合计里包含「健康」里的 330 ml |
@@ -91,7 +91,7 @@ N8 已经做过、这次没有重复的：Apple 登录、邮箱登录（第 16 �
 2. 按第 2 节打开开关；`user-add --email … ` + `provision-run` 开户；`login-code --user-id N` 发登录码。服务器 `BODY_MAIL_MODE=console` 时邮箱验证码写在日志里。
 3. 模拟器构建：`CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual W2W_TEAM_ID=FAKETEAMID`，派生目录用独有的名字。
 4. 第一次启动加 `SIMCTL_CHILD_W2W_DEV_SEED_HEALTH=21`，点「全部打开」「允许」；之后用 `SIMCTL_CHILD_W2W_DEV_SETUP=watch2whoop://setup?today=http://127.0.0.1:<端口>/app/&login=<码>` 登录。
-5. 每次上传后跑一次 `body-engine hk-derive-run`（生产上是每分钟的定时任务），再看 `body-engine app-scores status --user-id N`。
+5. 每次上传后跑一次 `body-engine hk-derive-run`（生产上是每分钟的定时任务），再看 `body-engine app-compute status --user-id N`。
 6. 做完删掉容器、模拟器、派生目录。
 
 这次是用一个临时的 XCUITest 驱动（不进仓库）按脚本点界面、截图、导出界面树；结论都对照了服务器日志和两边的数据库。

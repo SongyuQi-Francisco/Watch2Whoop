@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 import re
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -46,25 +47,50 @@ def _legacy_stopped() -> bool:
     return retire.ow_import_stopped()
 
 
+SCORES_KIND = "scores"   # app-compute's name for the daily scores the app uploads (nativesync/appscores.py, table app_score_state)
+
+
+def _scores_state(conn, user_id: int) -> dict:
+    from .nativesync import appscores
+    return {"scores": appscores.status(conn, user_id)}
+
+
+def _app_scores(conn, args) -> None:
+    """The old `body-engine app-scores status|server|app --user-id N`, kept as an alias of `app-compute` (same effect)."""
+    from .nativesync import appscores
+    print("app-scores is now `body-engine app-compute status|server|app --kind scores --user-id N`; this alias still works",
+          file=sys.stderr)
+    if args.action != "status":
+        appscores.set_server_forced(conn, args.user_id, args.action == "server")
+    print(json.dumps(appscores.status(conn, args.user_id), ensure_ascii=False, indent=1, default=str))
+
+
 def _app_compute(conn, args) -> int:
     """`body-engine app-compute` (2.0.0 S9, nativesync/primary.py). Prints JSON; exit code 1 when the gate refused."""
     from .nativesync import derived, params as NP, primary
     days = args.days or NP.PRIMARY_CHECK_DAYS
     out = lambda x: print(json.dumps(x, ensure_ascii=False, indent=1, default=str))   # noqa: E731
     if args.action == "status":
-        out(primary.status(conn, args.user_id, days))
+        st = primary.status(conn, args.user_id, days)
+        if args.user_id is not None:
+            st["user"] |= _scores_state(conn, args.user_id)
+        out(st)
         return 0
     if args.action in ("server", "app"):
         if args.user_id is None or not args.kind:
             raise SystemExit("server / app: --kind K --user-id N")
-        if args.kind not in {k for p in NP.COMPUTE_PACKAGES.values() for k in p["kinds"]}:
+        if args.kind != SCORES_KIND and args.kind not in {k for p in NP.COMPUTE_PACKAGES.values() for k in p["kinds"]}:
             raise SystemExit(f"unknown kind {args.kind!r}")
-        derived.set_server_forced(conn, args.user_id, args.kind, args.action == "server")
+        if args.kind == SCORES_KIND:   # the daily scores (recovery / strain / sleep score) have their own state table
+            from .nativesync import appscores
+            appscores.set_server_forced(conn, args.user_id, args.action == "server")
+        else:
+            derived.set_server_forced(conn, args.user_id, args.kind, args.action == "server")
         from .rollout import audit
         audit.log(conn, audit.actor(args.by), f"compute.kind.{args.action}", f"{args.kind}:user:{args.user_id}", None,
                   {"kind": args.kind, "user_id": args.user_id, "server_forced": args.action == "server"})
         conn.commit()
-        out(primary.status(conn, args.user_id, days)["user"])
+        out(primary.status(conn, args.user_id, days)["user"] | _scores_state(conn, args.user_id))
         return 0
     if not args.package:
         raise SystemExit(f"{args.action}: --package P (or all)")
@@ -614,14 +640,15 @@ def main() -> None:
                                              "= the server keeps one upload kind of a user whatever the app uploads / the app may again")
     apc.add_argument("action", choices=["status", "primary", "shadow", "server", "app"])
     apc.add_argument("--package", help="primary / shadow: a package (derive, workouts, stress, series, coach, reports, rules) or all")
-    apc.add_argument("--kind", help="server / app: an upload kind (daily, sleep, workouts, stress, healthspan, reminders)")
+    apc.add_argument("--kind", help="server / app: an upload kind (daily, sleep, workouts, stress, healthspan, reminders) or scores "
+                                    "(the daily scores; was `app-scores server|app`)")
     apc.add_argument("--user-id", type=int)
     apc.add_argument("--cohort")
     apc.add_argument("--all", action="store_true", help="primary / shadow: everyone")
     apc.add_argument("--force", action="store_true", help="primary: even when the pass-rate gate fails (audited as forced)")
     apc.add_argument("--days", type=int, default=None, help="the pass-rate window in days (default nativesync/params.PRIMARY_CHECK_DAYS)")
     apc.add_argument("--by", help="who is changing it (audit; default BODY_ADMIN or the OS user)")
-    aps = sub.add_parser("app-scores", help="scores computed by the iOS app (#340 N2): status, or give the scoring back to the server / to the app")
+    aps = sub.add_parser("app-scores", help="DEPRECATED alias of `app-compute status|server|app --kind scores` (prints a notice)")
     aps.add_argument("action", choices=["status", "server", "app"],
                      help="status = state, recent spot checks and what the hourly job does; server = the server scores this user "
                           "whatever the app uploads (the hourly job recomputes as before); app = the app may score again")
@@ -1075,10 +1102,7 @@ def main() -> None:
         elif args.cmd == "app-compute":
             raise SystemExit(_app_compute(conn, args))
         elif args.cmd == "app-scores":
-            from .nativesync import appscores
-            if args.action != "status":
-                appscores.set_server_forced(conn, args.user_id, args.action == "server")
-            print(json.dumps(appscores.status(conn, args.user_id), ensure_ascii=False, indent=1, default=str))
+            _app_scores(conn, args)
         elif args.cmd == "static-bundle-pack":
             from .static_bundle import pack as sb_pack
             man = sb_pack.pack(conn, args.out, args.since)
