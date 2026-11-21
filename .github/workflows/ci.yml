@@ -78,7 +78,7 @@ jobs:
           # tools/export_public.py --scan (the privacy scan of every tracked file) runs in "Syntax checks", always.
           coupled='^(docs/(legal/|tester-handbook|family-consent|sync-onboarding-app-requirements\.md$|LICENSES\.md$)|THIRD_PARTY_NOTICES\.md$)'
           docs_only='^(docs/|[A-Za-z0-9_.-]+\.md$)'
-          nondocs="$(grep -vE "$docs_only" <<< "$files"; grep -E "$coupled" <<< "$files")"
+          nondocs="$(grep -vE "$docs_only" <<< "$files"; grep -E "$coupled" <<< "$files"; true)"   # (the shell runs with -e: no match is not an error)
           if grep -qvE '^(apps/|$)' <<< "$nondocs" \
              || grep -qxE 'apps/watch2whoop/(lib/src/hk_types\.dart|assets/healthkit_types\.json)' <<< "$files"; then
             server=true; else server=false; fi
