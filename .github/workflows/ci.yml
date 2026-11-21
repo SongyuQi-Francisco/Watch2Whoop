@@ -137,7 +137,7 @@ jobs:
         shell: bash
         # -rs lists skipped tests; fail if the database tests were skipped because Postgres was unreachable
         run: |
-          uv run --locked pytest -q -rs | tee "$RUNNER_TEMP/pytest.txt"
+          uv run --locked pytest -q -rs --durations=30 | tee "$RUNNER_TEMP/pytest.txt"
           ! grep -qE "cannot connect to Postgres|unreachable" "$RUNNER_TEMP/pytest.txt"
 
   # The scoring algorithms as one JS file for the iOS app (packages/openbodyscore-js, issue #340): dist/ must be what src/
