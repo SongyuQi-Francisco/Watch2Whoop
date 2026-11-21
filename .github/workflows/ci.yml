@@ -71,7 +71,15 @@ jobs:
           # Server = anything outside apps/ (docs included: tests compare some documents with server copies;
           # packages/ included: Body Engine depends on packages/openbodyscore).
           # Also the app's HealthKit type registries: server tests compare them with rawdata/hk_types.py.
-          if grep -qv '^apps/' <<< "$files" \
+          # Documentation-only changes skip the backend tests (the job still shows up, as skipped). "Documentation" =
+          # docs/** and the repository's top-level *.md, EXCEPT the files a test reads: docs/legal/, the tester handbook,
+          # the family consent (compared with the server copy), the sync requirements, docs/LICENSES.md and
+          # THIRD_PARTY_NOTICES.md. A test that starts reading another document must add it to `coupled` below.
+          # tools/export_public.py --scan (the privacy scan of every tracked file) runs in "Syntax checks", always.
+          coupled='^(docs/(legal/|tester-handbook|family-consent|sync-onboarding-app-requirements\.md$|LICENSES\.md$)|THIRD_PARTY_NOTICES\.md$)'
+          docs_only='^(docs/|[A-Za-z0-9_.-]+\.md$)'
+          nondocs="$(grep -vE "$docs_only" <<< "$files"; grep -E "$coupled" <<< "$files")"
+          if grep -qvE '^(apps/|$)' <<< "$nondocs" \
              || grep -qxE 'apps/watch2whoop/(lib/src/hk_types\.dart|assets/healthkit_types\.json)' <<< "$files"; then
             server=true; else server=false; fi
           # The native SwiftUI app (#340): its own directory, plus the originals of the files it copies byte for byte from
@@ -135,9 +143,11 @@ jobs:
           BODY_DB_PASSWORD_FILE: ${{ runner.temp }}/body_db_password
           TZ: Australia/Sydney
         shell: bash
-        # -rs lists skipped tests; fail if the database tests were skipped because Postgres was unreachable
+        # -rs lists skipped tests; fail if the database tests were skipped because Postgres was unreachable.
+        # -n auto --dist loadfile: one worker process per CPU, every test file runs in one worker (the files keep their
+        # own module-scoped databases; tests/conftest.py clones them from a migrated template). --durations: the slowest.
         run: |
-          uv run --locked pytest -q -rs --durations=30 | tee "$RUNNER_TEMP/pytest.txt"
+          uv run --locked pytest -q -rs -n auto --dist loadfile --durations=25 | tee "$RUNNER_TEMP/pytest.txt"
           ! grep -qE "cannot connect to Postgres|unreachable" "$RUNNER_TEMP/pytest.txt"
 
   # The scoring algorithms as one JS file for the iOS app (packages/openbodyscore-js, issue #340): dist/ must be what src/
