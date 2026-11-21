@@ -8,6 +8,8 @@
 #
 # Required checks of `main` (set by the maintainer in the branch protection, exact job names):
 #   Body Engine tests, Syntax checks, Algorithm JS bundle, iOS native
+# The branch does not have to include the latest `main` (no "up to date" requirement); merges happen one at a time, and the
+# run on `main` after a merge is the verdict (runs on `main` are never cancelled, see `concurrency` below).
 # The Flutter app is historical (no job, no Dependabot); its Android / Flutter-iOS tag builds live in android-apk.yml and
 # app-release.yml. A macOS job that never got a runner is re-run by ci-rerun.yml (at most 2 times).
 name: CI
