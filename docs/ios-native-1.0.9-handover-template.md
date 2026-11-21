@@ -86,4 +86,4 @@ Demo account: <演示账号的设置链接 / 激活码，由中控填>
 **朋友上传之后**
 - [ ] 负责人自己先按 `docs/archive/ios-native-1.0.9-device-checklist.md`（1.0.9 的清单，已归档；2.x 的清单是 `docs/ios-native-2.0-device-checklist.md`） 的 A 节（从 1.0.8 覆盖升级）验一遍，再开其他节给内测组。
 - [ ] 按 `docs/ios-native-app.md` 第 12 节的顺序开开关、切 app 模式。
-- [ ] 一天后：`sync_runs` 里有后台轮次；`app-scores status` 有用户变成 app 算分；doctor 正常。
+- [ ] 一天后：`sync_runs` 里有后台轮次；`app-compute status --user-id N` 有用户变成 app 算分；doctor 正常。

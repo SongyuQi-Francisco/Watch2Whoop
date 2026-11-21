@@ -878,7 +878,7 @@ app version that implements it (`nativesync/params.MIN_APP_VERSION_BY_KIND`, all
 | 4 | release (wave 6) | 2.0.0 to the external group; `force_upgrade` on with `notice_from` = release day, `block_from` = +7 days |
 | 5 | `block_from` | Shortcut 410; OW stop-write after `retire-check` is green for everyone (R1) |
 
-Rollback per kind: turn the package flag off (app falls back to server docs, server recomputes the user via `app-scores server`-style command `app-compute server --kind K --user-id N`, built in S9); per package and target: `app-compute shadow --package P --cohort C`; global: `native_compute_primary` off; upgrade block: `force_upgrade` off.
+Rollback per kind: turn the package flag off (app falls back to server docs, server recomputes the user via `app-compute server --kind K --user-id N` (`--kind scores` for the daily scores, formerly `app-scores`), built in S9); per package and target: `app-compute shadow --package P --cohort C`; global: `native_compute_primary` off; upgrade block: `force_upgrade` off.
 
 ## 6. Decisions (2026-10-30, coordinator)
 

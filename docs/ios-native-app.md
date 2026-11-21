@@ -381,7 +381,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 | `POST /v1/sync/pull` | 增量拉取 / 全量恢复（第 5.2、7.3 节），只拉自己的数据，读权限的 token 就可以 |
 | `POST /v1/sync/push` | 批量写记录（第 5.3、7.3 节），按 `client_id` 幂等，需要写权限 |
 | 各写接口补上 `client_id` | 日记、补剂打卡（= 日记）、快捷记餐、食谱、训练日（草稿 / 提交）（第 5.3 节） |
-| `PUT /v1/users/me/scores/app` | 接收 app 算好的分数（第 7.3 节）；管理命令 `body-engine app-scores status / server / app --user-id N` |
+| `PUT /v1/users/me/scores/app` | 接收 app 算好的分数（第 7.3 节）；管理命令 `body-engine app-compute status / server / app --kind scores --user-id N` |
 | 按用户的数据版本 | 表 `sync_changes`（迁移 970），由触发器写；`data_version` 出现在 `/v1/web/me`、pull、push 和分数上传的回答里 |
 | `dirty_days` | `POST /v1/ingest/healthkit` 的回答里 |
 | flag `native_sync` | `/v1/web/me` 的 `flags` 里 |
@@ -436,7 +436,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 - **服务器什么时候停算**：同时满足下面四条，就算「由 app 算分」：最近 3 天内上传过、算法版本和服务器一致、最近一次抽查通过、管理员没有强制让服务器算。这期间：
   - 每小时任务、每晚的全量任务、上传之后的 `sync-refresh-run`，都不再给他做全量算分。
   - 它们只补算「脏天」：最近 30 天里，算分输入（`daily`、`sleep`、`raw`，以及记录里的 `workout` / `strength`）在这天分数的 `computed_at` 之后变过，而且最后一次变化已经超过 2 小时，app 却一直没有重新上传这一天。
-- `body-engine app-scores server --user-id N` 让服务器重新给这个用户算分；`app-scores app --user-id N` 恢复由 app 算；`app-scores status` 查看状态、最近的抽查结果和下一次每小时任务会怎么做。
+- `body-engine app-compute server --kind scores --user-id N` 让服务器重新给这个用户算分；`app-compute app --kind scores --user-id N` 恢复由 app 算；`app-compute status --user-id N` 查看状态、最近的抽查结果和下一次每小时任务会怎么做。
 - AI、MCP、今天页读的始终是 `daily_scores` 里存的分数，不管是谁算的。
 - 2.0.0 的其他包（每日数值、睡眠、训练、压力、身体年龄、提醒）按同样的思路逐包停算：包被 `body-engine app-compute primary`（先看抽查通过率，`--force` 记审计）授权成「主模式」以后，每小时 / 每晚任务和 `sync-refresh-run` 不再给这个人算这个包，读的都是手机上传的行；手机还没传的部分由接口临时算、不存、记一次 fallback。见 [ios-native-2.0.md](ios-native-2.0.md) 第 4 节 S9。
 
@@ -637,7 +637,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 - app 端：重新安装后用 Debug 登录。
   - 全量恢复只要一页：120 天的分数、日汇总、睡眠，加 60 天原始样本。
   - 拉一次直方图，带种子算 58 天，上传。
-  - 抽查当天全部字段一致，`app_score_state` 变成 active / trusted，`app-scores status` 的计划是 `{"mode": "app", "days": []}`，服务器不再给他算分。
+  - 抽查当天全部字段一致，`app_score_state` 变成 active / trusted，`app-compute status` 里 `scores.plan`是 `{"mode": "app", "days": []}`，服务器不再给他算分。
 - 第一次试的时候，app 一边从 HealthKit 读，同步引擎一边在上传。服务器抽查时少了后半批样本，CTL 差了 1.4，抽查不通过。等样本全部到了服务器，它重算出的 CTL 和手机的一样。所以才加了上面「等同步传完再上传」那一条。
 
 *模拟器 + 本地服务器走通（本机完整历史，2026-10-29）*：一次性库 `body_test_lhdd_e2e`，虚构用户 2 年「同步引擎上传的」样本，服务器派生并算分，`app` 模式，`native_sync` 打开。
@@ -653,7 +653,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 - **只读服务器已经有的那段「健康」数据**：`HealthKitScoringReader` 的起点 = max(60 天前, `HealthSyncService.uploadedSince`)。`uploadedSince` 是首次同步窗口的起点（账号连上时由 `SyncSettings.pinFirstWindow` 定下，比引擎自己的「现在 − 14 天」晚一小时，补全历史也以它为终点，两边不再有空档），补全历史进行中时是它的游标。补得更早时清掉锚点重读。
 - **服务器没有评分起点时不上传**（`/v1/sync/scoring` 的 `scoring_origin` 为空：还没派生出静息心率）。有了起点以后，手机删掉起点之前的本机行，从起点重算。
 - **头两个月每轮都从起点全量算**：评分起点还在原始样本窗口里时（新用户），`first` = 起点，不用种子。CTL / ATL 的起点是「前 14 个有 TRIMP 的天的平均值」，种子会把天数还少时的起点一路带下去。服务器的抽查也改成算到今天（`appscores.server_rows(…, end=today)`），和每小时任务、手机一致。
-- 模拟器验证：新开户、首次同步 14 天、派生后手机全量算 14 天上传，抽查通过，`app-scores status` 计划 `{"mode": "app", "days": []}`；服务器逐天重算 13 天，全部在容差内。
+- 模拟器验证：新开户、首次同步 14 天、派生后手机全量算 14 天上传，抽查通过，`app-compute status --user-id N` 计划 `{"mode": "app", "days": []}`；服务器逐天重算 13 天，全部在容差内。
 
 *还没做 / 风险*
 
@@ -910,9 +910,9 @@ N4 的趋势页、一年范围的读数、状态卡和弹层、报告、最近 1
 | 步 | 什么时候 | 做什么 | 看什么 |
 |---|---|---|---|
 | 1 | N9 合并、部署后 | 打 `app-ios-v2.0.0` tag（第 12.1 节；旧的 1.0.9 tag 不用动），朋友上传，先只给 TestFlight **内部组** | Release 的 zip 和 sha256；TestFlight 显示 2.0.0 (11) |
-| 2 | 同一天 | 负责人自己：`sync-mode switch --user-id <自己>`（过门槛）→ `flags set native_sync --state cohort --cohort inner`（内测组 `inner`：负责人和最活跃的几位；1.0.8 不调这些接口，组里还没升级的人不受影响）→ 手机从 1.0.8 升级到 2.0.0，按真机清单 A、C7 验 | `app-scores status --user-id <自己>`：`active`、`trusted`、计划 `{"mode": "app", "days": []}`；今天页「本机计算」 |
+| 2 | 同一天 | 负责人自己：`sync-mode switch --user-id <自己>`（过门槛）→ `flags set native_sync --state cohort --cohort inner`（内测组 `inner`：负责人和最活跃的几位；1.0.8 不调这些接口，组里还没升级的人不受影响）→ 手机从 1.0.8 升级到 2.0.0，按真机清单 A、C7 验 | `app-compute status --user-id <自己>`（看 `scores`）：`active`、`trusted`、计划 `{"mode": "app", "days": []}`；今天页「本机计算」 |
 | 3 | 内部组用满 3–7 天、真机清单 A–D 没有阻塞问题 | **把所有人切到 app 模式**：`sync-mode readiness` 看每个人；能切的逐个 `sync-mode switch --user-id N`（也可以 `flags set apple_sync_primary --state cohort --cohort sync_app` + 每小时 `sync-mode apply`）。切的时候大家还在 1.0.8：app 模式下引擎的数据优先、1.0.8 的 OW SDK 照常在后台补缺，所以先切不会断数据 | `sync-mode readiness` 里没有「还不能切」；每人第一次重算后 `sync-mode apply` 的切换后检查（快照 vs 新分数）不超阈值。门槛不过的人（影子对比不一致、覆盖率不够）先看报告；确认只是 OW 的问题时用 `sync-mode switch --force --user-id N`（只跳过影子和分数门槛） |
-| 4 | 第 3 步做完当天 | 2.0.0 加到**外部组**（公开链接）；`flags set native_sync --state all`。1.0.8 不调这些接口，开着对它没有影响 | 一天内 `rawdata_uploads` 里大多数人的 `app_version` 变成 `2.0.0+11`；`app-scores status` 陆续变成 app 算分 |
+| 4 | 第 3 步做完当天 | 2.0.0 加到**外部组**（公开链接）；`flags set native_sync --state all`。1.0.8 不调这些接口，开着对它没有影响 | 一天内 `rawdata_uploads` 里大多数人的 `app_version` 变成 `2.0.0+11`；`app-compute status --user-id N` 陆续变成 app 算分 |
 | 5 | TestFlight 上只剩 2.0.0 能装以后（1.0.8 的构建在 App Store Connect 里设为过期，或者 90 天自然过期） | `flags set apple_sync_new_accounts --state all`：新开户不再建 OW 用户，一开就是 app 模式 | 先开一个测试账号确认设置链接只有 `today` 和 `login`，2.0.0 扫码就能同步。**不能早开**：1.0.8 登录这种账号会显示「服务器出错（409）」，连不上同步（回归报告 O4） |
 | 6 | 所有有 OW 账号的人都已在 app 模式、都装了 2.0.0（`sync-mode readiness`、`rawdata_uploads.app_version`），2.0.0 外部组稳定一周 | **OW 停写**：每人 `ow-archive --user-id N` 补完存档、`ow-archive --check` 全部完整 → 定时任务里去掉 `import-ow` 和 OW 备份，OW 只读（#219 S7，`apple-sync-engine.md` 第 5.3 节） | 回退期 14 天（有本地存档）里分数不漂；之后 OW 下线（S8 删代码，`apple-sync-engine.md` 第 10 节） |
 
@@ -920,7 +920,7 @@ N4 的趋势页、一年范围的读数、状态卡和弹层、报告、最近 1
 
 **回退**（从轻到重）
 
-- **一个人的分数不对**：`app-scores server --user-id N`，服务器重新给他算分（app 上传的照收，但不再用）；查清后 `app-scores app --user-id N`。抽查不一致时服务器本来就会自动接手。
+- **一个人的分数不对**：`app-compute server --kind scores --user-id N`，服务器重新给他算分（app 上传的照收，但不再用）；查清后 `app-compute app --kind scores --user-id N`。抽查不一致时服务器本来就会自动接手。
 - **本机算分 / 增量同步整体有问题**：`flags set native_sync --state off`。接口全部 404，2.0.0 退回旧接口拉数据，服务器照常每小时算分；已经上传的 app 分数留在库里。
 - **一个人的同步模式**：`sync-mode rollback --user-id N` 回到 `shadow`，用 OW 的数据（只在 OW 还在写的时候有用，所以第 6 步之前一直保留 OW）。没有 OW 账号的人不能回退（`no_ow`）。
 - **2.0.0 本身有问题**：TestFlight 里把 2.0.0 的构建设为过期，测试用户在 TestFlight app 里装回 1.0.8。Flutter 的钥匙串项一直留着，不用重新登录；在 app 模式下 1.0.8 用前台引擎 + OW SDK 照常同步（所以第 6 步 OW 停写之前，这条路一直可用）。
@@ -987,7 +987,7 @@ tools/app_release.sh ios --push                      # 打 app-ios-v2.0.0 并推
     - Rows are only accepted when they use the server's own algorithm version.
     - A Python spot check runs for the first upload of each bundle version, then at most every 6 hours. If it finds a difference, the server's row is stored, the user goes back to server scoring, and a recompute is queued.
     - While the app scores a user, the hourly and nightly jobs only fill in days whose inputs changed more than 2 hours ago that the app has not uploaded since.
-    - The admin command is `body-engine app-scores status|server|app`.
+    - The admin command is `body-engine app-compute status|server|app --kind scores`.
   - N2b additions:
     - `GET /v1/sync/scoring`: the scoring context the phone cannot work out itself (hrv_kind, sync mode, origin, birth date, app scoring state, muscle load of `from..to`, per-day heart-rate histograms of `hist_from..hist_to`).
     - Pull: `raw_since` bounds a raw restore. The raw body carries `beats` (RMSSD / SDNN of beat-to-beat readings). Recent sleep bodies carry the scores' stage `segments`. Writes to `heartbeat_series` count as raw changes (migration 980).
