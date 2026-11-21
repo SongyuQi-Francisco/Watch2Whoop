@@ -125,3 +125,4 @@ English developer documentation lives next to the code: [`body_engine/README.md`
 | [admin-guide.md](admin-guide.md) | Chinese | **Admin guide** for whoever runs the server: open accounts, activation links / login codes / tokens, family shares, AI tokens and the fallback AI, history import, recomputing scores, backups and doctor, where secrets live, troubleshooting |
 | [archive/tester-handbook-web-shortcut.md](archive/tester-handbook-web-shortcut.md) | Chinese | Archived handbook for the interim web + iOS Shortcut setup (before the app; served at `/app/handbook/web/`) |
 | [family-consent.md](family-consent.md) | Chinese | The consent text testers accept in the app (must stay byte-identical to `body_engine/src/body_engine/profile/consent.md`) |
+
