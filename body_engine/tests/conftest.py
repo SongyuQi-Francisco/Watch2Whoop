@@ -99,3 +99,15 @@ def pytest_collection_modifyitems(items):
             _quiet_cache[path] = bool(_NEEDS_QUIET.search(open(path, encoding="utf-8").read()))
         if _quiet_cache[path]:
             item.add_marker(pytest.mark.quiet_cluster)
+
+
+# --- process-wide state that outlives a test module ---------------------------------------------------------------------
+# Every module has its own database, but the process is shared, and ids (user 1, conversation 1) repeat across databases.
+# With one process in a fixed order the leftovers were old enough to have expired; with xdist, which modules share a worker
+# changes from run to run. Clear them before each module (a module's own tests still build on each other's state).
+@pytest.fixture(autouse=True, scope="module")
+def _fresh_process_state():
+    from body_engine.ai import runs
+    with runs._lock:
+        runs._runs.clear()   # chat turns kept for resume: GET /v1/assistant/chat/1/events answered with another module's turn
+    yield
