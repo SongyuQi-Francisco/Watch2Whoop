@@ -147,7 +147,9 @@ jobs:
         # -n auto --dist loadfile: one worker process per CPU, every test file runs in one worker (the files keep their
         # own module-scoped databases; tests/conftest.py clones them from a migrated template). --durations: the slowest.
         run: |
-          uv run --locked pytest -q -rs -n auto --dist loadfile --durations=25 | tee "$RUNNER_TEMP/pytest.txt"
+          uv run --locked pytest -q -rs -n auto --dist loadfile --durations=25 -m "not quiet_cluster" | tee "$RUNNER_TEMP/pytest.txt"
+          # sync-cursor tests need a cluster with no other open transaction (see tests/conftest.py): serial, after the rest
+          uv run --locked pytest -q -rs --durations=10 -m quiet_cluster | tee -a "$RUNNER_TEMP/pytest.txt"
           ! grep -qE "cannot connect to Postgres|unreachable" "$RUNNER_TEMP/pytest.txt"
 
   # The scoring algorithms as one JS file for the iOS app (packages/openbodyscore-js, issue #340): dist/ must be what src/

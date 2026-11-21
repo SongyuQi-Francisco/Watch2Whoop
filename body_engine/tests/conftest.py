@@ -79,3 +79,23 @@ def pytest_configure(config):
         return original(self, query, *args, **kwargs)
 
     psycopg.Connection.execute = execute
+
+
+# --- tests that need a quiet cluster -----------------------------------------------------------------------------
+# The sync pull cursors (nativesync/pull.py) only hand out changes older than the cluster-wide oldest running transaction
+# (pg_snapshot_xmin), by design: a late commit can never slip behind a cursor. A transaction another xdist worker has open
+# in ITS database holds that horizon back, so an incremental pull right after a write can legitimately return nothing.
+# Those test files run in a second, serial pytest run (`-m quiet_cluster`, see .github/workflows/ci.yml) after the parallel
+# one (`-m "not quiet_cluster"`). They are found by what they touch, so a new test of the same kind is covered
+# automatically; a plain `pytest` (no -m) runs everything, in order, as before.
+_NEEDS_QUIET = re.compile(r"sync/pull|nativesync|sync/history|pg_current_snapshot|pg_snapshot")
+_quiet_cache: dict[str, bool] = {}
+
+
+def pytest_collection_modifyitems(items):
+    for item in items:
+        path = str(item.fspath)
+        if path not in _quiet_cache:
+            _quiet_cache[path] = bool(_NEEDS_QUIET.search(open(path, encoding="utf-8").read()))
+        if _quiet_cache[path]:
+            item.add_marker(pytest.mark.quiet_cluster)

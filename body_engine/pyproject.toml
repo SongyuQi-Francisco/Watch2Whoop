@@ -39,3 +39,4 @@ packages = ["src/body_engine"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["quiet_cluster: needs no other transaction open in the Postgres cluster (tests/conftest.py); CI runs these serially"]
