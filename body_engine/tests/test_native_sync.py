@@ -931,3 +931,32 @@ def client_manifest_fields():
     app.include_router(router)
     m = TestClient(app).get("/v1/algo/manifest").json()
     return "signature" in m and "key_id" in m
+
+
+def test_app_compute_covers_the_scores_kind_and_app_scores_is_an_alias(users, dsn, capsys):
+    """`app-compute server|app --kind scores` = the old `app-scores server|app`; `app-compute status --user-id N` shows the
+    scores state too; `app-scores` still works (same effect, a notice on stderr) so a script does not break."""
+    import argparse
+    from body_engine import cli
+    uid = users[0]["b"]
+    ns = lambda **kw: argparse.Namespace(**{"action": "status", "package": None, "kind": None, "user_id": uid, "cohort": None,  # noqa: E731
+                                            "all": False, "force": False, "days": None, "by": "test", **kw})
+    with conn_of(dsn) as c:
+        assert cli._app_compute(c, ns(action="server", kind="scores")) == 0
+        assert appscores.status(c, uid)["state"]["server_forced"] is True
+        capsys.readouterr()
+        assert cli._app_compute(c, ns()) == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["user"]["scores"]["state"]["server_forced"] is True and out["user"]["scores"]["active"] is False
+        assert cli._app_compute(c, ns(action="app", kind="scores")) == 0
+        assert appscores.status(c, uid)["state"]["server_forced"] is False
+        a = c.execute("SELECT action, target FROM rollout_audit WHERE action LIKE 'compute.kind.%%' ORDER BY id").fetchall()
+        assert [(x["action"], x["target"]) for x in a] == [("compute.kind.server", f"scores:user:{uid}"),
+                                                           ("compute.kind.app", f"scores:user:{uid}")]
+        capsys.readouterr()
+        cli._app_scores(c, argparse.Namespace(action="server", user_id=uid))
+        cap = capsys.readouterr()
+        assert "app-compute" in cap.err and json.loads(cap.out)["state"]["server_forced"] is True
+        cli._app_scores(c, argparse.Namespace(action="app", user_id=uid))
+        capsys.readouterr()
+        assert appscores.status(c, uid)["state"]["server_forced"] is False

@@ -4,7 +4,17 @@ A key must be declared here before code checks it (flags.enabled raises on an un
 `flags set` accepts it. Declare it in the same PR as the feature; its database row is created as `off` the first time the
 flags are listed or set, so a deploy never turns anything on by itself. Remove the key (and the checks) once the feature
 is on for everyone and the old path is gone.
+
+Every key also has an entry in FLAG_META (kind, added): `kind` says what the key is for, `added` is the date it first
+appeared in this registry (the public history starts 2026-10-19, so 2026-10-22 means "at or before that date"):
+- kill_switch: stays declared on purpose, an emergency off (or on) for something that is already shipped to everyone;
+- migration: one step of a shadow -> primary switch (Apple sync engine, on-phone compute, own food store, forced upgrade);
+  goes away with the old path, so it needs an exit issue;
+- experiment: a feature rollout: on for the cohort, then everyone; delete the key and the old path once it is on for everyone.
+tests/test_rollout.py fails when a key has no entry, when code checks a key that is not declared, and when no code
+reads a declared key.
 """
+KINDS = ("kill_switch", "migration", "experiment")
 FLAGS: dict[str, str] = {
     # "new_food_page": "饮食页新版（2026-11）",
     "friends": "朋友页：圈子和共享、朋友 tab、排行榜（docs/friends-social-plan.md）；同意书至少 2026-10-22.2",
@@ -165,4 +175,89 @@ FLAGS: dict[str, str] = {
     "circle_rules": "圈子社区规则（App Store 1.2，friends/rules.py，迁移 1100）：建圈子、加入圈子、写评论之前要先同意一次 docs/legal/community-rules.md"
                     "（版本 friends/params.py RULES_VERSION，换版本要重新同意）；没同意时这些接口回 428，原生 app 先弹规则页；"
                     "旧的网页 / Flutter app 没有规则页，所以 2.0.0 强制升级之后再开；关着时和以前一样不用同意",
+}
+
+
+FLAG_META: dict[str, tuple[str, str]] = {
+    "friends": ("experiment", "2026-10-22"),
+    "posture_photos": ("kill_switch", "2026-11-03"),
+    "inbox": ("experiment", "2026-11-02"),
+    "meal_merge": ("experiment", "2026-10-22"),
+    "water": ("experiment", "2026-10-22"),
+    "me_settings": ("experiment", "2026-10-22"),
+    "intro_v2": ("experiment", "2026-10-22"),
+    "pantry_view": ("experiment", "2026-10-22"),
+    "grocery_staples": ("experiment", "2026-10-22"),
+    "pantry_auto": ("experiment", "2026-10-22"),
+    "jarvis_quick": ("experiment", "2026-10-22"),
+    "training_day_v2": ("experiment", "2026-10-22"),
+    "memory_recent": ("experiment", "2026-10-22"),
+    "jarvis_ui_v2": ("experiment", "2026-10-22"),
+    "ai_web": ("kill_switch", "2026-10-22"),
+    "mcp_web": ("kill_switch", "2026-10-24"),
+    "sleep_detail": ("experiment", "2026-10-22"),
+    "exercise_add_to_plan": ("experiment", "2026-10-22"),
+    "hevy_import": ("experiment", "2026-10-22"),
+    "records_v2": ("experiment", "2026-10-22"),
+    "offline_mode": ("experiment", "2026-10-22"),
+    "data_status": ("experiment", "2026-10-22"),
+    "jarvis_rich": ("experiment", "2026-10-22"),
+    "jarvis_cards_v2": ("experiment", "2026-10-23"),
+    "product_card": ("experiment", "2026-10-24"),
+    "friend_card_v2": ("experiment", "2026-10-22"),
+    "exercise_opengym": ("experiment", "2026-10-24"),
+    "exercise_zh_machine": ("experiment", "2026-10-25"),
+    "exercise_curated_steps": ("experiment", "2026-10-25"),
+    "exercise_media_licensed": ("experiment", "2026-10-25"),
+    "exercise_media_free_db_off": ("experiment", "2026-10-25"),
+    "exercise_quality_gate": ("experiment", "2026-10-25"),
+    "static_bundle": ("experiment", "2026-10-24"),
+    "muscle_load": ("experiment", "2026-10-22"),
+    "circle_feed": ("experiment", "2026-10-22"),
+    "ai_cards": ("kill_switch", "2026-10-22"),
+    "notifications": ("kill_switch", "2026-10-22"),
+    "memory_hygiene": ("kill_switch", "2026-10-23"),
+    "journal_regression": ("experiment", "2026-10-23"),
+    "ai_parity": ("kill_switch", "2026-10-23"),
+    "circles_by_circle": ("experiment", "2026-10-25"),
+    "circle_prefs": ("experiment", "2026-10-25"),
+    "circle_join_trail": ("experiment", "2026-10-25"),
+    "member_remarks": ("experiment", "2026-10-23"),
+    "trends_v2": ("experiment", "2026-10-23"),
+    "consent_one_tap": ("experiment", "2026-10-23"),
+    "avatars": ("experiment", "2026-10-23"),
+    "sync_center": ("experiment", "2026-10-23"),
+    "app_types_pause": ("kill_switch", "2026-10-23"),
+    "apple_sync_engine": ("migration", "2026-10-23"),
+    "apple_sync_primary": ("migration", "2026-10-26"),
+    "apple_sync_new_accounts": ("migration", "2026-10-29"),
+    "native_sync": ("migration", "2026-10-29"),
+    "native_derive": ("migration", "2026-10-29"),
+    "native_workouts": ("migration", "2026-10-29"),
+    "native_stress": ("migration", "2026-10-29"),
+    "native_series": ("migration", "2026-10-29"),
+    "native_coach": ("migration", "2026-10-29"),
+    "native_reports": ("migration", "2026-10-29"),
+    "native_rules": ("migration", "2026-10-29"),
+    "native_compute_primary": ("migration", "2026-10-29"),
+    "force_upgrade": ("migration", "2026-10-29"),
+    "own_food_store": ("migration", "2026-10-24"),
+    "own_food_read": ("migration", "2026-10-29"),
+    "own_food_only": ("migration", "2026-10-29"),
+    "jarvis_scope_guard": ("kill_switch", "2026-10-24"),
+    "jarvis_orbit": ("experiment", "2026-10-24"),
+    "jarvis_dial": ("experiment", "2026-10-26"),
+    "jarvis_voice_direct": ("experiment", "2026-10-24"),
+    "boot_api": ("experiment", "2026-10-24"),
+    "cached_first_paint": ("experiment", "2026-10-24"),
+    "local_first_start_off": ("experiment", "2026-10-29"),
+    "tab_prefetch": ("experiment", "2026-10-24"),
+    "open_signup": ("kill_switch", "2026-10-25"),
+    "store_signup": ("kill_switch", "2026-10-31"),
+    "native_jarvis": ("experiment", "2026-10-27"),
+    "native_today": ("experiment", "2026-10-27"),
+    "optimistic_writes": ("experiment", "2026-10-24"),
+    "slim_mode": ("experiment", "2026-10-27"),
+    "ui_ai_first": ("experiment", "2026-10-27"),
+    "circle_rules": ("kill_switch", "2026-10-31"),
 }

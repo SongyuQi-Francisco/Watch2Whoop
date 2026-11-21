@@ -158,7 +158,7 @@ def test_not_an_export(tmp_path):
     close()
 
 
-def test_parse_daily_matches_parse_export_rules():
+def test_apple_zip_parse_applies_the_daily_rules():
     from zoneinfo import ZoneInfo
     got = []
     p = apple_zip.parse(io.BytesIO(export_xml()), ZoneInfo("Australia/Sydney"), got.extend)
