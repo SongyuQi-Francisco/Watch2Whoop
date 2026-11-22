@@ -180,6 +180,7 @@ final class TrendsStore: ObservableObject {
     self.range = range
     self.end = end
     self.userToday = member.today
+    self.loading = true   // nothing cached on the phone: a spinner until their range is in, never 「暂无」 first
   }
 
   /// Someone else's store has nothing to observe: it counts as observing, so no page starts my own observation on it.

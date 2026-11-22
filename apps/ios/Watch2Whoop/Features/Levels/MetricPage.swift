@@ -285,7 +285,9 @@ struct MetricPage: View {
 
   @ViewBuilder private var related: some View {
     if let d = dayStore.page?.data {
-      let rows = MetricCatalog.related(id).compactMap { LevelRows.dayRow($0, d, override: overrides[$0]) }
+      // someone else's: only the related metrics their document carries (the others are not shared)
+      let rows = MetricCatalog.related(id).filter { member == nil || d.series[$0] != nil || overrides[$0] != nil }
+        .compactMap { LevelRows.dayRow($0, d, override: overrides[$0]) }
       if !rows.isEmpty {
         LevelGroupHeader(icon: .link, title: tr("相关", "Related"), count: nil).padding(.top, 22)
         LevelRowList(rows: rows, door: "metric.\(id).related") { push(.metric($0.id), "metric.\(id).related.\($0.id)") }

@@ -232,9 +232,10 @@ struct MemberScreen: View {
   /// `SIMCTL_CHILD_W2W_DEV_MEMBER=<user id>:<path>` (Debug, simulator screenshots; MainTabView): `day`, `day:<anchor>`,
   /// `metric:<id>`, `night`, `food`, `training`, `health`, `report`, comma-separated (`day,metric:hrv`); a leading `zoom+`
   /// opens them one after the other through their doors (the zoom transition, for frame grabs).
-  /// `SIMCTL_CHILD_W2W_DEV_MEMBER_OPEN=explain|calendar` opens a sheet.
+  /// `SIMCTL_CHILD_W2W_DEV_MEMBER_OPEN=explain|calendar` opens a sheet, `SIMCTL_CHILD_W2W_DEV_MEMBER_DATE=YYYY-MM-DD` looks back.
   private func devOpen() {
     #if DEBUG
+    if let d = RecordDevShot.value("W2W_DEV_MEMBER_DATE"), d.count == 10 { day.select(d) }
     if let p = devPath {
       let zoomed = p.hasPrefix("zoom+")
       let steps = (zoomed ? String(p.dropFirst(5)) : p).split(separator: ",").map(String.init)

@@ -307,6 +307,19 @@ final class MemberViewTests: XCTestCase {
     XCTAssertEqual(DayWrites.of(isPast: true, member: false), DayWrites(logWeight: false, weightCard: true, syncNudges: false))
   }
 
+  /// A metric their day's document does not carry is not shared with me: no row on their 今日详情 (on mine it is a 「—」 row,
+  /// so the page still says the metric exists).
+  func testTheirDayDetailLeavesOutMetricsNotShared() {
+    let d = TodayCoreTests.page(TodayCoreTests.doc(series: ["recovery": TodayCoreTests.series(TodayCoreTests.steady(60, spread: 5, day: 70)),
+                                                            "resp_rate": TodayCoreTests.series(TodayCoreTests.steady(14, spread: 0.3, day: 14.2))]))
+    let theirs = LevelRows.day(d, onlyPresent: true).flatMap(\.rows).map(\.id)
+    XCTAssertEqual(Set(theirs), ["recovery", "resp_rate"])
+    let mine = LevelRows.day(d).flatMap(\.rows)
+    XCTAssertTrue(mine.contains { $0.id == "hrv" && $0.value == nil }, "my own day keeps the row, as 「—」")
+    // the dial's own number still makes a row (it is the first glance's)
+    XCTAssertTrue(LevelRows.day(d, overrides: ["strain": 4.2], onlyPresent: true).flatMap(\.rows).contains { $0.id == "strain" })
+  }
+
   // MARK: - the sheets' stores do nothing without a session
 
   func testInertStoresReadAndWriteNothing() async {

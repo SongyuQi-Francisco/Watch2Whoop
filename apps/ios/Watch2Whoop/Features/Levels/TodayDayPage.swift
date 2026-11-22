@@ -141,7 +141,7 @@ struct TodayDayPage<Source: TodayDaySource>: View {
   // MARK: the day's metrics, status cards and the blocks of 2.0.0's day
 
   @ViewBuilder private func content(_ proxy: ScrollViewProxy) -> some View {
-    let groups = m.trendsDay.map { LevelRows.day($0.data, overrides: m.levelOverrides) } ?? []
+    let groups = m.trendsDay.map { LevelRows.day($0.data, overrides: m.levelOverrides, onlyPresent: member != nil) } ?? []
     let tiles = m.trendsDay?.status.tiles ?? []
     let rail = groups.map { JumpRail.Item(id: $0.id, title: $0.title, count: $0.rows.count) }
       + (tiles.isEmpty ? [] : [JumpRail.Item(id: "status", title: tr("当前状态", "Current status"), count: tiles.count)])
@@ -219,7 +219,9 @@ struct TodayDayPage<Source: TodayDaySource>: View {
   }
 
   private func metricOrExplain(_ key: String, _ title: String, door: String) {
-    if MetricCatalog.conf(key) != nil { run.push(.metric(key), door) }
+    // someone else's metric that their day's document does not carry is not shared: its explanation, not an empty page
+    let notShared = member != nil && MetricCatalog.series(key).map { m.trendsDay?.data.series[$0] == nil } == true
+    if MetricCatalog.conf(key) != nil && !notShared { run.push(.metric(key), door) }
     else { run.sheet(.explain(kind: "metric", key: key, title: title)) }
   }
 
