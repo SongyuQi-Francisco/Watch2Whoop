@@ -119,6 +119,27 @@ PR (`GET /v1/algo/manifest` says `0.3.0` with a signature); the watch has a pass
 - **P13** If you have a phone with a Home button (iPhone SE class) at hand: the Jarvis key does not cover the tab bar
   and the first screens fit.
 
+### R — someone else's data (read-only member view, #474)
+Written from #474's plan before it merged: check these lines against its final description.
+Needs a person who shares with you (a circle member or a family share), with scores shared.
+- **R1** Circles (or Me → 共享 → 共享给我的) → open that person → their first screen is the same glance as your Today
+  (dial, sleep and strain readings, at most three faces, each only for what they share), with an identity bar on top
+  (face, name, read-only lock, ✕) on every level; no sync capsule, no Jarvis key, no ＋ on the weight row.
+- **R2** Tap their dial → their 今日详情; tap a number → its metric page (7 / 30 / 90 days / 1 year); sleep's 「整晚 ›」
+  → the night page; 「健康档案 ›」 and 「周报 ›」 appear only when they share those.
+- **R3** ✕ on any level → back where you came from; nothing of theirs is left on your Today.
+- **R4** A person who shares no scores → no dial and no readings, only the faces they do share; nothing can be written.
+
+### Z — zoom between levels (#474)
+Written from #474's plan before it merged: check these lines against its final description.
+- **Z1** iOS 18 or later, Reduce Motion off: tap the dial, a reading or a face → the next level grows out of the item you
+  tapped; back (or the edge swipe) → it shrinks back into that item. Same on Body and on a member's view.
+- **Z2** Settings → Accessibility → Motion → Reduce Motion on → the same taps push the page in the plain way, nothing
+  grows.
+- **Z3** Openings without a tapped item (a notification, a deep link, the header's level marks) → plain push.
+- **Z4** Go down to level 3 and back up five times quickly → no stutter, no half-drawn page, back always returns to the
+  item you came from.
+
 ### S — sync center
 - **S1** Open the sync center right after a sync while the server is still computing → one answer, 「已上传，分数计算中」;
   never 「已同步」 next to 「同步连接失效」.

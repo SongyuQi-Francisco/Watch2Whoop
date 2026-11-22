@@ -56,7 +56,9 @@
 WHAT'S NEW IN 2.1.0
 The iPhone app is redesigned: five tabs (Today, Body, Log, Circles, Me), new first screens, three levels on Today and
 Body (a glance, today's details, one metric's page), the assistant key opens a ring of shortcuts, a reorganised Me page
-and a clearer sync center. Permissions on the iPhone are unchanged.
+and a clearer sync center. The read-only view of someone who shares with the user uses the same three levels, and moving
+between levels zooms out of the tapped item (a plain push with Reduce Motion on). Permissions on the iPhone are
+unchanged.
 
 New: an Apple Watch app inside the same upload (it needs the iPhone app; watchOS 11 or later).
 - Today at a glance: recovery, sleep and strain, computed on the iPhone and sent to the watch.
