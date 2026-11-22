@@ -12,7 +12,7 @@ import os
 
 from ..i18n import is_en
 
-MCP_KINDS = ("claude_plan_mcp", "codex_plan_mcp", "gemini_plan_mcp", "generic_mcp_client")
+MCP_KINDS = ("claude_plan_mcp", "codex_plan_mcp", "gemini_plan_mcp", "muse_plan_mcp", "generic_mcp_client")
 API_KINDS = ("anthropic_api", "openai_api", "gemini_api", "openai_compatible")
 # The vendors' own web search / page reading tools can be switched on for these (ai_providers.web_tools, off by default; billed on the
 # user's own key). Not for the fallback AI or OpenAI-compatible services (no common standard): behind the rollout flag ai_web
@@ -35,6 +35,14 @@ KINDS: dict[str, dict] = {
         "label": "Google AI Pro / Ultra 订阅（Antigravity）", "category": "mcp", "client": "antigravity",
         "note": "在你自己登录的 Antigravity（桌面版、IDE 或 agy 命令行）里连 Body Engine 的 MCP；后端不碰你的 Google 账号。"
                 "Gemini CLI 从 2026-06-18 起不再支持订阅登录。"},
+    "muse_plan_mcp": {
+        # Meta Muse (free with a usage limit, Power / Max plans; docs/ai-assistant-plan.md 9.24). Meta documents no
+        # "add a server URL" field: the user asks Muse to create a custom connector and Muse keeps the credential in its
+        # Secure Credentials Store, so an AI token (Bearer) is the documented-style path; OAuth is untested. client "other":
+        # the app has no Muse client of its own yet (an unknown name would preselect Claude Code there).
+        "label": "Meta Muse", "category": "mcp", "client": "other",
+        "note": "在 Muse 里说「创建一个自定义连接器」，给它「连接客户端（MCP）」顶部的地址和一个 AI token（客户端选「其他 MCP 客户端」）；"
+                "后端不碰你的 Meta 账号。Muse 只在部分国家开放（含澳洲）。"},
     "generic_mcp_client": {
         "label": "其他 MCP 客户端", "category": "mcp", "client": "other",
         "note": "任何支持远程 MCP（Streamable HTTP + Bearer 头）的客户端都可以连。"},
@@ -73,6 +81,11 @@ KINDS_EN: dict[str, dict] = {
         "label": "Google AI Pro / Ultra subscription (Antigravity)",
         "note": "Connect Body Engine's MCP in the Antigravity you signed in to (desktop app, IDE or the agy CLI); the server never "
                 "touches your Google account. Gemini CLI no longer accepts subscription sign-in since 2026-06-18."},
+    "muse_plan_mcp": {
+        "label": "Meta Muse",
+        "note": "In Muse, say \"create a custom connector\" and give it the address at the top of \"Connect a client (MCP)\" and an "
+                "AI token (client: \"Other MCP client\"); the server never touches your Meta account. Muse is only open in some "
+                "countries (Australia included)."},
     "generic_mcp_client": {
         "label": "Other MCP client",
         "note": "Any client that supports remote MCP (Streamable HTTP + Bearer header) can connect."},

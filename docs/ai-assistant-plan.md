@@ -555,3 +555,27 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 - 今天页带 training 组（约 3k token，`propose_plan` / `save_plan` 各 1.7k 字）：去掉以后「今天换个练法」要先 `find_tools`。
 - 工具顺序改成「核心在前、页面组在后」（换页时 DeepSeek 能命中核心部分）：会改变进行中对话的工具定义，Claude 的 preserved thinking 下有风险，先不动。
 - MCP 的 `get_briefing` 根规则全文和 server instructions 重复：不是每个客户端都把 instructions 给模型看，设计上 briefing 是唯一保证送到的地方，保留。
+
+### 9.24 Meta Muse 作为订阅类客户端（2026-11-22；`ai/catalog.py` 的 `muse_plan_mcp`、迁移 `995_muse_plan_mcp.sql`、`tests/test_mcp_muse.py`）
+和 Claude / ChatGPT / Antigravity 一样走远程 `/mcp`，没有新的 API 面。下面只认 Meta 自己的页面（日期是页面上写的或按「N days ago」换算的），其余标「未核实」。
+
+- **自定义连接器怎么加**（[How Muse works with Connectors](https://www.meta.com/help/artificial-intelligence/1687253048996149/)，约 2026-11-18 更新）：目录里没有的服务，「ask Muse to create a Custom Connector」，Muse 在对话里引导，可能要取服务的 API 信息，凭证存进 Muse 的 Secure Credentials Store；Meta 不审核自定义连接器。**官方没有「填服务器地址」的设置项**，第三方说过的 Settings → Connectors → Add custom connector 在官方页面里找不到。目录里的连接器才是 Settings → Connectors → Connect → Continue。
+- **订阅**（[About Muse subscriptions](https://www.meta.com/help/subscriptions/1021145227643680/)，约 2026-11-20）：免费有用量上限；Power 每月 20 美元、Max 每月 100 美元；18 岁以上；「aren't available in all locations yet」。官方没说自定义连接器只给哪个档位（未核实）。
+- **地区**（Meta Newsroom）：2026-09-08 美国，09-29 的文章写美国和加拿大，10-23 日本，10-27 新加坡，**2026-11-17 澳洲**（[公告](https://about.fb.com/news/2026/11/muse-is-now-available-in-australia/)：iOS、Android、muse.ai 网页、Mac app，眼镜「coming soon」）。中国大陆、马来西亚、英国和欧洲：官方没有上线信息（未核实）。所以负责人在澳洲能用；国内测试用户基本用不了，还是托底 AI 或 API key。
+- **渠道**：iOS、Android、muse.ai、Mac app；美国发布文提到 WhatsApp 里也能对话（子代理读取，澳洲公告没提）。各渠道能不能用自定义连接器：未核实。
+- **传输 / 协议版本 / 授权 / 回调**：Muse app 都没写（未核实）。只知道：Meta 自己的客户端元数据文档 `https://platform.muse.ai/oauth/client-metadata.json`（2026-11-22 读取，无日期）是 CIMD 格式：`client_id` 就是这个 URL、`client_name` = Muse、公开客户端（`none`）、`authorization_code` + `refresh_token`，回调只有 `https://platform.muse.ai/oauth/credential-test/callback`（从路径看是开发者门户的「凭证测试」，不是普通用户的连接器）。另一个产品 Muse Code（命令行，[文档](https://dev.meta.ai/docs/muse-code/extending)）支持 `stdio` / `streamable_http`、远程服务器可以要求 OAuth 2.1，默认开 DCR。第三方说 Muse 连接器的回调是 `muse.ai/api/hatch/oauth/callback`、OAuth 不要 refresh token 约 1 小时失效：都未核实。
+- **工具限制**：数量、名称、schema、返回大小、超时，官方都没写（未核实）。[连接器指南](https://platform.muse.ai/docs)（目录用，无日期）把工具分成读 / 写 / 敏感写：读和普通写默认「第一次用时问」，敏感写每次都问；工具的读写分类目前写在文档里，门户里的标注「coming soon」；Muse 读不读 MCP 的 `readOnlyHint` / `destructiveHint`：未核实。
+- **目录上架**（只记录，不提交）：门户里描述产品 → 审核（风险评估、工具审核、端到端测试）→ 上架。要交企业认证、数据处理问卷、endpoint、鉴权（「OAuth client credentials or an API key」）、scope、工具文档、测试账号；OAuth 尽量给只读选项；不批准转账和交易类工具；安全事件 48 小时内通知 Meta（[条款](https://platform.muse.ai/terms)，2026-09-18 生效）。
+
+**我们的做法**：
+- 推荐路径是 **AI token（Bearer 头）**：和官方说的「凭证存进 Secure Credentials Store」对得上，也不依赖还没公布的回调。「连接客户端（MCP）」里客户端选「其他 MCP 客户端」生成（app 2.1.0 没有 Muse 这一项），服务器另给了 `clients.muse`：一段发给 Muse 的话（等 app 加了 Muse 客户端就能直接显示）。
+- OAuth 也能走（DCR + PKCE S256 + 同意页），但**不把 Muse 的回调加进 `KNOWN_REDIRECT_HOSTS`**：官方唯一公布的回调是门户的凭证测试地址，普通连接器的回调没公布。同意页会对 Muse 显示「不是已知 AI 应用」的提醒；负责人实测时把看到的回调地址报回来，确认是 Meta 文档里写的再加。
+- 审计通道：静态 token 是 `mcp:muse`；OAuth 连接按回调域名（`muse.ai` 及其子域，只认 https）或自报名字里的「muse」记成 `mcp:muse`（`oauth.channel_client`、`oauth_params.CHANNEL_BY_DOMAIN / CHANNEL_BY_NAME`，只是标签，不给权限）。
+- 顺手修了：`tools/list` 一直把所有工具标 `destructiveHint: false`，删除 / 撤销类（`confirm=True` 的那几个）现在是 `true`，按注解决定要不要逐次确认的客户端会多问一次（只收紧，不放宽）。
+- `muse_plan_mcp`：「AI 设置」里能选（标签、说明由服务器下发，app 不用改就显示）；选它做 Jarvis 时，页内对话提示去 Muse 里对话。
+
+**差距（没做）**：
+1. **CIMD（client ID metadata document）**：Meta 的门户用它标识 Muse；我们只支持 DCR。只会用 CIMD 的客户端在 `/oauth/authorize` 被拒（我们自己的 400 页，不跳转）。要做得拉取外部 URL（防 SSRF、缓存、域名校验），另开 issue，等确认 Muse 的连接器真的只用 CIMD 再做。
+2. **预注册的 OAuth 客户端（client_id + secret）**：目录上架要提交「OAuth client credentials」；我们只有公开客户端（不发 secret，PKCE 保护）。只有决定上架目录时才需要。
+3. **access token 1 小时**：如果 Muse 的 OAuth 连接器真的不用 refresh token（第三方说法），一小时后要重新同意；不延长（安全上限），推荐 token 路径。
+4. **app 的 Muse 客户端**：`AIClient` 是写死的枚举（`apps/ios/Watch2Whoop/Features/Me/AIProviderModels.swift`），加 `case muse` 和一行标签（约 3 行）后，「连接客户端」能直接选 Muse、显示 `clients.muse`，token 名也会是 `mcp:muse`；现在用「其他 MCP 客户端」，token 名是 `mcp:other`。catalog 的 `client` 等 app 加了再改成 `muse`（老版本 app 把不认识的名字当 Claude Code）。

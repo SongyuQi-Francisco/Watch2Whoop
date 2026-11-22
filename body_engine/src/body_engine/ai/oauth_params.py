@@ -9,6 +9,15 @@ are next to each value (security review of PR #85)."""
 #   antigravity.google   https://antigravity.google/oauth-callback (Antigravity desktop / IDE / CLI)
 #   gemini.google.com    Gemini app custom apps
 KNOWN_REDIRECT_HOSTS = ("claude.ai", "chatgpt.com", "chat.openai.com", "antigravity.google", "gemini.google.com")
+# Not listed (docs/ai-assistant-plan.md 9.24): Meta Muse. Meta documents no callback for Muse's custom connectors; the only
+# Meta-published one, https://platform.muse.ai/oauth/credential-test/callback (in its client ID metadata document), is the
+# developer portal's credential test. Until Meta documents the connector callback the consent page warns for Muse.
+
+# The <client> of an OAuth connection's audit channel mcp:<client> (oauth._issue). A label, not a permission: by default the
+# slug of the client's self-reported name; a vendor is recognised by the domain its redirect URI goes to (https only, the
+# domain or a subdomain) or else by a word in that name.
+CHANNEL_BY_DOMAIN = {"muse.ai": "muse"}          # Meta's Muse (muse.ai, platform.muse.ai)
+CHANNEL_BY_NAME = ((r"\bmuse\b", "muse"),)      # "Muse" (its client ID metadata document), "Meta Muse", ...
 
 # /oauth/authorize needs no login and stores a request row each time: per-IP limit (in process)
 AUTHORIZE_PER_IP = 30
