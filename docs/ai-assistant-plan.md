@@ -556,7 +556,7 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 - 工具顺序改成「核心在前、页面组在后」（换页时 DeepSeek 能命中核心部分）：会改变进行中对话的工具定义，Claude 的 preserved thinking 下有风险，先不动。
 - MCP 的 `get_briefing` 根规则全文和 server instructions 重复：不是每个客户端都把 instructions 给模型看，设计上 briefing 是唯一保证送到的地方，保留。
 
-### 9.24 Meta Muse 作为订阅类客户端（2026-11-22；`ai/catalog.py` 的 `muse_plan_mcp`、迁移 `995_muse_plan_mcp.sql`、`tests/test_mcp_muse.py`）
+### 9.24 Meta Muse 作为订阅类客户端（2026-11-22；`ai/catalog.py` 的 `muse_plan_mcp`、迁移 `1220_muse_plan_mcp.sql`、`tests/test_mcp_muse.py`）
 和 Claude / ChatGPT / Antigravity 一样走远程 `/mcp`，没有新的 API 面。下面只认 Meta 自己的页面（日期是页面上写的或按「N days ago」换算的），其余标「未核实」。
 
 - **自定义连接器怎么加**（[How Muse works with Connectors](https://www.meta.com/help/artificial-intelligence/1687253048996149/)，约 2026-11-18 更新）：目录里没有的服务，「ask Muse to create a Custom Connector」，Muse 在对话里引导，可能要取服务的 API 信息，凭证存进 Muse 的 Secure Credentials Store；Meta 不审核自定义连接器。**官方没有「填服务器地址」的设置项**，第三方说过的 Settings → Connectors → Add custom connector 在官方页面里找不到。目录里的连接器才是 Settings → Connectors → Connect → Continue。
