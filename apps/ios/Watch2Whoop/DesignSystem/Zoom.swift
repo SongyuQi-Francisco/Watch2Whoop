@@ -60,20 +60,20 @@ extension View {
     environment(\.zoomScope, ZoomScope(namespace: namespace, trail: trail))
   }
 
-  /// This view is a door: the level opened from it (`ZoomTrail.open(id, to:)`) grows out of it.
-  func zoomDoor(_ id: String) -> some View { modifier(ZoomDoor(id: id)) }
+  /// This view is a door: the level opened from it (`ZoomTrail.open(id, to:)`) grows out of it. nil: not a door.
+  func zoomDoor(_ id: String?) -> some View { modifier(ZoomDoor(id: id)) }
 
   /// This page is the level `route`: it grows out of the door it was opened from, if any.
   func zoomLevel(_ route: AnyHashable) -> some View { modifier(ZoomLevel(route: route)) }
 }
 
 private struct ZoomDoor: ViewModifier {
-  let id: String
+  let id: String?
   @Environment(\.zoomScope) private var scope
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   @ViewBuilder func body(content: Content) -> some View {
-    if #available(iOS 18.0, *), let scope, ZoomTransition.enabled(reduceMotion: reduceMotion) {
+    if #available(iOS 18.0, *), let scope, let id, ZoomTransition.enabled(reduceMotion: reduceMotion) {
       content.matchedTransitionSource(id: id, in: scope.namespace)
     } else {
       content

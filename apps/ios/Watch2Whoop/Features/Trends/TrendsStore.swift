@@ -155,10 +155,14 @@ final class TrendsStore: ObservableObject {
 
   /// Whether a range picked here is the one the 身体 tab starts with next time (off for a metric page's own switch).
   private let remember: Bool
+  /// Someone else's range (a metric page of the read-only view): their documents, in that view's memory only. No database,
+  /// no local status cards, no local series: their numbers are the server's copy.
+  private let member: MemberViewStore?
 
   /// `range` nil = the range picked last in this run; `end` = the range's last day (nil = the user's today).
   init(session: AccountSession? = nil, range: TrendRange? = nil, end: String? = nil, remember: Bool = true) {
     self.remember = remember
+    self.member = nil
     self.range = range ?? Self.sessionRange
     self.end = end
     // frame-meter runs (PerfProbe): `W2W_PERF_TRENDS_DAYS=365` picks the range
@@ -169,7 +173,17 @@ final class TrendsStore: ObservableObject {
     if let session { observe(session) }
   }
 
-  var isObserving: Bool { cancellable != nil }
+  /// Someone else's range, read through `member` (MemberViewStore: GET-only, their path, the `readable` allow-list).
+  init(member: MemberViewStore, range: TrendRange, end: String?) {
+    self.remember = false
+    self.member = member
+    self.range = range
+    self.end = end
+    self.userToday = member.today
+  }
+
+  /// Someone else's store has nothing to observe: it counts as observing, so no page starts my own observation on it.
+  var isObserving: Bool { cancellable != nil || member != nil }
 
   func observe(_ session: AccountSession) {
     self.session = session
@@ -187,6 +201,12 @@ final class TrendsStore: ObservableObject {
   }
 
   func setRange(_ r: TrendRange) {
+    if member != nil {
+      guard r != range else { return }
+      range = r
+      Task { await refresh() }
+      return
+    }
     guard r != range, let session else { return }
     range = r
     if remember { Self.sessionRange = r }
@@ -218,6 +238,7 @@ final class TrendsStore: ObservableObject {
 
   /// The range's documents from the server, then the phone's own status cards and (package `series` on) its own series.
   func refresh() async {
+    if let member { return await refresh(member) }
     guard let session else { return }
     loading = true
     let days = range.docDays, end = self.end
@@ -226,6 +247,19 @@ final class TrendsStore: ObservableObject {
     loading = false
     computeLocal()
     SeriesLocal.refresh(session: session, [.trends(days: days, end: end), .vo2(end: end), .details(end: end)], userToday: userToday)
+  }
+
+  /// Someone else's range: the same three documents, from the server, kept in the view's memory.
+  private func refresh(_ m: MemberViewStore) async {
+    loading = true
+    let days = range.docDays, e = end, u = m.user
+    let t = Endpoint.trends(days: days, end: e, user: u), v = Endpoint.vo2max(end: e, user: u), s = Endpoint.sleepDetails(end: e, user: u)
+    await m.load([t, v, s])
+    guard days == range.docDays, e == end else { return }   // the range changed while this one loaded
+    loading = false
+    offline = m.state(t) == .offline
+    let p = m.json(t).flatMap(TrendsData.init(json:)).map { TrendsPage(data: $0, local: nil, vo2: m.json(v), sleep: m.json(s)) }
+    if p != page { page = p }
   }
 
   /// The phone's own status cards for the end date (`TrendsStore.computeLocal(session:day:)`).

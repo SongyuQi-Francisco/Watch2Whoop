@@ -225,7 +225,7 @@ final class TodayGlanceTests: XCTestCase {
   }
 
   private static let noop = TodayGlanceActions(
-    level: { _ in }, calendar: {}, backToToday: {}, step: { _ in }, syncTap: {}, syncCenter: {},
+    level: { _, _ in }, calendar: {}, backToToday: {}, step: { _ in }, syncTap: {}, syncCenter: {},
     recoveryNext: { _ in }, food: {}, circles: {})
 
   /// A day without a recovery score and with `flag` as the reason.

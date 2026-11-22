@@ -244,9 +244,12 @@ struct SleepDetailView: View {
 
     if !m.notes.isEmpty || m.aiPrompt != nil { SleepNotesSection(notes: m.notes, prompt: m.aiPrompt).padding(.top, 22) }
 
-    NavigationLink { BedtimeGoalPage() } label: { BedtimeGoalRow() }
-      .buttonStyle(PressScale())
-      .padding(.top, 22)
+    // my own bedtime goal: not on someone else's night
+    if member == nil {
+      NavigationLink { BedtimeGoalPage() } label: { BedtimeGoalRow() }
+        .buttonStyle(PressScale())
+        .padding(.top, 22)
+    }
   }
 
   private func section(_ t: String) -> some View { SectionHeader(title: t).padding(.top, 22).padding(.bottom, 10) }

@@ -37,7 +37,7 @@ struct TrendCardView: View {
     VStack(alignment: .leading, spacing: 8) {
       HStack(alignment: .top, spacing: 8) {
         VStack(alignment: .leading, spacing: 2) {
-          Button { open(card.sheet ?? .explain(key: card.explain, title: card.title, figures: card.figures)) } label: {
+          Button { open(.explain(key: card.explain, title: card.title, figures: card.figures)) } label: {
             HStack(spacing: 4) {
               Text(card.title).font(Typo.label).foregroundColor(Palette.text2).lineLimit(1)
               Icon(.info, size: 12).foregroundColor(Palette.text3)

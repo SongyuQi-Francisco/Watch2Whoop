@@ -146,38 +146,6 @@ struct Sparkline: View {
   }
 }
 
-/// A number tile you can tap (MetricTile inside a button).
-struct TapTile: View {
-  let metric: TodayModel.Metric
-  let action: (TodayModel.Action) -> Void
-
-  var body: some View {
-    let tile = MetricTile(label: metric.label, value: metric.value, unit: metric.unit, tone: metric.tone)
-    if let a = metric.action {
-      Button { action(a) } label: { tile }.buttonStyle(PressScale())
-    } else {
-      tile
-    }
-  }
-}
-
-/// A section title with an optional trailing button.
-struct SectionTitle: View {
-  let title: String
-  var trailing: String?
-  var action: (() -> Void)?
-
-  var body: some View {
-    HStack {
-      SectionHeader(title: title)
-      if let trailing, let action {
-        Button(action: action) { Text(trailing).font(Typo.label).foregroundColor(Palette.text2) }
-          .buttonStyle(PressScale())
-      }
-    }
-  }
-}
-
 /// The 「问 AI」 button (Jarvis is black and white: text colour on the inverted background).
 struct AskAIButton: View {
   let prompt: String

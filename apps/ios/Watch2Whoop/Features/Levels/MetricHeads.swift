@@ -32,7 +32,9 @@ struct StrainDayHead: View {
         BulletGauge(value: s.value, max: s.max, target: s.target, step: 1, majors: s.majors, tone: s.tone).padding(.top, 14)
       }
       VStack(spacing: 0) {
-        ForEach(model.glance.strainRows) { r in L1RowView(row: r, labelWidth: LevelParams.rowLabelWidth) { open(r) } }
+        ForEach(model.glance.strainRows) { r in
+          L1RowView(row: r, labelWidth: LevelParams.rowLabelWidth) { open(r) }.zoomDoor("metric.strain.head.\(r.id)")
+        }
       }
       .padding(.top, 12)
     }
@@ -48,11 +50,13 @@ struct SleepNightHead: View {
   let explain: (String, String) -> Void
   let night: (String?) -> Void
   var bedtime: (() -> Void)?
+  /// The zoom door of 「整晚」 (`metric.<id>.night`).
+  var nightDoor: String?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       TodaySleepL1(session: session, date: date, explain: explain)
-      door(.moon, tr("整晚", "The night")) { night(date) }
+      door(.moon, tr("整晚", "The night")) { night(date) }.zoomDoor(nightDoor)
       if let bedtime { door(.clock, tr("入睡目标", "Bedtime goal"), bedtime) }
     }
   }

@@ -99,24 +99,37 @@ final class MemberViewTests: XCTestCase {
     await s.start()
     XCTAssertEqual(s.phase, .ready)
     XCTAssertEqual(s.today, "2026-01-02")
-    XCTAssertEqual(s.tabs, [.today, .trends, .sleep, .record])
+    XCTAssertTrue(s.scores, "the dial and the readings")
+    XCTAssertTrue(s.hasDay, "今日详情")
+    XCTAssertEqual(s.pages, [.training], "no food, health or report door: not shared")
 
     // everything shared
     PathStub.replies[today] = (200, #"{"date": "2026-01-02", "scores": {}, "nutrition": {"intake": {}}}"#)
     for p in ["memory", "water", "journal/items", "supplements", "labs/summary", "events"] { PathStub.replies["/v1/users/42/\(p)"] = (200, "[]") }
+    PathStub.replies["/v1/users/42/reports"] = (200, "{}")
     s = store()
     await s.start()
-    XCTAssertEqual(s.tabs, MemberTab.allCases)
+    XCTAssertEqual(s.pages, MemberPage.allCases)
 
-    // an ordinary answer with nothing shared
-    PathStub.replies = [today: (200, #"{"date": "2026-01-02", "scores": {"error": "x", "code": "forbidden"}}"#)]
-    for p in ["trends", "sleep/nights", "memory", "water", "training/calendar", "journal/items", "supplements", "labs/summary", "events"] {
+    // only their food: no dial, no 今日详情, just the 饮食 door
+    PathStub.replies = [today: (200, #"{"date": "2026-01-02", "scores": {"error": "x", "code": "forbidden"}, "nutrition": {"intake": {}}}"#)]
+    for p in ["trends", "memory", "water", "training/calendar", "journal/items", "supplements", "labs/summary", "events", "reports"] {
       PathStub.replies["/v1/users/42/\(p)"] = (403, "{}")
     }
     s = store()
     await s.start()
+    XCTAssertEqual(s.phase, .ready)
+    XCTAssertFalse(s.scores)
+    XCTAssertFalse(s.hasDay)
+    XCTAssertEqual(s.pages, [.food])
+
+    // an ordinary answer with nothing shared
+    PathStub.replies[today] = (200, #"{"date": "2026-01-02", "scores": {"error": "x", "code": "forbidden"}}"#)
+    s = store()
+    await s.start()
     XCTAssertEqual(s.phase, .notShared)
-    XCTAssertEqual(s.tabs, [])
+    XCTAssertEqual(s.pages, [])
+    XCTAssertFalse(s.hasDay)
 
     // the share is gone
     PathStub.replies = [today: (403, "{}")]
@@ -192,7 +205,8 @@ final class MemberViewTests: XCTestCase {
     XCTAssertNil(s.json(s.todayRequest(nil)))
     XCTAssertEqual(s.state(s.todayRequest(nil)), .loading)
     XCTAssertNil(s.today)
-    XCTAssertEqual(s.tabs, [])
+    XCTAssertEqual(s.pages, [])
+    XCTAssertFalse(s.scores)
     // an answer on its way after closing goes nowhere
     let before = PathStub.paths.count
     await s.load([s.todayRequest(nil)])
@@ -208,6 +222,89 @@ final class MemberViewTests: XCTestCase {
     XCTAssertEqual(c.requestCachePolicy, .reloadIgnoringLocalCacheData)
     let api = APIClient(baseURL: URL(string: "https://body.example.com")!, token: { "example-token" })
     XCTAssertEqual(try api.uncached().urlRequest(.get("/v1/users/42/today")).value(forHTTPHeaderField: "Authorization"), "Bearer example-token")
+  }
+
+  // MARK: - 2.1.0: the same levels as my 今天, read-only, nothing beyond the share
+
+  /// The allow-list is the contract with the server's share scopes: moving the view onto the levels did not widen it.
+  func testReadableListIsUnchanged() {
+    XCTAssertEqual(MemberViewStore.readable, [
+      "today", "trends", "vo2max", "sleep/details", "sleep/nights", "sleep/night", "days", "strain-coach", "health-monitor", "memory",
+      "reports", "journal/analysis", "journal/items", "journal/frequent", "journal", "training/day", "training/calendar", "training/week",
+      "training/muscle-load", "exercises", "water", "recipes", "supplements", "labs/summary", "labs", "events", "explain",
+    ])
+  }
+
+  /// Their day for the first glance and 今日详情: a refused block is not there (no food face, no reminders), the self-help step
+  /// under an empty dial (consent, sync, sleep help: about my own data) is never offered, and every request is theirs.
+  func testTheirDayDrawsOnlyWhatIsShared() async {
+    let refused = #"{"error": "x", "code": "forbidden"}"#
+    PathStub.replies = [
+      "/v1/users/42/today": (200, #"{"date": "2026-01-02", "scores": "# + refused + #", "nutrition": "# + refused + #", "reminders": "# + refused + "}"),
+      "/v1/users/42/training/calendar": (403, "{}"),
+    ]
+    let s = store()
+    await s.start()
+    let d = MemberDayStore(member: s)
+    await d.load()
+    XCTAssertTrue(d.hasData)
+    XCTAssertNil(d.model.recoveryNext, "no self-help step on someone else's dial")
+    XCTAssertEqual(d.model.reminders, [])
+    XCTAssertNil(d.nutrition, "no 饮食 face")
+    XCTAssertNil(d.month, "no 训练 face")
+    XCTAssertFalse(s.scores, "no dial, no readings")
+    XCTAssertFalse(PathStub.paths.isEmpty)
+    XCTAssertTrue(PathStub.paths.allSatisfy { $0.hasPrefix("/v1/users/42/") }, "\(PathStub.paths)")
+
+    // the day moves, never past their today, and stays theirs
+    d.step(1)
+    XCTAssertNil(d.date)
+    d.step(-1)
+    XCTAssertEqual(d.date, "2026-01-01")
+  }
+
+  /// A metric page of someone else reads their range through the view (no database, nothing to observe), switches range the
+  /// same way, and asks only for their paths.
+  func testTheirMetricPageReadsOnlyThem() async throws {
+    let doc = TodayCoreTests.doc(series: ["hrv": TodayCoreTests.series(TodayCoreTests.steady(50, spread: 4, day: 55))], end: "2026-01-02")
+    let json = String(data: try JSONSerialization.data(withJSONObject: doc), encoding: .utf8)!
+    PathStub.replies = ["/v1/users/42/trends": (200, json)]
+    let s = store()
+    let t = TrendsStore(member: s, range: .week, end: nil)
+    XCTAssertTrue(t.isObserving, "nothing of mine to observe")
+    await t.refresh()
+    XCTAssertEqual(t.page?.data.series["hrv"]?.values.last ?? nil, 55)
+    t.setRange(.month)
+    for _ in 0..<100 where t.loading || PathStub.paths.count < 4 { try await Task.sleep(nanoseconds: 10_000_000) }
+    XCTAssertEqual(t.range, .month)
+    XCTAssertTrue(PathStub.paths.allSatisfy { $0.hasPrefix("/v1/users/42/") }, "\(PathStub.paths)")
+  }
+
+  /// No write entry in the view's own code: it sends nothing but GETs through `MemberViewStore.load`, never syncs, never asks
+  /// an AI, never opens my forms. (The shared pages it reuses check `memberView` themselves: see the hosted test below.)
+  func testTheViewItselfHasNoWriteEntries() throws {
+    let dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+      .appendingPathComponent("Watch2Whoop/Features/MemberView")
+    let files = try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil).filter { $0.pathExtension == "swift" }
+    XCTAssertGreaterThanOrEqual(files.count, 3)
+    for f in files {
+      let code = ReachabilityTests.release(try String(contentsOf: f, encoding: .utf8))
+      for token in [".post", ".put", ".patch", ".delete", "enqueue(", "saveDoc", "askAI", "AskAI", "JarvisRouter", "HealthSyncService", "syncNow",
+                    "SyncNudges", "TodaySyncCapsule", "TodayFoodFace", "TodayCirclesFace", "WeightSheet", ".weight", "setReminder", "api.data(",
+                    "session.api", "session.db"] {
+        XCTAssertFalse(code.contains(token), "\(f.lastPathComponent) has \(token)")
+      }
+    }
+  }
+
+  /// 今日详情 is the same page for me and for them; on theirs nothing writes or leads to my own data: no ＋ on 体重, the
+  /// weight card opens its explanation instead of 记体重, no sync nudges. (The page reads `memberView` for this.)
+  func testTheirDayDetailHasNoWriteControls() {
+    XCTAssertEqual(DayWrites.of(isPast: false, member: true), DayWrites(logWeight: false, weightCard: false, syncNudges: false))
+    XCTAssertEqual(DayWrites.of(isPast: true, member: true), DayWrites(logWeight: false, weightCard: false, syncNudges: false))
+    // my own day keeps them (the rule is not "never")
+    XCTAssertEqual(DayWrites.of(isPast: false, member: false), DayWrites(logWeight: true, weightCard: true, syncNudges: true))
+    XCTAssertEqual(DayWrites.of(isPast: true, member: false), DayWrites(logWeight: false, weightCard: true, syncNudges: false))
   }
 
   // MARK: - the sheets' stores do nothing without a session

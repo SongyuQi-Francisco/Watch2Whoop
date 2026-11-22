@@ -39,6 +39,9 @@ enum AppTab: String, CaseIterable, Identifiable {
 struct MainTabView: View {
   @EnvironmentObject private var session: AccountSession
   @SceneStorage("w2w.tab") private var selection: AppTab = .today
+  /// Someone else's view grows out of the member card or row it was opened from (DesignSystem/Zoom.swift).
+  @Namespace private var zoomSpace
+  @StateObject private var zoom = ZoomTrail()
 
   var body: some View {
     TabView(selection: $selection) {
@@ -57,9 +60,12 @@ struct MainTabView: View {
     .environment(\.askAI, AskAIAction { p in Task { @MainActor in JarvisRouter.ask(prompt: p) } })   // N6
     .devTab($selection)                                                                    // N5: Debug screenshots
     .fullScreenCover(item: $session.viewing) { p in                                        // someone else's pages, read-only
-      MemberScreen(person: p, client: session.api.uncached(), tab: Self.devMemberTab, exit: { session.viewing = nil })
+      MemberScreen(person: p, client: session.api.uncached(), devPath: Self.devMemberPath, exit: { session.viewing = nil })
         .environmentObject(session)
+        .zoomLevel(p.zoomRoute)
+        .zoomScope(zoomSpace, zoom)
     }
+    .zoomScope(zoomSpace, zoom)
     .onChange(of: session.viewing) { p in if p == nil { Task { await session.refreshViewable() } } }
     .task { await openDevMember() }
     .task { await devThemeFlip() }
@@ -79,8 +85,8 @@ struct MainTabView: View {
     selection = d.tab
   }
 
-  /// `SIMCTL_CHILD_W2W_DEV_MEMBER=<user id>[:today|trends|sleep|food|record|health]` (Debug, simulator screenshots): opens that
-  /// person's read-only view, when the server says they share with me.
+  /// `SIMCTL_CHILD_W2W_DEV_MEMBER=<user id>[:<path>]` (Debug, simulator screenshots): opens that person's read-only view,
+  /// when the server says they share with me; `<path>` opens levels and pages in it (`MemberScreen.devOpen`).
   private func openDevMember() async {
     #if DEBUG
     guard let v = RecordDevShot.value("W2W_DEV_MEMBER"), let id = Int(v.split(separator: ":")[0]) else { return }
@@ -105,11 +111,11 @@ struct MainTabView: View {
     #endif
   }
 
-  private static var devMemberTab: MemberTab {
+  private static var devMemberPath: String? {
     #if DEBUG
-    if let t = RecordDevShot.value("W2W_DEV_MEMBER")?.split(separator: ":").dropFirst().first.flatMap({ MemberTab(rawValue: String($0)) }) { return t }
+    if let v = RecordDevShot.value("W2W_DEV_MEMBER"), let i = v.firstIndex(of: ":") { return String(v[v.index(after: i)...]) }
     #endif
-    return .today
+    return nil
   }
 }
 

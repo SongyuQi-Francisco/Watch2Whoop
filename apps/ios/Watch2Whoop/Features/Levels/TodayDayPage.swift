@@ -1,8 +1,32 @@
 import SwiftUI
 
-/// What 今日详情 asks of `TodayView` (the tab's state stays there).
+/// What 今日详情 reads: my own day (`TodayStore`, the local database) or someone else's (`MemberDayStore`, memory only).
+@MainActor
+protocol TodayDaySource: ObservableObject {
+  var model: TodayModel { get }
+  var hasData: Bool { get }
+  func refresh() async
+}
+
+extension TodayStore: TodayDaySource {}
+
+/// The controls of 今日详情 that write, or lead to my own data (unit-tested in `MemberViewTests`): on my own day 记体重 (the ＋
+/// on 体重 today, the weight card) and the sync nudges; a past day has neither the ＋ nor the nudges; someone else's day
+/// (`memberView` set) none of them.
+struct DayWrites: Equatable {
+  var logWeight: Bool
+  var weightCard: Bool
+  var syncNudges: Bool
+
+  static func of(isPast: Bool, member: Bool) -> DayWrites {
+    DayWrites(logWeight: !isPast && !member, weightCard: !member, syncNudges: !isPast && !member)
+  }
+}
+
+/// What 今日详情 asks of the page that owns the stack (`TodayView`, `MemberScreen`; their state stays there).
 struct TodayDayActions {
-  var push: (LevelRoute) -> Void
+  /// The next level and the door it grows out of (`.zoomDoor`).
+  var push: (LevelRoute, String?) -> Void
   /// Up one level (the small dial): the first glance.
   var up: () -> Void
   var sheet: (TodaySheet) -> Void
@@ -16,24 +40,28 @@ struct TodayDayActions {
 /// into the header (it is the way up), the ladder shows two of three. Then 训练 · 今晚 · 提醒 as chips, a jump rail with one
 /// icon per category, every metric of the day in 2.0.0's groups and order (each row a door to its metric page; 体重 also
 /// has ＋ = 记体重), 当前状态, 需要注意, 体征, 今日核心 and the saved 身体状态 cards (lab history). A swipe changes the day.
-struct TodayDayPage: View {
+///
+/// Someone else's 今日详情 (`MemberScreen`, `memberView` set) is the same page, read-only: no sync nudges, no ＋ on 体重,
+/// their weight card opens its explanation; what their share leaves out is simply not there.
+struct TodayDayPage<Source: TodayDaySource>: View {
   let anchor: String?
-  @ObservedObject var store: TodayStore
-  let session: AccountSession
+  @ObservedObject var store: Source
   let run: TodayDayActions
-  /// The slim look's quote (flag `slim_mode`), at the end of the day.
+  /// After the day: the slim look's quote (flag `slim_mode`) on my own page, the doors to their records on someone else's.
   var footer: AnyView?
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.memberView) private var member
   @State private var jumped: String?
 
   private var m: TodayModel { store.model }
+  private var writes: DayWrites { .of(isPast: m.isPast, member: member != nil) }
 
   var body: some View {
     ScrollViewReader { proxy in
       ScrollView(.vertical, showsIndicators: false) {
         LazyVStack(alignment: .leading, spacing: 0) {
           header
-          if !m.isPast {
+          if writes.syncNudges {
             SyncNudges(card: m.sync, coverage: m.coverage) { await store.refresh() }.padding(.top, 8)
           }
           chips
@@ -129,8 +157,8 @@ struct TodayDayPage: View {
     }
     ForEach(groups) { g in
       LevelGroupHeader(icon: LevelGroup.icon(g.id), title: g.title, count: g.rows.count).padding(.top, 8).id("group.\(g.id)")
-      LevelRowList(rows: g.rows, open: { run.push(.metric($0.id)) },
-                   extra: m.isPast ? [:] : ["weight": (tr("记体重", "Log weight"), { run.sheet(.weight) })])
+      LevelRowList(rows: g.rows, door: "day.row", open: { run.push(.metric($0.id), "day.row.\($0.id)") },
+                   extra: writes.logWeight ? ["weight": (tr("记体重", "Log weight"), { run.sheet(.weight) })] : [:])
     }
     if !tiles.isEmpty {
       LevelGroupHeader(icon: .circleGauge, title: tr("当前状态", "Current status"), count: tiles.count).padding(.top, 8).id("group.status")
@@ -141,7 +169,7 @@ struct TodayDayPage: View {
     }
     if !m.attention.isEmpty {
       LevelGroupHeader(icon: .circleAlert, title: tr("需要注意", "Needs attention"), count: m.attention.count).padding(.top, 14).id("attention")
-      AttentionList(items: m.attention) { open($0.open) }.padding(.top, 10)
+      AttentionList(items: m.attention, door: "day.attention") { open($0.open, door: "day.attention.\($0.id)") }.padding(.top, 10)
     }
     if !m.vitals.isEmpty {
       let c = TodayGlanceRules.vitalsCount(m.vitals)
@@ -150,14 +178,16 @@ struct TodayDayPage: View {
           Text("\(c.ok)/\(c.total)").font(.system(size: 12, weight: .medium).monospacedDigit()).foregroundColor(Palette.text2)
         }
       VStack(alignment: .leading, spacing: 14) {
-        ForEach(m.vitals) { v in MonitorRow(vital: v) { k in metricOrExplain(k, v.name) } }
+        ForEach(m.vitals) { v in
+          MonitorRow(vital: v) { k in metricOrExplain(k, v.name, door: "day.vital.\(v.id)") }.zoomDoor("day.vital.\(v.id)")
+        }
       }
       .padding(.top, 12)
     }
     if !m.core.isEmpty {
       LevelGroupHeader(icon: .zap, title: tr("今日核心", "Today's core"), count: nil).padding(.top, 14).id("core")
       LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-        ForEach(m.core) { c in CoreCardView(card: c) { open(c.open) } }
+        ForEach(m.core) { c in CoreCardView(card: c) { open(c.open, door: "day.core.\(c.id)") }.zoomDoor("day.core.\(c.id)") }
       }
       .padding(.top, 10)
     }
@@ -180,22 +210,23 @@ struct TodayDayPage: View {
   // MARK: where the blocks' taps go
 
   /// An attention item or a core card: a metric of the day opens its page, a status card its sheet.
-  private func open(_ o: TodayOpen) {
+  private func open(_ o: TodayOpen, door: String) {
     switch o {
-    case .coach: run.push(.metric("strain"))
-    case .metric(let k, let t): metricOrExplain(k, t)
+    case .coach: run.push(.metric("strain"), door)
+    case .metric(let k, let t): metricOrExplain(k, t, door: door)
     case .status(let t): run.sheet(.status(t))
     }
   }
 
-  private func metricOrExplain(_ key: String, _ title: String) {
-    if MetricCatalog.conf(key) != nil { run.push(.metric(key)) }
+  private func metricOrExplain(_ key: String, _ title: String, door: String) {
+    if MetricCatalog.conf(key) != nil { run.push(.metric(key), door) }
     else { run.sheet(.explain(kind: "metric", key: key, title: title)) }
   }
 
-  /// A saved status card: weight = 记体重, a lab value = its history, anything else its explanation.
+  /// A saved status card: weight = 记体重 (someone else's: its explanation), a lab value = its history, anything else its
+  /// explanation.
   private func openStatus(_ it: TodayModel.StatusItem) {
-    if it.key == "weight" { run.sheet(.weight) }
+    if it.key == "weight" && writes.weightCard { run.sheet(.weight) }
     else if let lab = it.labKey { run.sheet(.detail(.lab(key: lab, title: it.label))) }
     else { run.sheet(.explain(kind: "status", key: it.key, title: it.label)) }
   }
