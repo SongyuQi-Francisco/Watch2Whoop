@@ -245,42 +245,12 @@ final class TodayDetailsTests: XCTestCase {
     XCTAssertNotEqual(m, SleepNightModel(json: ["date": "2026-03-31"]), "a change in the notes redraws")
   }
 
-  // MARK: - Trends: 180 days and folds
+  // MARK: - Trends: 180 days
 
   func testTrendRangeHasSixMonths() {
     XCTAssertEqual(TrendRange(rawValue: 180), .halfYear)
     XCTAssertEqual(TrendRange.halfYear.docDays, 180)
     XCTAssertEqual(TrendRange.allCases.map(\.rawValue), [1, 7, 30, 90, 180, 365])
-  }
-
-  func testFoldedCategoriesRoundTrip() {
-    var raw = ""
-    XCTAssertFalse(TrendsFold.contains(raw, "sleep"))
-    raw = TrendsFold.toggled(raw, "sleep")
-    raw = TrendsFold.toggled(raw, "long")
-    XCTAssertTrue(TrendsFold.contains(raw, "sleep"))
-    XCTAssertTrue(TrendsFold.contains(raw, "long"))
-    XCTAssertFalse(TrendsFold.contains(raw, "stress"))
-    raw = TrendsFold.toggled(raw, "sleep")
-    XCTAssertFalse(TrendsFold.contains(raw, "sleep"))
-    XCTAssertEqual(raw, "long")
-  }
-
-  func testFoldedHeaderShowsItsCategorysStatus() throws {
-    let hrv: [String: Any] = ["status": "balanced", "label": "平衡", "avg7_ms": 50.0, "band_ms": [40.0, 60.0], "nights": 7]
-    let status = TrendStatus(status: ["hrv_status": hrv], local: [])
-    let s = try XCTUnwrap(TrendsFold.summary("recovery", status))
-    XCTAssertEqual(s.text, "平衡")
-    XCTAssertEqual(s.tone, .good)
-    XCTAssertNil(TrendsFold.summary("long", status))
-    XCTAssertNil(TrendsFold.summary("strain", status))
-  }
-
-  func testBodyAgeCardOpensItsOwnSheet() {
-    let d = TodayCoreTests.page(TodayCoreTests.doc(series: ["body_age": TodayCoreTests.series(TodayCoreTests.steady(30, spread: 0.1, day: 30))]))
-    let page = TrendsPage(data: d, local: nil, vo2: nil, sleep: nil)
-    let card = TrendCards.groups(page).first { $0.id == "long" }?.cards.first { $0.id == "body_age" }
-    XCTAssertEqual(card?.sheet?.id, "bodyAge")
   }
 
   // MARK: - day buttons

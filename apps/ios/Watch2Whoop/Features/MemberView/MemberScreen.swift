@@ -1,103 +1,73 @@
 import SwiftUI
 
-/// Route of the sleep night page inside the read-only view of someone else.
-struct SleepRoute: Hashable {
-  var date: String?
+/// A pushed page of someone else's view: a level of their 今天 (the same pages as mine) or one of their records.
+enum MemberRoute: Hashable {
+  case level(LevelRoute)
+  case page(MemberPage)
 }
 
-/// Someone else's pages, read-only (app.js viewMember / `#viewing`): opened from a member card or 「我」, over the whole app, so
-/// neither the tab bar nor Jarvis is reachable behind it. The banner stays on top with the way out; closing drops
-/// everything that was fetched (`MemberViewStore`). While the app is not in front the content is covered, so the system's
-/// app-switcher picture holds nothing of theirs.
+/// Someone else's pages, read-only (2.1.0; app.js viewMember / `#viewing`). The same three levels as my 今天 — the first
+/// glance (dial, two readings, their faces), 今日详情, a metric page — drawn by the same views from their documents in
+/// memory (`MemberViewStore`, `MemberDayStore`), plus their food, training, health record and weekly report as pages.
+/// Opened from a member card or 「我 → 共享给我的」 over the whole app, so neither the tab bar nor Jarvis is reachable behind
+/// it. The bar on top says whose data this is on every level and is the way out; closing drops everything that was fetched.
+/// Nothing can be written from here: no Jarvis, no sync, no ＋. While the app is not in front the content is covered, so the
+/// system's app-switcher picture holds nothing of theirs.
 struct MemberScreen: View {
   let exit: () -> Void
   @EnvironmentObject private var session: AccountSession
   @Environment(\.scenePhase) private var scene
   @StateObject private var store: MemberViewStore
-  @State private var tab: MemberTab = .today
-  @State private var path: [SleepRoute] = []
-  @State private var explain: TrendsSheet?
-  @State private var trendsRange: TrendRange = .today
-  @State private var trendsEnd: String?
-  @StateObject private var inertTrends = TrendsStore()
+  @StateObject private var day: MemberDayStore
+  @State private var path: [MemberRoute] = []
+  @Namespace private var zoomSpace
+  @StateObject private var zoom = ZoomTrail()
+  @State private var sheet: TodaySheet?
+  @State private var trainingDay: MemberDayRef?
+  @StateObject private var inert = TodayStore()   // the sheets' parameter; without a session it reads and writes nothing
+  /// Debug screenshots: the levels / pages to open (`W2W_DEV_MEMBER=<id>:<path>`).
+  private let devPath: String?
 
-  init(person: ViewablePerson, client: APIClient, tab: MemberTab = .today, exit: @escaping () -> Void) {
-    _store = StateObject(wrappedValue: MemberViewStore(person: person, client: client))
-    _tab = State(initialValue: tab)
+  init(person: ViewablePerson, client: APIClient, devPath: String? = nil, exit: @escaping () -> Void) {
+    let s = MemberViewStore(person: person, client: client)
+    _store = StateObject(wrappedValue: s)
+    _day = StateObject(wrappedValue: MemberDayStore(member: s))
+    self.devPath = devPath
     self.exit = exit
   }
 
   var body: some View {
-    // not a safeAreaInset: outside a NavigationStack it does not move the stack's root, which would lie under the banner
+    // not a safeAreaInset: outside a NavigationStack it does not move the stack's root, which would lie under the bar
     VStack(spacing: 0) {
-      banner
+      MemberBar(person: store.person, exit: exit)
       NavigationStack(path: $path) {
-        content
+        root
           .toolbar(.hidden, for: .navigationBar)
-          .navigationDestination(for: SleepRoute.self) { r in
-            SleepDetailView(initialDate: r.date) { key, title in explain = .explain(key: key, title: title) }
-          }
+          .navigationDestination(for: MemberRoute.self) { r in destination(r).zoomLevel(r) }
       }
+      .zoomScope(zoomSpace, zoom)
+      .sheet(item: $trainingDay) { ref in trainingSheet(ref) }
     }
+    .background(Palette.bg.ignoresSafeArea())
     .environment(\.memberView, store)
-    .sheet(item: $explain) { s in
-      TrendsSheetView(sheet: s, page: nil, end: nil, store: inertTrends, close: { explain = nil })
-        .environmentObject(session)
-        .environment(\.memberView, store)
-    }
+    .sheet(item: $sheet) { s in sheetView(s) }
     .overlay { if scene != .active { Palette.bg.ignoresSafeArea() } }
     .task {
       await store.start()
+      await day.load()
       devOpen()
     }
     .onDisappear { store.close() }
   }
 
-  /// `SIMCTL_CHILD_W2W_DEV_MEMBER_OPEN=night|explain` (Debug, simulator screenshots): the sleep detail page, or an explain sheet.
-  private func devOpen() {
-    #if DEBUG
-    switch RecordDevShot.value("W2W_DEV_MEMBER_OPEN") {
-    case "night": path.append(SleepRoute(date: nil))
-    case "explain": explain = .explain(key: "hrv", title: "HRV")
-    default: break
-    }
-    #endif
-  }
+  // MARK: - level 1: the first glance
 
-  // MARK: - banner
-
-  private var banner: some View {
-    let name = store.person.shownName
-    return HStack(spacing: 10) {
-      AvatarView(url: store.person.avatar, name: store.person.displayName, size: 30)
-      VStack(alignment: .leading, spacing: 1) {
-        Text(tr("正在查看：\(name)（只读）", "Viewing \(name) (read-only)"))
-          .font(Typo.bodyStrong).foregroundColor(Palette.text).lineLimit(1).minimumScaleFactor(0.8)
-        if store.person.remark?.isEmpty == false {
-          Text(store.person.displayName).font(Typo.caption).foregroundColor(Palette.text2).lineLimit(1)
-        }
-      }
-      Spacer(minLength: 6)
-      Button(action: exit) {
-        Text(tr("退出", "Exit")).font(Typo.bodyStrong).foregroundColor(Palette.onAccent)
-          .padding(.horizontal, 14).frame(minHeight: 36)
-          .background(Capsule().fill(Palette.accent))
-      }
-      .buttonStyle(PressScale())
-    }
-    .padding(.horizontal, Metrics.gutter).padding(.vertical, 8)
-    .background(Palette.surface.ignoresSafeArea(edges: .top))
-    .overlay(Rectangle().fill(Palette.hair).frame(height: 1), alignment: .bottom)
-  }
-
-  // MARK: - pages
-
-  @ViewBuilder private var content: some View {
+  @ViewBuilder private var root: some View {
     switch store.phase {
     case .loading:
       ProgressView().tint(Palette.text3).frame(maxWidth: .infinity, maxHeight: .infinity).background(Palette.bg.ignoresSafeArea())
     case .ready:
-      pages
+      glance
     case .notShared:
       message(tr("未共享", "Not shared"), retry: false)
     case .offline:
@@ -107,11 +77,36 @@ struct MemberScreen: View {
     }
   }
 
+  private var glance: some View {
+    ScrollView(.vertical, showsIndicators: false) {
+      VStack(spacing: 0) {
+        TodayGlancePage(model: day.model, isPast: day.model.isPast, circlesOn: false, day: day.date, session: session, run: glanceActions,
+                        member: .init(scores: store.scores, detail: store.hasDay),
+                        memberFaces: AnyView(MemberGlanceFaces(model: day.model, day: day, pages: store.pages, run: glanceActions,
+                                                               open: openPage)))
+          .equatable()
+        // nothing of their day is shared: the doors 今日详情 would have carry on here
+        if !store.hasDay { MemberDoors(pages: store.pages.filter(MemberDoors.inDetail.contains), open: openPage).padding(.top, 22) }
+      }
+      .padding(.horizontal, Metrics.gutter)
+      .frame(maxWidth: Metrics.maxContentWidth)
+      .frame(maxWidth: .infinity)
+    }
+    .background(Palette.bg.ignoresSafeArea())
+    .refreshable { await day.refresh() }
+    .modifier(DaySwipe(step: { day.step($0) }, up: store.hasDay ? { openLevel(.day(anchor: nil), store.scores ? "glance.dial" : nil) } : nil))
+  }
+
   private func message(_ text: String, retry: Bool) -> some View {
     VStack(spacing: 14) {
       Text(text).font(Typo.body).foregroundColor(Palette.text2)
       if retry {
-        Button { Task { await store.start(force: true) } } label: {
+        Button {
+          Task {
+            await store.start(force: true)
+            await day.load()
+          }
+        } label: {
           Text(tr("重试", "Retry")).font(Typo.bodyStrong).foregroundColor(Palette.text)
             .padding(.horizontal, 18).frame(minHeight: 40)
             .background(Capsule().fill(Palette.surface))
@@ -123,237 +118,266 @@ struct MemberScreen: View {
     .background(Palette.bg.ignoresSafeArea())
   }
 
-  private var shown: MemberTab { store.tabs.contains(tab) ? tab : (store.tabs.first ?? .today) }
+  private var glanceActions: TodayGlanceActions {
+    TodayGlanceActions(
+      level: { r, door in openLevel(r, door) },
+      calendar: { sheet = .calendar },
+      backToToday: { day.select(nil) },
+      step: { day.step($0) },
+      // what follows leads to my own data: never drawn on their glance (no capsule, no self-help step, no 圈子 face)
+      syncTap: {}, syncCenter: {}, recoveryNext: { _ in },
+      food: { openPage(.food, "glance.food") },
+      circles: {})
+  }
 
-  private var pages: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      if store.tabs.count > 1 {
-        ScrollView(.horizontal, showsIndicators: false) {
-          HStack(spacing: 8) {
-            ForEach(store.tabs) { t in PillButton(title: t.title, on: t == shown) { tab = t } }
-          }
-          .padding(.horizontal, Metrics.gutter).padding(.vertical, 10)
-        }
-      }
-      switch shown {
-      case .today:
-        MemberTodayPage(store: store, openSleep: { path.append(SleepRoute(date: $0)) }, allMetrics: { day in
-          trendsEnd = day
-          trendsRange = .today
-          tab = .trends
-        })
-      case .trends:
-        MemberTrendsPage(store: store, range: $trendsRange, end: $trendsEnd)
-      case .sleep:
-        MemberScroll(store: store) {
-          TrendsSleepView(end: nil) { day in path.append(SleepRoute(date: day)) }.padding(.top, 4).id(store.refreshes)
-        }
-      case .food:
-        MemberFoodPage(store: store)
-      case .record:
-        MemberRecordPage(store: store)
-      case .health:
-        MemberHealthPage(store: store)
-      }
+  // MARK: - levels 2 and 3, and the record pages
+
+  @ViewBuilder private func destination(_ r: MemberRoute) -> some View {
+    switch r {
+    case .level(.day(let anchor)):
+      TodayDayPage(anchor: anchor, store: day, run: dayActions,
+                   footer: AnyView(MemberDoors(pages: store.pages.filter(MemberDoors.inDetail.contains), open: openPage)))
+    case .level(.metric(let id)):
+      MetricPage(id: id, end: day.date, range: LevelParams.metricDefaultRange,
+                 crumb: .dial(day.model.glance.recovery.value, day.model.glance.recovery.tone), today: day.model,
+                 push: { r, door in push(.level(r), door) }, up: up,
+                 explain: { key, title in sheet = .explain(kind: "metric", key: key, title: title) },
+                 load: { sheet = .load }, member: store)
+    case .level(.night(let d)):
+      SleepDetailView(initialDate: d) { key, title in sheet = .explain(kind: "metric", key: key, title: title) }
+    case .level(.all):
+      EmptyView()   // 身体's own level: not part of someone else's view
+    case .page(.food):
+      MemberFoodPage(store: store)
+    case .page(.training):
+      MemberTrainingPage(store: store)
+    case .page(.health):
+      MemberHealthPage(store: store)
+    case .page(.report):
+      MemberReportPage(store: store)
     }
-    .background(Palette.bg.ignoresSafeArea())
   }
-}
 
-/// A page's scroll view, pull to refresh included. Sheets and tasks belong on this, outside the lazy rows: a row scrolled out of
-/// the lazy stack could not present anything.
-private struct MemberScroll<Content: View>: View {
-  @ObservedObject var store: MemberViewStore
-  @ViewBuilder var content: () -> Content
+  private var dayActions: TodayDayActions {
+    TodayDayActions(
+      push: { r, door in push(.level(r), door) },
+      up: { path = [] },
+      sheet: { sheet = $0 },
+      calendar: { sheet = .calendar },
+      backToToday: { day.select(nil) },
+      step: { day.step($0) },
+      training: { if let d = day.day { trainingDay = MemberDayRef(day: d) } })
+  }
 
-  var body: some View {
-    ScrollView(.vertical, showsIndicators: false) {
-      LazyVStack(alignment: .leading, spacing: 0) { content() }
-        .padding(.horizontal, Metrics.gutter)
-        .padding(.bottom, 32)
-        .frame(maxWidth: Metrics.maxContentWidth)
-        .frame(maxWidth: .infinity)
+  /// A door of the first glance (back then returns to it).
+  private func openLevel(_ r: LevelRoute, _ door: String?) {
+    guard path.isEmpty else { return }
+    push(.level(r), door)
+  }
+
+  private func openPage(_ p: MemberPage, _ door: String?) { push(.page(p), door) }
+
+  /// The next page, grown out of `door` (nil: an ordinary push).
+  private func push(_ r: MemberRoute, _ door: String?) {
+    if let door { zoom.open(door, to: r) }
+    path.append(r)
+  }
+
+  /// The small dial of a metric page: up one level (LevelNav.up; the record pages never lie under a metric page).
+  private func up() {
+    let levels = path.compactMap { r -> LevelRoute? in
+      if case .level(let l) = r { return l }
+      return nil
     }
-    .refreshable { await store.start(force: true) }
-  }
-}
-
-/// The date on top of a page: opens the look-back calendar; 「回到今天」 while looking back.
-private struct MemberDayHeader: View {
-  let overline: String
-  let title: String
-  let lookingBack: Bool
-  let pick: () -> Void
-  let back: () -> Void
-
-  var body: some View {
-    HStack(alignment: .bottom) {
-      Button(action: pick) {
-        VStack(alignment: .leading, spacing: 1) {
-          HStack(spacing: 4) {
-            Text(overline).font(Typo.overline)
-            Icon(.calendar, size: 12)
-          }
-          .foregroundColor(Palette.text2)
-          Text(title).font(Typo.title).titleTracking().foregroundColor(Palette.text)
-        }
-      }
-      .buttonStyle(PressScale())
-      .accessibilityLabel(tr("选择日期", "Pick a day"))
-      Spacer()
-      if lookingBack {
-        Button(action: back) { Chip(label: tr("回到今天", "Back to today")) }.buttonStyle(PressScale())
-      }
-    }
-    .padding(.top, 12).padding(.bottom, 8)
-  }
-}
-
-// MARK: - Today
-
-/// The same cards as my Today tab (`TodayDayCards`), from their documents.
-struct MemberTodayPage: View {
-  @ObservedObject var store: MemberViewStore
-  let openSleep: (String?) -> Void
-  let allMetrics: (String?) -> Void
-  @EnvironmentObject private var session: AccountSession
-  @StateObject private var inert = TodayStore()   // the sheets' parameter; without a session it reads and writes nothing
-  @State private var day: String?                  // nil = their today
-  @State private var model: TodayModel = .empty
-  @State private var sheet: TodaySheet?
-
-  var body: some View {
-    MemberScroll(store: store) {
-      MemberDayHeader(overline: overline, title: model.isPast ? TodayModel.shortDay(model.date) : tr("今天", "Today"), lookingBack: day != nil,
-                      pick: { sheet = .calendar }, back: { day = nil })
-      TodayDayCards(model: model, handle: handle, open: { sheet = TodaySheet(open: $0) }, show: { sheet = $0 },
-                    openStatus: { sheet = .explain(kind: "status", key: $0.key, title: $0.label) },
-                    allMetrics: { allMetrics(day) })
-    }
-    .sheet(item: $sheet) { s in sheetView(s) }
-    .task(id: "\(day ?? "")/\(store.today ?? "")/\(store.refreshes)") { await load() }
+    path = LevelNav.up(levels, second: .day(anchor: nil)).map(MemberRoute.level)
   }
 
-  private var overline: String {
-    guard let d = model.date ?? store.today else { return " " }
-    return "\(TodayView.weekday(d)) \(TodayModel.shortDay(d))"
-  }
+  // MARK: - sheets (theirs, read-only)
 
   @ViewBuilder private func sheetView(_ s: TodaySheet) -> some View {
     Group {
-      if s == .calendar {
+      switch s {
+      case .calendar:
         SheetContainer(title: tr("选择日期", "Pick a day"), close: { sheet = nil }) {
-          MonthPicker(selected: day, userToday: store.today) { d in
-            day = d == store.today ? nil : d
+          MonthPicker(selected: day.date, userToday: store.today) { d in
+            day.select(d)
             sheet = nil
           }
         }
         .presentationDetents([.large])
-      } else {
-        TodaySheetView(sheet: s, model: model, store: inert, open: { sheet = $0 }, close: { sheet = nil })
+      case .detail(.lab(let key, let title)):
+        SheetContainer(title: title, close: { sheet = nil }) { MemberLabTrend(store: store, key: key) }
+          .presentationDetents([.large])
+      default:
+        TodaySheetView(sheet: s, model: day.model, store: inert, open: { sheet = $0 }, close: { sheet = nil })
       }
     }
     .environmentObject(session)
     .environment(\.memberView, store)
   }
 
-  private func handle(_ a: TodayModel.Action) {
-    if case .sleepDetail(let d) = a { openSleep(d ?? model.sleepDate) }
-    else if case .weight = a { return }
-    else { sheet = TodaySheet(action: a) }
+  private func trainingSheet(_ ref: MemberDayRef) -> some View {
+    SheetContainer(title: tr("训练 · \(RecordDay.short(ref.day))", "Training · \(RecordDay.short(ref.day))"), close: { trainingDay = nil }) {
+      TrainingDayBody {
+        let r = Endpoint.dayActivity(ref.day, user: store.user)
+        await store.load([r])
+        return store.json(r)
+      }
+    }
+    .presentationDetents([.medium, .large])
+    .environmentObject(session)
+    .environment(\.memberView, store)
   }
 
-  private func load() async {
-    let u = store.user, main = store.todayRequest(day)
-    await store.load([main])
-    rebuild(main)
-    guard let d = day ?? store.today else { return }
-    await store.load([Endpoint.dayActivity(d, user: u), Endpoint.strainCoach(d, user: u), Endpoint.healthMonitor(d, user: u),
-                      Endpoint.trends(days: TodayParams.trendsDays, end: day, user: u), store.memoryRequest])
-    rebuild(main)
-  }
-
-  private func rebuild(_ main: APIRequest) {
-    let u = store.user, d = day ?? store.today ?? ""
-    let m = TodayModel.member(today: store.json(main), activity: store.json(Endpoint.dayActivity(d, user: u)),
-                              coach: store.json(Endpoint.strainCoach(d, user: u)), monitor: store.json(Endpoint.healthMonitor(d, user: u)),
-                              memory: store.json(store.memoryRequest), trends: store.json(Endpoint.trends(days: TodayParams.trendsDays, end: day, user: u)),
-                              theirToday: store.today)
-    if m != model { model = m }
+  /// `SIMCTL_CHILD_W2W_DEV_MEMBER=<user id>:<path>` (Debug, simulator screenshots; MainTabView): `day`, `day:<anchor>`,
+  /// `metric:<id>`, `night`, `food`, `training`, `health`, `report`, comma-separated (`day,metric:hrv`); a leading `zoom+`
+  /// opens them one after the other through their doors (the zoom transition, for frame grabs).
+  /// `SIMCTL_CHILD_W2W_DEV_MEMBER_OPEN=explain|calendar` opens a sheet, `SIMCTL_CHILD_W2W_DEV_MEMBER_DATE=YYYY-MM-DD` looks back.
+  private func devOpen() {
+    #if DEBUG
+    if let d = RecordDevShot.value("W2W_DEV_MEMBER_DATE"), d.count == 10 { day.select(d) }
+    if let p = devPath {
+      let zoomed = p.hasPrefix("zoom+")
+      let steps = (zoomed ? String(p.dropFirst(5)) : p).split(separator: ",").map(String.init)
+      let routes: [(MemberRoute, String?)] = steps.compactMap { s in
+        if let page = MemberPage(rawValue: s) { return (.page(page), "glance.\(page.rawValue)") }
+        guard let l = DevShot.route(s) else { return nil }
+        if case .metric(let id) = l { return (.level(l), path.isEmpty ? "glance.reading.\(id)" : "day.row.\(id)") }
+        return (.level(l), "glance.dial")
+      }
+      if zoomed {
+        Task { @MainActor in
+          for (i, r) in routes.enumerated() {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            // the first step leaves the glance; a metric after 今日详情 grows out of its row there
+            var door = r.1
+            if i > 0, case .level(.metric(let id)) = r.0 { door = "day.row.\(id)" }
+            push(r.0, door)
+          }
+        }
+      } else {
+        path = routes.map(\.0)
+      }
+    }
+    switch RecordDevShot.value("W2W_DEV_MEMBER_OPEN") {
+    case "explain": sheet = .explain(kind: "metric", key: "hrv", title: "HRV")
+    case "calendar": sheet = .calendar
+    default: break
+    }
+    #endif
   }
 }
 
-// MARK: - Trends
+/// A day of someone else's training (the read-only training day sheet).
+struct MemberDayRef: Identifiable, Hashable {
+  let day: String
+  var id: String { day }
+}
 
-/// 指标 and 报告 of the Trends tab, from their documents (the server's copy: nothing is computed here).
-struct MemberTrendsPage: View {
-  @ObservedObject var store: MemberViewStore
-  @Binding var range: TrendRange
-  @Binding var end: String?
-  @EnvironmentObject private var session: AccountSession
-  @StateObject private var inert = TrendsStore()   // the sheets' parameter; without a session it reads and writes nothing
-  @State private var mode: TrendsView.Mode = .metrics
-  @State private var page: TrendsPage?
-  @State private var loading = false
-  @State private var offline = false
-  @State private var sheet: TrendsSheet?
-
-  private var reportAllowed: Bool { store.state(Endpoint.report("week", end: nil, user: store.user)) != .denied }
+/// The bar on top of someone else's view, on every level: whose data this is (avatar, name, the read-only lock) and the
+/// way out.
+struct MemberBar: View {
+  let person: ViewablePerson
+  let exit: () -> Void
 
   var body: some View {
-    MemberScroll(store: store) {
-      MemberDayHeader(overline: end.map { d in tr("截至 \(TodayModel.shortDay(d))", "Up to \(TodayModel.shortDay(d))") }
-                        ?? store.today.map { "\(TodayView.weekday($0)) \(TodayModel.shortDay($0))" } ?? " ",
-                      title: tr("趋势", "Trends"), lookingBack: end != nil, pick: { sheet = .calendar }, back: { end = nil })
-      if reportAllowed {
-        SegControl(items: [TrendsView.Mode.metrics, .report].map { ($0, $0.label) }, selected: mode) { mode = $0 }
-      }
-      switch reportAllowed ? mode : .metrics {
-      case .report:
-        ReportView(end: end) { key, title in sheet = .explain(key: key, title: title) }.padding(.top, 10).id(store.refreshes)
-      default:
-        TrendsMetricsContent(page: page, range: range, loading: loading, offline: offline, foldOn: session.flags.contains(TrendsFold.flag),
-                             setRange: { range = $0 }, open: { s in
-          // the body age sheet reads my own tables: their number goes through the explanation
-          if case .bodyAge = s { sheet = .explain(key: "body_age", title: tr("身体年龄", "Body age")) } else { sheet = s }
-        })
-      }
-    }
-    .sheet(item: $sheet) { s in sheetView(s) }
-    .task(id: store.refreshes) { await store.load([Endpoint.report("week", end: nil, user: store.user)]) }
-    .task(id: "\(range.rawValue)/\(end ?? "")/\(store.refreshes)") { await load() }
-  }
-
-  @ViewBuilder private func sheetView(_ s: TrendsSheet) -> some View {
-    Group {
-      if case .calendar = s {
-        SheetContainer(title: tr("选择结束日期", "Pick the end date"), close: { sheet = nil }) {
-          MonthPicker(selected: end, userToday: store.today) { d in
-            end = d == store.today ? nil : d
-            sheet = nil
-          }
+    HStack(spacing: 10) {
+      AvatarView(url: person.avatar, name: person.displayName, size: 30)
+      VStack(alignment: .leading, spacing: 1) {
+        Text(person.shownName).font(Typo.bodyStrong).foregroundColor(Palette.text).lineLimit(1).minimumScaleFactor(0.8)
+        if person.remark?.isEmpty == false {
+          Text(person.displayName).font(Typo.caption).foregroundColor(Palette.text2).lineLimit(1)
         }
-        .presentationDetents([.large])
-      } else {
-        TrendsSheetView(sheet: s, page: page, end: end, store: inert, close: { sheet = nil })
       }
+      HStack(spacing: 4) {
+        Icon(.lock, size: 12)
+        Text(tr("只读", "Read-only")).font(.system(size: 12, weight: .medium))
+      }
+      .foregroundColor(Palette.text2)
+      .padding(.horizontal, 8).frame(height: 24)
+      .background(Capsule().fill(Palette.surface2))
+      Spacer(minLength: 6)
+      Button(action: exit) {
+        Icon(.x, size: 18).foregroundColor(Palette.text)
+          .frame(width: 34, height: 34).background(Circle().fill(Palette.surface2))
+          .frame(width: 44, height: 44).contentShape(Rectangle())
+      }
+      .buttonStyle(PressScale())
+      .accessibilityLabel(tr("退出", "Exit"))
     }
-    .environmentObject(session)
-    .environment(\.memberView, store)
-  }
-
-  private func load() async {
-    loading = true
-    let u = store.user, days = range.docDays, e = end
-    let t = Endpoint.trends(days: days, end: e, user: u), v = Endpoint.vo2max(end: e, user: u), s = Endpoint.sleepDetails(end: e, user: u)
-    await store.load([t, v, s])
-    loading = false
-    offline = store.state(t) == .offline
-    page = store.json(t).flatMap(TrendsData.init(json:)).map { TrendsPage(data: $0, local: nil, vo2: store.json(v), sleep: store.json(s)) }
+    .padding(.leading, Metrics.gutter).padding(.trailing, Metrics.gutter - 6).padding(.vertical, 4)
+    .background(Palette.surface.ignoresSafeArea(edges: .top))
+    .overlay(Rectangle().fill(Palette.hair).frame(height: 1), alignment: .bottom)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(tr("正在查看 \(person.shownName) 的数据，只读", "Viewing \(person.shownName)'s data, read-only"))
   }
 }
 
-// MARK: - Food
+/// Someone else's faces on their first glance (where mine has 体征 / 关注, 饮食, 圈子): slot 1 as mine, then 饮食 and 训练,
+/// each only when their share lets that page through. No 圈子: that face is about me.
+struct MemberGlanceFaces: View {
+  let model: TodayModel
+  @ObservedObject var day: MemberDayStore
+  let pages: [MemberPage]
+  let run: TodayGlanceActions
+  let open: (MemberPage, String?) -> Void
+
+  var body: some View {
+    HStack(spacing: 8) {
+      SlotOneFace(model: model, age: nil, run: run)
+      if pages.contains(.food) { food }
+      if pages.contains(.training) { training }
+    }
+  }
+
+  @ViewBuilder private var food: some View {
+    if let n = day.nutrition, n.error == nil {
+      FoodFace(nutrition: n) { open(.food, "glance.food") }.zoomDoor("glance.food")
+    } else {
+      // water or recipes only: the door, without a number of the day
+      Button { open(.food, "glance.food") } label: { Face(icon: .soup, label: tr("饮食", "Food"), number: "—", dimmed: true) { Color.clear } }
+        .buttonStyle(PressScale())
+        .zoomDoor("glance.food")
+    }
+  }
+
+  /// 训练 as my 记录 → 历史 face: the month's sessions, the last trained days' strain.
+  private var training: some View {
+    let m = day.month
+    let strains = (m.map { RecordGlance.trainedDays($0) } ?? []).prefix(7).reversed().map { $0.strain }
+    return Button { open(.training, "glance.training") } label: {
+      Face(icon: .dumbbell, label: tr("训练", "Training"), number: m?.trainingDays.map(String.init) ?? "—", unit: tr("次", "times")) {
+        if !strains.isEmpty { MiniBars(values: Array(strains), tone: .train, maxValue: RecordParams.strainScaleMax, height: 24) } else { Color.clear }
+      }
+    }
+    .buttonStyle(PressScale())
+    .zoomDoor("glance.training")
+  }
+}
+
+/// The doors at the end of someone else's 今日详情 (or of their first glance when nothing of their day is shared): their
+/// health record and weekly report, each only when shared.
+struct MemberDoors: View {
+  /// The pages these doors open (饮食 and 训练 are faces of the first glance).
+  static let inDetail: [MemberPage] = [.health, .report]
+
+  let pages: [MemberPage]
+  let open: (MemberPage, String?) -> Void
+
+  var body: some View {
+    if !pages.isEmpty {
+      RowGroup {
+        ForEach(Array(pages.enumerated()), id: \.element) { i, p in
+          if i > 0 { RowDivider(inset: 0) }
+          ListRow(icon: p.icon, title: p.title) { open(p, "doors.\(p.rawValue)") }
+            .zoomDoor("doors.\(p.rawValue)")
+        }
+      }
+    }
+  }
+}
+
+// MARK: - the record pages
 
 /// The day's intake, water and their recipes.
 struct MemberFoodPage: View {
@@ -370,7 +394,7 @@ struct MemberFoodPage: View {
   private var today: String { store.today ?? "" }
 
   var body: some View {
-    MemberScroll(store: store) {
+    RecordPage(title: MemberPage.food.title) {
       VStack(alignment: .leading, spacing: 22) {
         HStack {
           DayStepper(day: shownDay, today: today) { day = min($0, today) }
@@ -435,10 +459,8 @@ private struct MemberRecipe: View {
   }
 }
 
-// MARK: - Log
-
 /// 训练 (muscle map, week, limits, history) and 日记 (what was logged on a day).
-struct MemberRecordPage: View {
+struct MemberTrainingPage: View {
   private enum Segment: Hashable { case training, journal }
 
   @ObservedObject var store: MemberViewStore
@@ -449,14 +471,9 @@ struct MemberRecordPage: View {
   @State private var calendar: TrainingMonth?
   @State private var muscle: MuscleLoad?
   @State private var rules: [ExerciseRule] = []
-  @State private var detail: DayRef?
+  @State private var detail: MemberDayRef?
   @State private var journalDay: String?
   @State private var journal: JournalDay?
-
-  private struct DayRef: Identifiable {
-    let day: String
-    var id: String { day }
-  }
 
   private var today: String { store.today ?? "" }
   private var shownMonth: String { month ?? String(today.prefix(7)) }
@@ -466,7 +483,7 @@ struct MemberRecordPage: View {
   private var shown: Segment { trainingAllowed && (segment == .training || !journalAllowed) ? .training : .journal }
 
   var body: some View {
-    MemberScroll(store: store) {
+    RecordPage(title: MemberPage.training.title) {
       VStack(alignment: .leading, spacing: 22) {
         if trainingAllowed && journalAllowed {
           SegmentedControl(items: [(Segment.training, tr("训练", "Training")), (.journal, tr("日记", "Journal"))], selection: $segment)
@@ -493,10 +510,10 @@ struct MemberRecordPage: View {
 
   @ViewBuilder private var training: some View {
     if let m = muscle { MuscleLoadCard(load: m) }
-    if let w = week { TrainingWeekCard(week: w, today: today, openDay: { d in if d <= today { detail = DayRef(day: d) } }) }
+    if let w = week { TrainingWeekCard(week: w, today: today, openDay: { d in if d <= today { detail = MemberDayRef(day: d) } }) }
     ExerciseLimitsCard(rules: ExerciseRule.merged(rules, week: week))
     TrainingMonthCard(month: shownMonth, calendar: calendar, today: today,
-                      showMonth: { m in if m <= String(today.prefix(7)) { month = m } }, openDay: { detail = DayRef(day: $0) })
+                      showMonth: { m in if m <= String(today.prefix(7)) { month = m } }, openDay: { detail = MemberDayRef(day: $0) })
   }
 
   @ViewBuilder private var journalSection: some View {
@@ -532,8 +549,6 @@ struct MemberRecordPage: View {
   }
 }
 
-// MARK: - Health record
-
 /// 补剂 / 化验 / 身体事件: each block only when the server lets it through.
 struct MemberHealthPage: View {
   @ObservedObject var store: MemberViewStore
@@ -544,7 +559,7 @@ struct MemberHealthPage: View {
 
   var body: some View {
     let today = store.today ?? ""
-    MemberScroll(store: store) {
+    RecordPage(title: MemberPage.health.title) {
       VStack(alignment: .leading, spacing: 22) {
         if let list = store.list(store.supplementsRequest) {
           section(tr("补剂", "Supplements")) {
@@ -564,16 +579,10 @@ struct MemberHealthPage: View {
     }
     .task(id: "\(today)/\(store.refreshes)") { await store.load([checkIns(today)]) }   // the day's supplement check-ins, when shared
     .sheet(item: $lab) { l in
-      SheetContainer(title: l.name, close: { lab = nil }) {
-        LabTrendView {
-          let r = store.request("labs/\(l.key.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? l.key)/history")
-          await store.load([r])
-          return LabHistory.parse(store.json(r))
-        }
-      }
-      .presentationDetents([.large])
-      .environmentObject(session)
-      .environment(\.memberView, store)
+      SheetContainer(title: l.name, close: { lab = nil }) { MemberLabTrend(store: store, key: l.key) }
+        .presentationDetents([.large])
+        .environmentObject(session)
+        .environment(\.memberView, store)
     }
   }
 
@@ -581,6 +590,39 @@ struct MemberHealthPage: View {
     VStack(alignment: .leading, spacing: 10) {
       SectionHeader(title: title)
       content()
+    }
+  }
+}
+
+/// One lab value of someone else over time (their health record, or a 身体状态 card with a lab value in 今日详情).
+struct MemberLabTrend: View {
+  @ObservedObject var store: MemberViewStore
+  let key: String
+
+  var body: some View {
+    LabTrendView {
+      let r = store.request("labs/\(key.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? key)/history")
+      await store.load([r])
+      return LabHistory.parse(store.json(r))
+    }
+  }
+}
+
+/// Their week / month report (the same view as 身体 → 报告), from their documents.
+struct MemberReportPage: View {
+  @ObservedObject var store: MemberViewStore
+  @EnvironmentObject private var session: AccountSession
+  @State private var explain: TrendsSheet?
+  @StateObject private var inert = TrendsStore()   // the sheet's parameter; without a session it reads and writes nothing
+
+  var body: some View {
+    RecordPage(title: MemberPage.report.title) {
+      ReportView(end: nil) { key, title in explain = .explain(key: key, title: title) }.padding(.top, 4).id(store.refreshes)
+    }
+    .sheet(item: $explain) { s in
+      TrendsSheetView(sheet: s, page: nil, end: nil, store: inert, close: { explain = nil })
+        .environmentObject(session)
+        .environment(\.memberView, store)
     }
   }
 }

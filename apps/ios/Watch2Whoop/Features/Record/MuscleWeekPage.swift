@@ -8,7 +8,8 @@ import SwiftUI
 struct MuscleWeekPage: View {
   @ObservedObject var store: TrainingStore
   @Binding var toast: Toast?
-  let push: (RecordRoute) -> Void
+  /// A page and the door it grows out of (`.zoomDoor`).
+  let push: (RecordRoute, String?) -> Void
   @State private var range: MuscleLoad.Range = .week
   @Environment(\.askAI) private var askAI
 
@@ -99,7 +100,7 @@ struct MuscleWeekPage: View {
       }
       Rectangle().fill(Palette.hair).frame(height: 1)
       HStack(spacing: 10) {
-        exit(icon: nil, title: tr("全部肌群", "All muscles"), chevron: true) { push(.allMuscles) }
+        exit(icon: nil, title: tr("全部肌群", "All muscles"), chevron: true) { push(.allMuscles, "muscles.all") }.zoomDoor("muscles.all")
         exit(icon: .orbit, title: tr("问 Jarvis", "Ask Jarvis"), chevron: false) { askAI(MusclePrompts.analyse) }
       }
       .padding(.top, 20)
@@ -119,7 +120,7 @@ struct MuscleWeekPage: View {
   }
 
   private func groupRow(_ g: RecordGlance.GroupRow, scale: Double) -> some View {
-    Button { push(.allMuscles) } label: {
+    Button { push(.allMuscles, "muscles.group.\(g.id)") } label: {
       HStack(spacing: 12) {
         Text(g.title).font(.system(size: 17, weight: .medium)).foregroundColor(Palette.text)
           .frame(width: RecordParams.groupLabelWidth, alignment: .leading)
@@ -136,6 +137,7 @@ struct MuscleWeekPage: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(PressScale())
+    .zoomDoor("muscles.group.\(g.id)")
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("\(g.title) \(RecordFormat.num(g.sets, 1)) \(tr("组", "sets")) \(MuscleLoad.statusTitle(g.status))")
     .accessibilityAddTraits(.isButton)

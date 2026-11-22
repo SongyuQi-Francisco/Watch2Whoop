@@ -13,6 +13,8 @@ struct TodayView: View {
   @State private var sheet: TodaySheet?
   @State private var showConsent = false
   @State private var path: [LevelRoute] = []
+  @Namespace private var zoomSpace
+  @StateObject private var zoom = ZoomTrail()
   @State private var toast: Toast?
   @SceneStorage("w2w.tab") private var tab: AppTab = .today
   @SceneStorage("w2w.record.segment") private var recordSegment: RecordTab.Segment = .training
@@ -31,8 +33,9 @@ struct TodayView: View {
     NavigationStack(path: $path) {
       page
         .toolbar(.hidden, for: .navigationBar)
-        .navigationDestination(for: LevelRoute.self) { r in level(r) }
+        .navigationDestination(for: LevelRoute.self) { r in level(r).zoomLevel(r) }
     }
+    .zoomScope(zoomSpace, zoom)
     .sheet(item: $sheet) { s in
       TodaySheetView(sheet: s, model: store.model, store: store, open: { sheet = $0 }, close: { sheet = nil })
         .environmentObject(session)
@@ -88,11 +91,13 @@ struct TodayView: View {
       .clearOfJarvisKey()
       .refreshable { await store.refresh() }
       .toast($toast)
-      .modifier(DaySwipe(step: { store.step($0) }, up: { openLevel(.day(anchor: nil)) }))
+      .modifier(DaySwipe(step: { store.step($0) }, up: { openLevel(.day(anchor: nil), "glance.dial") }))
       .onAppear {
         if store.hasData && PerfProbe.autoScroll { autoScroll(proxy) }
         #if DEBUG
-        PerfScript.today = PerfScript.TodayHooks(sheet: { sheet = $0 }, push: { r in if let r { path.append(r) } else { path.removeAll() } })
+        PerfScript.today = PerfScript.TodayHooks(sheet: { sheet = $0 }, push: { r, door in
+          if let r { push(r, door) } else { path.removeAll() }
+        })
         DevShot.apply(sheet: { sheet = $0 }, path: { path = $0 }, day: { store.select($0) })
         #endif
       }
@@ -105,11 +110,11 @@ struct TodayView: View {
   @ViewBuilder private func level(_ r: LevelRoute) -> some View {
     switch r {
     case .day(let anchor):
-      TodayDayPage(anchor: anchor, store: store, session: session, run: dayActions, footer: showsQuote ? AnyView(dailyQuote) : nil)
+      TodayDayPage(anchor: anchor, store: store, run: dayActions, footer: showsQuote ? AnyView(dailyQuote) : nil)
     case .metric(let id):
       MetricPage(id: id, end: store.date, range: LevelParams.metricDefaultRange,
                  crumb: .dial(store.model.glance.recovery.value, store.model.glance.recovery.tone), today: store.model,
-                 push: { path.append($0) }, up: { path = LevelNav.up(path, second: .day(anchor: nil)) },
+                 push: push, up: { path = LevelNav.up(path, second: .day(anchor: nil)) },
                  explain: { key, title in sheet = .explain(kind: "metric", key: key, title: title) },
                  load: { sheet = .load }, bedtime: store.model.isPast ? nil : { sheet = .detail(.bedtimeGoal) })
     case .night(let d):
@@ -121,7 +126,7 @@ struct TodayView: View {
 
   private var dayActions: TodayDayActions {
     TodayDayActions(
-      push: { path.append($0) },
+      push: push,
       up: { path = [] },
       sheet: { sheet = $0 },
       calendar: { sheet = .calendar },
@@ -131,9 +136,16 @@ struct TodayView: View {
   }
 
   /// A door of the first glance: level 2 or a metric page straight from it (back then returns to the first glance).
-  private func openLevel(_ r: LevelRoute) {
+  private func openLevel(_ r: LevelRoute, _ door: String?) {
     guard path.isEmpty else { return }
+    if let door { zoom.open(door, to: r) }
     path = [r]
+  }
+
+  /// The next level, grown out of `door` (nil: an ordinary push).
+  private func push(_ r: LevelRoute, _ door: String?) {
+    if let door { zoom.open(door, to: r) }
+    path.append(r)
   }
 
   // MARK: - daily quote (flag slim_mode): the same quote on any day looked at, the user's today decides which
@@ -214,179 +226,10 @@ struct TodayView: View {
   }
 }
 
-// MARK: - the day's cards
-
-/// Everything a day shows, from the rings to the reminders: the Today tab's page and the read-only view of someone else
-/// (`MemberTodayPage`) draw the same cards from a `TodayModel`. What happens on a tap belongs to the page. What leads to my own
-/// data (the button under an empty ring, the training cards, the food card) is only there when the page passes it.
-///
-/// Equatable on what it draws (the model and which optional parts are there), never on the closures: opening a sheet,
-/// pushing the sleep page or switching tabs changes the page's own state, and without this every card of the day was
-/// built and laid out again before the sheet could move (2.0.1: 150–330 ms on the simulator). The closures only reach
-/// the page's state, which lives outside the view value, so an older copy of them does the same.
-struct TodayDayCards: View, Equatable {
-  static func == (a: TodayDayCards, b: TodayDayCards) -> Bool {
-    a.model == b.model && a.hasData == b.hasData && (a.recoveryNext == nil) == (b.recoveryNext == nil)
-      && (a.openTraining == nil) == (b.openTraining == nil) && (a.openHistory == nil) == (b.openHistory == nil)
-      && (a.foodCard == nil) == (b.foodCard == nil)
-  }
-
-  let model: TodayModel
-  var hasData = true
-  var onRingsShown: () -> Void = {}
-  let handle: (TodayModel.Action) -> Void
-  let open: (TodayOpen) -> Void
-  let show: (TodaySheet) -> Void
-  let openStatus: (TodayModel.StatusItem) -> Void
-  let allMetrics: () -> Void
-  var recoveryNext: ((RecoveryNext.Action) -> Void)?
-  var openTraining: (() -> Void)?
-  var openHistory: (() -> Void)?
-  var foodCard: AnyView?
-
-  // no container here: inside the page's LazyVStack each card stays its own lazy row
-  var body: some View {
-    let m = model
-    if !m.rings.isEmpty { rings(m).padding(.top, 10) }
-    if let w = m.word {
-      Text(w).font(Typo.heroWord).foregroundColor(m.wordMuted ? Palette.text2 : Palette.text)
-        .frame(maxWidth: .infinity).padding(.top, 12)
-    }
-    if let s = m.sub {
-      Text(s).font(Typo.caption).foregroundColor(Palette.text2).frame(maxWidth: .infinity).padding(.top, 3)
-    }
-    if let n = m.recoveryNext, let recoveryNext {
-      Button { recoveryNext(n.action) } label: { Chip(label: n.label) }
-        .buttonStyle(PressScale())
-        .frame(maxWidth: .infinity).padding(.top, 10)
-        .id("recoveryNext")
-    }
-    if m.loadChip != nil || m.local {
-      HStack(spacing: 8) {
-        if let l = m.loadChip {
-          Button { show(.load) } label: { Chip(label: "\(tr("负荷", "Load")) \(l)") }.buttonStyle(PressScale())
-        }
-        if m.local { Chip(label: tr("本机计算", "On this phone")) }
-      }
-      .frame(maxWidth: .infinity).padding(.top, 14)
-    }
-    if let e = m.error { ToneBadge(text: e).frame(maxWidth: .infinity).padding(.top, 10) }
-
-    // 需要注意 (#357): only when something is off on the day
-    if !m.attention.isEmpty {
-      VStack(alignment: .leading, spacing: 10) {
-        SectionHeader(title: tr("需要注意", "Needs attention"))
-        AttentionList(items: m.attention) { open($0.open) }
-      }
-      .padding(.top, 22)
-      .id("attention")
-    }
-
-    // 今日核心 (#357): the strain target (live) and our algorithms' results for the day
-    if !m.core.isEmpty {
-      VStack(alignment: .leading, spacing: 10) {
-        SectionHeader(title: tr("今日核心", "Today's core"))
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-          ForEach(m.core) { c in CoreCardView(card: c) { open(c.open) } }
-        }
-      }
-      .padding(.top, 22)
-      .id("core")
-    }
-
-    ForEach(m.sections) { s in
-      VStack(alignment: .leading, spacing: 10) {
-        SectionHeader(title: s.title)
-        HStack(spacing: 8) { ForEach(s.metrics) { TapTile(metric: $0, action: handle) } }
-      }
-      .padding(.top, 22)
-    }
-
-    if let c = m.tonight {
-      SleepCoachCard(coach: c, isPast: m.isPast) { show(.detail(.sleepCoach)) }.padding(.top, 22).id("sleepCoach")
-    }
-
-    // the strain target lives in 今日核心; the health monitor keeps its own card
-    if !m.vitals.isEmpty {
-      MonitorCard(vitals: m.vitals, off: m.vitalsOff) { show(.monitor) }.padding(.top, 22)
-    }
-
-    if m.date != nil {
-      Button(action: allMetrics) {
-        HStack(spacing: 4) {
-          Text(tr("全部指标", "All metrics")).font(Typo.bodyStrong)
-          Icon(.chevronRight, size: 14)
-        }
-        .foregroundColor(Palette.text2)
-        .frame(maxWidth: .infinity, alignment: .trailing)
-        .padding(.vertical, 6)
-        .contentShape(Rectangle())
-      }
-      .buttonStyle(PressScale())
-      .padding(.top, 12)
-      .id("allMetrics")
-    }
-
-    if let t = m.training, let openTraining, let openHistory {
-      TodayTrainingCard(training: t, open: openTraining, history: openHistory).padding(.top, 22).id("training")
-    }
-    if !m.isPast, let mm = m.muscle, let openHistory { TodayMuscleCard(muscle: mm, open: openHistory).padding(.top, 22).id("muscle") }
-
-    if !m.isPast && !m.status.isEmpty { statusBlock(m.status).padding(.top, 22) }
-
-    if let foodCard { foodCard }
-
-    if !m.reminders.isEmpty {
-      VStack(alignment: .leading, spacing: 8) {
-        SectionTitle(title: tr("提醒", "Reminders"), trailing: m.reminders.count > 3 ? tr("全部 \(m.reminders.count)", "All \(m.reminders.count)") : nil) {
-          show(.reminders)
-        }
-        ReminderList(reminders: m.topReminders)
-      }
-      .padding(.top, 22)
-    }
-  }
-
-  /// Three rings side by side, recovery in the middle and 1.4× bigger (NativeToday.swift of 1.0.9).
-  private func rings(_ m: TodayModel) -> some View {
-    let width = min(UIScreen.main.bounds.width, Metrics.maxContentWidth) - Metrics.gutter * 2
-    // 1 + 1.4 + 1 ring sides, plus each ring's stroke padding (≈ 0.24 side in all) and two 12 pt gaps
-    let side = min(100, (max(width, 200) - 24) / 3.7), big = side * 1.4
-    return HStack(alignment: .center, spacing: 12) {
-      ForEach(m.rings, id: \.key) { r in
-        let isBig = r.key == "recovery"
-        Button { handle(r.key == "sleep" ? .sleepDetail(m.sleepDate) : r.action) } label: {
-          RingView(value: r.value, label: r.label, fraction: r.fraction, tone: r.tone, side: isBig ? big : side, big: isBig)
-        }
-        .buttonStyle(PressScale())
-      }
-    }
-    .frame(maxWidth: .infinity)
-    .onAppear { if hasData { onRingsShown() } }
-    .onChange(of: hasData) { if $0 { onRingsShown() } }
-  }
-
-  private func statusBlock(_ groups: [TodayModel.StatusGroup]) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
-      SectionHeader(title: tr("身体状态", "Body status"))
-      ForEach(groups) { g in
-        if groups.count > 1, !g.name.isEmpty {
-          Text(g.name).font(Typo.label).foregroundColor(Palette.text3).padding(.top, 2)
-        }
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-          ForEach(g.items) { it in
-            StatusCell(item: it) { openStatus(it) }
-          }
-        }
-      }
-    }
-  }
-}
-
 #if DEBUG
 /// Debug builds only, for simulator screenshots: `SIMCTL_CHILD_W2W_DEV_LEVEL=day|day:<anchor>|metric:<id>|night`
 /// (`day:attention`, `metric:hrv`: a metric page straight from the first glance; `day,metric:hrv`: through 今日详情),
-/// `SIMCTL_CHILD_W2W_DEV_SHEET=load|coach|monitor|calendar|weight|reminders|sleepCoach|sleepHelp|lab:<key>|explain:<kind>:<key>`,
+/// `SIMCTL_CHILD_W2W_DEV_SHEET=load|calendar|weight|reminders|sleepCoach|sleepHelp|lab:<key>|explain:<kind>:<key>`,
 /// `SIMCTL_CHILD_W2W_DEV_SLEEP=1` (the night page), `SIMCTL_CHILD_W2W_DEV_DATE=YYYY-MM-DD` (look back).
 enum DevShot {
   static func apply(sheet: @escaping (TodaySheet) -> Void, path: @escaping ([LevelRoute]) -> Void, day: @escaping (String) -> Void) {
@@ -400,8 +243,6 @@ enum DevShot {
       }
       switch env["W2W_DEV_SHEET"] ?? "" {
       case "load": sheet(.load)
-      case "coach": sheet(.coach)
-      case "monitor": sheet(.monitor)
       case "calendar": sheet(.calendar)
       case "weight": sheet(.weight)
       case "reminders": sheet(.reminders)
@@ -432,6 +273,8 @@ enum DevShot {
 /// 需要注意 (#357): one row per item — tone dot, short label, the baseline / range, the value with its arrow.
 struct AttentionList: View {
   let items: [TodayAttention]
+  /// The items' zoom door prefix (`<door>.<item id>`).
+  var door: String?
   let open: (TodayAttention) -> Void
 
   var body: some View {
@@ -455,6 +298,7 @@ struct AttentionList: View {
           .contentShape(Rectangle())
         }
         .buttonStyle(PressScale())
+        .zoomDoor(door.map { "\($0).\(it.id)" })
         .accessibilityElement(children: .combine)
       }
     }
@@ -488,40 +332,6 @@ struct CoreCardView: View {
     }
     .buttonStyle(PressScale())
     .accessibilityElement(children: .combine)
-  }
-}
-
-/// Health monitor: normal / n off, and a dot per vital (app.js monitorHtml).
-struct MonitorCard: View {
-  let vitals: [TodayModel.Vital]
-  let off: Int
-  /// The AI-first page has the title (and why the card is there) above the card.
-  var showTitle = true
-  let action: () -> Void
-
-  var body: some View {
-    Button(action: action) {
-      VStack(alignment: .leading, spacing: 10) {
-        HStack {
-          if showTitle { Text(tr("健康监测", "Health monitor")).font(Typo.label).foregroundColor(Palette.text2).lineLimit(1) }
-          Spacer(minLength: 4)
-          ToneBadge(text: off > 0 ? tr("\(off) 异常", "\(off) off") : tr("正常", "Normal"), tone: off > 0 ? .bad : .good)
-        }
-        HStack(spacing: 6) {
-          ForEach(vitals) { v in
-            VStack(spacing: 4) {
-              Circle().fill(v.value == nil ? Palette.surface2 : (v.off ? Palette.bad : Palette.good)).frame(width: 8, height: 8)
-              Text(v.short).font(.system(size: 10, weight: .medium)).foregroundColor(Palette.text2).lineLimit(1).minimumScaleFactor(0.7)
-            }
-            .frame(maxWidth: .infinity)
-          }
-        }
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(14)
-      .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
-    }
-    .buttonStyle(PressScale())
   }
 }
 

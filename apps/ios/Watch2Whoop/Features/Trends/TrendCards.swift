@@ -23,8 +23,6 @@ struct TrendCardModel: Identifiable {
   var tip: (Int) -> String = { _ in "" }
   var legend: [Legend] = []
   var extra: Extra = .none
-  /// A sheet of its own instead of the plain explanation (recovery contributors, sleep regularity).
-  var sheet: TrendsSheet?
   var empty: String?
 }
 
@@ -94,7 +92,7 @@ enum TrendCards {
                                        weekly("vol", tr("训练量", "Training volume"), "muscle_load", d.muscleWeeks, unit: "kg", target: nil),
                                        hrZones(d), c("steps"), c("active_kcal"), c("total_kcal"), c("hr_recovery")]),
       ("stress", tr("压力", "Stress"), [c("stress"), c("resilience")]),
-      ("long", tr("长期", "Long term"), [metric("vo2max", d, base: p.fitness), c("weight"), bodyAge(c("body_age"))]),
+      ("long", tr("长期", "Long term"), [metric("vo2max", d, base: p.fitness), c("weight"), c("body_age")]),
     ]
     list = list.map { ($0.0, $0.1, $0.2.filter { $0 != nil }) }
     return list.compactMap { g in
@@ -103,12 +101,6 @@ enum TrendCards {
     }
   }
 
-  /// The body-age card opens the body-age sheet instead of the plain explanation.
-  private static func bodyAge(_ card: TrendCardModel?) -> TrendCardModel? {
-    guard var card else { return nil }
-    card.sheet = .bodyAge
-    return card
-  }
 
   // MARK: - helpers
 
@@ -202,7 +194,7 @@ enum TrendCards {
       id: "recovery", title: title, explain: "recovery", value: s.mean.map { TodayModel.fmt($0) },
       basis: s.n > 0 ? meanBasis(d) : nil, base: delta(s.mean, s.prevMean, digits: 0, better: 1),
       spec: s.n > 0 ? spec("recovery", d, [ChartLayer(kind: .bars, values: s.values, tones: tones, main: true)], min: 0, max: 100, label: title) : nil,
-      tip: tipDay(d, s.values, digits: 0, unit: ""), extra: s.zones.map { .zones($0) } ?? .none, sheet: .recovery, empty: s.n > 0 ? nil : noData(d))
+      tip: tipDay(d, s.values, digits: 0, unit: ""), extra: s.zones.map { .zones($0) } ?? .none, empty: s.n > 0 ? nil : noData(d))
   }
 
   /// Strain: daily bars inside each day's Strain Coach band; days in range.
@@ -322,6 +314,6 @@ enum TrendCards {
     let tail = r.pct7 != nil && r.pct30 != nil ? " · \(tr("30 天", "30 d")) \(TodayModel.fmt(r.pct30!))%" : ""
     return TrendCardModel(id: "sleep_regularity", title: tr("睡眠规律性", "Sleep regularity"), explain: "sleep_consistency",
                           value: TodayModel.fmt(v), unit: "%", base: ((r.pct7 != nil ? tr("7 天", "7 d") : tr("30 天", "30 d")) + tail, .text),
-                          extra: .regularity(r), sheet: .regularity)
+                          extra: .regularity(r))
   }
 }

@@ -6,8 +6,8 @@ struct BodyGlanceActions {
   var pickEnd: () -> Void
   var backToToday: () -> Void
   /// A door to a level below (2.1.0, drilldown option C′): a metric page (the hero's number, a face), level 2 in a mode
-  /// (周报 = 报告).
-  var level: (LevelRoute) -> Void
+  /// (周报 = 报告). The second value is the door it grows out of (`.zoomDoor`).
+  var level: (LevelRoute, String?) -> Void
   /// Level 2 in the mode last used (the bars, the ladder).
   var all: () -> Void
   var syncNow: () -> Void
@@ -92,6 +92,7 @@ struct BodyGlancePage: View {
         .contentShape(Rectangle())
       }
       .buttonStyle(PressScale())
+      .zoomDoor("glance.hero")
       .accessibilityHint(tr("打开\(score.label)的趋势", "Opens the \(score.label.lowercased()) trend"))
       Button(action: run.all) {
         UsualBars(values: h?.bars ?? [], usual: h?.usual, max: score.max, tone: h?.lastTone ?? .text)
@@ -99,6 +100,7 @@ struct BodyGlancePage: View {
           .contentShape(Rectangle())
       }
       .buttonStyle(PressScale())
+      .zoomDoor("glance.bars")
       .accessibilityLabel(tr("全部趋势", "All trends"))
       dateRow(h?.dates ?? []).padding(.top, 6)
       pageDots.padding(.top, Rhythm.gap(20))
@@ -180,7 +182,7 @@ struct BodyGlancePage: View {
   }
 
   /// The score's own metric page, in the tab's range.
-  private func openScore() { run.level(.metric(score.seriesKey)) }
+  private func openScore() { run.level(.metric(score.seriesKey), "glance.hero") }
 
   private func prompt(_ h: BodyHero?) -> String {
     let n = BodyGlanceRules.window(range)
@@ -194,24 +196,26 @@ struct BodyGlancePage: View {
   private var faces: some View {
     HStack(spacing: 8) {
       if let d = page?.data, let hrv = BodyGlanceRules.hrv(d) {
-        Button { run.level(.metric("hrv")) } label: {
+        Button { run.level(.metric("hrv"), "glance.cardio") } label: {
           Face(icon: .heart, label: tr("心肺", "Cardio"), number: TodayModel.fmt(hrv.last), unit: "ms") {
             BandSpark(values: hrv.values, usual: hrv.usual)
           }
         }
         .buttonStyle(PressScale())
+        .zoomDoor("glance.cardio")
       }
-      BodyAgeFace(session: session) { run.level(.metric("body_age")) }
+      BodyAgeFace(session: session) { run.level(.metric("body_age"), "glance.bodyAge") }.zoomDoor("glance.bodyAge")
       if let d = page?.data {
         let days = BodyGlanceRules.trainingDays(d)
         if days.contains(where: { $0 != nil }) {
-          Button { run.level(.all(.report)) } label: {
+          Button { run.level(.all(.report), "glance.report") } label: {
             Face(icon: .calendarDays, label: tr("周报", "Weekly"), number: "\(days.filter { $0 == true }.count)",
                  unit: tr("天训练", "d trained")) {
               WeekTrainingDots(days: days)
             }
           }
           .buttonStyle(PressScale())
+          .zoomDoor("glance.report")
         }
       }
     }

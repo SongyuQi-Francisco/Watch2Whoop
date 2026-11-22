@@ -57,7 +57,6 @@ struct TrendCardBody: View {
     TrendCardView(card: model) { sheet in
       switch sheet {
       case .explain(let key, let title, _): open("explain.\(key)", .object(["title": .string(title)]))
-      case .recovery: open("explain.recovery", .object(["title": .string(model.title)]))
       default: break
       }
     }

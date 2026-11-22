@@ -127,37 +127,6 @@ struct StressHoursBar: View {
 
 // MARK: - sleep coach
 
-/// The coach on the Today tab: when to go to bed tonight, how long to sleep, when to get up, how much is missing.
-struct SleepCoachCard: View {
-  let coach: SleepCoachModel
-  let isPast: Bool
-  let action: () -> Void
-
-  var body: some View {
-    Button(action: action) {
-      VStack(alignment: .leading, spacing: 4) {
-        HStack {
-          Text(isPast ? tr("当晚入睡", "That night's bedtime") : tr("今晚入睡", "Tonight's bedtime")).font(Typo.label).foregroundColor(Palette.text2).lineLimit(1)
-          Spacer(minLength: 4)
-          Icon(.chevronRight, size: 14).foregroundColor(Palette.text3)
-        }
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-          Text(coach.bedtime ?? "—").font(.system(size: 22, weight: .semibold).monospacedDigit())
-            .foregroundColor(coach.bedtime == nil ? Palette.text3 : Palette.sleep)
-          if let l = coach.line {
-            Text(l).font(.system(size: 12).monospacedDigit()).foregroundColor(Palette.text2).lineLimit(1).minimumScaleFactor(0.75)
-          }
-        }
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(14)
-      .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
-    }
-    .buttonStyle(PressScale())
-    .accessibilityElement(children: .combine)
-  }
-}
-
 struct SleepCoachDetailView: View {
   let coach: SleepCoachModel?
   /// The look-back day (nil = today).

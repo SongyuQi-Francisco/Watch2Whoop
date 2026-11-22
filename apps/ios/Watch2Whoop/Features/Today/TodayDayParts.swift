@@ -157,6 +157,7 @@ struct TodaySleepL1: View {
   let session: AccountSession
   let date: String?
   let explain: (String, String) -> Void
+  @Environment(\.memberView) private var member
   @StateObject private var store = SleepNightStore()
 
   var body: some View {
@@ -169,7 +170,11 @@ struct TodaySleepL1: View {
         ProgressView().tint(Palette.text3).frame(maxWidth: .infinity, minHeight: 120)
       }
     }
-    .onAppear { if store.model == nil { store.show(session, date: date) } }
+    .onAppear {
+      guard store.model == nil else { return }
+      // someone else's night: only in the view's memory (SleepNightStore.show(_:date:) with the member view)
+      if let member { store.show(member, date: date) } else { store.show(session, date: date) }
+    }
   }
 
   @ViewBuilder private func content(_ m: SleepNightModel) -> some View {

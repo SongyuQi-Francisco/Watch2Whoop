@@ -12,6 +12,9 @@ enum MetricCrumb: Equatable {
 /// the same page, the explanation. Recovery, sleep, strain, stress and body age keep their own detail on top.
 ///
 /// Reached by tapping that number anywhere: a first glance, 今日详情, 身体's list, the related rows of another metric.
+///
+/// Someone else's metric page (`member`): the same page from their documents in memory (`TrendsStore(member:)`); the heads
+/// that read my own tables (body age, the stress hours) give way to the plain head.
 struct MetricPage: View {
   let id: String
   /// The day the page describes (nil = the user's today).
@@ -19,22 +22,28 @@ struct MetricPage: View {
   let crumb: MetricCrumb
   /// The 今天 tab's day: the scores' own numbers (so this page never contradicts the dial) and the strain head.
   let today: TodayModel?
-  let push: (LevelRoute) -> Void
+  /// The next level and the door it grows out of (`.zoomDoor`).
+  let push: (LevelRoute, String?) -> Void
   let up: () -> Void
   let explain: (String, String) -> Void
   /// The training state (TSB) row of the strain head: the load sheet (CTL, ATL, TSB).
   var load: (() -> Void)?
   /// The sleep head's 入睡目标 (my own 今天 only).
   var bedtime: (() -> Void)?
+  /// Someone else's page (read-only, nothing on the phone).
+  let member: MemberViewStore?
   @EnvironmentObject private var session: AccountSession
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.zoomArrival) private var zoomArrival
+  /// Grown out of its door: the chart and everything under the range switch wait until the zoom lands (`ZoomTransition.settle`).
+  @State private var settled = false
   @StateObject private var dayStore: TrendsStore
   @StateObject private var rangeStore: TrendsStore
   @State private var selection = ChartSelection()
 
-  init(id: String, end: String?, range: TrendRange, crumb: MetricCrumb, today: TodayModel?, push: @escaping (LevelRoute) -> Void,
-       up: @escaping () -> Void, explain: @escaping (String, String) -> Void, load: (() -> Void)? = nil,
-       bedtime: (() -> Void)? = nil) {
+  init(id: String, end: String?, range: TrendRange, crumb: MetricCrumb, today: TodayModel?,
+       push: @escaping (LevelRoute, String?) -> Void, up: @escaping () -> Void, explain: @escaping (String, String) -> Void,
+       load: (() -> Void)? = nil, bedtime: (() -> Void)? = nil, member: MemberViewStore? = nil) {
     self.id = id
     self.end = end
     self.crumb = crumb
@@ -44,10 +53,16 @@ struct MetricPage: View {
     self.explain = explain
     self.load = load
     self.bedtime = bedtime
+    self.member = member
     // the day (its value, the usual) reads the 61-day document the Today tab already keeps; the chart its own range
-    _dayStore = StateObject(wrappedValue: TrendsStore(range: .today, end: end, remember: false))
     let r = LevelParams.metricRanges.contains(range) ? range : LevelParams.metricDefaultRange
-    _rangeStore = StateObject(wrappedValue: TrendsStore(range: r, end: end, remember: false))
+    if let member {
+      _dayStore = StateObject(wrappedValue: TrendsStore(member: member, range: .today, end: end))
+      _rangeStore = StateObject(wrappedValue: TrendsStore(member: member, range: r, end: end))
+    } else {
+      _dayStore = StateObject(wrappedValue: TrendsStore(range: .today, end: end, remember: false))
+      _rangeStore = StateObject(wrappedValue: TrendsStore(range: r, end: end, remember: false))
+    }
   }
 
   private var title: String { MetricCatalog.title(id) }
@@ -66,11 +81,18 @@ struct MetricPage: View {
           rangeStore.setRange(r)
         }
         .padding(.top, 16)
-        chartBlock.padding(.top, 14)
-        if let p = rangeStore.page, let st = RangeStatsModel.of(id, range: p.data) { stats(st).padding(.top, 18) }
-        if id == "recovery" { RecoveryContributors(series: rangeStore.page?.data.series["recovery"]).padding(.top, 22) }
-        related
-        ExplainBody(kind: "metric", key: MetricCatalog.explain(id), day: end, head: false).padding(.top, 8)
+        if ready {
+          Group {
+            chartBlock.padding(.top, 14)
+            if let p = rangeStore.page, let st = RangeStatsModel.of(id, range: p.data) { stats(st).padding(.top, 18) }
+            if id == "recovery" { RecoveryContributors(series: rangeStore.page?.data.series["recovery"]).padding(.top, 22) }
+            related
+            ExplainBody(kind: "metric", key: MetricCatalog.explain(id), day: end, head: false).padding(.top, 8)
+          }
+          .transition(.opacity)
+        } else {
+          Color.clear.frame(height: LevelParams.metricChartHeight + 40)
+        }
         Color.clear.frame(height: 24)
       }
       .padding(.horizontal, Metrics.gutter)
@@ -83,14 +105,26 @@ struct MetricPage: View {
     .clearOfJarvisKey()
     .toolbar(.hidden, for: .navigationBar)
     .onAppear {
+      // someone else's stores have no database to observe (`isObserving` is true for them)
       if !dayStore.isObserving { dayStore.observe(session) }
       if !rangeStore.isObserving { rangeStore.observe(session) }
     }
     .task {
-      if dayStore.page == nil { await dayStore.refresh() }
+      // someone else's day is already in the view's memory: its number shows while the page zooms in (mine comes from the
+      // observation started in onAppear)
+      if member != nil, dayStore.page == nil { await dayStore.refresh() }
+      if zoomArrival && !settled && ZoomTransition.settle > 0 {
+        try? await Task.sleep(nanoseconds: UInt64(ZoomTransition.settle * 1_000_000_000))
+        withAnimation(.easeOut(duration: 0.2)) { settled = true }
+      }
+      // the range first: the day's 61-day document is usually cached (its first value arrives meanwhile, off the main thread)
       await rangeStore.refresh()
+      if dayStore.page == nil { await dayStore.refresh() }
     }
   }
+
+  /// Everything under the range switch is drawn: at once, or once the zoom it grew out of has landed.
+  private var ready: Bool { settled || !zoomArrival || ZoomTransition.settle <= 0 }
 
   /// 「7 天」 … 「1 年」.
   static func rangeLabel(_ r: TrendRange) -> String { r == .year ? tr("1 年", "1 y") : r.label }
@@ -124,19 +158,29 @@ struct MetricPage: View {
   // MARK: head: the day against the usual, or the score's own detail
 
   @ViewBuilder private var head: some View {
+    if !ready {
+      plainHead   // while zooming in: the number only; the score's own detail (charts, the night) once it has landed
+    } else {
+      fullHead
+    }
+  }
+
+  @ViewBuilder private var fullHead: some View {
     switch MetricCatalog.head(id) {
     case .strain where today != nil:
       StrainDayHead(model: today!, open: openRow)
-    case .bodyAge:
-      // its own tiles (body age, against the calendar, pace) are the head
+    case .bodyAge where member == nil:
+      // its own tiles (body age, against the calendar, pace) are the head; they read my own tables
       BodyAgeView(explains: false).padding(.top, 10)
     default:
       plainHead
       if MetricCatalog.head(id) == .sleep {
-        SleepNightHead(session: session, date: today?.sleepDate ?? end, explain: explain, night: { push(.night($0)) }, bedtime: bedtime)
+        SleepNightHead(session: session, date: today?.sleepDate ?? end, explain: explain,
+                       night: { push(.night($0), "metric.\(id).night") }, bedtime: bedtime, nightDoor: "metric.\(id).night")
           .padding(.top, 6)
       }
-      if MetricCatalog.head(id) == .stress, let day = end ?? dayStore.page?.data.end ?? today?.date {
+      // the stress hours read my own tables (no such path for someone else)
+      if MetricCatalog.head(id) == .stress, member == nil, let day = end ?? dayStore.page?.data.end ?? today?.date {
         StressDetailView(day: day, past: end, explains: false).padding(.top, 10)
       }
     }
@@ -168,7 +212,7 @@ struct MetricPage: View {
 
   private func openRow(_ r: TodayGlance.Row) {
     if r.id == "tsb", let load { load() }
-    else if TrendDay.conf(r.id) != nil { push(.metric(r.id)) }
+    else if TrendDay.conf(r.id) != nil { push(.metric(r.id), "metric.\(id).head.\(r.id)") }
     else if let e = r.explain { explain(e.key, e.title) }
   }
 
@@ -270,10 +314,12 @@ struct MetricPage: View {
 
   @ViewBuilder private var related: some View {
     if let d = dayStore.page?.data {
-      let rows = MetricCatalog.related(id).compactMap { LevelRows.dayRow($0, d, override: overrides[$0]) }
+      // someone else's: only the related metrics their document carries (the others are not shared)
+      let rows = MetricCatalog.related(id).filter { member == nil || d.series[$0] != nil || overrides[$0] != nil }
+        .compactMap { LevelRows.dayRow($0, d, override: overrides[$0]) }
       if !rows.isEmpty {
         LevelGroupHeader(icon: .link, title: tr("相关", "Related"), count: nil).padding(.top, 22)
-        LevelRowList(rows: rows) { push(.metric($0.id)) }
+        LevelRowList(rows: rows, door: "metric.\(id).related") { push(.metric($0.id), "metric.\(id).related.\($0.id)") }
       }
     }
   }

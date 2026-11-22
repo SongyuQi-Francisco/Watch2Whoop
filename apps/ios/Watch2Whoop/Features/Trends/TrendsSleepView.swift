@@ -169,6 +169,7 @@ struct TrendsSleepView: View {
             .contentShape(Rectangle())
           }
           .buttonStyle(PressScale())
+          .zoomDoor("nights.\(n.date)")   // the night page grows out of its row (BodyAllPage)
         }
       }
     }
