@@ -110,6 +110,9 @@ struct MetricPage: View {
       if !rangeStore.isObserving { rangeStore.observe(session) }
     }
     .task {
+      // someone else's day is already in the view's memory: its number shows while the page zooms in (mine comes from the
+      // observation started in onAppear)
+      if member != nil, dayStore.page == nil { await dayStore.refresh() }
       if zoomArrival && !settled && ZoomTransition.settle > 0 {
         try? await Task.sleep(nanoseconds: UInt64(ZoomTransition.settle * 1_000_000_000))
         withAnimation(.easeOut(duration: 0.2)) { settled = true }
