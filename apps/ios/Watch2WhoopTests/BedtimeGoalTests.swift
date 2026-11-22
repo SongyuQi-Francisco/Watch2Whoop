@@ -130,7 +130,8 @@ final class BedtimeGoalTests: XCTestCase {
   func testLocalViewEqualsTheServersAndFeedsTheSleepCoach() throws {
     let f = try Self.golden("coach_local")
     let parts = try XCTUnwrap(f["parts"] as? [String: Any]), today = try XCTUnwrap(f["today"] as? String)
-    let cases = try XCTUnwrap(try Self.golden("coach")["goals"] as? [[String: Any]])
+    let golden = try Self.golden("coach")   // outside XCTUnwrap: a missing fixture skips, never fails
+    let cases = try XCTUnwrap(golden["goals"] as? [[String: Any]])
     let db = try AppDatabase.inMemory()
     try db.writer.write { db in
       for (i, s) in (parts["sleep"] as? [[String: Any]] ?? []).enumerated() {
@@ -182,7 +183,8 @@ final class BedtimeGoalTests: XCTestCase {
 
   /// The page model: seven slots before tonight, the plan step and the next one, the progress numbers.
   func testModelFromAView() throws {
-    let cases = try XCTUnwrap(try Self.golden("coach")["goals"] as? [[String: Any]])
+    let golden = try Self.golden("coach")   // outside XCTUnwrap: a missing fixture skips, never fails
+    let cases = try XCTUnwrap(golden["goals"] as? [[String: Any]])
     let m = try XCTUnwrap(BedtimeGoalModel(json: cases[1]))
     XCTAssertTrue(m.hasGoal)
     XCTAssertFalse(m.paused)
