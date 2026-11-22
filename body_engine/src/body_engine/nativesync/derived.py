@@ -80,6 +80,9 @@ def _check_due(row: dict | None, bundle_version: str | None) -> bool:
 
 
 def _check_day(days: dict[date, list], today: date) -> date | None:
+    # Never today (the day in progress). So a kind whose uploaded days are all today (healthspan keyed by this Monday, on that
+    # Monday: a new user's first body-age row) has nothing to check, stays `shadow` (the server keeps computing, nothing is lost)
+    # and is checked by the first upload on a later day. Pinned by tests/test_native_s9.py.
     recent = sorted((d for d in days if today - timedelta(days=P.CHECK_WITHIN_DAYS) <= d < today), reverse=True)
     with_rows = [d for d in recent if days[d]]
     return (with_rows or recent or [None])[0]
