@@ -35,14 +35,35 @@ private struct ZoomScopeKey: EnvironmentKey {
   static let defaultValue: ZoomScope? = nil
 }
 
+private struct ZoomArrivalKey: EnvironmentKey {
+  static let defaultValue = false
+}
+
 extension EnvironmentValues {
   var zoomScope: ZoomScope? {
     get { self[ZoomScopeKey.self] }
     set { self[ZoomScopeKey.self] = newValue }
   }
+
+  /// This page is growing out of its door right now (set by `.zoomLevel`). A page with heavy parts (charts) draws them
+  /// once the zoom has landed (`ZoomTransition.settle`), so the zoom itself does not drop frames.
+  var zoomArrival: Bool {
+    get { self[ZoomArrivalKey.self] }
+    set { self[ZoomArrivalKey.self] = newValue }
+  }
 }
 
 enum ZoomTransition {
+  /// How long a page's heavy parts wait when it zooms in: about the system zoom's own length, so they appear as it lands
+  /// (measured on the simulator: the zoom is visually done after ~0.3 s; 2.1.0, PR #474).
+  /// In Debug, `W2W_ZOOM_SETTLE=<seconds>` overrides it (0 = draw everything at once), for frame-meter comparisons.
+  static var settle: TimeInterval {
+    #if DEBUG
+    if let v = ProcessInfo.processInfo.environment["W2W_ZOOM_SETTLE"].flatMap(Double.init) { return v }
+    #endif
+    return 0.35
+  }
+
   /// Whether levels zoom on this phone now: iOS 18+, Reduce Motion off. In Debug, `W2W_ZOOM_OFF=1` turns it off, so a
   /// frame-meter run can compare the plain push with the zoom on the same build (apps/ios/README.md).
   static func enabled(reduceMotion: Bool) -> Bool {
@@ -88,7 +109,7 @@ private struct ZoomLevel: ViewModifier {
 
   @ViewBuilder func body(content: Content) -> some View {
     if #available(iOS 18.0, *), let scope, ZoomTransition.enabled(reduceMotion: reduceMotion), let door = scope.trail.door(for: route) {
-      content.navigationTransition(.zoom(sourceID: door, in: scope.namespace))
+      content.environment(\.zoomArrival, true).navigationTransition(.zoom(sourceID: door, in: scope.namespace))
     } else {
       content
     }

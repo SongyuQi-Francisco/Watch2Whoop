@@ -34,6 +34,9 @@ struct MetricPage: View {
   let member: MemberViewStore?
   @EnvironmentObject private var session: AccountSession
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.zoomArrival) private var zoomArrival
+  /// Grown out of its door: the chart and everything under the range switch wait until the zoom lands (`ZoomTransition.settle`).
+  @State private var settled = false
   @StateObject private var dayStore: TrendsStore
   @StateObject private var rangeStore: TrendsStore
   @State private var selection = ChartSelection()
@@ -78,11 +81,18 @@ struct MetricPage: View {
           rangeStore.setRange(r)
         }
         .padding(.top, 16)
-        chartBlock.padding(.top, 14)
-        if let p = rangeStore.page, let st = RangeStatsModel.of(id, range: p.data) { stats(st).padding(.top, 18) }
-        if id == "recovery" { RecoveryContributors(series: rangeStore.page?.data.series["recovery"]).padding(.top, 22) }
-        related
-        ExplainBody(kind: "metric", key: MetricCatalog.explain(id), day: end, head: false).padding(.top, 8)
+        if ready {
+          Group {
+            chartBlock.padding(.top, 14)
+            if let p = rangeStore.page, let st = RangeStatsModel.of(id, range: p.data) { stats(st).padding(.top, 18) }
+            if id == "recovery" { RecoveryContributors(series: rangeStore.page?.data.series["recovery"]).padding(.top, 22) }
+            related
+            ExplainBody(kind: "metric", key: MetricCatalog.explain(id), day: end, head: false).padding(.top, 8)
+          }
+          .transition(.opacity)
+        } else {
+          Color.clear.frame(height: LevelParams.metricChartHeight + 40)
+        }
         Color.clear.frame(height: 24)
       }
       .padding(.horizontal, Metrics.gutter)
@@ -100,10 +110,18 @@ struct MetricPage: View {
       if !rangeStore.isObserving { rangeStore.observe(session) }
     }
     .task {
-      if dayStore.page == nil { await dayStore.refresh() }
+      if zoomArrival && !settled && ZoomTransition.settle > 0 {
+        try? await Task.sleep(nanoseconds: UInt64(ZoomTransition.settle * 1_000_000_000))
+        withAnimation(.easeOut(duration: 0.2)) { settled = true }
+      }
+      // the range first: the day's 61-day document is usually cached (its first value arrives meanwhile, off the main thread)
       await rangeStore.refresh()
+      if dayStore.page == nil { await dayStore.refresh() }
     }
   }
+
+  /// Everything under the range switch is drawn: at once, or once the zoom it grew out of has landed.
+  private var ready: Bool { settled || !zoomArrival || ZoomTransition.settle <= 0 }
 
   /// 「7 天」 … 「1 年」.
   static func rangeLabel(_ r: TrendRange) -> String { r == .year ? tr("1 年", "1 y") : r.label }
@@ -137,6 +155,14 @@ struct MetricPage: View {
   // MARK: head: the day against the usual, or the score's own detail
 
   @ViewBuilder private var head: some View {
+    if !ready {
+      plainHead   // while zooming in: the number only; the score's own detail (charts, the night) once it has landed
+    } else {
+      fullHead
+    }
+  }
+
+  @ViewBuilder private var fullHead: some View {
     switch MetricCatalog.head(id) {
     case .strain where today != nil:
       StrainDayHead(model: today!, open: openRow)

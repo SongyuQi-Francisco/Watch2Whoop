@@ -192,13 +192,21 @@ final class TrendsStore: ObservableObject {
     let days = range.docDays, end = self.end, endDay = end ?? userToday
     cancellable?.cancel()
     // Parsing a year of 37 series happens in `map`, off the main thread (except the first, synchronous value).
-    cancellable = ValueObservation.tracking { db in try TrendsSnapshot.read(db, days: days, end: end, endDay: endDay) }
+    let observation = ValueObservation.tracking { db in try TrendsSnapshot.read(db, days: days, end: end, endDay: endDay) }
       .removeDuplicates()
       .map(TrendsSnapshot.page)
-      .start(in: session.db.writer, scheduling: .immediate, onError: { _ in }, onChange: { [weak self] p in
-        guard let self, p != self.page else { return }
-        self.page = p
-      })
+    let apply: (TrendsPage?) -> Void = { [weak self] p in
+      guard let self, p != self.page else { return }
+      self.page = p
+    }
+    if remember {
+      // the 身体 tab: the cached range in its first frame
+      cancellable = observation.start(in: session.db.writer, scheduling: .immediate, onError: { _ in }, onChange: apply)
+    } else {
+      // a metric page: even the first value is read and parsed off the main thread, a frame later. It appears while its
+      // level zooms out of the door, and two synchronous parses there cost 6–11 frames of the zoom (2.1.0, PR #474).
+      cancellable = observation.start(in: session.db.writer, scheduling: .async(onQueue: .main), onError: { _ in }, onChange: apply)
+    }
   }
 
   func setRange(_ r: TrendRange) {

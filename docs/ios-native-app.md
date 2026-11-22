@@ -673,6 +673,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 - 今天页用 `LazyVStack`，首帧只建屏幕上的部分。
 - 2.0.1：今天页的数据模型（解析本地文档的 JSON、算整页的数）在数据库观察的后台队列里建，只有首帧那一份同步建；首屏 `TodayGlancePage` 按模型做 `Equatable`，不比较闭包：开弹层、推入子页面、切 tab 只改页面自己的状态，不再把整页重建、重排一遍。
 - **层级之间的 zoom 转场**（2.1.0，`DesignSystem/Zoom.swift`）：「每个模块是一扇门，点一下，它长成自己的详情」。栈的主人（`TodayView`、`TrendsView`、`RecordView`、`MemberScreen`，成员页的全屏覆盖是 `MainTabView`）放一个 `@Namespace` 和 `ZoomTrail`（`.zoomScope`）；门挂 `.zoomDoor(id)`，id 在这一页上唯一（`glance.dial`、`day.row.hrv`、`metric.hrv.related.rmssd`）；推入时说明从哪扇门来（`ZoomTrail.open(id, to: route)`，各页的 `push` / `level` 闭包多了一个门参数）；被推入的页挂 `.zoomLevel(route)`。门 id 不直接用路由，因为同一个指标在一页上可能有好几扇门（指标行、需要注意、今日核心），栈里下面几层也还留着同名的门。只有 iOS 18+ 且没开「减弱动态效果」才 zoom；iOS 16–17、减弱动态效果、没有门的打开（深链接、`TrendsLink`、小表盘上一层、Debug 钩子）都是原来的推入。返回（返回键、边缘右滑、zoom 自带的下拉）缩回原来那扇门。弹层不算层级，不 zoom。Debug：`W2W_ZOOM_OFF=1` 关掉 zoom，用同一个构建比较帧率。
+  - 不掉帧的两条做法（帧率数字见 PR #474）：zoom 一点下去就开始动，页面出现时的同步工作会落进动画里。所以指标页的两个 `TrendsStore` 第一次读库、解析也放到后台（`remember` 关着的 store 用 `.async(onQueue: .main)`，身体 tab 自己的仍是 `.immediate`，首帧要有缓存）；被 zoom 打开的页面拿到 `zoomArrival`，指标页在放大时只画页头、大数字和范围切换，图表、睡眠图、相关指标和说明等 `ZoomTransition.settle`（0.35 秒）落定后再淡入。今日详情没有同步解析，不用等。
 - Debug 版截图用的环境变量：`W2W_DEV_LEVEL=day|day:<锚点>|metric:<id>|night`（2.1.0 的层级：今日详情、指标页、整晚；逗号分隔成一条路径）、`W2W_DEV_SHEET`、`W2W_DEV_SLEEP`、`W2W_DEV_DATE`（`TodayView.swift` 的 `DevShot`）；身体页 `W2W_DEV_TRENDS=<mode>[,<天数>]`（打开第 2 层）、`W2W_DEV_TRENDS_LEVEL=metric:<id>`、`W2W_DEV_TODAYFOOD=day`（打开饮食卡的明细）。
 
 ### 9.2 N7 圈子：数据从哪来、写怎么走
