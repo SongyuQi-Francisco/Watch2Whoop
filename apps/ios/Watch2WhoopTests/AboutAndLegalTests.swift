@@ -54,4 +54,21 @@ final class AboutAndLegalTests: XCTestCase {
       XCTAssertTrue(d["NSHealthShareUsageDescription"]?.contains("Jarvis") == true)
     }
   }
+
+  /// The embedded Apple Watch app and its complications call UserDefaults (their own and the App Group's), so each needs a
+  /// privacy manifest of its own: App Store Connect checks every bundle of the upload (ITMS-91053), not only the iPhone app.
+  func testEmbeddedWatchBundlesHavePrivacyManifests() throws {
+    let watch = Bundle.main.bundleURL.appendingPathComponent("Watch/Watch2WhoopWatch.app")
+    XCTAssertTrue(FileManager.default.fileExists(atPath: watch.path), "the iPhone app embeds the watch app (project.yml)")
+    for bundle in [watch, watch.appendingPathComponent("PlugIns/Watch2WhoopWatchWidgets.appex")] {
+      let url = bundle.appendingPathComponent("PrivacyInfo.xcprivacy")
+      let data = try XCTUnwrap(try? Data(contentsOf: url), "no privacy manifest in \(bundle.lastPathComponent)")
+      let plist = try XCTUnwrap(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
+      XCTAssertEqual(plist["NSPrivacyTracking"] as? Bool, false)
+      let apis = plist["NSPrivacyAccessedAPITypes"] as? [[String: Any]] ?? []
+      let defaults = apis.first { $0["NSPrivacyAccessedAPIType"] as? String == "NSPrivacyAccessedAPICategoryUserDefaults" }
+      let reasons = Set(defaults?["NSPrivacyAccessedAPITypeReasons"] as? [String] ?? [])
+      XCTAssertEqual(reasons, ["CA92.1", "1C8F.1"], bundle.lastPathComponent)
+    }
+  }
 }
