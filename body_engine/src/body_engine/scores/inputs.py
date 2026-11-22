@@ -191,7 +191,7 @@ def load_shortcut_db(conn: psycopg.Connection, user_id: int, tz: ZoneInfo, start
             continue
         x = r["value"] * 100 if key == "spo2" and r["value"] <= 1.0 else r["value"]
         merger.add(key, r["start_at"], x, xml=False)
-    return sc_imp.build_segments(rows)
+    return sc_imp.build_segments(rows, tz)
 
 
 def load_shortcut(archive_dir: Path, merger: _Merger, types: dict | None = None) -> list:

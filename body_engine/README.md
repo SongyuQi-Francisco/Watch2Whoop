@@ -61,6 +61,15 @@ uv run body-engine briefing-stats [--days 7] [--json]   # get_briefing calls, ca
 uv run body-engine refresh-status --user-id 1           # recompute the automatically computed items of the status card (the hourly job runs it; the Today page also refreshes it on read when older than 30 minutes)
 uv run pytest                                           # each database test uses its own body_test_* database (rebuilt every time); skipped if it cannot connect
 ```
+**Tests that depend on the day: use the frozen clock** (`tests/clock.py`, fixtures `frozen_clock` and `moment` in `tests/conftest.py`).
+`clock = frozen_clock(MON_0005)` freezes `datetime.now(...)` (every call site, however the module imported it), `date.today()` and
+`time.time()` at an instant given with its zone (Sydney 00:05, Sunday 23:55 / Monday 00:05, the 23- and 25-hour daylight-saving days,
+month end ...), runs the process in UTC like the server (`server_tz=` to change it) and puts everything back after the test; `moment`
+runs the test at every canonical instant. Not frozen: the database's own `now()` / `CURRENT_DATE` / `DEFAULT now()` columns and
+`time.monotonic()` (cache TTLs); give such timestamps explicitly. Tests that use the clock carry the marker `time_sensitive`
+(`pytest -m time_sensitive`). A new "today for this user" helper must be listed in `tests/test_time_boundaries.py`; the replay tests of the
+importers (the same upload twice, an upload split across midnight, clock-change days) are in `tests/test_importer_replay.py`.
+
 All imports are idempotent and can be re-run. Which source wins for a day: see the table at the top (`app` > `ow` > `apple_export` > `shortcut`; cumulative metrics take the largest clean candidate).
 For OW's deployment and API key see `../deploy/open-wearables/README.md` (the key is read from `../secrets/open_wearables_api_key`, the address is `BODY_OW_URL`, default http://127.0.0.1:8200).
 The OW importer's rules (cumulative metrics de-duplicated by time window + source priority, the export day itself not written, the XML unit problem) are written at the top of `src/body_engine/importers/ow.py` and in section 10 of the system design.
