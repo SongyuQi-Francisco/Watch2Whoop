@@ -3,7 +3,7 @@ import json
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from statistics import median
 from zoneinfo import ZoneInfo
 
@@ -43,6 +43,14 @@ INCOMPLETE_BASAL_SHARE = 0.5      # basal energy < 50% of the usual day -> incom
 BASAL_REF_DAYS = 60               # "usual day" = median of the previous 60 days ...
 BASAL_REF_MIN_DAYS = 7            # ... needs at least 7 of them, otherwise this rule is off
 WORKOUT_KCAL_SLACK = 20           # active energy more than 20 kcal below that day's workouts -> incomplete (same as training/history.py)
+
+def pin_offset(dt: datetime) -> datetime:
+    """The same instant with a fixed UTC offset (that of the moment itself) instead of the zone. Python subtracts two aware times that
+    share one ZoneInfo object on the WALL clock, so a span across a daylight-saving change comes out one hour too long / short (and
+    `fold` is ignored when comparing); fixed offsets subtract by the instant. Times read back from the database carry the session's
+    ZoneInfo, so durations and gaps between them must go through this first."""
+    return dt.astimezone(timezone(dt.utcoffset()))
+
 
 SLEEP_GAP = timedelta(minutes=60)     # a gap over 60 minutes splits into two segments
 WAKE_DAY_SHIFT = timedelta(hours=4)   # assigned to the day of (wake − 4h)

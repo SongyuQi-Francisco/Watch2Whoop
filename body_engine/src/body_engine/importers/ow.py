@@ -20,13 +20,13 @@ cumulative ones compete with apple_export / shortcut on completeness and value, 
 import bisect
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import psycopg
 
 from ..ow_client import OWClient
-from .common import Segment, replace_sleep, sessionize, upsert_daily
+from .common import Segment, pin_offset, replace_sleep, sessionize, upsert_daily
 
 SOURCE = "ow"
 WINDOW = timedelta(days=30)          # pull 30 days of samples per batch, to bound memory
@@ -214,8 +214,7 @@ def _session_priority(sess: dict) -> int:
 def _local(ts: str, tz: ZoneInfo) -> datetime:
     """Convert to the user's time zone, then pin to the UTC offset of that moment: subtracting two times of the same ZoneInfo is done in wall-clock time,
     so a segment crossing a DST change is one hour longer / shorter; subtracting fixed offsets gives the real duration."""
-    local = datetime.fromisoformat(ts).astimezone(tz)
-    return local.astimezone(timezone(local.utcoffset()))
+    return pin_offset(datetime.fromisoformat(ts).astimezone(tz))
 
 
 def sleep_segments(sessions: list[dict], tz: ZoneInfo) -> list[Segment]:
