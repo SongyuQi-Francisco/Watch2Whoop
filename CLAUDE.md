@@ -31,7 +31,7 @@ Status as of 2026-11-19; the release in progress is iOS 2.1.0 (phone UI redesign
   is non-commercial) and is being retired — never copy its code or schema.
 
 ## Conventions
-- Every change is a pull request from your own branch or fork (never push to `main`). `main` needs the CI checks named in `.github/workflows/ci.yml` and an up-to-date branch; the coordinator's review comment with its verification evidence is the review; nobody bypasses. See `CONTRIBUTING.md`.
+- Every change is a pull request from your own branch or fork (never push to `main`). `main` needs the CI checks named in `.github/workflows/ci.yml` (the branch need not include the latest `main`; PRs touching the same file, migration number or CHANGELOG as one just merged are updated first); the coordinator's review comment with its verification evidence is the review; nobody bypasses. See `CONTRIBUTING.md`.
 - Maintenance rules (CONTRIBUTING.md): never close an issue silently — comment what was fixed, in which PR / commit, how it was verified and what is left open; keep a written record on every PR (what was developed, each later round of commits, test / CI results, deploy status); a session that ends with unfinished work leaves a handoff comment.
 - Never commit `health_data/`, `secrets/`, database files or `.env`. Secrets are files under `secrets/`, read at runtime.
 - Importers must be idempotent. Dates and times are ISO 8601 with the user's local time zone; weight in kg, energy in kcal.

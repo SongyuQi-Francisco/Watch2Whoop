@@ -96,8 +96,9 @@ Nobody pushes to `main`, maintainers included; every change is a pull request.
 3. **Pull request** — against `main`; fill in the [checklist](.github/pull_request_template.md).
 4. **CI green** — [`ci.yml`](.github/workflows/ci.yml) runs the Body Engine tests, syntax checks, the iOS app's build and
    tests, the algorithm JS bundle and the other jobs it lists (each only when its paths changed; skipped ones count as
-   passed). The required checks are named in that file's comments; all must be green, on a branch that is up to date with
-   `main`. A macOS job that never got a runner is re-run automatically (at most twice, `ci-rerun.yml`); a job that ran and
+   passed). The required checks are named in that file's comments; all must be green. The branch does not have to include the latest
+   `main`: the maintainer merges one pull request at a time, and a PR that touches the same file, migration number or
+   CHANGELOG as one just merged is updated first. Runs on `main` are never cancelled; after a merge, the run on `main` is the verdict. A macOS job that never got a runner is re-run automatically (at most twice, `ci-rerun.yml`); a job that ran and
    failed is a real failure.
 5. **Review** — `main` has no approving-review count and administrators are not exempt, so nobody bypasses it. This is a
    one-maintainer project: the maintainer's (coordinator's) review comment on the PR, with its verification evidence (what was run, the

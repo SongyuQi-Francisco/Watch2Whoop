@@ -188,11 +188,17 @@ def client(dsn):
     @gated.get("/v1/test-rollout/gated", dependencies=[Depends(flags.require(KEY))])
     def gated_endpoint():
         return {"ok": True}
+    routes_before = list(api.app.router.routes)
     api.app.include_router(gated)
+    api.app.openapi_schema = None
     api.pool = ConnectionPool(dsn, kwargs={"row_factory": dict_row}, min_size=1, max_size=4, open=True)
     yield TestClient(api.app, base_url="https://testserver")
     api.pool.close()
     registry.FLAGS.pop(KEY, None)
+    # the app is shared by every test module of the process: take the test route out again (a later module's openapi sweep
+    # or route list would otherwise meet a route whose flag no longer exists)
+    api.app.router.routes[:] = routes_before
+    api.app.openapi_schema = None
 
 
 def H(t):

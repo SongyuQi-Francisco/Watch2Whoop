@@ -24,7 +24,12 @@ def conn():
         c = psycopg.connect(TEST_SETTINGS.dsn, row_factory=dict_row, autocommit=True)
     except (psycopg.OperationalError, RuntimeError) as e:
         pytest.skip(f"test DB {TEST_DB} unreachable: {e}")
-    c.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public")
+    c.close()
+    # a fresh database per test; conftest.py makes this a clone of the migrated template (the migrate below is then a no-op)
+    with psycopg.connect(dataclasses.replace(settings, db_name="postgres").dsn, autocommit=True) as admin:
+        admin.execute(f'DROP DATABASE IF EXISTS "{TEST_DB}" WITH (FORCE)')
+        admin.execute(f'CREATE DATABASE "{TEST_DB}"')
+    c = psycopg.connect(TEST_SETTINGS.dsn, row_factory=dict_row, autocommit=True)
     migrate(c)
     yield c
     c.close()
