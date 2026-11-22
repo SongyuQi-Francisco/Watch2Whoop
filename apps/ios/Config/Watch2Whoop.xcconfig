@@ -16,7 +16,7 @@ W2W_LEGAL_BASE_URL =
 
 // Version shown in TestFlight (docs/apps.md section 4: the public name is the version only; the build number goes up
 // for every upload of the same version).
-W2W_MARKETING_VERSION = 2.0.0
-W2W_BUILD_NUMBER = 11
+W2W_MARKETING_VERSION = 2.1.0
+W2W_BUILD_NUMBER = 12
 
 #include? "Watch2Whoop.local.xcconfig"

@@ -234,7 +234,7 @@ final class TodayStorageTests: XCTestCase {
 final class LocalScoringTests: XCTestCase {
   func testBuiltInBundleLoadsInJavaScriptCore() throws {
     let rt = try OpenBodyScoreRuntime.builtin()
-    XCTAssertEqual(rt.version, "0.2.0")
+    XCTAssertEqual(rt.version, "0.3.0")
     XCTAssertEqual(rt.algoVersions["scores"], "v1.2-2026-10-27")
     let hrv = try rt.invoke("analyzeHrv", [[0, 0.8, 1.62, 2.41, 3.25, 4.05], []]) as? [String: Any]
     XCTAssertNotNil(hrv?["algo_version"])
