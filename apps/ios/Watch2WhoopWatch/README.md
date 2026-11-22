@@ -18,8 +18,10 @@ The watch app of [`docs/watch-app-plan.md`](../../../docs/watch-app-plan.md), dr
   when the phone's intake is known; 「撤销」 → the confirm screen (撤销 / 保留). Back from the receipt = home.
 - **Complications** (plan 2.5, mockups C1 / C4; section 「Complications」 below): circular Recovery, rectangular Today
   (recovery, sleep, strain; the rest countdown and the next set while a session runs) and the circular Start key.
-- **Not yet** (phase 2b and later): hold to talk / voice (the core is drawn dimmed, mockup S7's "voice unavailable"; a
-  hold only gives a failure tap), Jarvis questions, Smart Stack relevance, corner / inline complications, controls, Siri.
+- **Hold to talk** (phase 2b, #466): a meal by voice or one question to Jarvis, only for an account whose AI runs in the
+  app and with `jarvis_voice_direct` on (`WatchVoiceOffer.of`); otherwise the core is drawn dimmed and a hold only gives
+  a failure tap (mockup S7's "voice unavailable").
+- **Not yet**: Smart Stack relevance, corner / inline complications, controls, Siri.
 
 ## Layout
 
@@ -212,7 +214,7 @@ For example: `SIMCTL_CHILD_W2W_WATCH_SEED=1 xcrun simctl launch --terminate-runn
 
 ## Releasing (TestFlight)
 
-For the person who archives and uploads (the full checklist is `docs/ios-native-1.0.9-handover-template.md`):
+For the person who archives and uploads (the full checklist is `docs/ios-native-2.1.0-handover.md`):
 
 1. In the Apple Developer account the watch app needs its own App ID: `<iPhone bundle ID>.watchkitapp`, with
    **HealthKit**. With automatic signing Xcode registers it (select the `Watch2WhoopWatch` target → Signing &
@@ -243,11 +245,11 @@ For the person who archives and uploads (the full checklist is `docs/ios-native-
 
 ## 中文（给发版的人）
 
-- 2.1.0 的手表端 = 第 1 期（训练记组）+ 第 2a 期（首屏「今天一眼」、快记、导航、中途退出后接着练）+ 表盘小组件三个（圆形恢复、矩形今天 / 训练中休息倒计时、圆形开始训练）。语音（按住说话）另一个 PR。
+- 2.1.0 的手表端 = 第 1 期（训练记组）+ 第 2a 期（首屏「今天一眼」、快记、导航、中途退出后接着练）+ 第 2b 期（按住说话：语音记一餐、问 Jarvis，只对开了 `jarvis_voice_direct`、AI 在 app 里的账号出现）+ 表盘小组件三个（圆形恢复、矩形今天 / 训练中休息倒计时、圆形开始训练）。
 - **表盘小组件要在开发者账号里多注册两样**：(1) 小组件扩展的 App ID **`<iPhone 的 Bundle ID>.watchkitapp.widgets`**；(2) App Group **`group.<iPhone 的 Bundle ID>.watch`**（本地 xcconfig 里改过 `W2W_APP_GROUP` 就用那个），在**手表 app 的 App ID 和小组件的 App ID 上都勾上**。自动签名时分别选 `Watch2WhoopWatch`、`Watch2WhoopWatchWidgets` 两个 target → Signing & Capabilities，App Groups 一栏里这个组打了勾就行；标红时到 developer.apple.com → Identifiers → App Groups 新建，再到两个 App ID 里勾上，回 Xcode 点 Try Again。归档里手表 app 下面应该有 `PlugIns/Watch2WhoopWatchWidgets.appex`，上传时三个描述文件（iPhone、手表、小组件）都要有效。
 
 - 从 2.1.0 起手表 app **嵌在 iPhone app 里**，打 `Watch2Whoop` scheme 的包时自动带上，一次上传两个都有。Xcode 要先装 watchOS 平台（Settings → Components → watchOS），没装 iPhone app 也编不过。
 - 开发者账号里要有手表 app 自己的 App ID：**`<iPhone 的 Bundle ID>.watchkitapp`**，勾 **HealthKit**。自动签名时 Xcode 会自己注册（选 `Watch2WhoopWatch` target → Signing & Capabilities，同一个 Team，勾 Automatically manage signing）；账号不允许时到 developer.apple.com → Identifiers 手动加，再回 Xcode 点 Try Again。
 - 版本号、构建号和 iPhone app 同一个来源（`Config/Watch2Whoop.xcconfig`），不要单独改。
 - Organizer 里归档应该包含 `Watch/Watch2WhoopWatch.app`；上传时 iPhone 和手表两个描述文件都要有效。
-- 完整的交接单：`docs/ios-native-1.0.9-handover-template.md`。
+- 完整的交接单：`docs/ios-native-2.1.0-handover.md`。
