@@ -350,6 +350,7 @@ private struct MePageView: View {
   let menu: MeMenu
   let perform: (MeItem) -> Void
   @EnvironmentObject private var session: AccountSession
+  @Environment(\.zoomScope) private var zoomScope
 
   var body: some View {
     ScrollView(.vertical, showsIndicators: false) {
@@ -384,7 +385,11 @@ private struct MePageView: View {
       RowGroup {
         ForEach(Array(session.viewable.enumerated()), id: \.element.id) { n, p in
           if n > 0 { RowDivider() }
-          ListRow(icon: .users, title: p.shownName) { session.viewing = p }
+          ListRow(icon: .users, title: p.shownName) {
+            zoomScope?.trail.open("me.shared.\(p.id)", to: p.zoomRoute)   // their view grows out of the row
+            session.viewing = p
+          }
+          .zoomDoor("me.shared.\(p.id)")
         }
       }
     }

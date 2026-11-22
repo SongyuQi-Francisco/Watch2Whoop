@@ -86,6 +86,7 @@ dev = [
     { name = "httpx" },
     { name = "pytest" },
     { name = "pytest-xdist" },
+    { name = "time-machine" },
 ]
 
 [package.metadata]
@@ -110,6 +111,7 @@ dev = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-xdist", specifier = ">=3.6" },
+    { name = "time-machine", specifier = ">=3.6.0" },
 ]
 
 [[package]]
@@ -1014,6 +1016,22 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/47/c6/ee486fd809e357697ee8a44d3d69222b344920433d3b6666ccd9b374630c/tenacity-9.1.4.tar.gz", hash = "sha256:adb31d4c263f2bd041081ab33b498309a57c77f9acf2db65aadf0898179cf93a", size = 49413, upload-time = "2026-02-07T10:45:33.841Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d7/c1/eb8f9debc45d3b7918a32ab756658a0904732f75e555402972246b0b8e71/tenacity-9.1.4-py3-none-any.whl", hash = "sha256:6095a360c919085f28c6527de529e76a06ad89b23659fa881ae0649b867a9d55", size = 28926, upload-time = "2026-02-07T10:45:32.24Z" },
+]
+
+[[package]]
+name = "time-machine"
+version = "3.6.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a7/1d/48df18d3b2159ae3f49432622e3d7a23e01404cd6b99ee1361c9a4f37826/time_machine-3.6.0.tar.gz", hash = "sha256:92dfc900bbd50d239ad311473ada2201acdca3c3e14562692fd2e31489b57e24", size = 30470, upload-time = "2026-10-25T21:13:46.427Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4b/24/14d24f8c67faae4383f06e6dd2c988bb0ab6fd8fff7d957b8b046377f902/time_machine-3.6.0-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:8eb28dcbbc30a1a2dd1d552063ff5ca5d47685dfebff6677095f2a924c8a4d51", size = 29779, upload-time = "2026-10-25T21:12:48.614Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/6a/78796887c6ff7037b5cb6306ade24732e02482eb1509667a70a0c7bfe459/time_machine-3.6.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:f4b5585eff9dcbe87bb50dc0bd4cfccefbb89ae22268bba6cc6ee72334a0dc88", size = 29906, upload-time = "2026-10-25T21:12:49.669Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/74/63ed82fc3c12087776b4410b50a48a483dd1d31893baa721f15f9441c1df/time_machine-3.6.0-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:8116e2a534c84743cf7125acb1602d7e5ed30f1a3121538d31320e755f819c8a", size = 62060, upload-time = "2026-10-25T21:12:51.016Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/96/f45e6de83e98beb6663a664a75de22b914df30bd934f8eeeecfe2c136079/time_machine-3.6.0-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:5fa1eae8aa0d435cd88fdc4626e67735985cec2d43ca9316e5622db82beda6a1", size = 62961, upload-time = "2026-10-25T21:12:52.087Z" },
+    { url = "https://files.pythonhosted.org/packages/bd/87/b0cc9a330dff1fd44fa81fc8b4b946d28d888ef45ce7afb06746450ba200/time_machine-3.6.0-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:8d1a20a35cc39654c28d725849fa3943e55b345cee6da3fd4499f625ae6f1e49", size = 61759, upload-time = "2026-10-25T21:12:53.187Z" },
+    { url = "https://files.pythonhosted.org/packages/ea/bd/0ac3fc2a0f9e7e1af11889672147901c80fc347b4eb7b382d6be0ca75d14/time_machine-3.6.0-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:93b2cdb5ccc53b01cac455ffe4d70f2761b75f46e514193f579c015c6a36f23f", size = 61276, upload-time = "2026-10-25T21:12:54.483Z" },
+    { url = "https://files.pythonhosted.org/packages/61/e0/1d40cb04d9900f0b79bc69747b999b9843eed294950c2c36ae044a71f114/time_machine-3.6.0-cp312-cp312-win_amd64.whl", hash = "sha256:20b446b451a317e7ee326593430a8e536eec0e2bcff8082b3ae7c7d33cff8d43", size = 31733, upload-time = "2026-10-25T21:12:55.598Z" },
+    { url = "https://files.pythonhosted.org/packages/2b/7f/47f8e6acb2764c8e40c55d1caa4426db7e2126093315a57703bb92259bad/time_machine-3.6.0-cp312-cp312-win_arm64.whl", hash = "sha256:04fbc338dfa29fc0d52488fc75b058fe3c1031af9962970f193a67e99d828f90", size = 31464, upload-time = "2026-10-25T21:12:56.892Z" },
 ]
 
 [[package]]

@@ -7,7 +7,8 @@ import SwiftUI
 struct BodyAllPage: View {
   @ObservedObject var store: TrendsStore
   @Binding var mode: TrendsView.Mode
-  let push: (LevelRoute) -> Void
+  /// The next level and the door it grows out of (`.zoomDoor`).
+  let push: (LevelRoute, String?) -> Void
   let up: () -> Void
   let sheet: (TrendsSheet) -> Void
   @Environment(\.dismiss) private var dismiss
@@ -29,7 +30,7 @@ struct BodyAllPage: View {
           SegControl(items: TrendsView.Mode.allCases.map { ($0, $0.label) }, selected: mode) { mode = $0 }.padding(.top, 8)
           switch mode {
           case .metrics: metrics(proxy)
-          case .sleep: TrendsSleepView(end: store.end) { push(.night($0)) }.padding(.top, 14)
+          case .sleep: TrendsSleepView(end: store.end) { push(.night($0), "nights.\($0)") }.padding(.top, 14)
           case .report: ReportView(end: store.end) { key, title in sheet(.explain(key: key, title: title)) }.padding(.top, 10)
           }
           Color.clear.frame(height: 24)
@@ -66,7 +67,7 @@ struct BodyAllPage: View {
       .padding(.top, 12)
       ForEach(groups) { g in
         LevelGroupHeader(icon: LevelGroup.icon(g.id), title: g.title, count: g.rows.count).padding(.top, 8).id("group.\(g.id)")
-        LevelRowList(rows: g.rows) { push(.metric($0.id)) }
+        LevelRowList(rows: g.rows, door: "all.row") { push(.metric($0.id), "all.row.\($0.id)") }
       }
       if !p.status.tiles.isEmpty {
         HStack(spacing: 6) {

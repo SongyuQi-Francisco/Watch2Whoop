@@ -127,6 +127,7 @@ def test_run_once_lock_and_switch(conn, monkeypatch):
     other = psycopg.connect(dataclasses.replace(settings, db_name=TEST_DB).dsn, row_factory=dict_row)
     other.execute("SELECT pg_advisory_lock(%s)", (ow_watch.LOCK_KEY,))
     assert ow_watch.run_once(conn, UsersOW({})) is None, "another process is polling"
+    other.execute("SELECT pg_advisory_unlock(%s)", (ow_watch.LOCK_KEY,))   # explicit: a closed session releases the lock asynchronously
     other.close()
     assert ow_watch.run_once(conn, UsersOW({})) == {"uploads": 0, "queued": [], "waiting": []}
     monkeypatch.setenv("BODY_OW_WATCH", "off")

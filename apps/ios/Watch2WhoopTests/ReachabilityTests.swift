@@ -331,10 +331,10 @@ final class ReachabilityTests: XCTestCase {
   }
 
   private static let noop = TodayGlanceActions(
-    level: { _ in }, calendar: {}, backToToday: {}, step: { _ in }, syncTap: {}, syncCenter: {}, recoveryNext: { _ in },
+    level: { _, _ in }, calendar: {}, backToToday: {}, step: { _ in }, syncTap: {}, syncCenter: {}, recoveryNext: { _ in },
     food: {}, circles: {})
 
-  private static let bodyNoop = BodyGlanceActions(setRange: { _ in }, pickEnd: {}, backToToday: {}, level: { _ in }, all: {},
+  private static let bodyNoop = BodyGlanceActions(setRange: { _ in }, pickEnd: {}, backToToday: {}, level: { _, _ in }, all: {},
                                                   syncNow: {}, syncCenter: {})
 
   /// A synthetic day with a score, both readings and the 体征 face (the tallest first glance).

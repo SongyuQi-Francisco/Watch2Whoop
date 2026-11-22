@@ -7,6 +7,7 @@ import UIKit
 struct MemberList: View {
   @ObservedObject var store: CirclesStore
   @EnvironmentObject private var session: AccountSession
+  @Environment(\.zoomScope) private var zoomScope
   @State private var remarkFor: MemberCard?
   @State private var remark = ""
 
@@ -16,10 +17,14 @@ struct MemberList: View {
         ForEach(o.everyone) { m in
           // the card opens their pages when the server lists them as viewable (app.js friendCard `canOpen`)
           let person = m.isSelf ? nil : session.viewable.first { $0.id == m.id }
-          MemberCardView(member: m, kinds: o.nudgeKinds, store: store, open: person.map { p in { session.viewing = p } }) {
+          MemberCardView(member: m, kinds: o.nudgeKinds, store: store, open: person.map { p in {
+            zoomScope?.trail.open("circles.member.\(p.id)", to: p.zoomRoute)   // their view grows out of the card
+            session.viewing = p
+          } }) {
             remark = m.remark ?? ""
             remarkFor = m
           }
+          .zoomDoor(person.map { "circles.member.\($0.id)" })
         }
       } else {
         ProgressView().tint(Palette.text2).padding(.vertical, 40)

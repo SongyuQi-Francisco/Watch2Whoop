@@ -376,12 +376,18 @@ def build_daily(samples: list[dict], tz: ZoneInfo, cut: dict[str, datetime] | No
     return out
 
 
-def build_segments(samples) -> list[Segment]:
-    """Sleep stage segments. samples can be rows of shortcut_samples or the one-row-per-sample output of read_archive."""
+def build_segments(samples, tz: ZoneInfo | None = None) -> list[Segment]:
+    """Sleep stage segments. samples can be rows of shortcut_samples or the one-row-per-sample output of read_archive.
+    tz: the user's zone. Times read from the database arrive in the database SESSION's zone (compose.yaml: Sydney), so they are put
+    into the user's zone first (the wake date is the user's day of wake − 4 h, not the server's) and pinned to their offsets, so that
+    sessionize measures real time across a clock change (common.pin_offset)."""
     out = []
     for r in samples:
         if isinstance(r, dict):
             t, s, e, v, src = r["type"], r["start_at"], r["end_at"], r["value_text"], r["source"]
+            if t == "Sleep":
+                s, e = (x.astimezone(tz) if tz else x for x in (s, e))
+                s, e = common.pin_offset(s), common.pin_offset(e)
         else:
             t, s, e, v, src = r[0], r[1], r[2], r[3], r[5]
             if t == "Sleep":
@@ -445,7 +451,7 @@ def _rebuild(conn: psycopg.Connection, user_id: int, tz: ZoneInfo, first, last) 
     daily = build_daily(_load(conn, user_id, day0, day_end, set(SUM) | set(AVG)), tz, cut)
     n_daily = upsert_daily(conn, user_id, SOURCE, daily)
     # sleep: read 3 extra days back, rewrite only wake dates >= first day − 1 (the night truncated at the window edge is not written)
-    segs = build_segments(_load(conn, user_id, day0 - timedelta(days=3), day_end + timedelta(days=1), ["Sleep"]))
+    segs = build_segments(_load(conn, user_id, day0 - timedelta(days=3), day_end + timedelta(days=1), ["Sleep"]), tz)
     sessions = [s for s in sessionize(segs) if s.wake_date >= first - timedelta(days=1)]
     sleep = replace_sleep(conn, user_id, SOURCE, sessions)
     workouts = infer_workouts(_load(conn, user_id, day0 - timedelta(hours=6), day_end,

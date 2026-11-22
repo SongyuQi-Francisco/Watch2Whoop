@@ -171,10 +171,13 @@ enum MetricCatalog {
 enum LevelRows {
   /// 今日详情: every metric of the day in 2.0.0's groups and order (`TrendDay.layout`), each with its last 14 days on the
   /// usual band, the day's value and its change against the usual. `overrides`: the day's own numbers the first glance
-  /// shows (recovery, sleep score, strain), so level 2 never contradicts level 1.
-  static func day(_ d: TrendsData, overrides: [String: Double] = [:]) -> [LevelGroup] {
+  /// shows (recovery, sleep score, strain), so level 2 never contradicts level 1. `onlyPresent` (someone else's day): a
+  /// metric the document does not carry at all is not shared with me, and gets no row (on my own day it is a 「—」 row).
+  static func day(_ d: TrendsData, overrides: [String: Double] = [:], onlyPresent: Bool = false) -> [LevelGroup] {
     TrendDay.layout.compactMap { g in
-      let rows = g.keys.compactMap { dayRow($0, d, override: overrides[$0]) }
+      let rows = g.keys.compactMap { k in
+        onlyPresent && d.series[k] == nil && overrides[k] == nil ? nil : dayRow(k, d, override: overrides[k])
+      }
       return rows.isEmpty ? nil : LevelGroup(id: g.id, title: g.title, rows: rows)
     }
   }

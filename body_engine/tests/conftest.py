@@ -17,6 +17,7 @@ import psycopg
 import pytest
 from psycopg.rows import dict_row
 
+import clock as _clock
 from body_engine import db as bdb
 from body_engine.config import Settings
 
@@ -94,6 +95,8 @@ _quiet_cache: dict[str, bool] = {}
 
 def pytest_collection_modifyitems(items):
     for item in items:
+        if {"frozen_clock", "moment"} & set(item.fixturenames):
+            item.add_marker(pytest.mark.time_sensitive)   # `pytest -m time_sensitive`: every test that stands on a day boundary
         path = str(item.fspath)
         if path not in _quiet_cache:
             _quiet_cache[path] = bool(_NEEDS_QUIET.search(open(path, encoding="utf-8").read()))
@@ -111,3 +114,21 @@ def _fresh_process_state():
     with runs._lock:
         runs._runs.clear()   # chat turns kept for resume: GET /v1/assistant/chat/1/events answered with another module's turn
     yield
+
+
+# --- frozen time (tests/clock.py: what is and is not frozen, and why the process zone is set by the fixture) ---------------
+@pytest.fixture
+def frozen_clock():
+    """`clock = frozen_clock(MON_0005)`: "now" stands still at that instant, the process runs in UTC (`server_tz=` to change).
+    The clock, the time zone and every patched function are put back at the end of the test, whatever happened in it."""
+    travel = _clock._Travel()
+    try:
+        yield travel
+    finally:
+        travel.stop()
+
+
+@pytest.fixture(params=_clock.MOMENTS, ids=str)
+def moment(request):
+    """Every canonical instant of tests/clock.py (Sydney 00:05, the week turning over, both daylight-saving days) in turn."""
+    return request.param

@@ -13,6 +13,8 @@ struct RecordTab: View {
   @State private var toast: Toast?
   @State private var devHealth: MeSheet.RecordKind?
   @State private var path: [RecordRoute] = []
+  @Namespace private var zoomSpace
+  @StateObject private var zoom = ZoomTrail()
   private let session: AccountSession
 
   /// `journal` stays for saved state and links of 2.0.0: it shows 饮食 and sends 日记 to 我.
@@ -28,8 +30,9 @@ struct RecordTab: View {
     NavigationStack(path: $path) {
       root
         .toolbar(.hidden, for: .navigationBar)
-        .navigationDestination(for: RecordRoute.self) { r in page(r) }
+        .navigationDestination(for: RecordRoute.self) { r in page(r).zoomLevel(r) }
     }
+    .zoomScope(zoomSpace, zoom)
     .toast($toast)
     .onReceive(JarvisPageLink.shared.$segment) { s in   // a Jarvis card's button (also when this tab is created by that tap)
       guard let s else { return }
@@ -58,7 +61,7 @@ struct RecordTab: View {
         VStack(alignment: .leading, spacing: 0) {
           header
           switch shown {
-          case .training: TrainingRoot(store: training, toast: $toast) { path.append($0) }
+          case .training: TrainingRoot(store: training, toast: $toast, push: push)
           default: FoodContent(store: food, toast: $toast, glance: true)
           }
           Color.clear.frame(height: 24)   // the Jarvis key's band is the page's own (clearOfJarvisKey)
@@ -101,10 +104,16 @@ struct RecordTab: View {
     }
   }
 
+  /// The next page, grown out of `door` (nil: an ordinary push).
+  private func push(_ r: RecordRoute, _ door: String?) {
+    if let door { zoom.open(door, to: r) }
+    path.append(r)
+  }
+
   @ViewBuilder private func page(_ r: RecordRoute) -> some View {
     switch r {
     case .session: TrainingSessionPage(store: training, toast: $toast)
-    case .muscles: MuscleWeekPage(store: training, toast: $toast) { path.append($0) }
+    case .muscles: MuscleWeekPage(store: training, toast: $toast, push: push)
     case .allMuscles: AllMusclesPage(store: training, toast: $toast)
     case .history: TrainingHistoryPage(store: training, toast: $toast)
     case .library: LibraryPage(store: training, toast: $toast)

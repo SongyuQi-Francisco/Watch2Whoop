@@ -161,13 +161,15 @@ No account to sign up for; it works as soon as it's enabled. It runs on DeepSeek
 
 The key is uploaded once and afterwards only its last 4 characters are shown; it stops automatically when the monthly budget is used up. The Gemini free tier has request limits, so you may have to wait; on the free tier Google may also use what you send to improve its products — if that bothers you, use a paid key or another option.
 
-### Option 3: your Claude / ChatGPT / Google AI subscription
+### Option 3: your Claude / ChatGPT / Google AI subscription or Meta Muse
 
 For people who use the Claude desktop app / Claude Code, Codex, or Antigravity on a computer. "AI settings" → "Add" → choose "Claude subscription", "ChatGPT subscription" or "Google AI Pro / Ultra subscription (Antigravity)" → "Save" → "Connect a client (MCP)" → pick the client → "Create token", then follow the 3 on-screen steps on your computer.
 
 **Claude web / mobile and ChatGPT (developer mode) need no token**: add the address shown at the top of "Connect a client (MCP)" as a connector there; it opens the Today page, check the app name and the return address, then tap "Approve". Connected apps are listed under "Connect a client (MCP)" and can be disconnected at any time. Personal ChatGPT plans may only be able to read, not write, for now.
 
 Google AI Pro / Ultra: use Antigravity (desktop app, IDE or the `agy` CLI; Antigravity's free tier works too, with lower limits). Gemini CLI no longer accepts subscription sign-in since 2026-06-18 and only works with a paid Gemini API key. The Gemini web / mobile app's "custom apps" are open to users in the US only, so they cannot connect for now.
+
+**Meta Muse (not tested yet)**: Meta's help pages show no place to enter an address; you ask Muse in chat to build the connector itself. "AI settings" → "Add" → choose "Meta Muse" → "Save" → "Connect a client (MCP)" → client "Other MCP client" (turn on "Read only" if it should only read) → "Create token" and copy it. Then tell Muse: "Please create a custom connector: the Watch2Whoop MCP server at (the address shown at the top of "Connect a client (MCP)"), Streamable HTTP, sending the header Authorization: Bearer (the token) with every request." Muse keeps the token in its credentials store; the message also stays in your Muse chat history, so "Revoke" the token under "Connect a client (MCP)" when you no longer need it. Whether Muse asks before changing your data follows the approval options in its own settings. If Muse instead opens the Today page for you to sign in and approve, the page warns that it is not a known AI app (Meta has not published its return address yet); check that the app name is Muse, then tap "Approve". Muse is only open in some countries (Australia since 2026-11); the free plan has a usage limit, Power / Max are the paid plans.
 
 ![Connect a client (MCP)](images/tester-handbook/en/ai-mcp.jpg)
 

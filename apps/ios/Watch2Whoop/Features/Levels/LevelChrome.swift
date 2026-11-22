@@ -194,6 +194,8 @@ struct LevelChip: View {
 /// The rows of a level (今日详情, 身体's list, 相关): label · line on the usual band · value · change · chevron.
 struct LevelRowList: View {
   let rows: [TodayGlance.Row]
+  /// The rows' zoom door prefix (`<door>.<row id>`): the metric page opened from a row grows out of it.
+  var door: String?
   let open: (TodayGlance.Row) -> Void
   /// A trailing action on one row (the ＋ of 体重 = 记体重): row id → (label, action).
   var extra: [String: (label: String, run: () -> Void)] = [:]
@@ -203,6 +205,7 @@ struct LevelRowList: View {
       ForEach(rows) { r in
         HStack(spacing: 0) {
           L1RowView(row: r, labelWidth: LevelParams.rowLabelWidth) { open(r) }
+            .zoomDoor(door.map { "\($0).\(r.id)" })
           if let x = extra[r.id] {
             Button(action: x.run) {
               Icon(.plus, size: 16).foregroundColor(Palette.text)

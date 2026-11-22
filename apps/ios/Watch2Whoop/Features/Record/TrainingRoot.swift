@@ -14,7 +14,8 @@ enum RecordRoute: Hashable {
 struct TrainingRoot: View {
   @ObservedObject var store: TrainingStore
   @Binding var toast: Toast?
-  let push: (RecordRoute) -> Void
+  /// A page and the door it grows out of (`.zoomDoor`).
+  let push: (RecordRoute, String?) -> Void
   @State private var sheet: TrainingSheet?
   @Environment(\.askAI) private var askAI
   @Environment(\.foldFit) private var fold
@@ -46,7 +47,7 @@ struct TrainingRoot: View {
     let arcs = s.map { RecordGlance.arcs(RecordGlance.sets($0, rows: store.rows)) } ?? []
     let shares = s.map { RecordGlance.regionShares($0.exercises, rows: store.rows) } ?? [:]
     let side = Self.ringSide - fold.shrink
-    return Button { push(.session) } label: {
+    return Button { push(.session, "record.ring") } label: {
       SetRing(arcs: arcs, side: side) {
         VStack(spacing: 10) {
           BodyPair(sex: store.muscle?.sex ?? "male", spacing: side * 0.08, fill: BodyPair.shares(shares))
@@ -59,10 +60,11 @@ struct TrainingRoot: View {
       }
     }
     .buttonStyle(PressScale())
+    .zoomDoor("record.ring")
     .frame(maxWidth: .infinity)
     .contextMenu {
       Button { askAI(tr("今天练什么", "What should I train today")) } label: { Text(tr("问 Jarvis：今天的训练", "Ask Jarvis: today's training")) }
-      Button { push(.session) } label: { Text(tr("看详情", "Details")) }
+      Button { push(.session, "record.ring") } label: { Text(tr("看详情", "Details")) }
     }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(ringLabel)
@@ -93,7 +95,7 @@ struct TrainingRoot: View {
     let s = store.session
     let sets = s.map { RecordGlance.sets($0, rows: store.rows) } ?? []
     let total = sets.count, done = sets.filter(\.done).count
-    return Button { push(.session) } label: {
+    return Button { push(.session, "record.sets") } label: {
       VStack(alignment: .leading, spacing: 8) {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
           Text(total > 0 ? (done > 0 ? "\(done)/\(total)" : "\(total)") : "—").font(Typo.reading)
@@ -106,6 +108,7 @@ struct TrainingRoot: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(PressScale())
+    .zoomDoor("record.sets")
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(tr("\(done)/\(total) 组", "\(done) of \(total) sets"))
     .accessibilityAddTraits(.isButton)
@@ -113,7 +116,7 @@ struct TrainingRoot: View {
 
   private var weekReading: some View {
     let w = store.week
-    return Button { push(.week) } label: {
+    return Button { push(.week, "record.week") } label: {
       VStack(alignment: .leading, spacing: 8) {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
           Text(w.map { "\($0.trainedDays)" } ?? "—").font(Typo.reading).foregroundColor(w == nil ? Palette.text2 : Palette.text)
@@ -128,6 +131,7 @@ struct TrainingRoot: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(PressScale())
+    .zoomDoor("record.week")
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(tr("本周练了 \(w?.trainedDays ?? 0) 天", "Trained \(w?.trainedDays ?? 0) days this week"))
     .accessibilityAddTraits(.isButton)
@@ -146,7 +150,7 @@ struct TrainingRoot: View {
   private func muscleFace(_ m: MuscleLoad) -> some View {
     let t = RecordGlance.onTarget(m, range: .week)
     let regions = m.regions(.week)
-    return Button { push(.muscles) } label: {
+    return Button { push(.muscles, "record.muscles") } label: {
       Face(icon: .personStanding, label: tr("肌肉", "Muscles"), number: "\(t.ok)", unit: "/\(t.total)") { Color.clear }
         .overlay(alignment: .bottomTrailing) {
           if let side = MuscleBodies.shared.side(sex: m.sex, front: true) {
@@ -157,21 +161,23 @@ struct TrainingRoot: View {
         }
     }
     .buttonStyle(PressScale())
+    .zoomDoor("record.muscles")
   }
 
   private var historyFace: some View {
     let m = store.calendar
     let strains = (m.map { RecordGlance.trainedDays($0) } ?? []).prefix(7).reversed().map { $0.strain }
-    return Button { push(.history) } label: {
+    return Button { push(.history, "record.history") } label: {
       Face(icon: .calendar, label: tr("历史", "History"), number: m?.trainingDays.map(String.init) ?? "—", unit: tr("次", "times")) {
         if !strains.isEmpty { MiniBars(values: Array(strains), tone: .train, maxValue: RecordParams.strainScaleMax, height: 24) } else { Color.clear }
       }
     }
     .buttonStyle(PressScale())
+    .zoomDoor("record.history")
   }
 
   private var libraryFace: some View {
-    Button { push(.library) } label: {
+    Button { push(.library, "record.library") } label: {
       // the library's size on a 2.1.0 server (`library_total`); an older one gives none, the face keeps only the search
       Face(icon: .bookOpen, label: tr("动作库", "Library"), number: store.libraryTotal.map(String.init)) {
         HStack {
@@ -184,13 +190,15 @@ struct TrainingRoot: View {
       }
     }
     .buttonStyle(PressScale())
+    .zoomDoor("record.library")
   }
 
   // MARK: below the fold
 
   private var below: some View {
     RowGroup {
-      ListRow(icon: .calendarDays, title: tr("本周计划", "This week's plan"), value: store.week?.planName.map(TrainingWeek.shortPlan)) { push(.week) }
+      ListRow(icon: .calendarDays, title: tr("本周计划", "This week's plan"), value: store.week?.planName.map(TrainingWeek.shortPlan)) { push(.week, "record.plan") }
+        .zoomDoor("record.plan")
       if let w = store.week, !w.splits.isEmpty {
         RowDivider(inset: 0)
         ListRow(icon: .refreshCw, title: w.hasPlan ? tr("切换分化", "Change split") : tr("选周计划", "Pick a weekly plan")) { sheet = .split }

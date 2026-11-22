@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Sheets opened from the Today tab (one at a time).
 enum TodaySheet: Identifiable, Equatable {
-  case recovery, strain, load, coach, monitor, calendar, weight
+  case load, calendar, weight
   /// The reminders, each one expanding in the list (2.1.0: no sheet of its own any more).
   case reminders
   case explain(kind: String, key: String, title: String)
@@ -11,37 +11,9 @@ enum TodaySheet: Identifiable, Equatable {
   /// Stress, the sleep coach, body age, … (TodayDetails.swift).
   case detail(TodayDetail)
 
-  /// The sheet of a tap on the day's cards (the sleep detail is a page, weight is my own form: no sheet here).
-  init?(action a: TodayModel.Action) {
-    switch a {
-    case .recovery: self = .recovery
-    case .strain: self = .strain
-    case .load: self = .load
-    case .coach: self = .coach
-    case .monitor: self = .monitor
-    case .weight: self = .weight
-    case .allReminders: self = .reminders
-    case .explainMetric(let k, let t): self = .explain(kind: "metric", key: k, title: t)
-    case .explainStatus(let k, let t): self = .explain(kind: "status", key: k, title: t)
-    case .sleepDetail: return nil
-    }
-  }
-
-  init(open o: TodayOpen) {
-    switch o {
-    case .coach: self = .coach
-    case .metric(let k, let t): self = .explain(kind: "metric", key: k, title: t)
-    case .status(let t): self = .status(t)
-    }
-  }
-
   var id: String {
     switch self {
-    case .recovery: return "recovery"
-    case .strain: return "strain"
     case .load: return "load"
-    case .coach: return "coach"
-    case .monitor: return "monitor"
     case .calendar: return "calendar"
     case .weight: return "weight"
     case .reminders: return "reminders"
@@ -69,7 +41,7 @@ struct TodaySheetView: View {
 
   private var detents: Set<PresentationDetent> {
     switch sheet {
-    case .load, .coach: return [.medium]
+    case .load: return [.medium]
     case .calendar, .weight: return [.large]
     case .detail(let d) where d.large: return [.large]
     default: return [.medium, .large]
@@ -79,11 +51,7 @@ struct TodaySheetView: View {
   private var title: String {
     let d = model.detail
     switch sheet {
-    case .recovery: return tr("恢复", "Recovery")
-    case .strain: return d.strainDate.map { "\(tr("负荷", "Strain")) · \(TodayModel.shortDay($0))" } ?? tr("负荷", "Strain")
     case .load: return tr("训练负荷", "Training load")
-    case .coach: return tr("负荷目标", "Strain target")
-    case .monitor: return tr("健康监测", "Health monitor")
     case .calendar: return tr("选择日期", "Pick a day")
     case .weight: return tr("记体重", "Log weight")
     case .reminders: return "\(tr("提醒", "Reminders")) · \(model.reminders.count)"
@@ -97,32 +65,6 @@ struct TodaySheetView: View {
     let d = model.detail
     let day = model.isPast ? model.date : nil
     switch sheet {
-    case .recovery:
-      VStack(alignment: .leading, spacing: 0) {
-        ScaleBar.recovery(d.recovery ?? d.lastRecovery).padding(.vertical, 8)
-        if d.recovery != nil {
-          KVRow(label: tr("恢复分", "Recovery"), value: d.recovery.map { TodayModel.fmt($0) }, badge: d.zoneLabel.map { ($0, d.zone) })
-        } else {
-          KVRow(label: tr("恢复分", "Recovery"), value: nil, badge: model.word.map { ($0, .text) })
-          if let l = d.lastRecovery {
-            KVRow(label: tr("上次", "Last"), value: "\(TodayModel.fmt(l)) · \(TodayModel.shortDay(d.lastDate))")
-          }
-        }
-        KVRow(label: "HRV", value: d.hrv.map { TodayModel.fmt($0) }, unit: "ms") { open(.explain(kind: "metric", key: "hrv", title: "HRV")) }
-        KVRow(label: tr("静息心率", "Resting HR"), value: d.rhr.map { TodayModel.fmt($0) }, unit: "bpm") {
-          open(.explain(kind: "metric", key: "resting_hr", title: tr("静息心率", "Resting HR")))
-        }
-        flags(d.flags)
-        ExplainBody(kind: "metric", key: "recovery", day: day, head: false).padding(.top, 8)
-      }
-    case .strain:
-      VStack(alignment: .leading, spacing: 0) {
-        ScaleBar.strain(d.strain).padding(.vertical, 8)
-        KVRow(label: "Strain", value: d.strain.map { TodayModel.fmt($0, digits: 1) })
-        KVRow(label: tr("肌肉负荷", "Muscle load"), value: d.muscleLoad.map { TodayModel.fmt($0) }, unit: "kg")
-        flags(d.strainFlags)
-        ExplainBody(kind: "metric", key: "strain", day: day, head: false).padding(.top, 8)
-      }
     case .load:
       VStack(alignment: .leading, spacing: 0) {
         ScaleBar.tsb(d.tsb).padding(.vertical, 8)
@@ -132,19 +74,6 @@ struct TodaySheetView: View {
         KVRow(label: "TSB", value: d.tsb.map { ($0 > 0 ? "+" : "") + TodayModel.fmt($0) })
         if d.loadMissingDays > 0 { ToneBadge(text: tr("缺 \(d.loadMissingDays) 天", "\(d.loadMissingDays) days missing"), tone: .mid).padding(.top, 10) }
       }
-    case .coach:
-      if let c = model.coach {
-        VStack(alignment: .leading, spacing: 0) {
-          ScaleBar.coach(c.current, low: c.low, high: c.high).padding(.vertical, 8)
-          KVRow(label: tr("区间", "Range"), value: "\(TodayModel.fmt(c.low))–\(TodayModel.fmt(c.high))")
-          KVRow(label: tr("现在", "Now"), value: c.current.map { TodayModel.fmt($0, digits: 1) }, badge: (c.stateLabel, c.tone))
-        }
-      }
-    case .monitor:
-      VStack(alignment: .leading, spacing: 14) {
-        ForEach(model.vitals) { v in MonitorRow(vital: v) { k in open(.explain(kind: "metric", key: k, title: v.name)) } }
-      }
-      .padding(.top, 6)
     case .reminders:
       ReminderList(reminders: model.reminders, set: model.isPast || member != nil ? nil : { id, status in store.setReminder(id, status: status) })
     case .explain(let kind, let key, _):
@@ -162,12 +91,6 @@ struct TodaySheetView: View {
       EmptyView()   // these read my own tables
     case .detail(let detail):
       TodayDetailBody(detail: detail, date: model.date ?? store.userToday, past: day, coach: model.tonight, open: open, close: close)
-    }
-  }
-
-  @ViewBuilder private func flags(_ f: [String]) -> some View {
-    if !f.isEmpty {
-      HStack(spacing: 6) { ForEach(f, id: \.self) { ToneBadge(text: $0) } }.padding(.top, 10)
     }
   }
 }

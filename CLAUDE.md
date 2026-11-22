@@ -40,6 +40,10 @@ Status as of 2026-11-19; the release in progress is iOS 2.1.0 (phone UI redesign
   AI-facing texts stay Chinese; the frozen web page keeps its `tr("中文")` + `i18n-en.js` pairs (`tests/test_i18n.py`). Code comments and developer docs are English.
 - New database migration: `body_engine/src/body_engine/migrations/NNN_name.sql`; grant `SELECT` to `grafana_ro` if Grafana reads it.
 - New AI tool: a spec in the feature's own module, registered in `body_engine/src/body_engine/dl_app.py`, handler `(ctx, args)`. If it deletes or undoes: `confirm=True` on the spec and its name in the `ask` list of `assistant/.claude/settings.json` (`tests/test_butler.py` checks both).
+- **Time in tests**: a test that depends on the date or time never calls `datetime.now()` / `date.today()` for its expectation and never
+  relies on the machine's zone; it uses the frozen clock (`frozen_clock` / `moment`, `body_engine/tests/clock.py`) and states the user's
+  zone. The user's zone only assigns a day (`queries.local_today`); durations and comparisons use instants (`importers.common.pin_offset`
+  for times read back from the database: two times of one ZoneInfo subtract on the wall clock).
 - Health-related rules and thresholds live in `*/params.py` with their sources; keep them configurable, never hard-code one person's data.
 - **Sync code never swallows an error**: every failure path records a status the server can see on the next upload. A new upload channel is registered in the health check with its expected request count.
 - **One fact, one source.** When a file must exist in two places (Python and JS algorithms, persona prompts, copied Swift sources, deployment overlays), the copy is generated or checked by CI and the check fails the build. A hand-maintained copy is not allowed.

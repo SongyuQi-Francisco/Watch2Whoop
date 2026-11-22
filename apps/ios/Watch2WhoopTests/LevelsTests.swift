@@ -155,4 +155,36 @@ final class LevelsTests: XCTestCase {
     XCTAssertEqual(s.vsTone, .good)
     XCTAssertNil(RangeStatsModel.of("steps", range: range))   // no reading in the range: no figures
   }
+
+  // MARK: - zoom between the levels (DesignSystem/Zoom.swift)
+
+  /// A level grows out of the door it was opened from; the trail keeps one door per route (the latest), so the same metric
+  /// opened from a row, from 需要注意 or from a related row grows out of the one that was tapped.
+  @MainActor
+  func testZoomTrailKeepsTheDoorEachLevelWasOpenedFrom() {
+    let t = ZoomTrail()
+    XCTAssertNil(t.door(for: LevelRoute.metric("hrv")), "never opened through a door: a plain push")
+    t.open("day.row.hrv", to: LevelRoute.metric("hrv"))
+    t.open("glance.dial", to: LevelRoute.day(anchor: nil))
+    XCTAssertEqual(t.door(for: LevelRoute.metric("hrv")), "day.row.hrv")
+    XCTAssertEqual(t.door(for: LevelRoute.day(anchor: nil)), "glance.dial")
+    XCTAssertNil(t.door(for: LevelRoute.day(anchor: "attention")), "another anchor is another level")
+    t.open("day.attention.hrv", to: LevelRoute.metric("hrv"))
+    XCTAssertEqual(t.door(for: LevelRoute.metric("hrv")), "day.attention.hrv", "the latest door")
+    // someone else's view wraps the same routes
+    t.open("glance.food", to: MemberRoute.page(.food))
+    XCTAssertEqual(t.door(for: MemberRoute.page(.food)), "glance.food")
+    XCTAssertNil(t.door(for: MemberRoute.level(.metric("hrv"))), "a member route is not my route")
+  }
+
+  func testZoomIsOffWithReduceMotion() {
+    XCTAssertFalse(ZoomTransition.enabled(reduceMotion: true))
+    if #available(iOS 18.0, *), ProcessInfo.processInfo.environment["W2W_ZOOM_OFF"] != "1" {
+      XCTAssertTrue(ZoomTransition.enabled(reduceMotion: false))
+    } else {
+      XCTAssertFalse(ZoomTransition.enabled(reduceMotion: false), "iOS 16–17: the plain push")
+    }
+    XCTAssertGreaterThan(ZoomTransition.settle, 0.2)
+    XCTAssertLessThan(ZoomTransition.settle, 0.6, "the heavy parts of a page must not wait visibly long")
+  }
 }

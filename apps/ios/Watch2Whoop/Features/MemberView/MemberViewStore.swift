@@ -12,6 +12,9 @@ struct ViewablePerson: Identifiable, Equatable {
     return displayName
   }
 
+  /// Their view as a zoom route: the full-screen cover grows out of the member card or row it was opened from.
+  var zoomRoute: String { "member.\(id)" }
+
   /// Everyone but me.
   static func parse(_ v: Any?) -> [ViewablePerson] {
     ((v as? [[String: Any]]) ?? []).compactMap { p in
@@ -22,19 +25,28 @@ struct ViewablePerson: Identifiable, Equatable {
   }
 }
 
-/// The pages of someone else's read-only view, in the order of the Today page's tabs.
-enum MemberTab: String, CaseIterable, Identifiable {
-  case today, trends, sleep, food, record, health
+/// The pages of someone else's read-only view besides the levels of 今天 (2.1.0): 饮食 and 训练 open from their faces on
+/// the first glance, 健康 and 周报 from the doors at the end of 今日详情. Each is there only when the server lets its
+/// documents through.
+enum MemberPage: String, CaseIterable, Identifiable, Hashable {
+  case food, training, health, report
   var id: String { rawValue }
 
   var title: String {
     switch self {
-    case .today: return tr("今天", "Today")
-    case .trends: return tr("趋势", "Trends")
-    case .sleep: return tr("睡眠", "Sleep")
     case .food: return tr("饮食", "Food")
-    case .record: return tr("记录", "Log")
-    case .health: return tr("健康", "Health")
+    case .training: return tr("训练", "Training")
+    case .health: return tr("健康档案", "Health record")
+    case .report: return tr("周报", "Weekly report")
+    }
+  }
+
+  var icon: Icon.Name {
+    switch self {
+    case .food: return .soup
+    case .training: return .dumbbell
+    case .health: return .fileText
+    case .report: return .calendarDays
     }
   }
 }
@@ -68,7 +80,12 @@ final class MemberViewStore: ObservableObject {
   /// The path segment of `/v1/users/{user}/…`.
   let user: String
   @Published private(set) var phase: Phase = .loading
-  @Published private(set) var tabs: [MemberTab] = []
+  /// Their scores came through: the first glance draws the dial and the two readings.
+  @Published private(set) var scores = false
+  /// Anything of their day came through: 今日详情 is there (the dial, the ladder, a swipe up open it).
+  @Published private(set) var hasDay = false
+  /// The pages besides the levels that have anything to show.
+  @Published private(set) var pages: [MemberPage] = []
   /// Their local today (the today document's `date`).
   @Published private(set) var today: String?
   /// Bumped by a refresh: the pages load their documents again.
@@ -189,16 +206,17 @@ final class MemberViewStore: ObservableObject {
     closed = true
     docs.removeAll()
     states.removeAll()
-    tabs = []
+    scores = false
+    hasDay = false
+    pages = []
     today = nil
     phase = .loading
   }
 
-  // MARK: - opening: which pages have anything to show
+  // MARK: - opening: which levels and pages have anything to show
 
   func todayRequest(_ day: String?) -> APIRequest { Endpoint.today(user, date: day) }
   var trendsRequest: APIRequest { Endpoint.trends(days: TodayParams.trendsDays, end: nil, user: user) }
-  var nightsRequest: APIRequest { Endpoint.sleepNights(end: nil, user: user) }
   var memoryRequest: APIRequest { Endpoint.memory(user: user) }
   func waterRequest(_ day: String) -> APIRequest { request("water", ["date": day]) }
   func calendarRequest(_ month: String) -> APIRequest { request("training/calendar", ["month": month]) }
@@ -206,8 +224,9 @@ final class MemberViewStore: ObservableObject {
   var supplementsRequest: APIRequest { request("supplements") }
   var labsRequest: APIRequest { request("labs/summary") }
   func eventsRequest(_ today: String) -> APIRequest { request("events", ["start": RecordDay.add(today, -364), "end": today]) }
+  var reportRequest: APIRequest { Endpoint.report("week", end: nil, user: user) }
 
-  /// The first request of each page: the pages shown are the ones the server answered.
+  /// The first request of each level and page: what is shown is what the server answered.
   func start(force: Bool = false) async {
     // a refresh asks for everything again; what is on screen stays until the answers are in (see `load`)
     if force { states.removeAll() }
@@ -220,28 +239,33 @@ final class MemberViewStore: ObservableObject {
       case .denied: phase = .notShared
       default: phase = .failed
       }
-      if state(t) == .denied { tabs = [] }
+      if state(t) == .denied { scores = false; hasDay = false; pages = [] }
       return
     }
     today = day
-    await load([trendsRequest, nightsRequest, memoryRequest, waterRequest(day), calendarRequest(String(day.prefix(7))), journalItemsRequest,
-                supplementsRequest, labsRequest, eventsRequest(day)])
+    await load([trendsRequest, memoryRequest, waterRequest(day), calendarRequest(String(day.prefix(7))), journalItemsRequest,
+                supplementsRequest, labsRequest, eventsRequest(day), reportRequest])
     guard !closed else { return }
-    tabs = visibleTabs(doc)
-    phase = tabs.isEmpty ? .notShared : .ready
+    let v = shown(doc, today: day)
+    scores = v.scores
+    hasDay = v.day
+    pages = v.pages
+    phase = v.day || !v.pages.isEmpty ? .ready : .notShared
     if force { refreshes += 1 }
   }
 
-  private func visibleTabs(_ doc: [String: Any]) -> [MemberTab] {
+  /// What the view shows, from what the server let through (unit-tested in `MemberViewTests`).
+  private func shown(_ doc: [String: Any], today day: String) -> (scores: Bool, day: Bool, pages: [MemberPage]) {
     let block = { (k: String) in doc[k] != nil && !Self.isForbidden(doc[k]) }
-    var out: [MemberTab] = []
-    if block("scores") || block("sleep") || block("reminders") || block("training") || allowed(memoryRequest) { out.append(.today) }
-    if !((json(trendsRequest)?["series"] as? [String: Any]) ?? [:]).isEmpty { out.append(.trends) }
-    if allowed(nightsRequest) { out.append(.sleep) }
-    if block("nutrition") || (today.map { allowed(waterRequest($0)) } ?? false) { out.append(.food) }
-    if (today.map { allowed(calendarRequest(String($0.prefix(7)))) } ?? false) || allowed(journalItemsRequest) { out.append(.record) }
-    if allowed(supplementsRequest) || allowed(labsRequest) || (today.map { allowed(eventsRequest($0)) } ?? false) { out.append(.health) }
-    return out
+    let scores = block("scores")
+    let series = !((json(trendsRequest)?["series"] as? [String: Any]) ?? [:]).isEmpty
+    let hasDay = scores || block("sleep") || block("reminders") || block("training") || allowed(memoryRequest) || series
+    var pages: [MemberPage] = []
+    if block("nutrition") || allowed(waterRequest(day)) { pages.append(.food) }
+    if allowed(calendarRequest(String(day.prefix(7)))) || allowed(journalItemsRequest) { pages.append(.training) }
+    if allowed(supplementsRequest) || allowed(labsRequest) || allowed(eventsRequest(day)) { pages.append(.health) }
+    if allowed(reportRequest) { pages.append(.report) }
+    return (scores, hasDay, pages)
   }
 }
 
@@ -254,6 +278,7 @@ extension TodayModel {
     var m = TodayModel(TodayInputs(today: doc, activity: activity, coach: coach, monitor: monitor, memory: memory, userToday: theirToday,
                                    trends: trends))
     if doc?["scores"] == nil { m.rings = [] }
+    m.recoveryNext = nil   // its steps (consent, sync, sleep help) are about my own data
     m.sections = m.sections.filter { s in s.metrics.contains { $0.value != nil } }
     return m
   }

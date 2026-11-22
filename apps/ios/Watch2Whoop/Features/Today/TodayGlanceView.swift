@@ -3,8 +3,9 @@ import SwiftUI
 /// What the page asks of `TodayView` (the page's state stays there).
 struct TodayGlanceActions {
   /// A door to a level below (2.1.0, drilldown option C′): 今日详情 (the dial, the ladder, the attention / 体征 face, a
-  /// swipe up) or a metric page straight from here (the two readings).
-  var level: (LevelRoute) -> Void
+  /// swipe up) or a metric page straight from here (the two readings). The second value is the door the level grows out
+  /// of (`.zoomDoor`), nil for none.
+  var level: (LevelRoute, String?) -> Void
   var calendar: () -> Void
   var backToToday: () -> Void
   /// One day back (−1) or forward (+1): the swipe, and the dial's VoiceOver actions.
@@ -22,7 +23,15 @@ struct TodayGlanceActions {
 /// no card fill; the faces have the shape of a button already). No section titles, no sentences.
 struct TodayGlancePage: View, Equatable {
   static func == (a: TodayGlancePage, b: TodayGlancePage) -> Bool {
-    a.model == b.model && a.isPast == b.isPast && a.circlesOn == b.circlesOn && a.day == b.day
+    a.model == b.model && a.isPast == b.isPast && a.circlesOn == b.circlesOn && a.day == b.day && a.member == b.member
+      && (a.memberFaces == nil) == (b.memberFaces == nil)
+  }
+
+  /// Someone else's first glance (`MemberScreen`, read-only): no sync capsule and no Jarvis; the dial and the two readings
+  /// only when their scores are shared, the ladder only when 今日详情 has anything (nothing is drawn as an empty shell).
+  struct Member: Equatable {
+    var scores: Bool
+    var detail: Bool
   }
 
   let model: TodayModel
@@ -32,16 +41,27 @@ struct TodayGlancePage: View, Equatable {
   let day: String?
   let session: AccountSession
   let run: TodayGlanceActions
+  var member: Member?
+  /// Someone else's faces (`MemberGlanceFaces`), in place of mine.
+  var memberFaces: AnyView?
   @Environment(\.askAI) private var askAI
 
   private var g: TodayGlance { model.glance }
+  private var showsScores: Bool { member?.scores ?? true }
+  private var showsLadder: Bool { member?.detail ?? true }
+  /// The door 今日详情 grows out of: the dial, when it is there.
+  private var dialDoor: String? { showsScores ? "glance.dial" : nil }
 
   var body: some View {
     VStack(spacing: 0) {
       header
-      hero.padding(.top, Rhythm.gap(32))
-      readings.padding(.top, Rhythm.gap(40))
-      faces.padding(.top, Rhythm.gap(44))
+      if showsScores {
+        hero.padding(.top, Rhythm.gap(32))
+        readings.padding(.top, Rhythm.gap(40))
+        faces.padding(.top, Rhythm.gap(44))
+      } else {
+        faces.padding(.top, Rhythm.gap(32))
+      }
     }
   }
 
@@ -65,14 +85,16 @@ struct TodayGlancePage: View, Equatable {
       Spacer(minLength: 0)
       // a look-back day's 「回到今天」 takes the middle: the ladder moves next to the capsule
       if isPast { ladder }
-      TodaySyncCapsule(card: model.sync, page: session.sync, tap: run.syncTap, center: run.syncCenter)
+      if member == nil { TodaySyncCapsule(card: model.sync, page: session.sync, tap: run.syncTap, center: run.syncCenter) }
     }
     .frame(height: 44)
     // the ladder sits in the middle of the header (dd.css `.hdr .ladder.mid`), whatever the date and the capsule take
     .overlay { if !isPast { ladder } }
   }
 
-  private var ladder: some View { LevelLadder(level: 1, down: { run.level(.day(anchor: nil)) }) }
+  @ViewBuilder private var ladder: some View {
+    if showsLadder { LevelLadder(level: 1, down: { run.level(.day(anchor: nil), dialDoor) }) }
+  }
 
   private var dateTitle: String { Self.dateTitle(model.date) }
 
@@ -91,7 +113,7 @@ struct TodayGlancePage: View, Equatable {
   private var hero: some View {
     let d = g.recovery, side = Self.dialSide, k = side / 280
     return Button {
-      if d.value == nil, let n = model.recoveryNext { run.recoveryNext(n.action) } else { run.level(.day(anchor: nil)) }
+      if d.value == nil, let n = model.recoveryNext { run.recoveryNext(n.action) } else { run.level(.day(anchor: nil), dialDoor) }
     } label: {
       TickDial(fraction: TodayGlanceRules.dialFraction(d.value), tone: d.tone,
                usual: d.usual.map { ($0.lowerBound / 100)...($0.upperBound / 100) },
@@ -121,10 +143,11 @@ struct TodayGlancePage: View, Equatable {
       }
     }
     .buttonStyle(PressScale())
+    .zoomDoor("glance.dial")
     .frame(maxWidth: .infinity)
     .contextMenu {
-      Button { askAI(Self.recoveryPrompt(model)) } label: { Text(tr("问 Jarvis：恢复", "Ask Jarvis: recovery")) }
-      Button { run.level(.day(anchor: nil)) } label: { Text(tr("今日详情", "Today's details")) }
+      if member == nil { Button { askAI(Self.recoveryPrompt(model)) } label: { Text(tr("问 Jarvis：恢复", "Ask Jarvis: recovery")) } }
+      Button { run.level(.day(anchor: nil), dialDoor) } label: { Text(tr("今日详情", "Today's details")) }
     }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(dialLabel)
@@ -164,7 +187,7 @@ struct TodayGlancePage: View, Equatable {
   }
 
   private func reading(_ x: TodayGlance.Gauge, label: String, metric: String) -> some View {
-    Button { run.level(.metric(metric)) } label: {
+    Button { run.level(.metric(metric), "glance.reading.\(metric)") } label: {
       VStack(alignment: .leading, spacing: 8) {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
           Text(x.text ?? "—").font(Typo.reading).foregroundColor(x.text == nil ? Palette.text2 : Palette.text)
@@ -178,6 +201,7 @@ struct TodayGlancePage: View, Equatable {
       .contentShape(Rectangle())
     }
     .buttonStyle(PressScale())
+    .zoomDoor("glance.reading.\(metric)")
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("\(label) \(x.text ?? "—")")
     .accessibilityHint(tr("打开\(label)的趋势", "Opens the \(label.lowercased()) trend"))
@@ -186,14 +210,18 @@ struct TodayGlancePage: View, Equatable {
 
   // MARK: faces
 
-  private var faces: some View {
-    HStack(spacing: 8) {
-      TodaySlotOne(model: model, sync: session.sync, run: run)
-      TodayFoodFace(session: session, day: day, sync: session.sync, open: run.food, syncNow: run.syncTap)
-      if circlesOn && !isPast { TodayCirclesFace(session: session, open: run.circles) }
+  @ViewBuilder private var faces: some View {
+    if let memberFaces {
+      memberFaces
+    } else {
+      HStack(spacing: 8) {
+        TodaySlotOne(model: model, sync: session.sync, run: run)
+        TodayFoodFace(session: session, day: day, sync: session.sync, open: run.food, syncNow: run.syncTap)
+        if circlesOn && !isPast { TodayCirclesFace(session: session, open: run.circles) }
+      }
+      // the circles are read here, on the row that is always there: the face itself is not drawn until they are known
+      .task(id: circlesOn && !isPast) { if circlesOn && !isPast { await CirclesStore.shared(for: session).refresh() } }
     }
-    // the circles are read here, on the row that is always there: the face itself is not drawn until they are known
-    .task(id: circlesOn && !isPast) { if circlesOn && !isPast { await CirclesStore.shared(for: session).refresh() } }
   }
 }
 
@@ -206,27 +234,39 @@ struct TodaySlotOne: View {
   let run: TodayGlanceActions
 
   var body: some View {
-    let age = TodayGlanceRules.staleAge(page: sync.status, card: model.sync)
+    SlotOneFace(model: model, age: TodayGlanceRules.staleAge(page: sync.status, card: model.sync), run: run)
+  }
+}
+
+/// Slot 1's drawing, without the sync state (`age` nil: fresh; someone else's first glance never has one).
+struct SlotOneFace: View {
+  let model: TodayModel
+  let age: String?
+  let run: TodayGlanceActions
+
+  var body: some View {
     let g = model.glance
     if let a = model.attention.first {
-      Button { age != nil ? run.syncTap() : run.level(.day(anchor: "attention")) } label: {
+      Button { age != nil ? run.syncTap() : run.level(.day(anchor: "attention"), "glance.slot1") } label: {
         Face(icon: .circleAlert, label: a.label, number: a.value, unit: a.unit, dimmed: age != nil, dot: age == nil ? a.tone : nil, age: age) {
           if !g.attentionWeek.isEmpty { Lollipops(values: g.attentionWeek, tone: a.tone) } else { Color.clear }
         }
       }
       .buttonStyle(PressScale())
+      .zoomDoor("glance.slot1")
       .contextMenu {
-        Button { run.level(.day(anchor: "attention")) } label: { Text(tr("看详情", "Details")) }
-        if !model.vitals.isEmpty { Button { run.level(.day(anchor: "vitals")) } label: { Text(tr("体征", "Vitals")) } }
+        Button { run.level(.day(anchor: "attention"), "glance.slot1") } label: { Text(tr("看详情", "Details")) }
+        if !model.vitals.isEmpty { Button { run.level(.day(anchor: "vitals"), "glance.slot1") } label: { Text(tr("体征", "Vitals")) } }
       }
     } else if !model.vitals.isEmpty {
       let c = TodayGlanceRules.vitalsCount(model.vitals)
-      Button { age != nil ? run.syncTap() : run.level(.day(anchor: "vitals")) } label: {
+      Button { age != nil ? run.syncTap() : run.level(.day(anchor: "vitals"), "glance.slot1") } label: {
         Face(icon: .heartPulse, label: tr("体征", "Vitals"), number: "\(c.ok)/\(c.total)", dimmed: age != nil, age: age) {
           VitalPills(vitals: model.vitals)
         }
       }
       .buttonStyle(PressScale())
+      .zoomDoor("glance.slot1")
     }
   }
 }
@@ -304,17 +344,9 @@ struct TodayFoodFace: View {
   var body: some View {
     Group {
       if let n = store.nutrition, n.error == nil {
-        let kcal = n.intake.kcal ?? 0, goal = n.goal.kcal ?? 0
         // the food log has no sync time of its own: only an offline page makes it stale
         let age = TodayGlanceRules.staleAge(page: sync.status, card: nil)
-        Button { age != nil ? syncNow() : open() } label: {
-          Face(icon: .soup, label: tr("饮食", "Food"), number: RecordFormat.num(n.intake.kcal), unit: "kcal", dimmed: age != nil, age: age) {
-            // no goal: a fixed 2,500 kcal scale (the design's), never a bar that is always full
-            let top = goal > 0 ? max(goal * 1.2, kcal) : max(2500, kcal * 1.2)
-            BulletGauge(value: kcal, max: top, target: goal > 0 ? goal...goal : nil, step: top / 5, tone: .text)
-          }
-        }
-        .buttonStyle(PressScale())
+        FoodFace(nutrition: n, age: age) { age != nil ? syncNow() : open() }
       }
     }
     .task(id: day) {
@@ -324,6 +356,25 @@ struct TodayFoodFace: View {
     .onReceive(NotificationCenter.default.publisher(for: JarvisRouter.wroteNotification)) { _ in
       Task { await store.refresh() }
     }
+  }
+}
+
+/// The 饮食 face's drawing (my first glance's and someone else's): eaten today against the goal.
+struct FoodFace: View {
+  let nutrition: NutritionDay
+  var age: String?
+  let tap: () -> Void
+
+  var body: some View {
+    let kcal = nutrition.intake.kcal ?? 0, goal = nutrition.goal.kcal ?? 0
+    Button(action: tap) {
+      Face(icon: .soup, label: tr("饮食", "Food"), number: RecordFormat.num(nutrition.intake.kcal), unit: "kcal", dimmed: age != nil, age: age) {
+        // no goal: a fixed 2,500 kcal scale (the design's), never a bar that is always full
+        let top = goal > 0 ? max(goal * 1.2, kcal) : max(2500, kcal * 1.2)
+        BulletGauge(value: kcal, max: top, target: goal > 0 ? goal...goal : nil, step: top / 5, tone: .text)
+      }
+    }
+    .buttonStyle(PressScale())
   }
 }
 

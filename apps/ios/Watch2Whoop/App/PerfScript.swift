@@ -6,14 +6,16 @@ import SwiftUI
 /// frame of the next second, `dropped` = frames lost in it). The numbers before / after a performance change come from
 /// the same steps (apps/ios/README.md「模拟器测流畅度」). `SIMCTL_CHILD_W2W_PERF_SCRIPT=`
 /// - `tabs`: every tab three times (cold, then warm twice), then on Today a sheet and the sleep page open and close three
-///   times each (the reminders sheet, 今日详情), then the Jarvis chat (when the AI is in the app); at the end the median of each step;
+///   times each (the reminders sheet, 今日详情, the sleep metric page; they zoom out of the dial and the reading unless
+///   `W2W_ZOOM_OFF=1`; `*-transition` counts only the first 0.4 s, the zoom or slide itself), then the Jarvis chat (when the AI is in the app); at the end the median of each step;
 /// - `W2W_PERF_SCRIPT_DELAY=<s>`: wait that long after the tabs appear first (default 8, for the first sync).
 @MainActor
 enum PerfScript {
   /// What the Today tab lets the script do (registered by TodayView while it is on screen).
   struct TodayHooks {
     let sheet: (TodaySheet?) -> Void
-    let push: (LevelRoute?) -> Void
+    /// A level and the door it grows out of (nil, nil: back to the first glance).
+    let push: (LevelRoute?, String?) -> Void
   }
 
   static var today: TodayHooks?
@@ -25,8 +27,8 @@ enum PerfScript {
     ran = true
     let env = ProcessInfo.processInfo.environment
     func sec(_ s: Double) async { try? await Task.sleep(nanoseconds: UInt64(s * 1_000_000_000)) }
-    func step(_ name: String, wait: Double = 1.6, _ f: () -> Void) async {
-      JarvisPerf.shared.measure(name, seconds: 1.0)
+    func step(_ name: String, wait: Double = 1.6, window: Double = 1.0, _ f: () -> Void) async {
+      JarvisPerf.shared.measure(name, seconds: window)
       f()
       await sec(wait)
     }
@@ -43,8 +45,19 @@ enum PerfScript {
         await step("today-sheet-close") { h.sheet(nil) }
       }
       for _ in 0..<3 {
-        await step("today-page-push") { h.push(.day(anchor: nil)) }
-        await step("today-page-pop") { h.push(nil) }
+        await step("today-page-push") { h.push(.day(anchor: nil), "glance.dial") }
+        await step("today-page-pop") { h.push(nil, nil) }
+      }
+      for _ in 0..<3 {
+        await step("today-metric-push") { h.push(.metric("sleep_score"), "glance.reading.sleep_score") }
+        await step("today-metric-pop") { h.push(nil, nil) }
+      }
+      // the transition alone (the zoom or the slide, ~0.35 s), apart from what the page draws once it has landed
+      for _ in 0..<3 {
+        await step("today-page-transition", window: 0.4) { h.push(.day(anchor: nil), "glance.dial") }
+        await step("today-page-pop") { h.push(nil, nil) }
+        await step("today-metric-transition", window: 0.4) { h.push(.metric("sleep_score"), "glance.reading.sleep_score") }
+        await step("today-metric-pop") { h.push(nil, nil) }
       }
     }
     if let r = JarvisRouter.current, r.ai.inApp {
