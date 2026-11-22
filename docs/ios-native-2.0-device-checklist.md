@@ -120,25 +120,40 @@ PR (`GET /v1/algo/manifest` says `0.3.0` with a signature); the watch has a pass
   and the first screens fit.
 
 ### R — someone else's data (read-only member view, #474)
-Written from #474's plan before it merged: check these lines against its final description.
-Needs a person who shares with you (a circle member or a family share), with scores shared.
-- **R1** Circles (or Me → 共享 → 共享给我的) → open that person → their first screen is the same glance as your Today
-  (dial, sleep and strain readings, at most three faces, each only for what they share), with an identity bar on top
-  (face, name, read-only lock, ✕) on every level; no sync capsule, no Jarvis key, no ＋ on the weight row.
-- **R2** Tap their dial → their 今日详情; tap a number → its metric page (7 / 30 / 90 days / 1 year); sleep's 「整晚 ›」
-  → the night page; 「健康档案 ›」 and 「周报 ›」 appear only when they share those.
-- **R3** ✕ on any level → back where you came from; nothing of theirs is left on your Today.
-- **R4** A person who shares no scores → no dial and no readings, only the faces they do share; nothing can be written.
+Checked against #474's final description. Needs a person who shares with you (a circle member or a family share), with
+scores shared; a second such person for R4.
+- **R1** Circles → their member card (or Me → 共享 → 共享给我的 → their row) → their first screen is the same glance as
+  your Today: date, level marks, recovery dial, sleep and strain readings and at most three faces (关注 / 体征, 饮食,
+  训练), each only when they share it. A bar on top shows their picture, name, 只读 with a lock, and ✕.
+- **R2** Three levels in and out: dial (or the level marks, or a swipe up) → their 今日详情; a metric row → its metric
+  page (7 / 30 / 90 days / 1 year); on the sleep metric page 「整晚 ›」 → the night page. Back (back button, edge swipe,
+  the small dial in the header) goes up one level each time. The bar with picture, name, 只读 and ✕ is on every level.
+- **R3** Their 饮食 / 训练 faces → their food / training pages; 「健康档案 ›」 and 「周报 ›」 at the end of 今日详情, only
+  when they share those.
+- **R4** Read-only everywhere: no sync capsule or sync hints, no Jarvis key (a long press on the dial has no 问 Jarvis),
+  no ＋ on the weight row (tapping it explains), no bedtime goal on the night page; a metric they do not share has no row
+  at all (not a "—" row).
+- **R5** ✕ on any level → back where you opened it (Circles or 共享给我的), and your own Today shows nothing of theirs.
+  Open a second person → their name, dial and numbers from the first moment, nothing left over from the first person
+  (not even for a frame); open the first again → their own data.
+- **R6** A person who shares only food → no dial, no readings and no 今日详情, only the 饮食 face.
 
 ### Z — zoom between levels (#474)
-Written from #474's plan before it merged: check these lines against its final description.
-- **Z1** iOS 18 or later, Reduce Motion off: tap the dial, a reading or a face → the next level grows out of the item you
-  tapped; back (or the edge swipe) → it shrinks back into that item. Same on Body and on a member's view.
-- **Z2** Settings → Accessibility → Motion → Reduce Motion on → the same taps push the page in the plain way, nothing
-  grows.
-- **Z3** Openings without a tapped item (a notification, a deep link, the header's level marks) → plain push.
-- **Z4** Go down to level 3 and back up five times quickly → no stutter, no half-drawn page, back always returns to the
-  item you came from.
+Checked against #474's final description. iOS 18 or later, Settings → Accessibility → Motion → Reduce Motion off.
+- **Z1** Today: tap the dial → 今日详情 grows out of the dial; in 今日详情 tap a metric row → its metric page grows out
+  of that row; back (back button or edge swipe) → each shrinks back into the item it came from.
+- **Z2** Circles: tap a member card → their view (full screen) grows out of the card; ✕ → it shrinks back into the card.
+  Inside their view the dial and metric rows zoom like Z1.
+- **Z3** Body (score, bars, faces) and Log → Training (set ring, plan, muscle, history, library faces) zoom the same way.
+- **Z4** On a 120 Hz phone (a Pro model): watch the first moment of the zooms in Z1 and Z2 → note whether the start
+  hitches. #474 measured a 50–98 ms first frame on the 60 Hz simulator (2–4 dropped frames at the start); the device was
+  not measured. Charts on the metric page fade in about 0.35 s after the zoom settles: that is by design.
+- **Z5** Reduce Motion on → the same taps push in from the right, nothing grows or shrinks.
+- **Z6** Openings that do not come from a tapped module stay plain pushes: a Jarvis card, a deep link or notification,
+  Body from 全部功能, a small face on the circle dial. The small dial in the header (one level up) moves up without a zoom.
+- **Z7** If an iOS 16 or 17 phone is at hand → every opening in Z1–Z3 is a plain push (#474 ran no iOS 16 / 17 simulator).
+- **Z8** Go down to level 3 and back up five times quickly → no stuck or half-drawn page, back always lands on the item
+  you came from.
 
 ### S — sync center
 - **S1** Open the sync center right after a sync while the server is still computing → one answer, 「已上传，分数计算中」;
@@ -175,6 +190,10 @@ Written from #474's plan before it merged: check these lines against its final d
 - **M2** 共享 → how many people can see your data with their faces → the full list; 共享给我的 one row below → their list.
 - **M3** On the fallback AI → the AI face shows the share of this month's allowance used as a percentage (no money).
 - **M4** 消息 and the circle feed with something unread → who it is from.
+- **M5** AI 设置 → 添加 → 订阅 → Meta Muse → 连接说明 opens with the client set to Meta Muse; 连接客户端 → 客户端 menu
+  lists Meta Muse just above 其他 MCP 客户端 → 生成 token → step 2 is a message to send to Muse (address and header filled
+  in). The token row reads `muse`. Revoke the test token afterwards. (Connecting a real Muse account is not required:
+  the server side of #481 is untested against Muse itself.)
 
 ### W — Apple Watch app
 - **W1** Open the iPhone app once, then the watch app → 「今天一眼」: recovery dial (number, arc, one word), sleep and
