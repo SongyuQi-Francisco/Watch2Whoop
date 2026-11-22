@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
+import clock
 from body_engine import api, auth
 from body_engine.algo import versions
 from body_engine.config import Settings
@@ -218,7 +219,11 @@ def snapshot(c, uid: int) -> dict:
                              FROM {t} x WHERE user_id = %s""", (uid,)).fetchone() for t in COMPUTED}
 
 
-def test_app_mode_owner_is_read_from_the_server_copy(client, dsn, world, monkeypatch):
+def test_app_mode_owner_is_read_from_the_server_copy(client, dsn, world, monkeypatch, frozen_clock):
+    # Not about any day: a fixed Wednesday noon, so the test does not depend on the weekday it runs on. (It used the real clock and
+    # failed on every Monday, Sydney time: see the healthspan weeks below.) A date far from the real one is safe: the database's own
+    # clock only matters for token expiry, which is read in SQL.
+    frozen_clock(clock.local("Australia/Sydney", 2026, 6, 10, 12, 0))
     for mod in derived_kinds.kinds().values():
         monkeypatch.setattr(mod, "recompute", lambda conn, uid, day, uploaded: uploaded[day])
     monkeypatch.setattr(appscores, "server_rows", lambda conn, uid, days, end=None: {})
@@ -229,6 +234,10 @@ def test_app_mode_owner_is_read_from_the_server_copy(client, dsn, world, monkeyp
     today = datetime.now(ZoneInfo(TZ)).date()
     days = [today - timedelta(days=i) for i in (3, 2, 1)]
     monday = today - timedelta(days=today.weekday())
+    # body age is one row per week from the scoring origin on, as the phone sends it (HealthspanStage), not only this week's: the
+    # spot check never takes today, so a single week keyed by today's Monday would have nothing to check (tests/test_native_s9.py,
+    # test_a_kind_whose_only_day_is_today_waits_for_the_next_upload)
+    weeks = [monday - timedelta(days=14), monday - timedelta(days=7), monday]
     with conn_of(dsn) as c:
         uid, viewer = add_user(c, "phone"), add_user(c, "viewer")
         for key in [P.FLAG, P.COMPUTE_PRIMARY_FLAG, *(s["flag"] for s in P.COMPUTE_PACKAGES.values())]:
@@ -264,7 +273,7 @@ def test_app_mode_owner_is_read_from_the_server_copy(client, dsn, world, monkeyp
         "sleep": [(d, staged(sleep_rows(d, 431 + i)) if d == days[-1] else sleep_rows(d, 431 + i)) for i, d in enumerate(days)],
         "workouts": [(d, [workout_row(d, f"w-{i}", 42.5 + i)]) for i, d in enumerate(days)],
         "stress": [(d, stress_rows(1.11 + i / 100)) for i, d in enumerate(days)],
-        "healthspan": [(monday, healthspan_rows(monday, today, 23.1))],
+        "healthspan": [(w, healthspan_rows(w, today, 23.1 + i / 10)) for i, w in enumerate(weeks)],
         "reminders": [(d, reminder_rows(d, f"手机算的提醒 {d.isoformat()}")) for d in [*days[1:], today]],
     }
     for bundle in ("9.0.0", "9.0.1", "9.0.2"):
