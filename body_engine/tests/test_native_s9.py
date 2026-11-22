@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
+import clock
 from body_engine import api, auth, batch, cli
 from body_engine.algo import versions
 from body_engine.assistant.tools import TOOLS_BY_NAME, run_tool
@@ -29,7 +30,7 @@ from body_engine.config import Settings
 from body_engine.insights import jobs as insights_jobs
 from body_engine.training import importer as training_importer
 from body_engine.db import migrate
-from body_engine.nativesync import appscores, derived_kinds, params as P, primary
+from body_engine.nativesync import appscores, compute, derived, derived_kinds, params as P, primary
 from body_engine.rawdata import derive
 from body_engine.rollout import flags
 from body_engine.rules import engine as rules_engine
@@ -319,3 +320,59 @@ def test_primary_user_server_computes_nothing_and_serves_the_uploads(client, dsn
         c.commit()
         flags.invalidate()
         assert primary.primary_packages(c, uid) == set()
+
+
+# ---------------------------------------------------------------- the spot check never takes today
+def test_a_kind_whose_only_day_is_today_waits_for_the_next_upload(dsn, server_agrees, frozen_clock):
+    """The spot check never takes today (derived._check_day: the day in progress). An upload whose only day is today has nothing to
+    check, so the kind stays `shadow` (the server keeps computing, nothing is lost) until an upload on a later day. A kind keyed by
+    the week's Monday hits it on every Monday: a new user's first body-age row is the current week's. A phone with more weeks (it
+    sends every week since the scoring origin) has the week before to check and is not delayed. A test that uploaded one week on a
+    Monday and expected `primary` failed on every Monday for this reason (test_member_view.py, 2026-11-23)."""
+    clk = frozen_clock(clock.MON_0005)          # Sydney Monday 00:05; the server's UTC date is still Sunday
+    monday = clock.MON_0005.day_in(TZ)
+    assert monday.weekday() == 0
+    cohort = "monday_test"
+    with conn_of(dsn) as c:
+        one, two = (c.execute("""INSERT INTO users (display_name, role, timezone, consent_at, consent_version)
+                                 VALUES (%s, 'member', %s, now(), '2026-10-22.2') RETURNING id""", (n, TZ)).fetchone()["id"]
+                    for n in ("one week", "two weeks"))
+        for key in [P.FLAG, P.COMPUTE_PRIMARY_FLAG, P.COMPUTE_PACKAGES["coach"]["flag"]]:
+            flags.set_flag(c, key, "cohort", cohort=cohort, actor="test")
+        for uid in (one, two):
+            flags.cohort_add(c, uid, cohort, actor="test")
+            primary.set_primary(c, "coach", user_id=uid, force=True, actor="test")
+        c.commit()
+    flags.invalidate()
+
+    def upload(uid, weeks, bundle, today):
+        with conn_of(dsn) as c:
+            return derived.upload(c, uid, "healthspan", versions.current("coach"), bundle,
+                                  [{"date": w, "rows": healthspan_rows(w, today, 23.1)} for w in weeks], "2.0.0", None)
+
+    # Monday, only this week's row, three bundle versions: never checked, never primary
+    for bundle in ("9.0.0", "9.0.1", "9.0.2"):
+        got = upload(one, [monday], bundle, monday)
+        assert got["check"] is None and got["state"] == got["state_after"] == "shadow" and got["stored"] == 0, got
+    with conn_of(dsn) as c:
+        row = compute.kind_row(c, one, "healthspan")
+        # every other condition of compute.trusted() holds; the only one missing is a spot check that passed
+        assert row["days_uploaded"] >= P.PRIMARY_MIN_DAYS and row["trusted"] and not row["server_forced"]
+        assert row["last_check_ok"] is None and row["last_check_at"] is None
+        assert c.execute("SELECT count(*) AS n FROM app_compute_checks WHERE user_id = %s", (one,)).fetchone()["n"] == 0
+
+    # the same Monday, a phone that sends the week before as well: that week is checked at once
+    prev = monday - timedelta(days=7)
+    got = upload(two, [prev, monday], "9.0.0", monday)
+    assert got["check"]["date"] == prev.isoformat() and got["check"]["ok"], got
+    assert upload(two, [prev, monday], "9.0.1", monday)["state_after"] == "primary"
+
+    # the first upload after midnight: Monday is not today any more, it is checked, the kind turns primary, the next one is stored
+    clk.advance(days=1)
+    tuesday = monday + timedelta(days=1)
+    assert clock.MON_0005.day_in(TZ) == monday and datetime.now(ZoneInfo(TZ)).date() == tuesday
+    got = upload(one, [monday], "9.0.2", tuesday)
+    assert got["check"]["date"] == monday.isoformat() and got["check"]["ok"], got
+    assert got["state"] == "shadow" and got["state_after"] == "primary" and got["stored"] == 0
+    got = upload(one, [monday], "9.0.2", tuesday)
+    assert got["check"] is None and got["state"] == "primary" and got["stored"] == 1
