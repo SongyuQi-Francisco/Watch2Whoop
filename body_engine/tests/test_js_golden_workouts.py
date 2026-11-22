@@ -60,7 +60,8 @@ def params() -> dict:
         "AVG_HR_TRIMP_FACTOR": P.AVG_HR_TRIMP_FACTOR, "VOLUME_THRESHOLDS": [list(x) for x in P.VOLUME_THRESHOLDS],
         "SETS_THRESHOLDS": [list(x) for x in P.SETS_THRESHOLDS],
         "DURATION_THRESHOLDS": {k: [list(x) for x in v] for k, v in P.DURATION_THRESHOLDS.items()},
-        "MIN_SESSION_MIN": P.MIN_SESSION_MIN, "GENERIC_TYPES": sorted(P.GENERIC_TYPES),
+        "MIN_SESSION_MIN": P.MIN_SESSION_MIN, "MANUAL_SOURCE": P.MANUAL_SOURCE, "MANUAL_INTENSITY": P.MANUAL_INTENSITY,
+        "GENERIC_TYPES": sorted(P.GENERIC_TYPES),
         "STRENGTH_TYPES": sorted(P.STRENGTH_TYPES), "CARDIO_TYPES": sorted(P.CARDIO_TYPES),
         "SPORT_TYPES": sorted(P.SPORT_TYPES), "WARMUP_SET_TYPES": sorted(RP.WARMUP_SET_TYPES),
         "HRR_PEAK_WINDOW_S": _s(HRR.PEAK_WINDOW), "HRR_AFTER60_S": _s(HRR.AFTER), "HRR_TOLERANCE_S": _s(HRR.TOLERANCE),
@@ -159,5 +160,19 @@ def test_cases_cover_the_contract():
     assert any("sparkyfitness" in s["source"] for s in day1) and any(s["exercises"] for s in day1)
     assert any(s["source"] == "sparkyfitness" for d in runs["month"]["days"] for s in d["sessions"]) or True
     assert runs["range_en"]["hidden"] == ["scores"] and runs["range_en"]["intensity_levels"][0]["label"] == "Rest"
+    man = next(c["want"] for c in data["workouts"] if c["name"] == "manual")
+    assert {k for k, v in man["dups"].items() if v.startswith("app:")} == {"manual:m-run", "manual:m-bball", "manual:m-swim"}, \
+        "manual workouts: the watch copy wins (same time, untimed linked by hand, across midnight)"
+    only = runs["day_manual_only"]["sessions"]
+    assert [(s["intensity"], s["intensity_basis"]) for s in only] == \
+        [("hard", "manual"), ("light", "manual"), ("moderate", "duration"), ("moderate", "manual")], \
+        "manual only: picked level, a 3-minute one is light, no level falls back to duration, no duration keeps the level"
+    assert all(s["source_label"] == "手动记录" and not s["flags"] for s in only), "manual flags stay internal"
+    both = {s["source"]: s for s in runs["day_manual_watch_en"]["sessions"]}
+    assert both["app"]["intensity_basis"] == "trimp" and both["manual"]["intensity_basis"] == "manual"
+    assert both["manual"]["intensity"] == "light" and both["manual"]["source_label"] == "Logged by hand", \
+        "a typed average heart rate does not override the picked level"
+    assert runs["day_manual_midnight"]["sessions"][0]["end"].startswith("2026-04-10") \
+        and not runs["day_after_midnight"]["sessions"], "across midnight: counted on the day it started"
     m = next(r["want"] for r in data["muscle"] if r["name"] == "week")
     assert m["map"]["unmatched"] and any(x["ranges"]["week"]["sport_sets"] for x in m["map"]["muscles"])

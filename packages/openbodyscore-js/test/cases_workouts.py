@@ -12,9 +12,11 @@ start, 2026-03-08): strength + cardio on the same day, a watch + iPhone copy of 
 (duplicates, the app ranks first), a workout without heart rate, a heart-rate gap at the end (no heart-rate recovery), a
 workout across the DST change, user corrections (a type override, a hidden workout, a type rule for a generic one), a
 manual duplicate, an unfinished 13-hour record, low heart-rate coverage, a winding-down walk (hrr60 not valid), the
-birth-date HRmax when the day has no scores. Calendar / day (`training`): watch + SparkyFitness strength and cardio
+birth-date HRmax when the day has no scores; manual workouts of the server (source 'manual', #444) as
+duplicates of watch workouts, an untimed one linked by hand, one across midnight, one without duration. Calendar / day (`training`): watch + SparkyFitness strength and cardio
 merge, a SparkyFitness-only session, a Hevy import on its watch copy, daily metrics with the partial-energy flag,
-scores hidden, English labels. Muscle load (`muscle`): catalog matches by slug / name / SparkyFitness id, unmatched and
+scores hidden, English labels, manual workouts (the picked level is the intensity, basis "manual": manual only, next to
+a watch workout in the same hour, across midnight, a 3-minute one, one without a level, one without duration). Muscle load (`muscle`): catalog matches by slug / name / SparkyFitness id, unmatched and
 warm-up sets, a cardio exercise, the sports layer (known, unknown, strength-like with and without a planned target, a
 logged day), English names.
 """
@@ -168,7 +170,7 @@ def training() -> dict:
     tz = ZoneInfo("Australia/Sydney")
     first = date(2026, 4, 1)
     at = lambda d, h, m=0: datetime.combine(d, time(h, m), tz)   # noqa: E731
-    d1, d2, d3, d4, d5 = (first + timedelta(days=i) for i in (0, 1, 2, 4, 5))
+    d1, d2, d3, d4, d5, d6, d7, d8 = (first + timedelta(days=i) for i in (0, 1, 2, 4, 5, 6, 7, 8))
     workouts = [
         _w(1, "app", "strength_training", "力量训练", at(d1, 7), 55.4, active=210.4, avg_hr=112.6, trimp=64.3,
            zones=[10.0, 20.5, 15.2, 4.1, 0.0], hr_max=186.0, d=d1),
@@ -180,6 +182,24 @@ def training() -> dict:
         _w(5, "hevy", "strength_training", "力量训练", at(d4, 17), 60.0, device=None, origin="Hevy", d=d4),
         _w(6, "app", "running", "跑步", at(d5, 6), 30.0, active=380.0, avg_hr=None, trimp=None, d=d5),
         _w(7, "app", "yoga", "瑜伽", at(d5, 21), 25.0, active=60.0, avg_hr=95.0, d=d5),
+        # manual workouts (training/manual.py, #444): the picked level is the intensity, no heart rate
+        # 04-07: manual only: an untimed hard game, a 3-minute one (still light), one without a picked level, no duration
+        _w(8, "manual", "basketball", "篮球", at(d6, 12), 60.0, device=None, origin=None, d=d6,
+           flags={"manual_intensity": "hard", "untimed": True, "note": "x"}),
+        _w(9, "manual", "jump_rope", "跳绳", at(d6, 18), 3.0, device=None, origin=None, d=d6,
+           flags={"manual_intensity": "hard"}),
+        _w(10, "manual", "cycling", "骑行", at(d6, 19), 70.0, device=None, origin=None, d=d6, flags={}),
+        _w(11, "manual", "yoga", "瑜伽", at(d6, 21), 0.0, device=None, origin=None, d=d6,
+           flags={"manual_intensity": "moderate"}),
+        # 04-08: the watch and a manual record in the same hour (different sports: not a duplicate); the manual one has
+        # an average heart rate typed in, and the picked level still wins over it
+        _w(12, "app", "running", "跑步", at(d7, 7), 40.0, active=380.0, avg_hr=150.0, trimp=95.0,
+           zones=[1.0, 4.0, 15.0, 15.0, 5.0], hr_max=186.0, d=d7),
+        _w(13, "manual", "badminton", "羽毛球", at(d7, 7, 10), 45.0, device=None, origin=None, active=300.0,
+           avg_hr=160.0, d=d7, flags={"manual_intensity": "light", "manual_dup": False}),
+        # 04-09: a manual swim across midnight (23:30 -> 01:00), counted on the day it started
+        _w(14, "manual", "swimming", "游泳", at(d8, 23, 30), 90.0, device=None, origin=None, d=d8,
+           flags={"manual_intensity": "moderate"}),
     ]
     sparky = [
         {"id": 101, "date": d1.isoformat(), "name": "Push day", "notes": "felt good", "source": "manual",
@@ -222,6 +242,20 @@ def training() -> dict:
          "lang": "zh", "data": data},
         {"name": "day_birth_hrmax", "view": "day", "start": "2026-04-06", "end": "2026-04-06", "today": "2026-04-06",
          "lang": "zh", "data": data},
+        {"name": "day_manual_only", "view": "day", "start": "2026-04-07", "end": "2026-04-07", "today": "2026-04-10",
+         "lang": "zh", "data": data},
+        {"name": "day_manual_only_en", "view": "day", "start": "2026-04-07", "end": "2026-04-07", "today": "2026-04-10",
+         "lang": "en", "data": data},
+        {"name": "day_manual_watch", "view": "day", "start": "2026-04-08", "end": "2026-04-08", "today": "2026-04-10",
+         "lang": "zh", "data": data},
+        {"name": "day_manual_watch_en", "view": "day", "start": "2026-04-08", "end": "2026-04-08", "today": "2026-04-10",
+         "lang": "en", "data": data},
+        {"name": "day_manual_midnight", "view": "day", "start": "2026-04-09", "end": "2026-04-09", "today": "2026-04-10",
+         "lang": "zh", "data": data},
+        {"name": "day_after_midnight", "view": "day", "start": "2026-04-10", "end": "2026-04-10", "today": "2026-04-10",
+         "lang": "zh", "data": data},
+        {"name": "week_manual", "view": "calendar", "start": "2026-04-06", "end": "2026-04-12", "label": None,
+         "today": "2026-04-10", "lang": "zh", "data": {**data, "status": None}},
     ]
     return {"runs": runs}
 
@@ -288,8 +322,42 @@ def muscle() -> dict:
                      {"name": "monday", "today": "2026-04-06", "lang": "zh", "data": {**base, "sex": "male"}}]}
 
 
+def manual() -> dict:
+    """Manual workouts (training/manual.py, #444) as the phone sees them: rows of the server in `others`, source 'manual'
+    (not in SOURCE_RANK: ranked last, so the watch copy of the same session is kept)."""
+    p = Person("Australia/Sydney", 23)
+    d0 = date(2026, 5, 4)
+    days = [d0 + timedelta(days=i) for i in range(3)]
+    # 05-04: a run on the watch and the same run logged by hand five minutes later (the manual row is the duplicate)
+    a = p.at(days[0], 7, 0)
+    p.workout(a, 40, 37, active=380, basal=50, avg_hr=150)
+    p.heart(a, 40, 120, 175, tail_s=90, wind_down=0.5)
+    # 05-05: a basketball game on the watch at 19:00 and an untimed manual record of it (12:00, linked by hand: manual_dup)
+    b = p.at(days[1], 19, 0)
+    bball = p.workout(b, 80, 6, active=650, basal=90, avg_hr=148)
+    p.heart(b, 80, 115, 172, tail_s=90, wind_down=0.55)
+    # 05-06: a swim across midnight on the watch (23:30 -> 00:30) with a manual copy; a manual walk alone (no watch copy)
+    c = p.at(days[2], 23, 30)
+    p.workout(c, 60, 46, active=420, basal=60, avg_hr=132)
+    p.heart(c, 60, 105, 158, tail_s=60, wind_down=0.4)
+    m = lambda xid, typ, a, minutes, **kw: {"source": "manual", "external_id": xid, "type": typ,   # noqa: E731
+                                            "start": a.timestamp(), "end": (a + timedelta(minutes=minutes)).timestamp(),
+                                            "is_xml": False, "device": None, "excluded": None, **kw}
+    others = [
+        m("m-run", "running", a + timedelta(minutes=5), 35),
+        m("m-bball", "basketball", p.at(days[1], 12, 0), 75, manual_dup=True, dup_of="app:" + bball.lower()),
+        m("m-swim", "swimming", c, 60),
+        m("m-walk", "walking", p.at(days[2], 9, 0), 30),
+        m("m-zero", "other", p.at(days[2], 12, 0), 0),   # no duration: start = end, never a duplicate
+    ]
+    src = {"tz": p.tzname, "days": [d.isoformat() for d in days], "hk_workouts": p.hk, "others": others,
+           "overrides": [], "type_rules": [], "hr": p.hr, "hr_max": {d.isoformat(): 188.0 for d in days},
+           "birth_date": None}
+    return {"name": "manual", "src": src}
+
+
 def all_cases() -> dict:
-    return {"workouts": [sydney(), new_york()], "training": training(), "muscle": muscle()}
+    return {"workouts": [sydney(), new_york(), manual()], "training": training(), "muscle": muscle()}
 
 
 if __name__ == "__main__":
