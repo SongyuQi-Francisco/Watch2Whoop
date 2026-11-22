@@ -104,6 +104,15 @@ def mcp_setup(request: Request, token_env: str = "BODY_ENGINE_MCP_TOKEN") -> dic
                            + L("# 或在 ~/.gemini/settings.json 的 mcpServers 里加：\n", "# or add it to mcpServers in ~/.gemini/settings.json:\n")
                            + json.dumps({"body-engine": {"type": "http", "url": url, "headers": {"Authorization": f"Bearer ${{{token_env}}}"}}},
                                         ensure_ascii=False, indent=2)),
+            # Meta Muse (catalog muse_plan_mcp): Meta documents no server-URL field; the user asks Muse in chat to create a
+            # custom connector and Muse keeps the credential in its own store (docs/ai-assistant-plan.md 9.24)
+            "muse": L("# 发给 Muse 的一段话（把 <token> 换成上面那串 token）：\n"
+                      f"请创建一个自定义连接器：Watch2Whoop 的 MCP 服务器，地址 {url}（Streamable HTTP），"
+                      "每个请求带请求头 Authorization: Bearer <token>。把 token 存进你的凭证库，然后列出它的工具。",
+                      "# A message for Muse (replace <token> with the token above):\n"
+                      f"Please create a custom connector: the Watch2Whoop MCP server at {url} (Streamable HTTP), sending the "
+                      "header Authorization: Bearer <token> with every request. Keep the token in your credentials store, then "
+                      "list its tools."),
             "other": json.dumps({"mcpServers": {"body-engine": {"type": "http", "url": url,
                                                                 "headers": {"Authorization": f"Bearer ${{{token_env}}}"}}}},
                                 ensure_ascii=False, indent=2),

@@ -120,6 +120,20 @@ def _slug(name: str | None) -> str:
     return s or "oauth"
 
 
+def channel_client(client_name: str | None, redirect_host_: str | None) -> str:
+    """<client> of the audit channel mcp:<client> for a connection (oauth_params.CHANNEL_BY_DOMAIN / CHANNEL_BY_NAME):
+    a known vendor by the https domain the code is sent to, then by its name, else the slug of the self-reported name."""
+    host = (redirect_host_ or "").lower()
+    if "://" not in host and ":" not in host:   # redirect_host() keeps the scheme of anything that is not https
+        for domain, slug in P.CHANNEL_BY_DOMAIN.items():
+            if host == domain or host.endswith("." + domain):
+                return slug
+    for pattern, slug in P.CHANNEL_BY_NAME:
+        if re.search(pattern, client_name or "", re.I):
+            return slug
+    return _slug(client_name)
+
+
 class BodyClient(OAuthClientInformationFull):
     """Loopback redirect URIs match with any port (RFC 8252 §7.3; Claude Code uses an ephemeral port)."""
 
@@ -259,7 +273,8 @@ def _issue(conn: psycopg.Connection, grant: dict, scopes: list[str]) -> OAuthTok
     token_scopes = [auth.MCP_SCOPE, "read"] + (["write"] if "write" in scopes else [])
     conn.execute("""INSERT INTO api_tokens (user_id, name, token_sha256, scopes, expires_at, oauth_grant_id)
                     VALUES (%s, %s, %s, %s, now() + make_interval(secs => %s), %s)""",
-                 (grant["user_id"], f"mcp:{_slug(grant['client_name'])}", auth.hash_token(access), token_scopes,
+                 (grant["user_id"], f"mcp:{channel_client(grant['client_name'], grant['redirect_host'])}",
+                  auth.hash_token(access), token_scopes,
                   ACCESS_TTL_S, grant["id"]))
     refresh = secrets.token_urlsafe(32)
     conn.execute("""INSERT INTO oauth_refresh_tokens (token_sha256, grant_id, client_id, scopes, expires_at)

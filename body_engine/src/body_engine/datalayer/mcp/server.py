@@ -3,7 +3,9 @@
 tools/list sends what the toolset lists for the caller (toolsets.for_listing: core + confirm tools + meta tools;
 read-only callers see no write tool). call_tool answers find_tools itself, resolves run_read_tool / run_write_tool to the
 real tool (same checks, the audit records the real name), then runs it through the Executor in a worker thread with a
-connection of its own. Write tools are marked read_only_hint=False, so the client asks the user before running them.
+connection of its own. Write tools are marked read_only_hint=False, so the client asks the user before running them;
+the confirm tools (delete / undo) are also destructive_hint=True (clients that ask only before destructive calls, MCP
+tool annotations).
 Errors (permission, parameters, database) go back to the model as tool errors with their text.
 
 The application injects everything that is its own: the server name and instructions, who a request is (identity_of),
@@ -134,8 +136,8 @@ def build_server(name: str, instructions: str, identity_of: Callable[[object], C
             types.Tool(name=t.name, description=f.text(t.description) if f else t.description,
                        input_schema=f.schema(relaxed(t.input_schema, cfg.optional_defaults)) if f
                        else relaxed(t.input_schema, cfg.optional_defaults),
-                       annotations=types.ToolAnnotations(read_only_hint=not t.writes, destructive_hint=False,
-                                                         open_world_hint=False))
+                       annotations=types.ToolAnnotations(read_only_hint=not t.writes,
+                                                         destructive_hint=t.name in cfg.confirm, open_world_hint=False))
             for t in ts.for_listing(cfg, tools, caller.can_write)])
 
     async def call_tool(ctx, params) -> types.CallToolResult:
