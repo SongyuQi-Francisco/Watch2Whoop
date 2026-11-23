@@ -951,6 +951,21 @@ tools/app_release.sh ios --push                      # 打 app-ios-v2.0.0 并推
 - 朋友手上如果有 Release「iOS app 1.0.9」的 zip，作废，只用 2.0.0 的 Release。私有的旧交接单 `dist/交接单-iOS-1.0.9.md` 换成按 `ios-native-1.0.9-handover-template.md` 填的新版（版本 2.0.0，构建 11）。
 - Flutter 的 `CHANGELOG.md` 里旧的 1.0.9 一节已标「作废」，留作记录；iOS 的更新记录在 `apps/ios/CHANGELOG.md`（里面的 `## 1.0.9` 一节只是开发记录，没有发布）。
 
+
+### 12.2 2.1.0 的上线顺序（iPhone 界面重做 + Apple Watch app）
+
+前提：发布 PR 已合并（版本 2.1.0、构建 12，算法包 0.3.0 **已由负责人签名**），服务器已部署到包含它的 `main`。交接单 [`ios-native-2.1.0-handover.md`](ios-native-2.1.0-handover.md)，真机清单 [`ios-native-2.0-device-checklist.md`](ios-native-2.0-device-checklist.md) 的「2.1.0」一节。
+
+**服务器开关：不需要动任何开关。** 依据：2.1.0 没有新的灰度开关（`rollout/registry.py` 的 `FLAG_META` 里最新的是 11-03 的 `posture_photos`，和 2.1.0 无关）；新界面、手表 app、表盘小组件、同步中心都不挂开关；手表用到的服务器接口（#458 的 `POST /v1/account/watch-code`、`POST /v1/web/login-code` 带 `client: "watch"`、`/v1/assistant/transcribe`、`/v1/assistant/chat` 带 `page: "watch"`）也不挂开关。唯一跟开关有关的是**手表上的按住说话**：只在账号开了 `jarvis_voice_direct`、AI 在 app 里时出现（`WatchShared/WatchVoice.swift` 的 `WatchVoiceOffer.of`）；这个开关是 `experiment`，说明里写着开之前先改托底 AI 同意书第 4 条和数据同意书「语音输入」，所以**这次上线不开它**，手表语音对所有人都不出现，直到负责人改完同意书再决定。`force_upgrade` 也不用：2.0.0 照常可用。
+
+| 步 | 什么时候 | 做什么 | 看什么 |
+|---|---|---|---|
+| 1 | 发布 PR 合并、部署后 | `GET /v1/algo/manifest` 是 0.3.0、`signature` 非空；`tools/app_release.sh ios` 预演全部 ✓ → `--push` 打 `app-ios-v2.1.0`，workflow 发 pre-release；朋友按交接单上传，**只加 TestFlight 内部组** | Release 的 zip 和 sha256；TestFlight 显示 2.1.0 (12)，归档里有手表 app 和小组件 |
+| 2 | 内部组装上当天起 | 负责人在自己的 iPhone + Apple Watch 上从 2.0.0 覆盖升级，按真机清单「2.1.0」一节验（U、P、R、Z、S、J、M、W、V0、C、L；V1–V6 只在改了同意书、自己开了 `jarvis_voice_direct` 之后） | 每条记下通过 / 不通过；`rawdata_uploads` 里负责人的 `app_version` 是 `2.1.0+12`；手机的算分上传带 `bundle_version` 0.3.0、没有 `stale_algo` |
+| 3 | 负责人说可以（清单没有阻塞项） | 2.1.0 加到**外部组**（公开链接）；第一次带手表 app，外部组要过 Beta App Review（审核备注加「WHAT'S NEW IN 2.1.0」，交接单里有） | 审核通过；一天内 `rawdata_uploads` 里陆续出现 `2.1.0+12`；doctor 正常 |
+
+**回退**：2.1.0 本身有问题时，在 App Store Connect 里把 2.1.0 的构建设为过期，测试用户在 TestFlight 里装回 2.0.0。本机数据库从 2.0.0 到 2.1.0 没有新迁移（`Storage/Schema.swift` 没变），钥匙串项照旧，不用重新登录；手表 app 随 2.0.0 一起消失。服务器这边没有要回退的东西：手表的凭据在手机退出登录时作废，也可以由本人在 `GET /v1/account/watch-tokens` / `DELETE /v1/account/watch-tokens/{id}` 吊销。算法包 0.3.0 留在服务器上，2.0.0 的手机验过签名后会用它（第 6.2 节）。
+
 ---
 
 ## English summary

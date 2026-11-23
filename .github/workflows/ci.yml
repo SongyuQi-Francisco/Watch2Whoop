@@ -85,8 +85,10 @@ jobs:
              || grep -qxE 'apps/watch2whoop/(lib/src/hk_types\.dart|assets/healthkit_types\.json)' <<< "$files"; then
             server=true; else server=false; fi
           # The native SwiftUI app (#340): its own directory, plus the originals of the files it copies byte for byte from
-          # the (historical) Flutter app, whose copy check runs in this job
-          if grep -qE '^apps/ios/|^apps/watch2whoop/(ios/Runner/(SyncEngine|RawSync|Backfill)\.swift|assets/healthkit_types\.json)$' <<< "$files"; then ios_native=true; else ios_native=false; fi
+          # the (historical) Flutter app, whose copy check runs in this job, plus the files apps/ios/project.yml builds in
+          # from outside apps/ios: the scoring bundle (dist/openbodyscore.js, a resource of the app), the goldens the
+          # iOS unit tests read (test/golden/*.json) and the muscle map drawings
+          if grep -qE '^apps/ios/|^apps/watch2whoop/(ios/Runner/(SyncEngine|RawSync|Backfill)\.swift|assets/healthkit_types\.json)$|^packages/openbodyscore-js/(dist|test/golden)/|^body_engine/src/body_engine/web/static/muscle-body-data\.js$' <<< "$files"; then ios_native=true; else ios_native=false; fi
           # The JS port of the algorithms (#340): its own files, the Python it ports (2.0.0 packages included,
           # docs/ios-native-2.0.md section 2.2) and the cross-language goldens of every package
           if grep -qE '^(packages/openbodyscore(-js)?/|body_engine/src/body_engine/((scores|trends|insights|algo|rawdata|importers|training|cardio|rules|explain|goals|sleep_night|records|static_bundle)/|web/views\.py)|body_engine/tests/test_js_golden[^/]*\.py)' <<< "$files"; then

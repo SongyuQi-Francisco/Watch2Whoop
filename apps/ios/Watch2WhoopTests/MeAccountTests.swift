@@ -162,6 +162,19 @@ final class MeAccountTests: XCTestCase {
     let o = try object(AIProviderDraft(kind: k).body(kind: k, editing: false))
     XCTAssertEqual(o.keys.sorted(), ["is_default", "kind"])
     XCTAssertEqual(AIClient(catalog: k.client), .claudeCode)
+    XCTAssertEqual(AIClient(kind: k), .claudeCode)
+  }
+
+  func testMetaMuseIsItsOwnClient() throws {
+    // ai/catalog.py keeps muse_plan_mcp's client at "other" for older apps; this app knows it by its kind
+    let muse = try kind(#"{"kind": "muse_plan_mcp", "label": "Meta Muse", "category": "mcp", "client": "other"}"#)
+    XCTAssertEqual(AIClient(kind: muse), .muse)
+    XCTAssertEqual(AIClient(kind: try kind(#"{"kind": "generic_mcp_client", "label": "Other", "category": "mcp", "client": "other"}"#)), .other)
+    XCTAssertEqual(AIClient(kind: nil), .claudeCode)
+    XCTAssertEqual(AIClient(catalog: "muse"), .muse)
+    XCTAssertEqual(AIClient.muse.rawValue, "muse", "the token is mcp:muse and the snippet is clients.muse (ai/api.mcp_setup)")
+    XCTAssertEqual(AIClient.muse.label, "Meta Muse")
+    XCTAssertEqual(AIClient.allCases.suffix(2), [.muse, .other], "Muse sits just above the generic client in the menu")
   }
 
   func testEditingLeavesAnEmptyKeyOutAndClearsOnlyItsOwnFreePrice() throws {
@@ -236,7 +249,7 @@ final class MeAccountTests: XCTestCase {
     {"tokens": [{"id": 7, "name": "mcp:codex", "scopes": ["mcp", "read"], "last_used_at": "2026-10-20T10:00:00+00:00", "revoked_at": null}],
      "connections": [{"id": 9, "client_name": "Some app", "redirect_host": "app.example.com", "scopes": ["mcp", "read", "write"], "created_at": "2026-10-01T00:00:00+00:00", "last_used_at": null}],
      "mcp": {"url": "https://body.example.com/mcp", "keychain": "security add …", "prompt": "Read the prompt", "oauth": "Add this address",
-             "clients": {"codex": "codex mcp add …", "other": "{}"}},
+             "clients": {"codex": "codex mcp add …", "muse": "Please create a custom connector …", "other": "{}"}},
      "web": {"search": true}}
     """#
     let t = try JSONDecoder().decode(AITokens.self, from: Data(j.utf8))
@@ -245,6 +258,7 @@ final class MeAccountTests: XCTestCase {
     XCTAssertFalse(try XCTUnwrap(t.connections.first).readOnly)
     XCTAssertEqual(t.snippet(.codex), "codex mcp add …")
     XCTAssertEqual(t.snippet(.antigravity), "{}", "falls back to the generic one")
+    XCTAssertEqual(t.snippet(.muse), "Please create a custom connector …")
     XCTAssertEqual(t.webSearch, true)
     XCTAssertEqual(t.oauthNote, "Add this address")
   }

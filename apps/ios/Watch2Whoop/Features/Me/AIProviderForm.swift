@@ -133,7 +133,7 @@ struct AIProviderAddView: View {
     defer { busy = false }
     do {
       _ = try await session.api.data(try .json(.post, Endpoint.aiProviders, body, idempotent: false))
-      done(k.isAPI ? nil : AIClient(catalog: k.client))
+      done(k.isAPI ? nil : AIClient(kind: k))
     } catch let e as APIError {
       message = failure(e, sentKey: sentKey)
     } catch {
@@ -180,7 +180,7 @@ struct AIProviderEditView: View {
         if provider.isAPI, kind != nil {
           PrimaryButton(title: tr("保存", "Save"), busy: busy) { Task { await save() } }
         } else {
-          SecondaryButton(icon: .link, title: tr("连接说明", "How to connect")) { connect(AIClient(catalog: kind?.client)) }
+          SecondaryButton(icon: .link, title: tr("连接说明", "How to connect")) { connect(AIClient(kind: kind)) }
         }
         if !current, provider.isActive {
           SecondaryButton(icon: .circleCheck, title: tr("用这个", "Use this one")) { Task { await useForJarvis() } }

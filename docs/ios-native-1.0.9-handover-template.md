@@ -1,5 +1,7 @@
 # iOS 1.0.9 交接单（模板）
 
+> **2.1.0 起用 [`ios-native-2.1.0-handover.md`](ios-native-2.1.0-handover.md)**（多了手表 app、表盘小组件的 App ID 和 App Group）；这份留作 2.0.0 交接单的来源。
+
 > **文件名里的 1.0.9 是历史**：1.0.9 从未发布，这份模板从 2.0.0 起一直是现行的 TestFlight 交接单模板（换成当次的版本号和构建号填写），所以没有归档。名字对照见 [`ios-native-app.md`](ios-native-app.md) 开头的表。
 
 > 模板（#340 N9）。发布当天由中控复制一份到私有的 `dist/交接单-iOS-1.0.9.md`，把尖括号里的值填上再发。这份公开文件里不写任何人的名字、Apple ID、Team ID、Bundle ID、域名。

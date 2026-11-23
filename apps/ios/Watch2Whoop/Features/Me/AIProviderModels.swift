@@ -336,8 +336,10 @@ struct AIProviderDraft: Equatable, CustomStringConvertible, CustomDebugStringCon
 }
 
 /// The clients of 「连接客户端（MCP）」 (`CLIENTS` in ai.js); the server's snippets are keyed by these names.
+/// The raw value is the client name of an AI token (`mcp:<client>`, ai/tokens.py) and the key of its setup snippet
+/// (`clients` in ai/api.mcp_setup).
 enum AIClient: String, CaseIterable, Identifiable {
-  case claudeCode = "claude-code", codex, antigravity, geminiCLI = "gemini-cli", other
+  case claudeCode = "claude-code", codex, antigravity, geminiCLI = "gemini-cli", muse, other
   var id: String { rawValue }
 
   var label: String {
@@ -346,9 +348,16 @@ enum AIClient: String, CaseIterable, Identifiable {
     case .codex: return "Codex CLI"
     case .antigravity: return "Antigravity"
     case .geminiCLI: return tr("Gemini CLI（API key）", "Gemini CLI (API key)")
+    case .muse: return "Meta Muse"
     case .other: return tr("其他 MCP 客户端", "Other MCP client")
     }
   }
 
   init(catalog name: String?) { self = name.flatMap(AIClient.init(rawValue:)) ?? .claudeCode }
+
+  /// The client to preselect for a catalog entry. `muse_plan_mcp` is matched by its kind: the catalog keeps its `client` at
+  /// "other" (ai/catalog.py), because 2.0.0 and older would turn an unknown name into Claude Code.
+  init(kind: AIKind?) {
+    self = kind?.kind == "muse_plan_mcp" ? .muse : AIClient(catalog: kind?.client)
+  }
 }

@@ -151,11 +151,15 @@ targets:
       - path: Watch2WhoopWatch
         excludes:
           - "**/*.md"
+          - "PrivacyInfo.xcprivacy"
       - path: WatchShared
       # tr("中文", "English") and the language choice, the same file as the iPhone app's
       - path: Watch2Whoop/Localization/I18n.swift
       # the complications' views, drawn by the Debug gallery too (FaceGallery.swift)
       - path: Watch2WhoopWatchWidgets/FaceViews.swift
+      # its own privacy manifest (UserDefaults, the App Group; App Store Connect checks every embedded bundle)
+      - path: Watch2WhoopWatch/PrivacyInfo.xcprivacy
+        buildPhase: resources
     info:
       path: Watch2WhoopWatch/Info.plist
       properties:
@@ -214,6 +218,10 @@ targets:
       - path: Watch2WhoopWatchWidgets
         excludes:
           - "**/*.md"
+          - "PrivacyInfo.xcprivacy"
+      # its own privacy manifest (UserDefaults of the App Group)
+      - path: Watch2WhoopWatchWidgets/PrivacyInfo.xcprivacy
+        buildPhase: resources
       - path: WatchShared
       - path: Watch2Whoop/Localization/I18n.swift
       # the watch's colours and its dial number, so the face draws exactly like the app
